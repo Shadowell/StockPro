@@ -1,0 +1,233 @@
+# 服务管理脚本使用说明
+
+本项目提供了三个便捷的Shell脚本来管理前后端服务。
+
+## 📜 可用脚本
+
+### 1. restart.sh - 一键重启服务 🔄
+
+**功能**: 优雅地停止当前运行的前后端服务，并重新启动它们。
+
+**使用方法**:
+```bash
+./restart.sh
+```
+
+**执行流程**:
+1. 停止后端服务 (端口 8000)
+2. 停止前端服务 (端口 9999)
+3. 清理僵尸进程
+4. 准备日志目录
+5. 启动后端服务 (FastAPI + uvicorn)
+6. 启动前端服务 (Vite)
+7. 检查服务状态
+8. 保存进程ID到文件
+
+**输出信息**:
+- ✅ 服务状态检查结果
+- 📝 服务访问地址
+- 📋 日志文件位置
+- 🛑 停止服务命令
+- 🔄 重启服务命令
+
+---
+
+### 2. stop.sh - 停止所有服务 🛑
+
+**功能**: 优雅地停止所有运行中的前后端服务。
+
+**使用方法**:
+```bash
+./stop.sh
+```
+
+**执行流程**:
+1. 从PID文件停止服务
+2. 按端口检查并停止服务
+3. 清理相关进程
+4. 最终状态检查
+
+---
+
+### 3. start_app.sh - 启动服务（旧版）
+
+**功能**: 启动前后端服务并保持前台运行。
+
+**使用方法**:
+```bash
+./start_app.sh
+```
+
+**特点**:
+- 前台运行，按 CTRL+C 停止
+- 自动打开浏览器
+- 适合开发调试
+
+---
+
+## 🚀 快速开始
+
+### 首次启动
+```bash
+# 赋予执行权限（只需执行一次）
+chmod +x restart.sh stop.sh start_app.sh
+
+# 启动服务
+./restart.sh
+```
+
+### 日常使用
+```bash
+# 重启服务（推荐）
+./restart.sh
+
+# 停止服务
+./stop.sh
+
+# 查看日志
+tail -f logs/backend.log   # 后端日志
+tail -f logs/frontend.log  # 前端日志
+```
+
+---
+
+## 📁 文件结构
+
+```
+stock_app/
+├── restart.sh          # 重启脚本
+├── stop.sh            # 停止脚本
+├── start_app.sh       # 启动脚本（旧版）
+├── logs/              # 日志目录
+│   ├── backend.log    # 后端日志
+│   ├── frontend.log   # 前端日志
+│   ├── backend.pid    # 后端进程ID
+│   └── frontend.pid   # 前端进程ID
+├── backend/           # 后端代码
+└── frontend/          # 前端代码
+```
+
+---
+
+## 🌐 服务地址
+
+启动成功后，可以访问以下地址：
+
+- **前端应用**: http://localhost:9999
+- **后端API**: http://localhost:8000
+- **API文档**: http://localhost:8000/docs
+- **ReDoc文档**: http://localhost:8000/redoc
+
+---
+
+## 🐛 常见问题
+
+### 1. 端口被占用
+
+如果遇到端口占用问题，使用 `restart.sh` 会自动清理：
+
+```bash
+./restart.sh
+```
+
+或手动清理：
+
+```bash
+# 查看端口占用
+lsof -i :8000
+lsof -i :9999
+
+# 手动杀死进程
+kill -9 $(lsof -t -i :8000)
+kill -9 $(lsof -t -i :9999)
+```
+
+### 2. 服务启动失败
+
+查看日志文件：
+
+```bash
+# 后端日志
+tail -f logs/backend.log
+
+# 前端日志
+tail -f logs/frontend.log
+```
+
+### 3. 虚拟环境问题
+
+如果后端启动失败，可能需要重新创建虚拟环境：
+
+```bash
+cd backend
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cd ..
+./restart.sh
+```
+
+### 4. 权限问题
+
+如果脚本无法执行：
+
+```bash
+chmod +x restart.sh stop.sh start_app.sh
+```
+
+---
+
+## 💡 高级用法
+
+### 后台运行服务
+
+脚本已经使用 `nohup` 在后台运行服务，即使关闭终端窗口服务也会继续运行。
+
+### 查看进程状态
+
+```bash
+# 查看后端进程
+ps -p $(cat logs/backend.pid)
+
+# 查看前端进程
+ps -p $(cat logs/frontend.pid)
+
+# 查看所有相关进程
+ps aux | grep -E "uvicorn|vite"
+```
+
+### 单独重启某个服务
+
+```bash
+# 只重启后端
+kill $(cat logs/backend.pid)
+cd backend && source venv/bin/activate && nohup uvicorn app.main:app --reload --port 8000 > ../logs/backend.log 2>&1 &
+
+# 只重启前端
+kill $(cat logs/frontend.pid)
+cd frontend && nohup npm run dev > ../logs/frontend.log 2>&1 &
+```
+
+---
+
+## 🔔 注意事项
+
+1. **日志文件**: 日志会持续追加，定期清理 `logs/` 目录避免占用过多空间
+2. **虚拟环境**: 后端使用虚拟环境，确保依赖隔离
+3. **端口固定**: 前端固定使用 9999 端口，后端固定使用 8000 端口
+4. **进程管理**: 脚本会保存进程ID到 `logs/*.pid` 文件，便于管理
+
+---
+
+## 📞 技术支持
+
+如遇问题，请检查：
+1. Python 版本 (需要 Python 3.8+)
+2. Node.js 版本 (需要 Node.js 16+)
+3. 端口是否被占用
+4. 日志文件中的错误信息
+
+---
+
+**最后更新**: 2026-01-23

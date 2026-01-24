@@ -1,0 +1,391 @@
+import React, { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
+import { getMessageStream } from "@/api/client";
+import { MessageStreamResponse, MessageStreamItem, AbnormalStockItem } from "@/types";
+import { RefreshCw, AlertTriangle, ThumbsUp, ThumbsDown, GitMerge, Newspaper, Play, Pause } from "lucide-react";
+
+type TabKey = "abnormal" | "mergers" | "good" | "bad" | "cailian" | "xueqiu" | "eastmoney";
+
+export const NewsFeed: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const initialTab = (searchParams.get("tab") as TabKey) || "abnormal";
+  
+  const [data, setData] = useState<MessageStreamResponse | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await getMessageStream(100);
+      setData(res);
+    } catch (e) {
+      console.error("Failed to fetch message stream", e);
+      setError("消息流加载失败");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // 自动滚动效果
+  useEffect(() => {
+    if (!isAutoScrollEnabled || !scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    let animationId: number;
+    let lastTimestamp = 0;
+    const scrollSpeed = 30; // 像素/秒
+
+    const scroll = (timestamp: number) => {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const delta = timestamp - lastTimestamp;
+      
+      if (delta > 16) { // 约60fps
+        const scrollAmount = (scrollSpeed * delta) / 1000;
+        container.scrollTop += scrollAmount;
+
+        // 如果滚动到底部，重置到顶部
+        if (container.scrollTop >= container.scrollHeight - container.clientHeight) {
+          container.scrollTop = 0;
+        }
+        
+        lastTimestamp = timestamp;
+      }
+
+      animationId = requestAnimationFrame(scroll);
+    };
+
+    animationId = requestAnimationFrame(scroll);
+
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    };
+  }, [isAutoScrollEnabled, data, activeTab]);
+
+  const renderAbnormal = () => {
+    if (!data) return null;
+    const rules = data.abnormal.rules;
+    const triggered = data.abnormal.triggered;
+    const near = data.abnormal.near;
+
+    const renderStockRow = (item: AbnormalStockItem) => {
+      const sign = item.change_percent > 0 ? "+" : "";
+      const color = item.change_percent >= 0 ? "text-red-500" : "text-green-500";
+      return (
+        <div
+          key={`${item.code}-${item.rule_id}-${item.direction}`}
+          className="flex items-center justify-between text-xs py-1 border-b border-slate-800 last:border-b-0"
+        >
+          <div className="flex flex-col mr-2">
+            <span className="font-semibold">
+              <span className="text-cyan-400 font-bold">{item.name}</span>
+              {" "}
+              <span className="text-orange-400 font-mono">({item.code})</span>
+            </span>
+            <span className="text-[11px] text-gray-500">
+              交易所: {item.exchange} · 方向: {item.direction === "UP" ? "向上" : "向下"}
+            </span>
+          </div>
+          <div className={`text-right ${color} font-bold text-xs`}>
+            {sign}
+            {item.change_percent.toFixed(2)}%
+          </div>
+        </div>
+      );
+    };
+
+    const renderRuleDesc = (ruleId: string) => {
+      const rule = rules.find((r) => r.id === ruleId);
+      if (!rule) return null;
+      return (
+        <span className="text-[11px] text-gray-500">
+          规则: {rule.name} · 阈值: {rule.threshold_pct.toFixed(2)}%
+        </span>
+      );
+    };
+
+    return (
+      <div className="flex flex-col h-full">
+        <div className="mb-2 text-[11px] text-gray-500">
+          规则基于沪深主板、科创创业、北交所不同涨跌幅限制，列出
+          当日涨跌幅触发或接近阈值的股票，方便盘中盯盘。
+        </div>
+        <div className="flex-1 grid grid-rows-2 gap-3 min-h-0">
+          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-3 flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+                <AlertTriangle size={14} />
+                <span>触发异动</span>
+              </div>
+              <span className="text-[11px] text-gray-500">
+                {data.updated_at ? new Date(data.updated_at).toLocaleTimeString() : ""}
+              </span>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {triggered.length === 0 && (
+                <div className="text-[11px] text-gray-500">当前暂无触发异动的股票</div>
+              )}
+              {triggered.map((item) => (
+                <div key={`${item.code}-${item.rule_id}-${item.direction}`}>
+                  {renderStockRow(item)}
+                  {renderRuleDesc(item.rule_id)}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-3 flex flex-col min-h-0">
+            <div className="flex items-center gap-2 text-xs font-semibold text-blue-300 mb-2">
+              <AlertTriangle size={14} />
+              <span>接近异动</span>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {near.length === 0 && (
+                <div className="text-[11px] text-gray-500">当前暂无接近阈值的股票</div>
+              )}
+              {near.map((item) => (
+                <div key={`${item.code}-${item.rule_id}-${item.direction}`}>
+                  {renderStockRow(item)}
+                  {renderRuleDesc(item.rule_id)}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderNewsList = (items: MessageStreamItem[], mode: "merger" | "good" | "bad" | "cailian" | "xueqiu" | "eastmoney") => {
+    const icon =
+      mode === "merger" ? <GitMerge size={14} /> : 
+      mode === "good" ? <ThumbsUp size={14} /> : 
+      mode === "bad" ? <ThumbsDown size={14} /> :
+      mode === "xueqiu" ? <Newspaper size={14} /> :
+      mode === "eastmoney" ? <Newspaper size={14} /> :
+      <Newspaper size={14} />; // 财联社使用报纸图标
+    const title =
+      mode === "merger"
+        ? "并购重组"
+        : mode === "good"
+        ? "利好"
+        : mode === "bad"
+        ? "利空"
+        : mode === "xueqiu"
+        ? "雪球"
+        : mode === "eastmoney"
+        ? "东财"
+        : "财联社";
+    const accent =
+      mode === "merger"
+        ? "border-purple-500 text-purple-300"
+        : mode === "good"
+        ? "border-emerald-500 text-emerald-300"
+        : mode === "bad"
+        ? "border-rose-500 text-rose-300"
+        : mode === "xueqiu"
+        ? "border-blue-500 text-blue-300"
+        : mode === "eastmoney"
+        ? "border-red-500 text-red-300"
+        : "border-orange-500 text-orange-300"; // 财联社使用橙色主题
+
+    return (
+      <div className="flex flex-col h-full">
+        <div className={`inline-flex items-center gap-2 text-xs font-semibold mb-3 px-2 py-1 rounded-full border ${accent}`}>
+          {icon}
+          <span>{title}消息</span>
+        </div>
+        <div className="flex-1 overflow-auto space-y-2">
+          {items.length === 0 && (
+            <div className="text-[11px] text-gray-500">
+              暂无数据，正在自动获取最新消息...
+            </div>
+          )}
+          {items.map((it) => (
+            <div
+              key={it.id}
+              className="border border-slate-800 rounded-lg px-3 py-2 text-xs hover:border-slate-600 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] text-gray-500">
+                  {it.time ? it.time : "-"} · {it.source || "未知来源"}
+                </span>
+                {it.url && (
+                  <a
+                    href={it.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-blue-400 hover:text-blue-300"
+                  >
+                    原文
+                  </a>
+                )}
+              </div>
+              <div className="text-gray-200 mb-1 leading-snug">{it.title}</div>
+              {it.related_stocks && it.related_stocks.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {it.related_stocks.map((s) => (
+                    <span
+                      key={s.code}
+                      className="px-2 py-0.5 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-[11px] font-semibold"
+                    >
+                      <span className="text-yellow-300">{s.name || s.code}</span>
+                      {" "}
+                      <span className="text-orange-300 font-mono">({s.code})</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderBody = () => {
+    if (isLoading && !data) {
+      return (
+        <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+          加载中...
+        </div>
+      );
+    }
+    if (error) {
+      return (
+        <div className="flex-1 flex items-center justify-center text-red-400 text-sm">
+          {error}
+        </div>
+      );
+    }
+    if (!data) {
+      return (
+        <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+          暂无消息数据
+        </div>
+      );
+    }
+
+    if (activeTab === "abnormal") {
+      return renderAbnormal();
+    }
+    if (activeTab === "mergers") {
+      return renderNewsList(data.mergers, "merger");
+    }
+    if (activeTab === "good") {
+      return renderNewsList(data.good_news, "good");
+    }
+    if (activeTab === "bad") {
+      return renderNewsList(data.bad_news, "bad");
+    }
+    // 添加财联社新闻的处理
+    if (activeTab === "cailian") {
+      return renderNewsList(data.cailian_news || [], "cailian");
+    }
+    // 添加雪球新闻的处理
+    if (activeTab === "xueqiu") {
+      return renderNewsList(data.xueqiu_news || [], "xueqiu");
+    }
+    // 添加东方财富新闻的处理
+    if (activeTab === "eastmoney") {
+      return renderNewsList(data.eastmoney_news || [], "eastmoney");
+    }
+    return renderNewsList(data.bad_news, "bad");
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold text-gray-100">消息流</span>
+          <div className="flex items-center gap-1 text-[11px] text-gray-500">
+            <span>异动 / 并购重组 / 利好 / 利空 / 财联社 / 雪球 / 东财</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsAutoScrollEnabled(!isAutoScrollEnabled)}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs ${isAutoScrollEnabled ? "bg-green-600 hover:bg-green-700 text-white" : "bg-slate-800 hover:bg-slate-700 text-gray-300"}`}
+            title={isAutoScrollEnabled ? "暂停滚动" : "开始滚动"}
+          >
+            {isAutoScrollEnabled ? <Pause size={14} /> : <Play size={14} />}
+            <span>{isAutoScrollEnabled ? "暂停" : "播放"}</span>
+          </button>
+          {isLoading && (
+            <RefreshCw size={14} className="animate-spin text-blue-400" />
+          )}
+        </div>
+      </div>
+
+      <div className="px-4 py-2 border-b border-slate-800 bg-slate-900/60 flex items-center gap-2 text-xs flex-wrap">
+        <button
+          onClick={() => setActiveTab("abnormal")}
+          className={`px-2 py-1 rounded-md ${
+            activeTab === "abnormal" ? "bg-blue-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+          }`}
+        >
+          异动
+        </button>
+        <button
+          onClick={() => setActiveTab("mergers")}
+          className={`px-2 py-1 rounded-md ${
+            activeTab === "mergers" ? "bg-blue-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+          }`}
+        >
+          并购重组
+        </button>
+        <button
+          onClick={() => setActiveTab("good")}
+          className={`px-2 py-1 rounded-md ${
+            activeTab === "good" ? "bg-blue-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+          }`}
+        >
+          利好
+        </button>
+        <button
+          onClick={() => setActiveTab("bad")}
+          className={`px-2 py-1 rounded-md ${
+            activeTab === "bad" ? "bg-blue-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+          }`}
+        >
+          利空
+        </button>
+        <button
+          onClick={() => setActiveTab("cailian")}
+          className={`px-2 py-1 rounded-md ${
+            activeTab === "cailian" ? "bg-orange-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+          }`}
+        >
+          财联社
+        </button>
+        <button
+          onClick={() => setActiveTab("xueqiu")}
+          className={`px-2 py-1 rounded-md ${
+            activeTab === "xueqiu" ? "bg-blue-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+          }`}
+        >
+          雪球
+        </button>
+        <button
+          onClick={() => setActiveTab("eastmoney")}
+          className={`px-2 py-1 rounded-md ${
+            activeTab === "eastmoney" ? "bg-red-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+          }`}
+        >
+          东财
+        </button>
+      </div>
+
+      <div className="flex-1 p-3 min-h-0" ref={scrollContainerRef}>{renderBody()}</div>
+    </div>
+  );
+};

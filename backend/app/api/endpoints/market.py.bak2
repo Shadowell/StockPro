@@ -1,0 +1,67 @@
+import asyncio
+from fastapi import APIRouter, Query
+from app.services.market_service import MarketService
+from typing import List, Dict, Any
+router = APIRouter()
+@router.get("/sectors")
+async def get_market_sectors() -> List[Dict[str, Any]]:
+    return MarketService.get_all_sectors()
+@router.get("/stocks")
+async def get_market_stocks() -> List[Dict[str, Any]]:
+    return MarketService.get_all_stocks()
+@router.get("/hot-concepts")
+async def get_hot_concepts(limit: int = Query(50, ge=1, le=200)) -> List[Dict[str, Any]]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, MarketService.get_hot_concepts, limit)
+@router.get("/ths-hot")
+async def get_ths_hot(limit: int = Query(100, ge=1, le=200)) -> List[Dict[str, Any]]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, MarketService.get_ths_hot, limit)
+@router.get("/lianban-ladder")
+async def get_lianban_ladder(date: str | None = Query(None)) -> Dict[str, Any]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, MarketService.get_lianban_ladder, date)
+@router.get("/hot-concept/intraday")
+async def get_hot_concept_intraday(
+    name: str = Query(..., min_length=1),
+    period: str = Query("1"),
+) -> List[Dict[str, Any]]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.get_concept_intraday_kline(name=name, period=period))
+@router.get("/hot-concept/leaders")
+async def get_hot_concept_leaders(
+    name: str = Query(..., min_length=1),
+    limit: int = Query(20, ge=1, le=200),
+) -> List[Dict[str, Any]]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.get_concept_leading_stocks(name=name, limit=limit))
+@router.get("/fundamentals/{symbol}")
+async def get_stock_fundamentals(symbol: str) -> Dict[str, Any]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.get_stock_fundamentals(symbol))
+@router.get("/message-stream")
+async def get_message_stream(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.get_message_stream(limit=limit))
+@router.get("/calendar")
+async def get_market_calendar(
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    limit: int = Query(200, ge=1, le=500),
+) -> List[Dict[str, Any]]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.get_market_calendar_events(start=start, end=end, limit=limit))
+@router.post("/calendar/refresh")
+async def refresh_market_calendar(months: int = Query(6, ge=1, le=24)) -> Dict[str, Any]:
+    loop = asyncio.get_running_loop()
+@router.post("/calendar/generate-with-ai")
+async def generate_market_calendar_with_ai(
+    start_date: str = Query(..., description="开始日期 (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="结束日期 (YYYY-MM-DD)")
+) -> Dict[str, Any]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.generate_market_calendar_with_ai(start_date=start_date, end_date=end_date))
+@router.post("/calendar/refresh")
+async def refresh_market_calendar(months: int = Query(6, ge=1, le=24)) -> Dict[str, Any]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.refresh_market_calendar(months=months))
