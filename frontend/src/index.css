@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  background-color: #0f172a; /* Dark background */
+  color: #e2e8f0; /* Light text */
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
