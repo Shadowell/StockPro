@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, BarChart2, Database, BrainCircuit, Newspaper, GripVertical, Activity, CalendarDays, Code, Zap } from 'lucide-react';
+import { LayoutDashboard, BarChart2, Database, BrainCircuit, Newspaper, GripVertical, Activity, CalendarDays, Code, Zap, FlaskConical, Target, Wallet } from 'lucide-react';
 import { useStore } from '../stores/useStore';
 import { getTranslation, TranslationKey } from '../lib/i18n';
 import clsx from 'clsx';
@@ -27,11 +27,14 @@ export const Navigation: React.FC<NavigationProps> = ({ orientation = 'horizonta
     () => [
       { id: 'strategy-filter', to: '/', label: t('nav.dashboard'), Icon: LayoutDashboard },
       { id: 'strategy-exec', to: '/strategy-exec', label: language === 'zh' ? '实时策略盯盘' : 'Strategy Watch', Icon: Zap },
+      { id: 'live-trading', to: '/trading', label: language === 'zh' ? '实盘交易' : 'Live Trading', Icon: Wallet },
       { id: 'market-overview', to: '/market', label: t('nav.market'), Icon: BarChart2 },
       { id: 'sentiment-analysis', to: '/sentiment', label: t('nav.sentiment'), Icon: Activity },
-      { id: 'news-feed', to: '/news', label: language === 'zh' ? '消息流' : 'News', Icon: Newspaper },
+      { id: 'news-feed', to: '/news', label: language === 'zh' ? '消息中心' : 'News Center', Icon: Newspaper },
       { id: 'ai-analysis', to: '/ai', label: t('nav.ai'), Icon: BrainCircuit },
       { id: 'strategy-dev', to: '/strategy-dev', label: language === 'zh' ? '策略开发' : 'Strategy Dev', Icon: Code },
+      { id: 'market-pulse', to: '/pulse', label: language === 'zh' ? '复盘中心' : 'Review Center', Icon: Target },
+      { id: 'factor-library', to: '/factors', label: language === 'zh' ? '因子中心' : 'Factor Center', Icon: FlaskConical },
       { id: 'data-analysis', to: '/analysis', label: t('nav.data'), Icon: Database },
       { id: 'trading-calendar', to: '/calendar', label: language === 'zh' ? '交易日历' : 'Calendar', Icon: CalendarDays },
     ],

@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { getMessageStream } from "@/api/client";
+import { getMessageStream, syncNewsStream } from "@/api/client";
 import { MessageStreamResponse, MessageStreamItem, AbnormalStockItem } from "@/types";
-import { RefreshCw, AlertTriangle, ThumbsUp, ThumbsDown, GitMerge, Newspaper, Play, Pause } from "lucide-react";
+import { RefreshCw, AlertTriangle, ThumbsUp, ThumbsDown, GitMerge, Newspaper, Play, Pause, Database } from "lucide-react";
 
 type TabKey = "abnormal" | "mergers" | "good" | "bad" | "cailian" | "xueqiu" | "eastmoney";
 
@@ -13,6 +13,7 @@ export const NewsFeed: React.FC = () => {
   const [data, setData] = useState<MessageStreamResponse | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -25,9 +26,24 @@ export const NewsFeed: React.FC = () => {
       setData(res);
     } catch (e) {
       console.error("Failed to fetch message stream", e);
-      setError("消息流加载失败");
+      setError("消息流加载失败，请点击同步按钮获取数据");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSyncNews = async () => {
+    setIsSyncing(true);
+    setError(null);
+    try {
+      await syncNewsStream();
+      // 同步成功后重新加载数据
+      await fetchData();
+    } catch (e) {
+      console.error("Failed to sync news", e);
+      setError("同步新闻失败");
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -313,6 +329,24 @@ export const NewsFeed: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={handleSyncNews}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 text-white"
+            title="同步最新新闻"
+          >
+            {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <Database size={14} />}
+            <span>{isSyncing ? "同步中..." : "同步"}</span>
+          </button>
+          <button
+            onClick={fetchData}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 text-white"
+            title="刷新数据"
+          >
+            <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+            <span>刷新</span>
+          </button>
+          <button
             onClick={() => setIsAutoScrollEnabled(!isAutoScrollEnabled)}
             className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs ${isAutoScrollEnabled ? "bg-green-600 hover:bg-green-700 text-white" : "bg-slate-800 hover:bg-slate-700 text-gray-300"}`}
             title={isAutoScrollEnabled ? "暂停滚动" : "开始滚动"}
@@ -320,9 +354,6 @@ export const NewsFeed: React.FC = () => {
             {isAutoScrollEnabled ? <Pause size={14} /> : <Play size={14} />}
             <span>{isAutoScrollEnabled ? "暂停" : "播放"}</span>
           </button>
-          {isLoading && (
-            <RefreshCw size={14} className="animate-spin text-blue-400" />
-          )}
         </div>
       </div>
 

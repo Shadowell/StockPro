@@ -230,4 +230,50 @@ cd frontend && nohup npm run dev > ../logs/frontend.log 2>&1 &
 
 ---
 
-**最后更新**: 2026-01-23
+## 📊 数据回填脚本
+
+### backfill_concept_history.py - 回填历史概念板块数据
+
+**功能**: 由于 AKShare 的概念板块接口只能获取当天数据，本脚本通过获取每个板块的历史K线来回填历史数据。
+
+**位置**: `scripts/backfill_concept_history.py`
+
+**使用方法**:
+
+```bash
+# 进入项目目录
+cd /path/to/StockPro
+
+# 激活虚拟环境
+source backend/venv/bin/activate
+
+# 回填最近30天数据（默认）
+python scripts/backfill_concept_history.py
+
+# 回填最近60天数据
+python scripts/backfill_concept_history.py --days 60
+
+# 自定义参数
+python scripts/backfill_concept_history.py --days 30 --delay 0.5 --batch 30
+```
+
+**参数说明**:
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| --days | 30 | 回填最近多少天的数据 |
+| --delay | 0.3 | 每次请求的延迟秒数 |
+| --batch | 50 | 每批处理多少个板块 |
+
+**注意事项**:
+- 首次使用需要运行此脚本回填历史数据
+- 回填30天约需 5-10 分钟
+- 之后系统会每天15:30自动同步当天数据
+
+**也可以通过网页端操作**:
+1. 打开复盘中心页面
+2. 点击"回填历史"按钮
+3. 等待回填完成（页面会显示进度）
+
+---
+
+**最后更新**: 2026-01-25

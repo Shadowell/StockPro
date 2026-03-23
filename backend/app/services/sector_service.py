@@ -23,23 +23,25 @@ class SectorService:
             sectors = []
             for _, row in df.iterrows():
                 try:
-                    name = str(row.get('行业', '')).strip()
+                    name = str(row['行业']).strip()
                     if not name:
                         continue
                     
-                    change_percent = float(row.get('行业-涨跌幅', 0))
-                    leader_stock = str(row.get('领涨股', ''))
-                    company_count = int(row.get('公司家数', 0))
+                    change_percent = float(row['行业-涨跌幅'])
+                    # 领涨股列名是"领涨股"
+                    leader_stock = str(row['领涨股']) if pd.notna(row['领涨股']) else ''
+                    company_count = int(row['公司家数']) if pd.notna(row['公司家数']) else 0
                     
                     sector = SectorBase(
                         name=name,
                         change_percent=change_percent,
-                        up_count=company_count,  # 使用公司家数作为参考
+                        up_count=company_count,
                         down_count=0,
                         leader_stock=leader_stock
                     )
                     sectors.append(sector)
                 except Exception as row_e:
+                    logger.warning(f"处理板块行数据异常: {row_e}")
                     continue
             
             return sectors

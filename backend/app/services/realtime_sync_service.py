@@ -590,8 +590,9 @@ class RealtimeSyncService:
         
         logger.info("实时同步服务已启动")
         
-        # 立即执行一次同步
-        threading.Thread(target=self._initial_sync, daemon=True).start()
+        # 初始同步改为延迟执行，避免启动时崩溃
+        # threading.Thread(target=self._initial_sync, daemon=True).start()
+        logger.info("初始同步已禁用，等待定时任务执行")
     
     def _initial_sync(self):
         """初始同步"""

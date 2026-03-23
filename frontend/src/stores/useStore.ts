@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Stock, Sector, AIAnalysis, DailyChartData, IntradayChartData, StockFundamentals, MarketOverview } from '../types';
-import { getFilteredStocks, getHotSectors, analyzeStocks, getDailyChart, getIntradayChart, getMarketOverview } from '../api/client';
+import { getFilteredStocks, getHotSectors, analyzeStocks, getDailyChart, getIntradayChart, getMarketOverview, getStockFundamentals } from '../api/client';
 
 interface AppState {
   language: 'zh' | 'en';
@@ -25,6 +25,7 @@ interface AppState {
   fetchMarketOverview: () => Promise<void>;
   runAIAnalysis: () => Promise<void>;
   selectStock: (stock: Stock) => void;
+  clearSelectedStock: () => void;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -101,17 +102,27 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   selectStock: async (stock: Stock) => {
-    set({ selectedStock: stock, isLoadingCharts: true, dailyData: [], intradayData: [] });
+    set({ selectedStock: stock, isLoadingCharts: true, dailyData: [], intradayData: [], fundamentals: null });
     try {
-        // 只获取图表数据，不获取基本面数据（龙头股列表已有足够信息）
-        const [daily, intraday] = await Promise.all([
+        // 获取图表数据和基本面数据
+        const [daily, intraday, fundData] = await Promise.all([
             getDailyChart(stock.code),
-            getIntradayChart(stock.code)
+            getIntradayChart(stock.code),
+            getStockFundamentals(stock.code).catch(() => null) // 基本面数据获取失败不影响图表显示
         ]);
-        set({ dailyData: daily, intradayData: intraday, isLoadingCharts: false });
+        set({ 
+          dailyData: daily, 
+          intradayData: intraday, 
+          fundamentals: fundData,
+          isLoadingCharts: false 
+        });
     } catch (error) {
         console.error("Failed to fetch chart data", error);
         set({ isLoadingCharts: false });
     }
+  },
+
+  clearSelectedStock: () => {
+    set({ selectedStock: null, dailyData: [], intradayData: [], fundamentals: null });
   }
 }));

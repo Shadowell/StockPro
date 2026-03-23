@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import stocks, sectors, ai, charts, market, admin, analysis, database, data_dev, batch_import, preset_tasks, health, strategy
+from app.api.endpoints import stocks, sectors, ai, charts, market, admin, analysis, database, data_dev, batch_import, preset_tasks, health, strategy, factors, stock_screener
 
 api_router = APIRouter()
 
@@ -16,3 +16,5 @@ api_router.include_router(batch_import.router, prefix="/batch-import", tags=["ba
 api_router.include_router(preset_tasks.router, prefix="/preset-tasks", tags=["preset-tasks"])
 api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(strategy.router, prefix="/strategy", tags=["strategy"])
+api_router.include_router(factors.router, prefix="/factors", tags=["factors"])
+api_router.include_router(stock_screener.router, prefix="/screener", tags=["screener"])

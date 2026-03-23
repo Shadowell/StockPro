@@ -124,8 +124,18 @@ print(json.dumps(output, ensure_ascii=False))
   }, [fetchStrategies]);
 
   const handleSaveStrategy = useCallback(async () => {
-    if (!devStrategyName.trim() || !devStrategyCode.trim()) {
-      setTestResult('请填写策略名称和代码');
+    if (!devStrategyName.trim()) {
+      setTestResult('❌ 请先填写策略名称（左上角输入框）');
+      const nameInput = document.querySelector('input[placeholder*="策略名称"], input[placeholder*="Strategy name"]') as HTMLInputElement;
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.classList.add('ring-2', 'ring-red-500');
+        setTimeout(() => nameInput.classList.remove('ring-2', 'ring-red-500'), 3000);
+      }
+      return;
+    }
+    if (!devStrategyCode.trim()) {
+      setTestResult('❌ 请先编写策略代码');
       return;
     }
     
@@ -153,10 +163,20 @@ print(json.dumps(output, ensure_ascii=False))
   }, [devStrategyName, devStrategyCode, devStrategyDesc, devInterval, fetchStrategies]);
 
   const handleTestRunStrategy = useCallback(async () => {
-    if (!devStrategyCode.trim()) return;
+    if (!devStrategyCode.trim()) {
+      setTestResult('❌ 请先编写策略代码');
+      return;
+    }
     
     if (!devStrategyName.trim()) {
-      setTestResult('请先填写策略名称');
+      setTestResult('❌ 请先填写策略名称（左上角输入框）');
+      // 聚焦到名称输入框
+      const nameInput = document.querySelector('input[placeholder*="策略名称"], input[placeholder*="Strategy name"]') as HTMLInputElement;
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.classList.add('ring-2', 'ring-red-500');
+        setTimeout(() => nameInput.classList.remove('ring-2', 'ring-red-500'), 3000);
+      }
       return;
     }
     
@@ -271,16 +291,22 @@ print(json.dumps(output, ensure_ascii=False))
                 <div className="flex gap-2">
                   <button
                     onClick={handleTestRunStrategy}
-                    disabled={isTestRunning || !devStrategyName.trim()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 text-white rounded-lg font-bold text-xs transition-colors"
+                    disabled={isTestRunning}
+                    className={clsx(
+                      "flex items-center gap-1.5 px-3 py-1.5 text-white rounded-lg font-bold text-xs transition-colors",
+                      isTestRunning ? "bg-slate-700 cursor-wait" : "bg-blue-600 hover:bg-blue-700"
+                    )}
                   >
                     <Play size={12} className={isTestRunning ? 'animate-pulse' : ''} />
                     {isTestRunning ? (language === 'zh' ? '执行中...' : 'Running...') : (language === 'zh' ? '测试运行' : 'Test Run')}
                   </button>
                   <button
                     onClick={handleSaveStrategy}
-                    disabled={isSaving || !devStrategyName.trim()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 text-white rounded-lg font-bold text-xs transition-colors"
+                    disabled={isSaving}
+                    className={clsx(
+                      "flex items-center gap-1.5 px-3 py-1.5 text-white rounded-lg font-bold text-xs transition-colors",
+                      isSaving ? "bg-slate-700 cursor-wait" : "bg-purple-600 hover:bg-purple-700"
+                    )}
                   >
                     <Save size={12} />
                     {isSaving ? (language === 'zh' ? '保存中...' : 'Saving...') : (language === 'zh' ? '保存策略' : 'Save')}

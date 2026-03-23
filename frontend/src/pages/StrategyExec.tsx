@@ -22,7 +22,7 @@ interface StrategySlot {
 const MAX_SLOTS = 3;
 
 export const StrategyExec: React.FC = () => {
-  const { selectStock, selectedStock, language } = useStore();
+  const { selectStock, selectedStock, clearSelectedStock, language } = useStore();
   const t = (key: TranslationKey) => getTranslation(language, key);
 
   // 策略列表
@@ -50,7 +50,9 @@ export const StrategyExec: React.FC = () => {
 
   useEffect(() => {
     fetchStrategies();
-  }, [fetchStrategies]);
+    // 进入页面时清空之前选中的股票
+    clearSelectedStock();
+  }, [fetchStrategies, clearSelectedStock]);
 
   // 更新槽位
   const updateSlot = useCallback((slotId: number, updates: Partial<StrategySlot>) => {
