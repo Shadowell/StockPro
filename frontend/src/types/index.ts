@@ -59,7 +59,9 @@ export interface IntradayChartData {
   time: string;
   price: number;
   volume: number;
-  amount: number;
+  amount?: number;
+  pre_close?: number;    // 昨收价（只在第一条数据中）
+  trade_date?: string;   // 交易日期（只在第一条数据中）
 }
 
 export interface MarketSector {
@@ -96,6 +98,8 @@ export interface TaskStatus {
 export interface StockCandidate {
   code: string;
   name?: string | null;
+  price?: number | null;
+  change_percent?: number | null;
 }
 
 export interface HotConceptItem {

@@ -325,6 +325,221 @@ class LocalDatabase:
             CREATE INDEX IF NOT EXISTS idx_stock_ma_diff ON stock_ma_data(ma_diff_pct)
         ''')
         
+        # ============ 因子库相关表 ============
+        
+        # 创建因子定义表 - 存储因子的元数据和描述
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS factor_definitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                factor_code TEXT NOT NULL UNIQUE,
+                factor_name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                subcategory TEXT,
+                description TEXT,
+                formula TEXT,
+                data_source TEXT,
+                update_frequency TEXT DEFAULT 'daily',
+                unit TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # 创建因子数据表 - 存储每日因子值
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS factor_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                factor_code TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                date DATE NOT NULL,
+                value REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(factor_code, symbol, date),
+                FOREIGN KEY (factor_code) REFERENCES factor_definitions(factor_code)
+            )
+        ''')
+        
+        # 创建因子数据索引
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_factor_data_code ON factor_data(factor_code)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_factor_data_symbol ON factor_data(symbol)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_factor_data_date ON factor_data(date)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_factor_data_code_date ON factor_data(factor_code, date)
+        ''')
+        
+        # 创建因子同步日志表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS factor_sync_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                factor_code TEXT NOT NULL,
+                sync_date DATE NOT NULL,
+                status TEXT NOT NULL,
+                records_count INTEGER DEFAULT 0,
+                error_message TEXT,
+                sync_duration_ms INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(factor_code, sync_date)
+            )
+        ''')
+        
+        # ============ 新增数据表 ============
+        
+        # 创建资讯新闻表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS news_stream (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                publish_time DATETIME NOT NULL,
+                title TEXT,
+                content TEXT NOT NULL,
+                importance INTEGER DEFAULT 1,
+                category TEXT,
+                related_stocks TEXT,
+                is_read INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(source, publish_time, content)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_publish_time ON news_stream(publish_time DESC)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_source ON news_stream(source)')
+        
+        # 创建板块行情实时表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sector_realtime (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sector_type TEXT NOT NULL,
+                sector_code TEXT,
+                sector_name TEXT NOT NULL,
+                price REAL,
+                change_percent REAL,
+                change_amount REAL,
+                volume REAL,
+                turnover REAL,
+                total_market_cap REAL,
+                leader_code TEXT,
+                leader_name TEXT,
+                leader_change REAL,
+                up_count INTEGER,
+                down_count INTEGER,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(sector_type, sector_name)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sector_type ON sector_realtime(sector_type)')
+        
+        # 创建资金流向表（天级）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS fund_flow_daily (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL,
+                symbol TEXT NOT NULL,
+                name TEXT,
+                flow_type TEXT NOT NULL,
+                main_inflow REAL,
+                main_outflow REAL,
+                main_net REAL,
+                super_large_inflow REAL,
+                super_large_outflow REAL,
+                super_large_net REAL,
+                large_inflow REAL,
+                large_outflow REAL,
+                large_net REAL,
+                medium_inflow REAL,
+                medium_outflow REAL,
+                medium_net REAL,
+                small_inflow REAL,
+                small_outflow REAL,
+                small_net REAL,
+                UNIQUE(date, symbol, flow_type)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_fund_flow_date ON fund_flow_daily(date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_fund_flow_symbol ON fund_flow_daily(symbol)')
+        
+        # 创建龙虎榜表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS dragon_tiger_board (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL,
+                code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                close_price REAL,
+                change_percent REAL,
+                turnover_rate REAL,
+                net_buy REAL,
+                buy_amount REAL,
+                sell_amount REAL,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, code, reason)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_dtb_date ON dragon_tiger_board(date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_dtb_code ON dragon_tiger_board(code)')
+        
+        # 创建北向资金流向表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS northbound_flow (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL,
+                channel TEXT NOT NULL,
+                buy_amount REAL,
+                sell_amount REAL,
+                net_buy REAL,
+                total_buy REAL,
+                total_sell REAL,
+                total_net REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, channel)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_nb_date ON northbound_flow(date)')
+        
+        # 创建数据同步日志表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sync_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_name TEXT NOT NULL,
+                sync_date DATE NOT NULL,
+                status TEXT NOT NULL,
+                records_count INTEGER DEFAULT 0,
+                error_message TEXT,
+                duration_ms INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(task_name, sync_date)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sync_log_task ON sync_log(task_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sync_log_date ON sync_log(sync_date DESC)')
+        
+        # 创建每日概念板块行情表（用于复盘中心板块轮动分析）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_concept_sectors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL,
+                rank INTEGER,
+                sector_code TEXT,
+                sector_name TEXT NOT NULL,
+                change_percent REAL,
+                leader_stock TEXT,
+                leader_change REAL,
+                total_market_cap REAL,
+                up_count INTEGER,
+                down_count INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, sector_name)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_concept_date ON daily_concept_sectors(date DESC)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_concept_name ON daily_concept_sectors(sector_name)')
+        
         conn.commit()
         conn.close()
 
@@ -714,26 +929,48 @@ class LocalDatabase:
         return result
 
     def search_stocks(self, query: str, limit: int = 20) -> List[Dict]:
-        """搜索股票代码或名称"""
+        """搜索股票代码或名称，返回代码、名称和最新价格"""
         conn = self.get_connection()
         cursor = conn.cursor()
         pattern = f"%{query}%"
-        # 从股票历史表或基本面表中获取不重复的代码和名称
-        # 优先匹配代码开头，或者名称包含关键字
+        # 从基本面表获取股票信息（包含最新价格）
+        # 优先匹配代码开头，然后是名称包含关键字
         cursor.execute('''
-            SELECT symbol, name FROM (
-                SELECT symbol, name, 1 as priority FROM stock_fundamentals
-                WHERE symbol LIKE ? OR name LIKE ?
-                UNION
-                SELECT symbol, name, 2 as priority FROM stock_history 
-                WHERE symbol LIKE ? OR name LIKE ?
-            )
-            GROUP BY symbol
-            ORDER BY priority ASC, symbol ASC
+            SELECT symbol, name, price, change_percent FROM stock_fundamentals
+            WHERE symbol LIKE ? OR name LIKE ?
+            ORDER BY 
+                CASE WHEN symbol LIKE ? THEN 0 ELSE 1 END,
+                symbol ASC
             LIMIT ?
-        ''', (pattern, pattern, pattern, pattern, limit))
+        ''', (pattern, pattern, query + '%', limit))
         rows = cursor.fetchall()
-        result = [{"code": row[0], "name": row[1]} for row in rows]
+        
+        if rows:
+            result = [{
+                "code": row[0], 
+                "name": row[1],
+                "price": row[2] if row[2] else None,
+                "change_percent": row[3] if row[3] else None
+            } for row in rows]
+        else:
+            # 如果基本面表没有，从历史表搜索
+            cursor.execute('''
+                SELECT symbol, name, close FROM stock_history
+                WHERE symbol LIKE ? OR name LIKE ?
+                GROUP BY symbol
+                ORDER BY 
+                    CASE WHEN symbol LIKE ? THEN 0 ELSE 1 END,
+                    MAX(date) DESC
+                LIMIT ?
+            ''', (pattern, pattern, query + '%', limit))
+            rows = cursor.fetchall()
+            result = [{
+                "code": row[0], 
+                "name": row[1],
+                "price": row[2] if row[2] else None,
+                "change_percent": None
+            } for row in rows]
+        
         conn.close()
         return result
 
@@ -805,6 +1042,42 @@ class LocalDatabase:
             'prev_date': prev_date,
             'levels': list(levels_dict.values())
         }
+
+    def get_lianban_history_multi_days(self, days: int = 30, min_level: int = 2) -> List[Dict]:
+        """获取多天连板历史数据用于复盘展示"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT date, level, code, name, change_percent, price, duration_days, reason
+            FROM lianban_ladder_history
+            WHERE level >= ?
+            ORDER BY date DESC, level DESC, change_percent DESC
+            LIMIT ?
+        ''', (min_level, days * 100))  # Approximate limit
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return []
+        
+        # Group by date
+        result = {}
+        for row in rows:
+            date_val, level, code, name, change_pct, price, duration, reason = row
+            if date_val not in result:
+                result[date_val] = {'date': date_val, 'stocks': []}
+            result[date_val]['stocks'].append({
+                'code': code,
+                'name': name,
+                'level': level,
+                'change_percent': change_pct,
+                'price': price,
+                'duration_days': duration,
+                'reason': reason
+            })
+        
+        # Sort by date desc and return as list
+        return [result[d] for d in sorted(result.keys(), reverse=True)][:days]
 
     def update_market_indices_realtime(self, indices: List[Dict]):
         """更新市场指数实时数据"""
@@ -1795,6 +2068,1115 @@ except Exception as e:
                     description=preset['description'],
                     interval_seconds=preset['interval_seconds']
                 )
+
+
+    # ============ 因子库相关方法 ============
+    
+    def init_factor_definitions(self):
+        """初始化因子定义数据"""
+        factor_definitions = [
+            # ========== 估值因子 ==========
+            {
+                'factor_code': 'PE_DYNAMIC',
+                'factor_name': '动态市盈率',
+                'category': '估值因子',
+                'subcategory': '市盈率',
+                'description': '股票当前市值与最近四个季度净利润之比。动态市盈率反映了市场对公司未来盈利能力的预期。PE越低，表示投资者为每单位盈利支付的价格越低，可能意味着股票被低估；PE越高，可能意味着市场对公司未来成长有较高预期。',
+                'formula': '动态PE = 当前股价 × 总股本 / 最近四季度净利润',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'daily',
+                'unit': '倍'
+            },
+            {
+                'factor_code': 'PE_TTM',
+                'factor_name': 'TTM市盈率',
+                'category': '估值因子',
+                'subcategory': '市盈率',
+                'description': '滚动市盈率，使用最近12个月的净利润计算。相比于静态市盈率，TTM市盈率能更好地反映公司近期的盈利状况，减少季节性波动的影响。',
+                'formula': 'PE_TTM = 当前市值 / 最近12个月净利润',
+                'data_source': 'AkShare stock_a_indicator_lg',
+                'update_frequency': 'daily',
+                'unit': '倍'
+            },
+            {
+                'factor_code': 'PB',
+                'factor_name': '市净率',
+                'category': '估值因子',
+                'subcategory': '市净率',
+                'description': '股票市价与每股净资产的比率。PB反映了市场对公司净资产价值的估值。PB小于1意味着股价低于账面价值，可能存在投资机会；但也可能表明公司资产质量存疑或盈利能力较差。',
+                'formula': 'PB = 每股股价 / 每股净资产',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'daily',
+                'unit': '倍'
+            },
+            {
+                'factor_code': 'PS_TTM',
+                'factor_name': 'TTM市销率',
+                'category': '估值因子',
+                'subcategory': '市销率',
+                'description': '市值与最近12个月营业收入的比率。市销率特别适用于评估尚未盈利或盈利波动较大的成长型公司。PS低的公司可能意味着市场对其销售增长预期较低。',
+                'formula': 'PS_TTM = 当前市值 / 最近12个月营业收入',
+                'data_source': 'AkShare stock_a_indicator_lg',
+                'update_frequency': 'daily',
+                'unit': '倍'
+            },
+            {
+                'factor_code': 'DIVIDEND_YIELD_TTM',
+                'factor_name': 'TTM股息率',
+                'category': '估值因子',
+                'subcategory': '股息率',
+                'description': '最近12个月每股股息与当前股价的比率。股息率反映了投资者从股票投资中获得的现金回报率。高股息率通常意味着稳定的现金流和分红政策，适合追求稳定收益的投资者。',
+                'formula': '股息率 = 最近12个月每股股息 / 当前股价 × 100%',
+                'data_source': 'AkShare stock_a_indicator_lg',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+            
+            # ========== 市值因子 ==========
+            {
+                'factor_code': 'TOTAL_MV',
+                'factor_name': '总市值',
+                'category': '市值因子',
+                'subcategory': '市值',
+                'description': '公司全部股份按当前市价计算的总价值。总市值是衡量公司规模的重要指标，通常用于区分大盘股、中盘股和小盘股。大市值公司通常更稳定，小市值公司波动性较大但可能有更高的成长潜力。',
+                'formula': '总市值 = 当前股价 × 总股本',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'daily',
+                'unit': '元'
+            },
+            {
+                'factor_code': 'CIRC_MV',
+                'factor_name': '流通市值',
+                'category': '市值因子',
+                'subcategory': '市值',
+                'description': '公司可在二级市场自由流通的股份按当前市价计算的价值。流通市值影响股票的流动性和价格波动性，是选股和指数编制的重要参考因子。',
+                'formula': '流通市值 = 当前股价 × 流通股本',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'daily',
+                'unit': '元'
+            },
+            
+            # ========== 交易因子 ==========
+            {
+                'factor_code': 'TURNOVER_RATE',
+                'factor_name': '换手率',
+                'category': '交易因子',
+                'subcategory': '流动性',
+                'description': '一定时期内股票的成交量与流通股本的比率。换手率反映股票的流动性和交易活跃程度。高换手率可能意味着投资者对股票看法分歧较大，或者有资金在进行换手；低换手率则表明持股者惜售或市场关注度较低。',
+                'formula': '换手率 = 成交量 / 流通股本 × 100%',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+            {
+                'factor_code': 'VOLUME_RATIO',
+                'factor_name': '量比',
+                'category': '交易因子',
+                'subcategory': '成交量',
+                'description': '当日成交量与过去5日平均成交量的比值。量比大于1说明当日成交量放大，可能预示着股价将有较大波动；量比小于1说明成交萎缩，市场交投清淡。',
+                'formula': '量比 = 当日成交量 / 过去5日平均成交量',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'realtime',
+                'unit': '倍'
+            },
+            {
+                'factor_code': 'AMPLITUDE',
+                'factor_name': '振幅',
+                'category': '交易因子',
+                'subcategory': '波动性',
+                'description': '当日最高价与最低价之差占昨日收盘价的百分比。振幅反映了股票日内的价格波动程度，高振幅意味着较大的交易风险和机会。',
+                'formula': '振幅 = (最高价 - 最低价) / 昨日收盘价 × 100%',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+            
+            # ========== 动量因子 ==========
+            {
+                'factor_code': 'CHANGE_PCT_1D',
+                'factor_name': '日涨跌幅',
+                'category': '动量因子',
+                'subcategory': '短期动量',
+                'description': '当日收盘价相对于前一交易日收盘价的涨跌幅度。这是最基本的价格变动指标，反映股票的即时表现。',
+                'formula': '日涨跌幅 = (今日收盘价 - 昨日收盘价) / 昨日收盘价 × 100%',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+            {
+                'factor_code': 'CHANGE_PCT_5D',
+                'factor_name': '5日涨跌幅',
+                'category': '动量因子',
+                'subcategory': '短期动量',
+                'description': '最近5个交易日的累计涨跌幅。5日涨跌幅可以过滤单日波动的噪音，更好地反映短期趋势。',
+                'formula': '5日涨跌幅 = (当前价 - 5日前收盘价) / 5日前收盘价 × 100%',
+                'data_source': 'AkShare stock_zh_a_hist',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+            {
+                'factor_code': 'CHANGE_PCT_20D',
+                'factor_name': '20日涨跌幅',
+                'category': '动量因子',
+                'subcategory': '中期动量',
+                'description': '最近20个交易日（约1个月）的累计涨跌幅。20日涨跌幅反映了股票的中期走势和动量。',
+                'formula': '20日涨跌幅 = (当前价 - 20日前收盘价) / 20日前收盘价 × 100%',
+                'data_source': 'AkShare stock_zh_a_hist',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+            {
+                'factor_code': 'CHANGE_PCT_60D',
+                'factor_name': '60日涨跌幅',
+                'category': '动量因子',
+                'subcategory': '中期动量',
+                'description': '最近60个交易日（约3个月）的累计涨跌幅。60日涨跌幅用于评估季度级别的股票表现。',
+                'formula': '60日涨跌幅 = (当前价 - 60日前收盘价) / 60日前收盘价 × 100%',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+            {
+                'factor_code': 'CHANGE_PCT_YTD',
+                'factor_name': '年初至今涨跌幅',
+                'category': '动量因子',
+                'subcategory': '长期动量',
+                'description': '从本年度第一个交易日至今的累计涨跌幅。YTD涨跌幅用于评估股票在当年的整体表现。',
+                'formula': '年初至今涨跌幅 = (当前价 - 年初收盘价) / 年初收盘价 × 100%',
+                'data_source': 'AkShare stock_zh_a_spot_em',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+            
+            # ========== 技术因子 ==========
+            {
+                'factor_code': 'MA5',
+                'factor_name': '5日均线',
+                'category': '技术因子',
+                'subcategory': '均线',
+                'description': '最近5个交易日收盘价的算术平均值。5日均线是最常用的短期趋势指标，股价站上5日均线被视为短期走强信号。',
+                'formula': 'MA5 = 最近5日收盘价之和 / 5',
+                'data_source': 'AkShare stock_zh_a_hist (计算)',
+                'update_frequency': 'daily',
+                'unit': '元'
+            },
+            {
+                'factor_code': 'MA10',
+                'factor_name': '10日均线',
+                'category': '技术因子',
+                'subcategory': '均线',
+                'description': '最近10个交易日收盘价的算术平均值。10日均线常被用作短线操作的参考线。',
+                'formula': 'MA10 = 最近10日收盘价之和 / 10',
+                'data_source': 'AkShare stock_zh_a_hist (计算)',
+                'update_frequency': 'daily',
+                'unit': '元'
+            },
+            {
+                'factor_code': 'MA20',
+                'factor_name': '20日均线',
+                'category': '技术因子',
+                'subcategory': '均线',
+                'description': '最近20个交易日收盘价的算术平均值。20日均线代表月线级别的趋势，是重要的中短期支撑/阻力位。',
+                'formula': 'MA20 = 最近20日收盘价之和 / 20',
+                'data_source': 'AkShare stock_zh_a_hist (计算)',
+                'update_frequency': 'daily',
+                'unit': '元'
+            },
+            {
+                'factor_code': 'MA_DEVIATION',
+                'factor_name': '均线乖离率',
+                'category': '技术因子',
+                'subcategory': '均线',
+                'description': '当前股价与20日均线的偏离程度。正乖离表示股价在均线上方，可能存在回调压力；负乖离表示股价在均线下方，可能存在反弹机会。',
+                'formula': '乖离率 = (收盘价 - MA20) / MA20 × 100%',
+                'data_source': 'AkShare stock_zh_a_hist (计算)',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+            
+            # ========== 波动率因子 ==========
+            {
+                'factor_code': 'VOLATILITY_20D',
+                'factor_name': '20日波动率',
+                'category': '波动率因子',
+                'subcategory': '历史波动率',
+                'description': '最近20个交易日收益率的标准差，年化后得到。波动率衡量股票价格的不确定性和风险程度，高波动率意味着高风险高收益机会。',
+                'formula': '20日波动率 = 20日收益率标准差 × √252 × 100%',
+                'data_source': 'AkShare stock_zh_a_hist (计算)',
+                'update_frequency': 'daily',
+                'unit': '%'
+            },
+        ]
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        for factor in factor_definitions:
+            cursor.execute('''
+                INSERT OR REPLACE INTO factor_definitions 
+                (factor_code, factor_name, category, subcategory, description, formula, 
+                 data_source, update_frequency, unit, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ''', (
+                factor['factor_code'],
+                factor['factor_name'],
+                factor['category'],
+                factor.get('subcategory'),
+                factor['description'],
+                factor.get('formula'),
+                factor.get('data_source'),
+                factor.get('update_frequency', 'daily'),
+                factor.get('unit')
+            ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_factor_definitions(self, category: str = None, is_active: bool = True) -> List[Dict]:
+        """获取因子定义列表"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM factor_definitions WHERE is_active = ?"
+        params = [is_active]
+        
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+        
+        query += " ORDER BY category, subcategory, factor_code"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'factor_code', 'factor_name', 'category', 'subcategory', 
+                   'description', 'formula', 'data_source', 'update_frequency', 
+                   'unit', 'is_active', 'created_at', 'updated_at']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    def get_factor_definition(self, factor_code: str) -> Optional[Dict]:
+        """获取单个因子的定义"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM factor_definitions WHERE factor_code = ?", (factor_code,))
+        row = cursor.fetchone()
+        
+        if row:
+            columns = ['id', 'factor_code', 'factor_name', 'category', 'subcategory', 
+                       'description', 'formula', 'data_source', 'update_frequency', 
+                       'unit', 'is_active', 'created_at', 'updated_at']
+            result = dict(zip(columns, row))
+            conn.close()
+            return result
+        
+        conn.close()
+        return None
+    
+    def get_factor_categories(self) -> List[Dict]:
+        """获取因子分类列表"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT category, COUNT(*) as factor_count 
+            FROM factor_definitions 
+            WHERE is_active = 1 
+            GROUP BY category 
+            ORDER BY category
+        ''')
+        rows = cursor.fetchall()
+        
+        result = [{'category': row[0], 'factor_count': row[1]} for row in rows]
+        conn.close()
+        return result
+    
+    def insert_factor_data_batch(self, factor_code: str, records: List[Dict]):
+        """批量插入因子数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        for record in records:
+            cursor.execute('''
+                INSERT OR REPLACE INTO factor_data 
+                (factor_code, symbol, date, value)
+                VALUES (?, ?, ?, ?)
+            ''', (
+                factor_code,
+                record.get('symbol'),
+                record.get('date'),
+                record.get('value')
+            ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_factor_data(self, factor_code: str, date: str = None, symbol: str = None, 
+                        limit: int = 100) -> List[Dict]:
+        """获取因子数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM factor_data WHERE factor_code = ?"
+        params = [factor_code]
+        
+        if date:
+            query += " AND date = ?"
+            params.append(date)
+        
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        
+        query += " ORDER BY date DESC, symbol LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'factor_code', 'symbol', 'date', 'value', 'created_at']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    def get_factor_data_by_date(self, date: str, factor_codes: List[str] = None) -> List[Dict]:
+        """获取指定日期的所有因子数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if factor_codes:
+            placeholders = ','.join(['?' for _ in factor_codes])
+            query = f'''
+                SELECT fd.*, fdef.factor_name, fdef.category, fdef.unit
+                FROM factor_data fd
+                JOIN factor_definitions fdef ON fd.factor_code = fdef.factor_code
+                WHERE fd.date = ? AND fd.factor_code IN ({placeholders})
+                ORDER BY fd.symbol, fd.factor_code
+            '''
+            params = [date] + factor_codes
+        else:
+            query = '''
+                SELECT fd.*, fdef.factor_name, fdef.category, fdef.unit
+                FROM factor_data fd
+                JOIN factor_definitions fdef ON fd.factor_code = fdef.factor_code
+                WHERE fd.date = ?
+                ORDER BY fd.symbol, fd.factor_code
+            '''
+            params = [date]
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'factor_code', 'symbol', 'date', 'value', 'created_at',
+                   'factor_name', 'category', 'unit']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    def get_factor_data_by_symbol(self, symbol: str, date: str = None, 
+                                   days: int = 30) -> List[Dict]:
+        """获取指定股票的因子数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if date:
+            query = '''
+                SELECT fd.*, fdef.factor_name, fdef.category, fdef.unit, fdef.description
+                FROM factor_data fd
+                JOIN factor_definitions fdef ON fd.factor_code = fdef.factor_code
+                WHERE fd.symbol = ? AND fd.date = ?
+                ORDER BY fdef.category, fd.factor_code
+            '''
+            params = [symbol, date]
+        else:
+            query = f'''
+                SELECT fd.*, fdef.factor_name, fdef.category, fdef.unit, fdef.description
+                FROM factor_data fd
+                JOIN factor_definitions fdef ON fd.factor_code = fdef.factor_code
+                WHERE fd.symbol = ? AND fd.date >= date('now', '-{days} days')
+                ORDER BY fd.date DESC, fdef.category, fd.factor_code
+            '''
+            params = [symbol]
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'factor_code', 'symbol', 'date', 'value', 'created_at',
+                   'factor_name', 'category', 'unit', 'description']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    def get_factor_latest_date(self, factor_code: str) -> Optional[str]:
+        """获取因子数据的最新日期"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT MAX(date) FROM factor_data WHERE factor_code = ?", (factor_code,))
+        row = cursor.fetchone()
+        
+        conn.close()
+        return row[0] if row and row[0] else None
+    
+    def get_factor_stats(self) -> Dict:
+        """获取因子库统计信息"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # 因子定义数量
+        cursor.execute("SELECT COUNT(*) FROM factor_definitions WHERE is_active = 1")
+        factor_count = cursor.fetchone()[0]
+        
+        # 因子数据记录数
+        cursor.execute("SELECT COUNT(*) FROM factor_data")
+        data_count = cursor.fetchone()[0]
+        
+        # 最新数据日期
+        cursor.execute("SELECT MAX(date) FROM factor_data")
+        latest_date = cursor.fetchone()[0]
+        
+        # 股票数量
+        cursor.execute("SELECT COUNT(DISTINCT symbol) FROM factor_data")
+        stock_count = cursor.fetchone()[0]
+        
+        # 各类因子数量
+        cursor.execute('''
+            SELECT category, COUNT(*) 
+            FROM factor_definitions 
+            WHERE is_active = 1 
+            GROUP BY category
+        ''')
+        category_stats = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        conn.close()
+        
+        return {
+            'factor_count': factor_count,
+            'data_count': data_count,
+            'latest_date': latest_date,
+            'stock_count': stock_count,
+            'category_stats': category_stats
+        }
+    
+    def save_factor_sync_log(self, factor_code: str, sync_date: str, status: str,
+                             records_count: int = 0, error_message: str = None,
+                             sync_duration_ms: int = None):
+        """保存因子同步日志"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO factor_sync_log 
+            (factor_code, sync_date, status, records_count, error_message, sync_duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (factor_code, sync_date, status, records_count, error_message, sync_duration_ms))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_factor_sync_logs(self, factor_code: str = None, limit: int = 50) -> List[Dict]:
+        """获取因子同步日志"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if factor_code:
+            cursor.execute('''
+                SELECT * FROM factor_sync_log 
+                WHERE factor_code = ?
+                ORDER BY created_at DESC LIMIT ?
+            ''', (factor_code, limit))
+        else:
+            cursor.execute('''
+                SELECT * FROM factor_sync_log 
+                ORDER BY created_at DESC LIMIT ?
+            ''', (limit,))
+        
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'factor_code', 'sync_date', 'status', 'records_count',
+                   'error_message', 'sync_duration_ms', 'created_at']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    def clear_factor_data(self, factor_code: str = None):
+        """清空因子数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if factor_code:
+            cursor.execute("DELETE FROM factor_data WHERE factor_code = ?", (factor_code,))
+        else:
+            cursor.execute("DELETE FROM factor_data")
+        
+        conn.commit()
+        conn.close()
+
+    def get_all_stock_symbols(self, main_board_only: bool = False) -> List[str]:
+        """获取所有有历史数据的股票代码"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT DISTINCT symbol FROM stock_history")
+        rows = cursor.fetchall()
+        symbols = [row[0] for row in rows]
+        
+        if main_board_only:
+            # 只保留主板股票 (60开头的上海主板, 00开头的深圳主板)
+            # 排除创业板(300)、科创板(688)、北交所(4/8开头)
+            symbols = [s for s in symbols if s.startswith('60') or s.startswith('00')]
+        
+        conn.close()
+        return symbols
+
+    def get_stock_history_batch(self, symbols: List[str], days: int = 60) -> Dict[str, List[Dict]]:
+        """批量获取多只股票的历史数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        result = {}
+        for symbol in symbols:
+            cursor.execute('''
+                SELECT symbol, name, date, open, high, low, close, volume
+                FROM stock_history 
+                WHERE symbol = ?
+                ORDER BY date DESC
+                LIMIT ?
+            ''', (symbol, days))
+            rows = cursor.fetchall()
+            
+            if rows:
+                columns = ['symbol', 'name', 'date', 'open', 'high', 'low', 'close', 'volume']
+                # 按日期正序排列以便计算均线
+                result[symbol] = [dict(zip(columns, row)) for row in reversed(rows)]
+        
+        conn.close()
+        return result
+
+
+    # ============ 资讯新闻相关方法 ============
+    
+    def insert_news_batch(self, records: List[Dict]):
+        """批量插入资讯新闻"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        for r in records:
+            try:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO news_stream
+                    (source, publish_time, title, content, importance, category, related_stocks)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    r.get('source', 'unknown'),
+                    r.get('publish_time'),
+                    r.get('title'),
+                    r.get('content', ''),
+                    r.get('importance', 1),
+                    r.get('category'),
+                    r.get('related_stocks')
+                ))
+            except Exception:
+                continue
+        
+        conn.commit()
+        conn.close()
+    
+    def get_news_stream(self, limit: int = 100, offset: int = 0, 
+                        source: str = None, category: str = None) -> List[Dict]:
+        """获取资讯新闻列表"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM news_stream WHERE 1=1"
+        params = []
+        
+        if source:
+            query += " AND source = ?"
+            params.append(source)
+        
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+        
+        query += " ORDER BY publish_time DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'source', 'publish_time', 'title', 'content', 
+                   'importance', 'category', 'related_stocks', 'is_read', 'created_at']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    def get_latest_news_time(self, source: str) -> Optional[str]:
+        """获取某数据源的最新新闻时间"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "SELECT MAX(publish_time) FROM news_stream WHERE source = ?",
+            (source,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row and row[0] else None
+    
+    # ============ 板块行情相关方法 ============
+    
+    def update_sector_realtime(self, sector_type: str, records: List[Dict]):
+        """更新板块实时行情"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # 清空该类型的旧数据
+        cursor.execute("DELETE FROM sector_realtime WHERE sector_type = ?", (sector_type,))
+        
+        for r in records:
+            cursor.execute('''
+                INSERT INTO sector_realtime
+                (sector_type, sector_code, sector_name, price, change_percent, change_amount,
+                 volume, turnover, total_market_cap, leader_code, leader_name, leader_change,
+                 up_count, down_count, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (
+                sector_type,
+                r.get('code', r.get('sector_code')),
+                r.get('name', r.get('sector_name')),
+                r.get('price'),
+                r.get('change_percent', r.get('涨跌幅')),
+                r.get('change_amount'),
+                r.get('volume'),
+                r.get('turnover', r.get('换手率')),
+                r.get('total_market_cap', r.get('总市值')),
+                r.get('leader_code', r.get('领涨股票')),
+                r.get('leader_name'),
+                r.get('leader_change', r.get('涨跌幅.1')),
+                r.get('up_count', r.get('上涨家数')),
+                r.get('down_count', r.get('下跌家数'))
+            ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_sector_realtime(self, sector_type: str = None) -> List[Dict]:
+        """获取板块实时行情"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if sector_type:
+            cursor.execute(
+                "SELECT * FROM sector_realtime WHERE sector_type = ? ORDER BY change_percent DESC",
+                (sector_type,)
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM sector_realtime ORDER BY sector_type, change_percent DESC"
+            )
+        
+        rows = cursor.fetchall()
+        columns = ['id', 'sector_type', 'sector_code', 'sector_name', 'price',
+                   'change_percent', 'change_amount', 'volume', 'turnover',
+                   'total_market_cap', 'leader_code', 'leader_name', 'leader_change',
+                   'up_count', 'down_count', 'updated_at']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    # ============ 资金流向相关方法 ============
+    
+    def insert_fund_flow_daily(self, date: str, records: List[Dict]):
+        """插入每日资金流向数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        for r in records:
+            cursor.execute('''
+                INSERT OR REPLACE INTO fund_flow_daily
+                (date, symbol, name, flow_type, main_inflow, main_outflow, main_net,
+                 super_large_inflow, super_large_outflow, super_large_net,
+                 large_inflow, large_outflow, large_net,
+                 medium_inflow, medium_outflow, medium_net,
+                 small_inflow, small_outflow, small_net)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                date,
+                r.get('symbol', r.get('code')),
+                r.get('name'),
+                r.get('flow_type', 'stock'),
+                r.get('main_inflow'), r.get('main_outflow'), r.get('main_net'),
+                r.get('super_large_inflow'), r.get('super_large_outflow'), r.get('super_large_net'),
+                r.get('large_inflow'), r.get('large_outflow'), r.get('large_net'),
+                r.get('medium_inflow'), r.get('medium_outflow'), r.get('medium_net'),
+                r.get('small_inflow'), r.get('small_outflow'), r.get('small_net')
+            ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_fund_flow_daily(self, date: str = None, symbol: str = None, 
+                            flow_type: str = None, limit: int = 100) -> List[Dict]:
+        """获取每日资金流向数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM fund_flow_daily WHERE 1=1"
+        params = []
+        
+        if date:
+            query += " AND date = ?"
+            params.append(date)
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if flow_type:
+            query += " AND flow_type = ?"
+            params.append(flow_type)
+        
+        query += " ORDER BY date DESC, main_net DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'date', 'symbol', 'name', 'flow_type',
+                   'main_inflow', 'main_outflow', 'main_net',
+                   'super_large_inflow', 'super_large_outflow', 'super_large_net',
+                   'large_inflow', 'large_outflow', 'large_net',
+                   'medium_inflow', 'medium_outflow', 'medium_net',
+                   'small_inflow', 'small_outflow', 'small_net']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    # ============ 龙虎榜相关方法 ============
+    
+    def insert_dragon_tiger_board(self, date: str, records: List[Dict]):
+        """插入龙虎榜数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        for r in records:
+            try:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO dragon_tiger_board
+                    (date, code, name, close_price, change_percent, turnover_rate,
+                     net_buy, buy_amount, sell_amount, reason)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    date,
+                    r.get('code', r.get('代码')),
+                    r.get('name', r.get('名称')),
+                    r.get('close_price', r.get('收盘价')),
+                    r.get('change_percent', r.get('涨跌幅')),
+                    r.get('turnover_rate', r.get('换手率')),
+                    r.get('net_buy', r.get('龙虎榜净买额')),
+                    r.get('buy_amount', r.get('买入额')),
+                    r.get('sell_amount', r.get('卖出额')),
+                    r.get('reason', r.get('上榜原因'))
+                ))
+            except Exception:
+                continue
+        
+        conn.commit()
+        conn.close()
+    
+    def get_dragon_tiger_board(self, date: str = None, code: str = None, 
+                                days: int = 30) -> List[Dict]:
+        """获取龙虎榜数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM dragon_tiger_board WHERE 1=1"
+        params = []
+        
+        if date:
+            query += " AND date = ?"
+            params.append(date)
+        elif days:
+            query += f" AND date >= date('now', '-{days} days')"
+        
+        if code:
+            query += " AND code = ?"
+            params.append(code)
+        
+        query += " ORDER BY date DESC, net_buy DESC"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'date', 'code', 'name', 'close_price', 'change_percent',
+                   'turnover_rate', 'net_buy', 'buy_amount', 'sell_amount', 
+                   'reason', 'created_at']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    # ============ 北向资金相关方法 ============
+    
+    def insert_northbound_flow(self, records: List[Dict]):
+        """插入北向资金流向数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        for r in records:
+            cursor.execute('''
+                INSERT OR REPLACE INTO northbound_flow
+                (date, channel, buy_amount, sell_amount, net_buy, 
+                 total_buy, total_sell, total_net)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                r.get('date', r.get('日期')),
+                r.get('channel', '北向'),
+                r.get('buy_amount', r.get('买入成交额')),
+                r.get('sell_amount', r.get('卖出成交额')),
+                r.get('net_buy', r.get('当日成交净买额')),
+                r.get('total_buy', r.get('累计买入成交额')),
+                r.get('total_sell', r.get('累计卖出成交额')),
+                r.get('total_net', r.get('累计成交净买额'))
+            ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_northbound_flow(self, days: int = 30, channel: str = None) -> List[Dict]:
+        """获取北向资金流向数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query = f"SELECT * FROM northbound_flow WHERE date >= date('now', '-{days} days')"
+        params = []
+        
+        if channel:
+            query += " AND channel = ?"
+            params.append(channel)
+        
+        query += " ORDER BY date DESC"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'date', 'channel', 'buy_amount', 'sell_amount', 'net_buy',
+                   'total_buy', 'total_sell', 'total_net', 'created_at']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    # ============ 同步日志相关方法 ============
+    
+    def save_sync_log(self, task_name: str, sync_date: str, status: str,
+                      records_count: int = 0, error_message: str = None,
+                      duration_ms: int = None):
+        """保存同步日志"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO sync_log
+            (task_name, sync_date, status, records_count, error_message, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (task_name, sync_date, status, records_count, error_message, duration_ms))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_sync_logs(self, task_name: str = None, days: int = 7) -> List[Dict]:
+        """获取同步日志"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query = f"SELECT * FROM sync_log WHERE sync_date >= date('now', '-{days} days')"
+        params = []
+        
+        if task_name:
+            query += " AND task_name = ?"
+            params.append(task_name)
+        
+        query += " ORDER BY created_at DESC"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        columns = ['id', 'task_name', 'sync_date', 'status', 'records_count',
+                   'error_message', 'duration_ms', 'created_at']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    def get_sync_status(self) -> Dict:
+        """获取所有同步任务的最新状态"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT task_name, sync_date, status, records_count, created_at
+            FROM sync_log
+            WHERE id IN (
+                SELECT MAX(id) FROM sync_log GROUP BY task_name
+            )
+            ORDER BY created_at DESC
+        ''')
+        rows = cursor.fetchall()
+        
+        result = {}
+        for row in rows:
+            result[row[0]] = {
+                'sync_date': row[1],
+                'status': row[2],
+                'records_count': row[3],
+                'last_sync': row[4]
+            }
+        
+        conn.close()
+        return result
+
+    # ============ 每日概念板块相关方法（复盘中心） ============
+    
+    def insert_daily_concept_sectors(self, date: str, records: List[Dict]):
+        """插入每日概念板块数据"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        for idx, r in enumerate(records):
+            try:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO daily_concept_sectors
+                    (date, rank, sector_code, sector_name, change_percent, 
+                     leader_stock, leader_change, total_market_cap, up_count, down_count)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    date,
+                    idx + 1,
+                    r.get('code', r.get('sector_code', r.get('板块代码', ''))),
+                    r.get('name', r.get('sector_name', r.get('板块名称', ''))),
+                    r.get('change_percent', r.get('涨跌幅', 0)),
+                    r.get('leader_stock', r.get('领涨股票', '')),
+                    r.get('leader_change', r.get('涨跌幅.1', 0)),
+                    r.get('total_market_cap', r.get('总市值', 0)),
+                    r.get('up_count', r.get('上涨家数', 0)),
+                    r.get('down_count', r.get('下跌家数', 0))
+                ))
+            except Exception:
+                continue
+        
+        conn.commit()
+        conn.close()
+    
+    def get_daily_concept_sectors(self, date: str = None, top_n: int = 20) -> List[Dict]:
+        """获取某日的热门概念板块"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if date:
+            cursor.execute('''
+                SELECT date, rank, sector_code, sector_name, change_percent,
+                       leader_stock, leader_change, total_market_cap, up_count, down_count
+                FROM daily_concept_sectors
+                WHERE date = ?
+                ORDER BY change_percent DESC
+                LIMIT ?
+            ''', (date, top_n))
+        else:
+            cursor.execute('''
+                SELECT date, rank, sector_code, sector_name, change_percent,
+                       leader_stock, leader_change, total_market_cap, up_count, down_count
+                FROM daily_concept_sectors
+                WHERE date = (SELECT MAX(date) FROM daily_concept_sectors)
+                ORDER BY change_percent DESC
+                LIMIT ?
+            ''', (top_n,))
+        
+        rows = cursor.fetchall()
+        columns = ['date', 'rank', 'sector_code', 'sector_name', 'change_percent',
+                   'leader_stock', 'leader_change', 'total_market_cap', 'up_count', 'down_count']
+        result = [dict(zip(columns, row)) for row in rows]
+        
+        conn.close()
+        return result
+    
+    def get_daily_concept_sectors_multi_days(self, days: int = 30, min_change_pct: float = 3.0, top_n: int = 15) -> List[Dict]:
+        """
+        获取多日的热门概念板块数据，用于复盘中心展示板块轮动
+        
+        Returns:
+            [
+                {
+                    'date': '2024-01-15',
+                    'sectors': [
+                        {'name': 'AI', 'change_percent': 5.2, ...},
+                        ...
+                    ]
+                },
+                ...
+            ]
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # 获取最近N天有数据的日期
+        cursor.execute('''
+            SELECT DISTINCT date FROM daily_concept_sectors
+            ORDER BY date DESC
+            LIMIT ?
+        ''', (days,))
+        dates = [row[0] for row in cursor.fetchall()]
+        
+        result = []
+        for date in dates:
+            cursor.execute('''
+                SELECT sector_name, change_percent, leader_stock, rank
+                FROM daily_concept_sectors
+                WHERE date = ? AND change_percent >= ?
+                ORDER BY change_percent DESC
+                LIMIT ?
+            ''', (date, min_change_pct, top_n))
+            
+            rows = cursor.fetchall()
+            if rows:
+                sectors = []
+                for row in rows:
+                    sectors.append({
+                        'name': row[0],
+                        'change_percent': row[1],
+                        'leader_stock': row[2],
+                        'rank': row[3]
+                    })
+                result.append({
+                    'date': date,
+                    'sectors': sectors
+                })
+        
+        conn.close()
+        return result
+    
+    def get_concept_sector_dates(self) -> List[str]:
+        """获取有概念板块数据的所有日期"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT DISTINCT date FROM daily_concept_sectors
+            ORDER BY date DESC
+        ''')
+        dates = [row[0] for row in cursor.fetchall()]
+        
+        conn.close()
+        return dates
 
 
 # 全局数据库实例

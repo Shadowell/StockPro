@@ -262,19 +262,73 @@ export const AIStockAnalysis: React.FC = () => {
     return { total, technical, fundamental, sentiment };
   }, [analysis, fundamentals]);
 
+  // 计算均线
+  const calculateMA = (data: number[], period: number): (number | null)[] => {
+    const result: (number | null)[] = [];
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) {
+        result.push(null);
+      } else {
+        const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+        result.push(parseFloat((sum / period).toFixed(2)));
+      }
+    }
+    return result;
+  };
+
   // K线图配置
   const dailyOption = useMemo(() => {
     if (!dailyData.length) return null;
 
     const dates = dailyData.map(it => it.date);
     const data = dailyData.map(it => [it.open, it.close, it.low, it.high]);
+    const closes = dailyData.map(it => it.close);
     const volumes = dailyData.map((it, idx) => [idx, it.volume, it.open > it.close ? -1 : 1]);
 
+    // 计算各周期均线
+    const ma5 = calculateMA(closes, 5);
+    const ma10 = calculateMA(closes, 10);
+    const ma20 = calculateMA(closes, 20);
+    const ma30 = calculateMA(closes, 30);
+
     return {
-      tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+      legend: {
+        data: ['K线', 'MA5', 'MA10', 'MA20', 'MA30'],
+        top: 0,
+        left: 'center',
+        textStyle: { color: '#64748b', fontSize: 9 },
+        itemWidth: 12,
+        itemHeight: 2,
+        itemGap: 8
+      },
+      tooltip: { 
+        trigger: 'axis', 
+        axisPointer: { type: 'cross' },
+        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        borderColor: '#334155',
+        textStyle: { color: '#e2e8f0', fontSize: 11 },
+        formatter: function(params: any) {
+          const dataIndex = params[0]?.dataIndex;
+          const item = dailyData[dataIndex];
+          if (!item) return '';
+          
+          let result = [
+            `<div style="font-weight:bold;margin-bottom:4px">${item.date}</div>`,
+            `开: ${item.open.toFixed(2)} 高: ${item.high.toFixed(2)}`,
+            `低: ${item.low.toFixed(2)} 收: ${item.close.toFixed(2)}`
+          ];
+          
+          if (ma5[dataIndex] !== null) result.push(`<span style="color:#f7d038">MA5: ${ma5[dataIndex]}</span>`);
+          if (ma10[dataIndex] !== null) result.push(`<span style="color:#3b82f6">MA10: ${ma10[dataIndex]}</span>`);
+          if (ma20[dataIndex] !== null) result.push(`<span style="color:#a855f7">MA20: ${ma20[dataIndex]}</span>`);
+          if (ma30[dataIndex] !== null) result.push(`<span style="color:#22c55e">MA30: ${ma30[dataIndex]}</span>`);
+          
+          return result.join('<br/>');
+        }
+      },
       grid: [
-        { left: '10%', right: '5%', top: '5%', height: '60%' },
-        { left: '10%', right: '5%', top: '70%', height: '20%' },
+        { left: '10%', right: '5%', top: '12%', height: '55%' },
+        { left: '10%', right: '5%', top: '72%', height: '18%' },
       ],
       xAxis: [
         { type: 'category', data: dates, scale: true, boundaryGap: false, axisLine: { onZero: false }, splitLine: { show: false }, axisLabel: { color: '#64748b', fontSize: 10 } },
@@ -284,9 +338,41 @@ export const AIStockAnalysis: React.FC = () => {
         { scale: true, splitArea: { show: false }, splitLine: { lineStyle: { color: '#1e293b' } }, axisLabel: { color: '#64748b', fontSize: 10 } },
         { scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { show: false }, axisLine: { show: false }, splitLine: { show: false } },
       ],
-      dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], start: 60, end: 100 }],
+      dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], start: 50, end: 100 }],
       series: [
         { name: 'K线', type: 'candlestick', data, itemStyle: { color: '#ef4444', color0: '#22c55e', borderColor: '#ef4444', borderColor0: '#22c55e' } },
+        {
+          name: 'MA5',
+          type: 'line',
+          data: ma5,
+          smooth: true,
+          symbol: 'none',
+          lineStyle: { color: '#f7d038', width: 1 }
+        },
+        {
+          name: 'MA10',
+          type: 'line',
+          data: ma10,
+          smooth: true,
+          symbol: 'none',
+          lineStyle: { color: '#3b82f6', width: 1 }
+        },
+        {
+          name: 'MA20',
+          type: 'line',
+          data: ma20,
+          smooth: true,
+          symbol: 'none',
+          lineStyle: { color: '#a855f7', width: 1 }
+        },
+        {
+          name: 'MA30',
+          type: 'line',
+          data: ma30,
+          smooth: true,
+          symbol: 'none',
+          lineStyle: { color: '#22c55e', width: 1 }
+        },
         {
           name: '成交量',
           type: 'bar',

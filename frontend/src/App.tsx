@@ -8,6 +8,9 @@ import { TradingCalendarPage } from "./pages/TradingCalendarPage";
 import { SentimentAnalysis } from "./pages/SentimentAnalysis";
 import { StrategyDev } from "./pages/StrategyDev";
 import { StrategyExec } from "./pages/StrategyExec";
+import { FactorLibrary } from "./pages/FactorLibrary";
+import { MarketPulse } from "./pages/MarketPulse";
+import { LiveTrading } from "./pages/LiveTrading";
 import { TaskProgress } from "./components/TaskProgress";
 import { ToastProvider } from "./components/Toast";
 
@@ -26,6 +29,9 @@ export default function App() {
             <Route path="/calendar" element={<TradingCalendarPage />} />
             <Route path="/strategy-dev" element={<StrategyDev />} />
             <Route path="/strategy-exec" element={<StrategyExec />} />
+            <Route path="/factors" element={<FactorLibrary />} />
+            <Route path="/pulse" element={<MarketPulse />} />
+            <Route path="/trading" element={<LiveTrading />} />
           </Routes>
           <TaskProgress />
         </div>

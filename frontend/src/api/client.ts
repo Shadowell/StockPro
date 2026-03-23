@@ -175,6 +175,11 @@ export const getMessageStream = async (limit = 50): Promise<MessageStreamRespons
   return response.data;
 };
 
+export const syncNewsStream = async (): Promise<{status: string; count: number}> => {
+  const response = await apiClient.post('/market/message-stream/sync');
+  return response.data;
+};
+
 export const getMarketCalendar = async (params?: { start?: string; end?: string; limit?: number }): Promise<MarketCalendarEvent[]> => {
   const response = await apiClient.get<MarketCalendarEvent[]>('/market/calendar', { params });
   return response.data;
@@ -339,5 +344,126 @@ export const getLatestStrategyResult = async (strategyId: number): Promise<Strat
 
 export const getRunningStrategies = async (): Promise<Strategy[]> => {
   const response = await apiClient.get<Strategy[]>('/strategy/running/list');
+  return response.data;
+};
+
+// ========== 选股器 API ==========
+
+export interface MAConvergenceStock {
+  symbol: string;
+  name: string;
+  price: number;
+  date: string;
+  ma5: number;
+  ma10: number;
+  ma20: number;
+  ma30: number;
+  ma_range: number;
+  ma_range_pct: number;
+  avg_range_pct: number;
+  avg_std_pct: number;
+  convergence_days: number;
+}
+
+export interface MAConvergenceParams {
+  days?: number;
+  max_range_pct?: number;
+  main_board_only?: boolean;
+  min_price?: number;
+  max_price?: number;
+  limit?: number;
+}
+
+export interface MAConvergenceResponse {
+  status: string;
+  data: MAConvergenceStock[];
+  count: number;
+  total_found: number;
+  params: MAConvergenceParams;
+  description: string;
+}
+
+export const scanMAConvergenceStocks = async (params?: MAConvergenceParams): Promise<MAConvergenceResponse> => {
+  const response = await apiClient.get<MAConvergenceResponse>('/screener/ma-convergence', { params });
+  return response.data;
+};
+
+export const getStockMADetail = async (symbol: string, days?: number): Promise<any> => {
+  const response = await apiClient.get(`/screener/ma-convergence/${symbol}`, { params: { days } });
+  return response.data;
+};
+
+export const checkStockMAConvergence = async (symbol: string, days?: number, max_range_pct?: number): Promise<any> => {
+  const response = await apiClient.get(`/screener/ma-convergence/check/${symbol}`, { params: { days, max_range_pct } });
+  return response.data;
+};
+
+// ============ 复盘中心 API ============
+
+export interface LianbanHistoryStock {
+  code: string;
+  name: string;
+  level: number;
+  change_percent: number;
+  price: number;
+  duration_days?: number;
+  reason?: string;
+}
+
+export interface LianbanHistoryDay {
+  date: string;
+  stocks: LianbanHistoryStock[];
+}
+
+export interface SectorStatItem {
+  name: string;
+  code?: string;
+  change_percent: number;
+  leader_stock?: string;
+  rank?: number;
+}
+
+export interface DailySectorStats {
+  date: string;
+  sectors: SectorStatItem[];
+}
+
+export const getLianbanHistory = async (days: number = 30, minLevel: number = 2): Promise<LianbanHistoryDay[]> => {
+  const response = await apiClient.get<LianbanHistoryDay[]>('/market/pulse/lianban-history', { 
+    params: { days, min_level: minLevel } 
+  });
+  return response.data;
+};
+
+export const getDailySectorStats = async (
+  days: number = 30, 
+  minChangePct: number = 3.0,
+  topN: number = 15
+): Promise<DailySectorStats[]> => {
+  const response = await apiClient.get<DailySectorStats[]>('/market/pulse/daily-stats', { 
+    params: { days, min_change_pct: minChangePct, top_n: topN } 
+  });
+  return response.data;
+};
+
+export const syncTodayConceptSectors = async (): Promise<{status: string; count: number; date?: string}> => {
+  const response = await apiClient.post('/market/pulse/sync-today');
+  return response.data;
+};
+
+export interface BackfillResult {
+  status: string;
+  days_filled?: number;
+  sectors_processed?: number;
+  sectors_failed?: number;
+  duration_minutes?: number;
+  message?: string;
+}
+
+export const backfillConceptHistory = async (days: number = 30): Promise<BackfillResult> => {
+  const response = await apiClient.post('/market/pulse/backfill-history', null, {
+    params: { days },
+    timeout: 600000  // 10分钟超时
+  });
   return response.data;
 };

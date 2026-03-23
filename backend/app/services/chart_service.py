@@ -149,8 +149,37 @@ class ChartService:
 
     @staticmethod
     def get_intraday_data(symbol: str):
+        """
+        获取分时数据
+        - 交易时间内：返回当天的分时数据
+        - 非交易时间：返回最近一个交易日的分时数据
+        
+        返回数据包含:
+        - time: 时间戳
+        - price: 价格
+        - volume: 成交量
+        - pre_close: 昨收价（用于计算涨跌幅）
+        - trade_date: 交易日期
+        """
         code = ''.join(filter(str.isdigit, symbol))
         symbol_with_prefix = ChartService._add_prefix(code)
+        
+        # 获取昨收价
+        pre_close = None
+        trade_date = None
+        
+        try:
+            # 先获取日线数据来确定昨收价
+            daily_data = ChartService.get_daily_data(symbol)
+            if daily_data and len(daily_data) >= 2:
+                # 最后一天是今天（或最近交易日），倒数第二天是昨收
+                pre_close = daily_data[-2]['close']
+                trade_date = daily_data[-1]['date']
+            elif daily_data and len(daily_data) == 1:
+                pre_close = daily_data[0]['open']
+                trade_date = daily_data[0]['date']
+        except Exception as e:
+            logger.warning(f"获取昨收价失败 {code}: {e}")
         
         # 方法1: 分钟数据接口（带重试）
         try:
@@ -159,14 +188,41 @@ class ChartService:
             df = _retry_api_call(fetch_minute, max_retries=2, delay=1)
             
             if df is not None and not df.empty:
+                # 过滤掉NaN数据（非交易日/时段的数据）
+                df = df[df['close'].notna()].copy()
+                
+                if df.empty:
+                    logger.warning(f"分时数据全为空 {code}")
+                    return []
+                
+                # 获取数据的日期（最后一条有效数据的日期）
+                if 'day' in df.columns and len(df) > 0:
+                    last_time = str(df.iloc[-1]['day'])
+                    if ' ' in last_time:
+                        data_date = last_time.split(' ')[0]
+                    else:
+                        data_date = datetime.now().strftime('%Y-%m-%d')
+                    
+                    # 更新交易日期
+                    trade_date = data_date
+                    
+                    # 只取这一天的数据
+                    df = df[df['day'].astype(str).str.startswith(data_date)]
+                
+                # 只取最近 240 条（4小时交易时间）
                 df = df.tail(240)
                 result = []
                 for _, row in df.iterrows():
-                    result.append({
-                        "time": row['day'],
-                        "price": row['close'],
-                        "volume": row['volume']
-                    })
+                    item = {
+                        "time": str(row['day']),
+                        "price": float(row['close']),
+                        "volume": int(row['volume'])
+                    }
+                    # 在第一条数据中附加昨收价和交易日期信息
+                    if len(result) == 0:
+                        item["pre_close"] = pre_close
+                        item["trade_date"] = trade_date
+                    result.append(item)
                 return result
         except Exception as e:
             logger.warning(f"分钟数据获取失败 {code}: {e}")

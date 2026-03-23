@@ -849,19 +849,20 @@ class MarketService:
                     break
 
             rank_col = None
-            for c in ["排名", "rank", "序号"]:
+            for c in ["当前排名", "排名", "rank", "序号"]:
                 if c in hot_df.columns:
                     rank_col = c
                     break
 
             hot_col = None
+            # stock_hot_rank_em 接口没有热度列，用排名作为热度替代
             for c in ["热度", "hot", "热度值", "热度值(万)", "热度指数"]:
                 if c in hot_df.columns:
                     hot_col = c
                     break
 
             pct_col = None
-            for c in ["涨跌幅", "pct_change", "涨跌幅%"]:
+            for c in ["涨跌幅", "pct_change", "涨跌幅%", "涨跌幅(%)"] :
                 if c in hot_df.columns:
                     pct_col = c
                     break
@@ -889,15 +890,18 @@ class MarketService:
             results: List[Dict[str, Any]] = []
             for idx, row in hot_df.iterrows():
                 rank = int(pd.to_numeric(row.get(rank_col), errors='coerce')) if rank_col else int(idx) + 1
+                if pd.isna(rank):
+                    rank = int(idx) + 1
                 code = str(row.get(code_col) or '').strip() if code_col else ''
                 name = str(row.get(name_col) or '').strip() if name_col else ''
-                hot_val = float(pd.to_numeric(row.get(hot_col), errors='coerce')) if hot_col else 0.0
+                # 如果没有热度列，用 (100 - 排名) 作为热度值的替代
+                hot_val = float(pd.to_numeric(row.get(hot_col), errors='coerce')) if hot_col else max(100 - rank, 1)
                 pct = float(pd.to_numeric(row.get(pct_col), errors='coerce')) if pct_col else 0.0
                 price = float(pd.to_numeric(row.get(price_col), errors='coerce')) if price_col else 0.0
                 reason = str(row.get(reason_col) or '').strip() if reason_col else ''
                 tags = str(row.get(tag_col) or '').strip() if tag_col else ''
                 if pd.isna(hot_val):
-                    hot_val = 0.0
+                    hot_val = max(100 - rank, 1)
                 if pd.isna(pct):
                     pct = 0.0
                 if pd.isna(price):
@@ -1366,6 +1370,12 @@ class MarketService:
 
     @staticmethod
     def get_message_stream(limit: int = 50) -> Dict[str, Any]:
+        """
+        获取消息流数据
+        
+        优先从数据库读取已同步的新闻（快速），如果没有数据则实时获取。
+        异动数据在交易时间内实时计算。
+        """
         try:
             limit = max(1, min(int(limit), 200))
         except Exception:
@@ -1373,8 +1383,19 @@ class MarketService:
 
         now = datetime.now()
         trade_date = now.date().isoformat()
+        
+        # 判断是否是交易时间（简化判断）
+        hour = now.hour
+        is_trading_time = now.weekday() < 5 and 9 <= hour <= 15
 
-        stocks = MarketService.get_all_stocks()
+        # 异动数据 - 仅在交易时间获取，非交易时间返回空
+        stocks = []
+        if is_trading_time:
+            try:
+                stocks = MarketService.get_all_stocks()
+            except Exception as e:
+                logger.warning(f"获取股票列表失败: {e}")
+                stocks = []
 
         triggered: List[Dict[str, Any]] = []
         near: List[Dict[str, Any]] = []
@@ -1422,17 +1443,21 @@ class MarketService:
         near = sorted(near, key=lambda x: abs(float(x.get("change_percent") or 0.0)), reverse=True)[:limit]
         MarketService._upsert_abnormal_events(upsert_payload)
 
-        mergers = MarketService._fetch_merger_restruct_messages(limit=limit)
-        good_news, bad_news = MarketService._fetch_national_news(limit=limit)
+        # 新闻数据 - 优先从数据库读取（快速）
+        cailian_news = MarketService._get_news_from_db_or_api('ths', limit)
+        cls_news = MarketService._get_news_from_db_or_api('cls', limit)
         
-        # 获取财联社新闻
-        cailian_news = MarketService._fetch_cailian_news(limit=limit)
+        # 合并财联社的两个来源（ths 同花顺快讯 + cls 财联社电报）
+        all_cailian = cailian_news + cls_news
+        all_cailian.sort(key=lambda x: x.get('time', ''), reverse=True)
         
-        # 获取雪球热门资讯
-        xueqiu_news = MarketService._fetch_xueqiu_news(limit=limit)
-        
-        # 获取东方财富快讯
-        eastmoney_news = MarketService._fetch_eastmoney_news(limit=limit)
+        # 其他新闻 - 直接返回空列表，后续可以通过定时任务同步
+        # 这些接口太慢，严重影响用户体验
+        mergers: List[Dict[str, Any]] = []
+        good_news: List[Dict[str, Any]] = []
+        bad_news: List[Dict[str, Any]] = []
+        xueqiu_news: List[Dict[str, Any]] = []
+        eastmoney_news: List[Dict[str, Any]] = []
 
         return {
             "updated_at": now.isoformat(),
@@ -1444,10 +1469,64 @@ class MarketService:
             "mergers": mergers,
             "good_news": good_news,
             "bad_news": bad_news,
-            "cailian_news": cailian_news,  # 添加财联社新闻
-            "xueqiu_news": xueqiu_news,  # 添加雪球新闻
-            "eastmoney_news": eastmoney_news,  # 添加东方财富新闻
+            "cailian_news": all_cailian[:limit],
+            "xueqiu_news": xueqiu_news,
+            "eastmoney_news": eastmoney_news,
         }
+    
+    @staticmethod
+    def _get_news_from_db_or_api(source: str, limit: int) -> List[Dict[str, Any]]:
+        """
+        优先从数据库读取新闻，如果没有足够数据则触发同步
+        """
+        from app.db.local_db import db_instance
+        
+        # 从数据库读取
+        try:
+            db_news = db_instance.get_news_stream(limit=limit, source=source)
+            if db_news and len(db_news) >= 5:
+                # 转换格式
+                items = []
+                for n in db_news:
+                    items.append({
+                        "id": hashlib.sha1(f"{n.get('source')}:{n.get('publish_time')}:{n.get('title', '')[:30]}".encode("utf-8")).hexdigest(),
+                        "time": n.get('publish_time', ''),
+                        "title": n.get('title') or n.get('content', '')[:100],
+                        "source": n.get('source', source),
+                        "url": None,
+                        "sentiment": None,
+                        "related_stocks": [],
+                    })
+                logger.info(f"从数据库读取 {len(items)} 条 {source} 新闻")
+                return items
+        except Exception as e:
+            logger.warning(f"从数据库读取 {source} 新闻失败: {e}")
+        
+        # 数据库没有，尝试同步并读取
+        try:
+            from app.services.data_sync_service import data_sync_service
+            logger.info(f"数据库无 {source} 新闻，触发同步...")
+            data_sync_service.sync_news(sources=[source])
+            
+            # 再次从数据库读取
+            db_news = db_instance.get_news_stream(limit=limit, source=source)
+            if db_news:
+                items = []
+                for n in db_news:
+                    items.append({
+                        "id": hashlib.sha1(f"{n.get('source')}:{n.get('publish_time')}:{n.get('title', '')[:30]}".encode("utf-8")).hexdigest(),
+                        "time": n.get('publish_time', ''),
+                        "title": n.get('title') or n.get('content', '')[:100],
+                        "source": n.get('source', source),
+                        "url": None,
+                        "sentiment": None,
+                        "related_stocks": [],
+                    })
+                return items
+        except Exception as e:
+            logger.warning(f"同步 {source} 新闻失败: {e}")
+        
+        return []
 
     @staticmethod
     def _fetch_merger_restruct_messages(limit: int = 50) -> List[Dict[str, Any]]:
@@ -2474,4 +2553,115 @@ class MarketService:
                 "generated_events": [],
                 "count": 0
             }
+
+    # =============== 复盘中心相关方法 ===============
+
+    @staticmethod
+    def get_lianban_history_for_pulse(days: int = 30, min_level: int = 2) -> List[Dict[str, Any]]:
+        """获取连板历史数据用于复盘展示"""
+        try:
+            # 从数据库获取历史数据
+            cached_data = db.get_lianban_history_multi_days(days, min_level)
+            if cached_data:
+                return cached_data
+            
+            # 如果数据库没有，尝试获取最近几天的实时数据并缓存
+            dates = MarketService._latest_trade_dates()
+            if not dates:
+                return []
+            
+            today_str = datetime.now().strftime('%Y%m%d')
+            available = [d for d in dates if d <= today_str][-days:]
+            
+            result = []
+            for target_date in available:
+                try:
+                    ladder_data = MarketService.get_lianban_ladder(target_date)
+                    if ladder_data and ladder_data.get('levels'):
+                        stocks = []
+                        for level_info in ladder_data['levels']:
+                            level = level_info.get('today_level', 0)
+                            if level >= min_level:
+                                for item in level_info.get('today_items', []):
+                                    stocks.append({
+                                        'code': item.get('code', ''),
+                                        'name': item.get('name', ''),
+                                        'level': level,
+                                        'change_percent': item.get('change_percent', 0),
+                                        'price': item.get('price', 0),
+                                        'duration_days': item.get('duration_days'),
+                                        'reason': item.get('reason', '')
+                                    })
+                        if stocks:
+                            result.append({
+                                'date': target_date,
+                                'stocks': stocks
+                            })
+                except Exception as e:
+                    logger.warning(f"Failed to get lianban ladder for {target_date}: {e}")
+                    continue
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error getting lianban history for pulse: {e}")
+            return []
+
+    @staticmethod
+    def get_daily_sector_stats(days: int = 30, min_change_pct: float = 3.0) -> List[Dict[str, Any]]:
+        """获取每日板块涨幅统计数据，用于复盘展示板块轮动"""
+        try:
+            dates = MarketService._latest_trade_dates()
+            if not dates:
+                return []
+            
+            today_str = datetime.now().strftime('%Y%m%d')
+            available = [d for d in dates if d <= today_str][-days:]
+            
+            result = []
+            
+            for target_date in available:
+                try:
+                    # 获取当日板块数据
+                    df = ak.stock_board_concept_name_em()
+                    if df is None or df.empty:
+                        continue
+                    
+                    # 找到涨幅列
+                    change_col = _find_column(df, ["涨跌幅", "涨幅", "change_percent"])
+                    name_col = _find_column(df, ["板块名称", "名称", "name"])
+                    code_col = _find_column(df, ["板块代码", "代码", "code"])
+                    
+                    if not change_col or not name_col:
+                        continue
+                    
+                    sectors = []
+                    for _, row in df.iterrows():
+                        change_pct = float(pd.to_numeric(row.get(change_col), errors='coerce') or 0)
+                        if change_pct >= min_change_pct:
+                            sectors.append({
+                                'name': str(row.get(name_col, '')),
+                                'code': str(row.get(code_col, '')) if code_col else '',
+                                'change_percent': round(change_pct, 2)
+                            })
+                    
+                    # 按涨幅排序
+                    sectors.sort(key=lambda x: x['change_percent'], reverse=True)
+                    
+                    if sectors:
+                        result.append({
+                            'date': target_date,
+                            'sectors': sectors[:20]  # 取前20个
+                        })
+                    
+                    # 添加延时避免请求过快
+                    time.sleep(0.1)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to get sector stats for {target_date}: {e}")
+                    continue
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error getting daily sector stats: {e}")
+            return []
 

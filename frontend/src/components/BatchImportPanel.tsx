@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle, XCircle, RotateCcw, TrendingUp, Activity, BarChart3, AlertTriangle, LineChart } from 'lucide-react';
 import { importHistoricalData, getImportStatus, cancelImportTask, importMAData, getMADataStats } from '@/api/client';
 import { useStore } from '@/stores/useStore';
@@ -13,18 +13,70 @@ interface ImportTask {
   endpoint: string;
 }
 
+// ============ 模块级全局状态（保持跨组件挂载持久化） ============
+interface ImportStateGlobal {
+  importStatus: any;
+  isMonitoring: boolean;
+  error: string | null;
+  success: string | null;
+  selectedTask: string | null;
+  loading: boolean;
+}
+
+let globalImportState: ImportStateGlobal = {
+  importStatus: null,
+  isMonitoring: false,
+  error: null,
+  success: null,
+  selectedTask: null,
+  loading: false,
+};
+
+const importStateListeners = new Set<() => void>();
+
+function notifyImportStateListeners() {
+  importStateListeners.forEach((listener) => listener());
+}
+
+function updateGlobalImportState(updates: Partial<ImportStateGlobal>) {
+  globalImportState = { ...globalImportState, ...updates };
+  notifyImportStateListeners();
+}
+
+function subscribeToImportState(callback: () => void) {
+  importStateListeners.add(callback);
+  return () => {
+    importStateListeners.delete(callback);
+  };
+}
+
+function getImportStateSnapshot() {
+  return globalImportState;
+}
+
+// 自定义hook使用全局状态
+function useGlobalImportState() {
+  return useSyncExternalStore(subscribeToImportState, getImportStateSnapshot);
+}
+
 export const BatchImportPanel: React.FC = () => {
   const { language } = useStore();
   const [targetDate, setTargetDate] = useState<string>(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
   });
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [importStatus, setImportStatus] = useState<any>(null);
-  const [isMonitoring, setIsMonitoring] = useState<boolean>(false);
-  const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  
+  // 使用全局状态
+  const globalState = useGlobalImportState();
+  const { importStatus, isMonitoring, error, success, selectedTask, loading } = globalState;
+  
+  // 局部状态 setter，更新全局状态
+  const setLoading = (val: boolean) => updateGlobalImportState({ loading: val });
+  const setError = (val: string | null) => updateGlobalImportState({ error: val });
+  const setSuccess = (val: string | null) => updateGlobalImportState({ success: val });
+  const setImportStatus = (val: any) => updateGlobalImportState({ importStatus: val });
+  const setIsMonitoring = (val: boolean) => updateGlobalImportState({ isMonitoring: val });
+  const setSelectedTask = (val: string | null) => updateGlobalImportState({ selectedTask: val });
 
   const [maStats, setMaStats] = useState<any>(null);
 
@@ -414,21 +466,52 @@ export const BatchImportPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Status Panel */}
-        {importStatus && importStatus.is_running && (
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+        {/* Status Panel - 显示运行中或已完成的状态 */}
+        {importStatus && (importStatus.is_running || importStatus.task_id) && (
+          <div className={clsx(
+            "border rounded-lg p-4",
+            importStatus.is_running 
+              ? "bg-slate-900/50 border-slate-800" 
+              : importStatus.progress === 100 
+                ? "bg-emerald-900/20 border-emerald-500/30"
+                : "bg-yellow-900/20 border-yellow-500/30"
+          )}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-                <RefreshCw className="text-slate-400 animate-spin" size={16} />
+                {importStatus.is_running ? (
+                  <RefreshCw className="text-blue-400 animate-spin" size={16} />
+                ) : importStatus.progress === 100 ? (
+                  <CheckCircle className="text-emerald-400" size={16} />
+                ) : (
+                  <AlertCircle className="text-yellow-400" size={16} />
+                )}
                 {language === 'zh' ? '导入状态' : 'Import Status'}
+                {importStatus.task_id && (
+                  <span className="text-xs text-slate-500 font-normal">({importStatus.task_id})</span>
+                )}
               </h3>
-              <button
-                onClick={handleCancel}
-                className="px-3 py-1 bg-rose-600 hover:bg-rose-500 rounded text-xs text-white flex items-center gap-1"
-              >
-                <XCircle size={12} />
-                {language === 'zh' ? '取消' : 'Cancel'}
-              </button>
+              <div className="flex items-center gap-2">
+                {!importStatus.is_running && (
+                  <button
+                    onClick={() => {
+                      updateGlobalImportState({ importStatus: null, success: null, error: null });
+                    }}
+                    className="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-white flex items-center gap-1"
+                  >
+                    <XCircle size={12} />
+                    {language === 'zh' ? '清除' : 'Clear'}
+                  </button>
+                )}
+                {importStatus.is_running && (
+                  <button
+                    onClick={handleCancel}
+                    className="px-3 py-1 bg-rose-600 hover:bg-rose-500 rounded text-xs text-white flex items-center gap-1"
+                  >
+                    <XCircle size={12} />
+                    {language === 'zh' ? '取消' : 'Cancel'}
+                  </button>
+                )}
+              </div>
             </div>
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
@@ -436,8 +519,17 @@ export const BatchImportPanel: React.FC = () => {
                 <div className="text-slate-500 text-xs uppercase tracking-wider">
                   {language === 'zh' ? '运行状态' : 'Status'}
                 </div>
-                <div className="font-semibold text-blue-400">
-                  {language === 'zh' ? '运行中' : 'Running'}
+                <div className={clsx(
+                  "font-semibold",
+                  importStatus.is_running ? "text-blue-400" : 
+                  importStatus.progress === 100 ? "text-emerald-400" : "text-yellow-400"
+                )}>
+                  {importStatus.is_running 
+                    ? (language === 'zh' ? '运行中' : 'Running')
+                    : importStatus.progress === 100
+                      ? (language === 'zh' ? '已完成' : 'Completed')
+                      : (language === 'zh' ? '已停止' : 'Stopped')
+                  }
                 </div>
               </div>
               
@@ -466,7 +558,14 @@ export const BatchImportPanel: React.FC = () => {
             {/* Progress Bar */}
             <div className="w-full bg-slate-800 rounded-full h-2">
               <div 
-                className="bg-gradient-to-r from-emerald-500 to-blue-500 h-2 rounded-full transition-all duration-300" 
+                className={clsx(
+                  "h-2 rounded-full transition-all duration-300",
+                  importStatus.is_running 
+                    ? "bg-gradient-to-r from-emerald-500 to-blue-500"
+                    : importStatus.progress === 100 
+                      ? "bg-emerald-500"
+                      : "bg-yellow-500"
+                )}
                 style={{ width: `${importStatus.progress}%` }}
               ></div>
             </div>
