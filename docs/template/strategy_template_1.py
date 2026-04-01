@@ -113,7 +113,7 @@ def should_filter_concept(concept_name):
     return False
 
 # 飞书机器人的Webhook URL
-feishu_webhook_url = 'https://open.feishu.cn/open-apis/bot/v2/hook/186eaf03-826f-4793-ab8f-c9f2d9149482'
+feishu_webhook_url = 'https://open.feishu.cn/open-apis/bot/v2/hook/your-webhook-id'
 
 # 飞书应用凭证（需要创建飞书应用并开通上传图片权限）
 # 注意：这些需要在飞书开放平台创建应用后获取
