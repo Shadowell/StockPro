@@ -69,25 +69,39 @@ async def startup_event():
     # 初始化预置策略模板
     db.init_preset_strategies()
     logger.info("Preset strategies initialized")
-    # 初始化并启动调度器
-    await init_scheduler()
-    logger.info("Scheduler started successfully")
-    # 启动实时数据同步服务
-    realtime_sync_service.start()
-    logger.info("Realtime sync service started successfully")
-    # 启动策略执行服务
-    strategy_execution_service.start()
-    logger.info("Strategy execution service started successfully")
+    if settings.ENABLE_SCHEDULER:
+        # 初始化并启动调度器
+        await init_scheduler()
+        logger.info("Scheduler started successfully")
+    else:
+        logger.info("Scheduler disabled by config")
+
+    if settings.ENABLE_REALTIME_SYNC:
+        # 启动实时数据同步服务
+        realtime_sync_service.start()
+        logger.info("Realtime sync service started successfully")
+    else:
+        logger.info("Realtime sync service disabled by config")
+
+    if settings.ENABLE_STRATEGY_EXECUTION:
+        # 启动策略执行服务
+        strategy_execution_service.start()
+        logger.info("Strategy execution service started successfully")
+    else:
+        logger.info("Strategy execution service disabled by config")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutting down application...")
-    # 停止实时数据同步服务
-    realtime_sync_service.stop()
-    logger.info("Realtime sync service stopped")
-    # 停止策略执行服务
-    strategy_execution_service.stop()
-    logger.info("Strategy execution service stopped")
+    if settings.ENABLE_REALTIME_SYNC:
+        # 停止实时数据同步服务
+        realtime_sync_service.stop()
+        logger.info("Realtime sync service stopped")
+
+    if settings.ENABLE_STRATEGY_EXECUTION:
+        # 停止策略执行服务
+        strategy_execution_service.stop()
+        logger.info("Strategy execution service stopped")
 
 @app.get("/")
 def root():

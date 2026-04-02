@@ -10,6 +10,7 @@ from functools import lru_cache
 import time
 
 from app.db import get_database
+from app.core.config import settings
 
 import threading
 from app.db.local_db import db_instance
@@ -100,6 +101,10 @@ def time_limited_cache(expiration_seconds=300):  # Default 5 minutes
 
 
 class MarketService:
+    @staticmethod
+    def _external_fetch_enabled() -> bool:
+        return bool(settings.ENABLE_EXTERNAL_MARKET_FETCH)
+
     @staticmethod
     def _get_indices_from_daily() -> List[Dict[str, Any]]:
         """使用日线数据获取指数（最可靠的备用方案）"""
@@ -255,20 +260,28 @@ class MarketService:
         
         # 如果数据库没有数据，直接从API获取
         if not stocks or len(stocks) == 0:
-            try:
-                stocks = MarketService.get_all_stocks()
-                logger.info(f"Fetched {len(stocks)} stocks from API for market overview")
-            except Exception as e:
-                logger.warning(f"Failed to fetch stocks from API: {e}")
+            if MarketService._external_fetch_enabled():
+                try:
+                    stocks = MarketService.get_all_stocks()
+                    logger.info(f"Fetched {len(stocks)} stocks from API for market overview")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch stocks from API: {e}")
+                    stocks = []
+            else:
+                logger.info("External market fetch disabled; using cache-only stocks for market overview")
                 stocks = []
         
         # 如果指数数据为空，尝试获取
         if not indices_data or len(indices_data) == 0:
-            try:
-                indices_data = MarketService._fetch_main_indices()
-                logger.info(f"Fetched {len(indices_data)} indices from API")
-            except Exception as e:
-                logger.warning(f"Failed to fetch indices from API: {e}")
+            if MarketService._external_fetch_enabled():
+                try:
+                    indices_data = MarketService._fetch_main_indices()
+                    logger.info(f"Fetched {len(indices_data)} indices from API")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch indices from API: {e}")
+                    indices_data = []
+            else:
+                logger.info("External market fetch disabled; using cache-only indices for market overview")
                 indices_data = []
         
         sentiment_data = {"score": 50.0, "status": "中性", "advancing": 0, "declining": 0, "unchanged": 0}
@@ -419,6 +432,10 @@ class MarketService:
 
     @staticmethod
     def get_all_sectors():
+        if not MarketService._external_fetch_enabled():
+            logger.info("External market fetch disabled; returning empty sector list")
+            return []
+
         try:
             # Use EastMoney for comprehensive sector ranking
             df = ak.stock_board_industry_name_em()
@@ -448,6 +465,10 @@ class MarketService:
     @staticmethod
     @time_limited_cache(expiration_seconds=300)
     def _get_cached_all_stocks():
+        if not MarketService._external_fetch_enabled():
+            logger.info("External market fetch disabled; returning empty stock cache")
+            return []
+
         try:
             df = None
             
@@ -593,6 +614,9 @@ class MarketService:
                     }
             except Exception as e:
                 logger.warning(f"Error fetching from local DB for {code}: {e}")
+
+            if not MarketService._external_fetch_enabled():
+                return {"code": code, "error": "external_fetch_disabled"}
 
             # Priority 1: Try East Money interface
             df_list = None
@@ -2664,4 +2688,3 @@ class MarketService:
         except Exception as e:
             logger.error(f"Error getting daily sector stats: {e}")
             return []
-

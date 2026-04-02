@@ -1,35 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Plus, Edit, Trash2, Clock, Database, Package, AlertCircle, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
-import { getDataDevTasks, createDataDevTask, updateDataDevTask, deleteDataDevTask, runDataDevTask, getTaskLogs } from '@/api/client';
-
-interface DataDevTask {
-  id: number;
-  name: string;
-  description: string;
-  sql_content: string;
-  cron_expression: string;
-  enabled: boolean;
-  created_at: string;
-  updated_at: string;
-  last_status?: string;
-  last_run?: string;
-  last_error?: string;
-}
-
-interface TaskLog {
-  id: number;
-  execution_start: string;
-  execution_end: string;
-  status: string;
-  error_message: string;
-  affected_rows: number;
-}
+import { getDataDevTasks, createDataDevTask, updateDataDevTask, deleteDataDevTask, runDataDevTask, getTaskLogs, DataDevTask, DataDevTaskLog, DataDevTaskPayload } from '@/api/client';
 
 export const DataDevManager: React.FC = () => {
   const [tasks, setTasks] = useState<DataDevTask[]>([]);
-  const [logs, setLogs] = useState<TaskLog[]>([]);
+  const [logs, setLogs] = useState<DataDevTaskLog[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [logLoading, setLogLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState<boolean>(false);
   const [editingTask, setEditingTask] = useState<DataDevTask | null>(null);
@@ -76,12 +52,20 @@ export const DataDevManager: React.FC = () => {
     e.preventDefault();
     
     try {
+      const payload: DataDevTaskPayload = {
+        name: formData.name,
+        description: formData.description,
+        sql_content: formData.sql_content,
+        cron_expression: formData.cron_expression,
+        enabled: formData.enabled,
+      };
+
       if (editingTask) {
         // Update existing task
-        await updateDataDevTask(editingTask.id, formData);
+        await updateDataDevTask(editingTask.id, payload);
       } else {
         // Create new task
-        await createDataDevTask(formData);
+        await createDataDevTask(payload);
       }
       
       setFormData({
@@ -103,11 +87,11 @@ export const DataDevManager: React.FC = () => {
   const handleEdit = (task: DataDevTask) => {
     setEditingTask(task);
     setFormData({
-      name: task.name,
+      name: task.name || '',
       description: task.description || '',
-      sql_content: task.sql_content,
-      cron_expression: task.cron_expression,
-      enabled: task.enabled
+      sql_content: task.sql_content || '',
+      cron_expression: task.cron_expression || '0 19 * * *',
+      enabled: task.enabled ?? true
     });
     setShowForm(true);
   };
@@ -136,14 +120,11 @@ export const DataDevManager: React.FC = () => {
 
   const handleViewLogs = async (taskId: number) => {
     try {
-      setLogLoading(true);
       const taskLogs = await getTaskLogs(taskId);
       setLogs(taskLogs);
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取日志失败');
       console.error('Error loading logs:', err);
-    } finally {
-      setLogLoading(false);
     }
   };
 
@@ -305,9 +286,9 @@ export const DataDevManager: React.FC = () => {
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-gray-200 truncate">{task.name}</h3>
+                        <h3 className="font-semibold text-gray-200 truncate">{task.name || '-'}</h3>
                         <span className={`px-2 py-0.5 rounded text-xs ${
-                          task.enabled 
+                          task.enabled
                             ? 'bg-green-500/20 text-green-400 border border-green-500/20' 
                             : 'bg-slate-700 text-slate-400 border border-slate-600'
                         }`}>
@@ -315,12 +296,12 @@ export const DataDevManager: React.FC = () => {
                         </span>
                       </div>
                       
-                      <p className="text-sm text-gray-400 mt-1 truncate">{task.description}</p>
+                      <p className="text-sm text-gray-400 mt-1 truncate">{task.description || '-'}</p>
                       
                       <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
                         <div className="flex items-center gap-1">
                           <Clock size={12} />
-                          <span>{task.cron_expression}</span>
+                          <span>{task.cron_expression || '-'}</span>
                         </div>
                         
                         {task.last_run && (
@@ -367,7 +348,7 @@ export const DataDevManager: React.FC = () => {
                   
                   {/* SQL Preview */}
                   <div className="mt-3 p-3 bg-slate-900/50 border border-slate-800 rounded text-xs text-slate-300 font-mono overflow-x-auto max-h-20 overflow-y-auto">
-                    {task.sql_content.substring(0, 200)}{task.sql_content.length > 200 ? '...' : ''}
+                    {task.sql_content ? `${task.sql_content.substring(0, 200)}${task.sql_content.length > 200 ? '...' : ''}` : '-'}
                   </div>
                 </div>
               ))}
@@ -407,10 +388,10 @@ export const DataDevManager: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {logs.map((log, idx) => (
+                  {logs.map((log) => (
                     <tr key={log.id} className="hover:bg-slate-800/30">
                       <td className="px-3 py-1.5 first:pl-3 last:pr-3 text-gray-200">
-                        {new Date(log.execution_start).toLocaleString()}
+                        {log.execution_start ? new Date(log.execution_start).toLocaleString() : '-'}
                       </td>
                       <td className="px-3 py-1.5 first:pl-3 last:pr-3">
                         <div className="flex items-center gap-1">
@@ -419,7 +400,7 @@ export const DataDevManager: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-3 py-1.5 first:pl-3 last:pr-3 text-gray-200">
-                        {log.affected_rows}
+                        {log.affected_rows ?? 0}
                       </td>
                       <td className="px-3 py-1.5 first:pl-3 last:pr-3 text-gray-200 max-w-xs truncate">
                         {log.error_message || '-'}

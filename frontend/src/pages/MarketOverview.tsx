@@ -1,10 +1,17 @@
-import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getHotConceptIntradayKline, getHotConceptLeaders, getHotConcepts, getLianbanLadder, getThsHot, getStockFundamentals } from '../api/client';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  DataHubDataset,
+  getDataHubDatasets,
+  getHotConceptIntradayKline,
+  getHotConceptLeaders,
+  getHotConcepts,
+  getLianbanLadder,
+  getThsHot,
+} from '../api/client';
 import { ConceptIntradayKlineItem, ConceptLeaderStock, HotConceptItem, LianbanLadderResponse, ThsHotItem } from '../types';
-import { Navigation } from '../components/Navigation';
 import { ChartPanel } from '../components/ChartPanel';
 import { DateField } from '../components/DateField';
-import { BarChart2, Flame, TrendingUp, Layers, RotateCcw, Filter, ChevronDown } from 'lucide-react';
+import { Flame, TrendingUp, Layers, RotateCcw, Filter, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
 import { useStore } from '../stores/useStore';
@@ -13,6 +20,10 @@ import { getTranslation, TranslationKey } from '../lib/i18n';
 
 // Filter options for concept list
 type ConceptFilterOption = 'all' | '1' | '2' | '3' | '5' | '8';
+type ConceptCacheData = {
+  intraday: ConceptIntradayKlineItem[];
+  leaders: ConceptLeaderStock[];
+};
 
 // Helper to get cache TTL based on market phase
 const getCacheTTL = (): number => {
@@ -48,7 +59,7 @@ const getCacheTTL = (): number => {
 
 export const MarketOverview: React.FC = () => {
   const { selectStock, selectedStock, language } = useStore();
-  const t = (key: TranslationKey) => getTranslation(language, key);
+  const t = useCallback((key: TranslationKey) => getTranslation(language, key), [language]);
 
   const today = useMemo(() => {
     const now = new Date();
@@ -65,6 +76,8 @@ export const MarketOverview: React.FC = () => {
   const [ladder, setLadder] = useState<LianbanLadderResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [freshnessLoading, setFreshnessLoading] = useState(false);
+  const [marketFreshness, setMarketFreshness] = useState<DataHubDataset[]>([]);
   const [thsCharacterByCode, setThsCharacterByCode] = useState<Record<string, string>>({});
 
   // New states for UX improvements
@@ -128,7 +141,7 @@ export const MarketOverview: React.FC = () => {
 
   const formatFlowYi = useCallback((value: number) => {
     return `${Number(value || 0).toFixed(2)}${t('common.billion')}`;
-  }, [language]); // Added language to dependency to ensure re-render on change
+  }, [t]);
 
   const fetchActive = useCallback(async () => {
     setIsLoading(true);
@@ -153,7 +166,21 @@ export const MarketOverview: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [activeTab, dateValue]);
+  }, [activeTab, dateValue, t]);
+
+  const loadMarketFreshness = useCallback(async () => {
+    setFreshnessLoading(true);
+    try {
+      const datasets = await getDataHubDatasets();
+      const ids = new Set(['market_indices_realtime', 'all_stocks_realtime', 'short_line_indices_realtime', 'daily_concept_sectors']);
+      const selected = datasets.filter((item) => ids.has(item.id));
+      setMarketFreshness(selected);
+    } catch {
+      setMarketFreshness([]);
+    } finally {
+      setFreshnessLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const run = async () => {
@@ -182,13 +209,18 @@ export const MarketOverview: React.FC = () => {
     // Auto-refresh every 2 minutes
     const interval = setInterval(() => {
       fetchActive();
-      if (selectedConcept) {
-        fetchConceptDetail(selectedConcept, true);
-      }
     }, 2 * 60 * 1000); // 2 minutes
 
     return () => clearInterval(interval);
   }, [fetchActive]);
+
+  useEffect(() => {
+    void loadMarketFreshness();
+    const timer = window.setInterval(() => {
+      void loadMarketFreshness();
+    }, 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [loadMarketFreshness]);
 
   // Auto-select first concept only if user hasn't interacted
   useEffect(() => {
@@ -212,7 +244,7 @@ export const MarketOverview: React.FC = () => {
     }
   }, [conceptFilter]);
 
-  const conceptCacheRef = useRef<Map<string, { data: any; timestamp: number }>>(new Map());
+  const conceptCacheRef = useRef<Map<string, { data: ConceptCacheData; timestamp: number }>>(new Map());
 
   const fetchConceptDetail = useCallback(async (name: string, force = false) => {
     if (!name) return;
@@ -279,14 +311,16 @@ export const MarketOverview: React.FC = () => {
     } finally {
       setIsLoadingConcept(false);
     }
-  }, [selectStock, selectedStock, dateValue, userHasInteractedConcept]);
+  }, [dateValue, selectStock, selectedStock, t, userHasInteractedConcept]);
 
-  // 修改选择股票的逻辑，不再需要本地的 setSelectedStockFundamentals，直接使用 store 中的数据
   useEffect(() => {
-    if (selectedStock?.code) {
-      // selectStock in useStore already fetches fundamentals
-    }
-  }, [selectedStock]);
+    if (activeTab !== 'hot_concepts') return;
+    if (!selectedConcept) return;
+    const interval = window.setInterval(() => {
+      fetchConceptDetail(selectedConcept, true);
+    }, 2 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [activeTab, fetchConceptDetail, selectedConcept]);
 
   useEffect(() => {
     if (activeTab !== 'hot_concepts') return;
@@ -313,7 +347,7 @@ export const MarketOverview: React.FC = () => {
       market_cap: 0,
       is_short: false,
     });
-  }, [activeTab, selectStock, selectedStock?.code, thsHot]);
+  }, [activeTab, selectStock, selectedStock?.code, thsHot, userHasInteractedThs]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -375,12 +409,18 @@ export const MarketOverview: React.FC = () => {
         },
       ],
     };
-  }, [conceptIntraday]);
+  }, [conceptIntraday, t]);
 
   const ladderMeta = useMemo(() => {
     if (!ladder?.date) return null;
     return `${ladder.prev_date ? `${t('market.yesterday')} ${ladder.prev_date}` : t('market.yesterday')}  → ${t('market.today')} ${ladder.date}`;
-  }, [ladder, language]);
+  }, [ladder, t]);
+
+  const freshnessBadgeClass = useCallback((status: string) => {
+    if (status === 'green') return 'bg-green-500/20 text-green-300 border-green-500/30';
+    if (status === 'yellow') return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+    return 'bg-red-500/20 text-red-300 border-red-500/30';
+  }, []);
 
   return (
     <MainLayout title={t('market.title')}>
@@ -450,10 +490,48 @@ export const MarketOverview: React.FC = () => {
             )}
           </div>
 
+          {isLoading && (
+            <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest animate-pulse">
+              {t('common.loading')}
+            </span>
+          )}
+
           {activeTab === 'lianban' && ladderMeta && (
             <span className="text-[10px] text-slate-500 font-mono ml-4 uppercase tracking-tighter">
               {ladderMeta}
             </span>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-slate-800 bg-[#0d121f] px-3 py-2">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Data Hub Freshness</div>
+            <button
+              onClick={() => { void loadMarketFreshness(); }}
+              disabled={freshnessLoading}
+              className="text-[11px] px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700"
+            >
+              {freshnessLoading ? t('common.loading') : t('common.refresh')}
+            </button>
+          </div>
+          {marketFreshness.length === 0 ? (
+            <div className="text-xs text-slate-500">暂无可用 freshness 数据</div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {marketFreshness.map((item) => (
+                <div key={item.id} className="rounded border border-slate-800 bg-slate-900/60 px-2 py-2">
+                  <div className="text-[11px] text-slate-400 truncate" title={item.name}>{item.name}</div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase ${freshnessBadgeClass(item.freshness_status)}`}>
+                      {item.freshness_status}
+                    </span>
+                    <span className="text-[10px] text-slate-500 truncate" title={item.latest_snapshot || '-'}>
+                      {item.latest_snapshot || '-'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
@@ -600,6 +678,12 @@ export const MarketOverview: React.FC = () => {
                     ))}
                   </div>
                 </div>
+
+                {conceptError && (
+                  <div className="px-6 py-2 text-xs text-red-300 bg-red-500/10 border-b border-red-500/20">
+                    {conceptError}
+                  </div>
+                )}
 
                 <div className="flex-1 overflow-hidden relative">
                   {isLoadingConcept && (

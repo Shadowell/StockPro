@@ -176,6 +176,7 @@ export function usePolling<T>({
       mountedRef.current = false;
       clearPollingTimeout();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldPoll]); // Only depend on shouldPoll to avoid infinite loops
 
   return {

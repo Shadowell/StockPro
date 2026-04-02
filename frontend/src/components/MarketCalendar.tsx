@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getMarketCalendar, refreshMarketCalendar, generateMarketCalendarWithAI, refreshMarketCalendarWithFreeData } from "@/api/client";
 import { MarketCalendarEvent } from "@/types";
-import { RefreshCw, CalendarDays, Sparkles, Zap, Grid3X3 } from "lucide-react";
+import { RefreshCw, CalendarDays, Sparkles, Grid3X3 } from "lucide-react";
 import { CalendarView } from "./CalendarView";
-import { getTranslation } from "../lib/i18n";
+import { getTranslation, TranslationKey } from "../lib/i18n";
 import { useStore } from "../stores/useStore";
 
 type FilterPreset = "all" | "near" | "month";
@@ -22,11 +22,11 @@ export const MarketCalendar: React.FC = () => {
   const [aiEndDate, setAiEndDate] = useState<string>('');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar'); // 默认显示日历视图
 
-  const t = (key: any) => getTranslation(language, key);
+  const t = useCallback((key: TranslationKey) => getTranslation(language, key), [language]);
 
   const today = useMemo(() => new Date(), []);
 
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -38,7 +38,7 @@ export const MarketCalendar: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [t]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -99,7 +99,7 @@ export const MarketCalendar: React.FC = () => {
 
   useEffect(() => {
     fetchEvents();
-  }, []);
+  }, [fetchEvents]);
 
   const filteredEvents = useMemo(() => {
     if (events.length === 0) return [];
@@ -160,7 +160,7 @@ export const MarketCalendar: React.FC = () => {
           <button
             onClick={() => setViewMode('list')}
             className={`px-2 py-1 rounded-md ${
-              viewMode === 'list' ? "bg-blue-600 text:white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+              viewMode === 'list' ? "bg-blue-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
             }`}
             title={t('calendar.list_view')}
           >
@@ -177,7 +177,7 @@ export const MarketCalendar: React.FC = () => {
           <button
             onClick={() => setPreset("month")}
             className={`px-2 py-1 rounded-md ${
-              preset === "month" ? "bg-blue-600 text:white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+              preset === "month" ? "bg-blue-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
             }`}
           >
             {t('calendar.this_month')}
@@ -185,10 +185,28 @@ export const MarketCalendar: React.FC = () => {
           <button
             onClick={() => setPreset("all")}
             className={`px-2 py-1 rounded-md ${
-              preset === "all" ? "bg-blue-600 text:white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
+              preset === "all" ? "bg-blue-600 text-white" : "bg-slate-800 text-gray-300 hover:bg-slate-700"
             }`}
           >
             {t('calendar.all_events')}
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing || isRefreshingWithFreeData}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-700 hover:bg-blue-600 disabled:bg-slate-700 text-gray-100"
+            title={t('common.refresh')}
+          >
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+            <span>{language === 'zh' ? '刷新' : 'Refresh'}</span>
+          </button>
+          <button
+            onClick={handleRefreshWithFreeData}
+            disabled={isRefreshing || isRefreshingWithFreeData}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:bg-slate-700 text-gray-100"
+            title={language === 'zh' ? '免费源刷新' : 'Refresh with free source'}
+          >
+            <RefreshCw size={14} className={isRefreshingWithFreeData ? "animate-spin" : ""} />
+            <span>{language === 'zh' ? '免费源' : 'Free source'}</span>
           </button>
           {/* Loading indicator */}
           {(isRefreshing || isRefreshingWithFreeData) && (
@@ -289,7 +307,7 @@ export const MarketCalendar: React.FC = () => {
                         )}
                       </div>
                       <div className="text-[11px] text-gray-500 flex flex-wrap gap-2">
-                        {e.category && <span>{t('calendar.Category')}: {e.category}</span>}
+                        {e.category && <span>{t('calendar.category')}: {e.category}</span>}
                         {e.source && <span>{t('calendar.source')}: {e.source}</span>}
                         {e.details && <span>{t('calendar.details')}: {e.details}</span>}
                       </div>

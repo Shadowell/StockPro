@@ -1,28 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Play, RotateCcw, AlertCircle, CheckCircle, XCircle, Clock, Database, Package, Settings, TrendingUp, RefreshCw } from 'lucide-react';
-import { getPresetTasks, executePresetTask, getPresetTaskStatus, cancelPresetTask } from '@/api/client';
+import { Play, AlertCircle, Clock, Database, Settings, TrendingUp } from 'lucide-react';
+import { getPresetTasks, executePresetTask, getPresetTaskStatus, cancelPresetTask, PresetTaskItem, PresetTaskStatus } from '@/api/client';
 import { usePolling } from '@/hooks/usePolling';
 
-interface PresetTask {
-  id: string;
-  name: string;
-  description: string;
-  params?: Array<{
-    name: string;
-    type: string;
-    description: string;
-  }>;
-}
-
 export const PresetTaskPanel: React.FC = () => {
-  const [tasks, setTasks] = useState<PresetTask[]>([]);
+  const [tasks, setTasks] = useState<PresetTaskItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
-  const [taskParams, setTaskParams] = useState<Record<string, any>>({});
+  const [taskParams, setTaskParams] = useState<Record<string, string>>({});
   
   // Status tracking
-  const [status, setStatus] = useState<any>(null);
+  const [status, setStatus] = useState<PresetTaskStatus | null>(null);
   const [isMonitoring, setIsMonitoring] = useState<boolean>(false);
 
   // Fetch status function for polling
@@ -32,7 +21,7 @@ export const PresetTaskPanel: React.FC = () => {
   }, []);
 
   // Use smart polling for status monitoring
-  const { consecutiveErrors, manualRefresh } = usePolling({
+  usePolling({
     fetchFn: fetchStatus,
     shouldPoll: true,
     onSuccess: (currentStatus) => {
@@ -56,7 +45,7 @@ export const PresetTaskPanel: React.FC = () => {
         const data = await getPresetTasks();
         setTasks(data);
         setLoading(false);
-      } catch (err) {
+      } catch {
         setError('Failed to load preset tasks');
         setLoading(false);
       }
@@ -65,7 +54,7 @@ export const PresetTaskPanel: React.FC = () => {
     fetchTasks();
   }, []);
 
-  const handleParamChange = (paramName: string, value: any) => {
+  const handleParamChange = (paramName: string, value: string) => {
     setTaskParams(prev => ({
       ...prev,
       [paramName]: value

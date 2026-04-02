@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # Akshare
     AKSHARE_TIMEOUT: int = 30
 
+    # Runtime feature toggles
+    ENABLE_SCHEDULER: bool = True
+    ENABLE_REALTIME_SYNC: bool = True
+    ENABLE_STRATEGY_EXECUTION: bool = True
+    ENABLE_EXTERNAL_MARKET_FETCH: bool = True
+
     # Operation allowlist
     ENFORCE_OPERATION_ALLOWLIST: bool = False
     OPERATION_ALLOWLIST: List[str] = []

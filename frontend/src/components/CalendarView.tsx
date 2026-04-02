@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { MarketCalendarEvent } from '../types';
-import { getTranslation } from '../lib/i18n';
+import { getTranslation, TranslationKey } from '../lib/i18n';
 import { useStore } from '../stores/useStore';
 
 interface CalendarViewProps {
@@ -19,7 +19,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({ events }) => {
   const { language } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   
-  const t = (key: any) => getTranslation(language, key);
+  const t = (key: TranslationKey) => getTranslation(language, key);
   
   // 辅助函数：判断是否为今天
   const isToday = (date: Date): boolean => {

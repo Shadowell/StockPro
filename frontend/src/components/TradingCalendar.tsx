@@ -13,11 +13,9 @@ import {
   TrendingUp,
   AlertCircle,
   Clock,
-  Filter,
   Search,
   X
 } from "lucide-react";
-import { getTranslation } from "../lib/i18n";
 import { useStore } from "../stores/useStore";
 
 type FilterPreset = "all" | "near" | "month" | "upcoming";
@@ -87,7 +85,6 @@ export const TradingCalendar: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
 
-  const t = (key: any) => getTranslation(language, key);
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => today.toISOString().split('T')[0], [today]);
 

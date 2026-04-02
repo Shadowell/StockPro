@@ -4,7 +4,6 @@ import { Strategy, StrategyStock } from '../types';
 import { ChartPanel } from '../components/ChartPanel';
 import { MainLayout } from '../components/MainLayout';
 import { useStore } from '../stores/useStore';
-import { getTranslation, TranslationKey } from '../lib/i18n';
 import { Play, Square, Zap, RefreshCw, Clock, AlertCircle, X } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -19,11 +18,13 @@ interface StrategySlot {
   lastExecutionTime: string | null;
 }
 
-const MAX_SLOTS = 3;
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+};
 
 export const StrategyExec: React.FC = () => {
   const { selectStock, selectedStock, clearSelectedStock, language } = useStore();
-  const t = (key: TranslationKey) => getTranslation(language, key);
 
   // 策略列表
   const [strategies, setStrategies] = useState<Strategy[]>([]);
@@ -79,8 +80,8 @@ export const StrategyExec: React.FC = () => {
       } else if (result.error) {
         updateSlot(slotId, { error: result.error, isExecuting: false });
       }
-    } catch (e: any) {
-      updateSlot(slotId, { error: e.message || '执行失败', isExecuting: false });
+    } catch (e: unknown) {
+      updateSlot(slotId, { error: getErrorMessage(e, '执行失败'), isExecuting: false });
     }
   }, [slots, updateSlot]);
 
@@ -99,8 +100,8 @@ export const StrategyExec: React.FC = () => {
       } else {
         updateSlot(slotId, { error: result.error || '启动失败' });
       }
-    } catch (e: any) {
-      updateSlot(slotId, { error: e.message || '启动失败' });
+    } catch (e: unknown) {
+      updateSlot(slotId, { error: getErrorMessage(e, '启动失败') });
     }
   }, [slots, updateSlot, fetchStrategies, handleExecuteStrategy]);
 
@@ -112,8 +113,8 @@ export const StrategyExec: React.FC = () => {
     try {
       await stopStrategy(slot.strategyId);
       await fetchStrategies();
-    } catch (e: any) {
-      updateSlot(slotId, { error: e.message || '停止失败' });
+    } catch (e: unknown) {
+      updateSlot(slotId, { error: getErrorMessage(e, '停止失败') });
     }
   }, [slots, fetchStrategies, updateSlot]);
 
@@ -161,7 +162,6 @@ export const StrategyExec: React.FC = () => {
   }, [slots, strategies, updateSlot]);
 
   // 获取当前活跃槽位的股票列表
-  const activeSlot = slots.find(s => s.id === activeSlotId);
   const allStocks = slots.flatMap(slot => 
     slot.stocks.map(stock => ({ ...stock, slotId: slot.id }))
   );
@@ -324,7 +324,7 @@ export const StrategyExec: React.FC = () => {
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-800/30">
-                    {allStocks.map((stock, idx) => (
+                    {allStocks.map((stock) => (
                       <div
                         key={`${stock.slotId}-${stock.code}`}
                         className={clsx(

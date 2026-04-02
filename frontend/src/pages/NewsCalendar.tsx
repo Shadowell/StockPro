@@ -2,11 +2,9 @@ import React from 'react';
 import { NewsFeed } from '../components/NewsFeed';
 import { MainLayout } from '../components/MainLayout';
 import { useStore } from '../stores/useStore';
-import { getTranslation } from '../lib/i18n';
 
 export const NewsCalendar: React.FC = () => {
   const { language } = useStore();
-  const t = (key: any) => getTranslation(language, key);
 
   return (
     <MainLayout title={language === 'zh' ? '消息流' : 'News Feed'}>

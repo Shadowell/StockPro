@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { MainLayout } from '@/components/MainLayout';
 import { useStore } from '@/stores/useStore';
-import { searchStocks, getDailyChart } from '@/api/client';
+import { searchStocks } from '@/api/client';
 import { StockCandidate } from '@/types';
 import {
   Wallet,
-  TrendingUp,
-  TrendingDown,
   RefreshCw,
   Search,
   ShoppingCart,
@@ -16,23 +14,14 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Settings,
   BarChart3,
-  DollarSign,
-  Percent,
   FileText,
   Activity,
-  Target,
   ArrowUpRight,
   ArrowDownRight,
-  Info,
-  Trash2,
-  Edit2,
-  Eye,
   History
 } from 'lucide-react';
 import clsx from 'clsx';
-import ReactECharts from 'echarts-for-react';
 
 // ============ 类型定义 ============
 
@@ -205,7 +194,7 @@ const TradingPanel: React.FC<{
   }, [searchQuery, handleSearch]);
 
   // 选择股票
-  const handleSelectStock = async (stock: StockCandidate) => {
+  const handleSelectStock = (stock: StockCandidate) => {
     setSelectedStock({
       symbol: stock.code,
       name: stock.name,
@@ -797,7 +786,7 @@ export const LiveTrading: React.FC = () => {
     };
 
     // 更新账户和持仓
-    let newAccount = { ...account };
+    const newAccount = { ...account };
     let newPositions = [...positions];
 
     if (orderData.direction === 'buy') {
@@ -880,8 +869,7 @@ export const LiveTrading: React.FC = () => {
 
   // 快捷卖出
   const handleQuickSell = useCallback((position: Position) => {
-    // 这里可以预填卖出表单，或者直接弹出确认框
-    // 简化处理：直接设置选中股票和数量
+    alert(`请在左侧交易面板发起卖出：${position.name} (${position.symbol})`);
   }, []);
 
   // 刷新账户数据
