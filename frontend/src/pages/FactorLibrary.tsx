@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MainLayout } from '@/components/MainLayout';
 import { useStore } from '@/stores/useStore';
-import { 
+import {
   Database, 
   RefreshCw, 
   TrendingUp, 
@@ -17,7 +17,7 @@ import {
   Loader2,
   ArrowUpDown
 } from 'lucide-react';
-import { apiClient } from '@/api/client';
+import { apiClient, createDataHubJob, getDataHubFactorFeatures, getDataHubJob } from '@/api/client';
 
 // 因子定义类型
 interface FactorDefinition {
@@ -89,6 +89,20 @@ interface SyncResult {
   timestamp: Date;
 }
 
+const getErrorDetail = (error: unknown, fallback: string): string => {
+  if (typeof error === 'object' && error !== null) {
+    const maybeError = error as {
+      message?: unknown;
+      response?: { data?: { detail?: unknown } };
+    };
+    const detail = maybeError.response?.data?.detail;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+    if (typeof maybeError.message === 'string' && maybeError.message.trim()) return maybeError.message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+};
+
 // 模块级别的状态存储，用于在组件卸载后保持状态
 let globalSyncStatus: SyncStatus = {
   init: false,
@@ -99,8 +113,8 @@ let globalSyncStatus: SyncStatus = {
 let globalSyncResults: SyncResult[] = [];
 
 // 状态更新回调，用于通知组件更新
-let syncStatusListeners: Set<(status: SyncStatus) => void> = new Set();
-let syncResultsListeners: Set<(results: SyncResult[]) => void> = new Set();
+const syncStatusListeners: Set<(status: SyncStatus) => void> = new Set();
+const syncResultsListeners: Set<(results: SyncResult[]) => void> = new Set();
 
 const updateGlobalSyncStatus = (updater: (prev: SyncStatus) => SyncStatus) => {
   globalSyncStatus = updater(globalSyncStatus);
@@ -153,17 +167,16 @@ export const FactorLibrary: React.FC = () => {
   // 使用全局同步状态
   const { syncStatus, syncResults } = useGlobalSyncState();
   
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [selectedFactor, setSelectedFactor] = useState<FactorDefinition | null>(null);
   const [factorRanking, setFactorRanking] = useState<FactorDataItem[]>([]);
   const [rankingLoading, setRankingLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [factorSnapshot, setFactorSnapshot] = useState<string | null>(null);
 
   // 加载因子定义和统计
   useEffect(() => {
     loadFactorDefinitions();
-    loadFactorStats();
   }, []);
 
   // 加载同步日志
@@ -176,14 +189,14 @@ export const FactorLibrary: React.FC = () => {
   const loadFactorDefinitions = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.get('/factors/definitions');
-      if (response.data.status === 'success') {
-        setFactors(response.data.data);
-        // 默认展开第一个分类
-        if (response.data.data.length > 0) {
-          const categories = [...new Set(response.data.data.map((f: FactorDefinition) => f.category))];
-          setExpandedCategories(new Set([categories[0] as string]));
-        }
+      const response = await getDataHubFactorFeatures();
+      const definitions = (response.factor_definitions || []) as unknown as FactorDefinition[];
+      setFactors(definitions);
+      setStats(response.stats || null);
+      setFactorSnapshot(response.snapshot?.version || response.snapshot?.as_of || response.stats?.latest_date || null);
+      if (definitions.length > 0) {
+        const categories = [...new Set(definitions.map((f: FactorDefinition) => f.category))];
+        setExpandedCategories(new Set([categories[0] as string]));
       }
     } catch (error) {
       console.error('加载因子定义失败:', error);
@@ -194,10 +207,9 @@ export const FactorLibrary: React.FC = () => {
 
   const loadFactorStats = async () => {
     try {
-      const response = await apiClient.get('/factors/stats');
-      if (response.data.status === 'success') {
-        setStats(response.data.data);
-      }
+      const response = await getDataHubFactorFeatures();
+      setStats(response.stats || null);
+      setFactorSnapshot(response.snapshot?.version || response.snapshot?.as_of || response.stats?.latest_date || null);
     } catch (error) {
       console.error('加载统计信息失败:', error);
     }
@@ -217,12 +229,9 @@ export const FactorLibrary: React.FC = () => {
   const loadFactorRanking = async (factorCode: string) => {
     setRankingLoading(true);
     try {
-      const response = await apiClient.get(`/factors/ranking/${factorCode}`, {
-        params: { limit: 50 }
-      });
-      if (response.data.status === 'success') {
-        setFactorRanking(response.data.data);
-      }
+      const response = await getDataHubFactorFeatures({ factor_code: factorCode, limit: 50 });
+      setFactorRanking((response.ranking || []) as unknown as FactorDataItem[]);
+      setFactorSnapshot(response.snapshot?.version || response.snapshot?.as_of || response.stats?.latest_date || null);
     } catch (error) {
       console.error('加载因子排名失败:', error);
     } finally {
@@ -240,68 +249,74 @@ export const FactorLibrary: React.FC = () => {
     });
   };
 
-  const initFactorDefinitions = async () => {
-    updateGlobalSyncStatus(prev => ({ ...prev, init: true }));
-    addSyncResult('初始化因子定义', 'running', '正在初始化...');
+  const watchDataHubJob = async (
+    jobKey: string,
+    statusKey: keyof SyncStatus,
+    taskLabel: string,
+    maxPollCount = 180
+  ) => {
     try {
-      const response = await apiClient.post('/factors/init');
-      addSyncResult('初始化因子定义', 'success', response.data.message || '初始化完成');
-      await loadFactorDefinitions();
-      await loadFactorStats();
-    } catch (error: any) {
-      console.error('初始化因子定义失败:', error);
-      addSyncResult('初始化因子定义', 'error', error.response?.data?.detail || error.message || '初始化失败');
+      for (let i = 0; i < maxPollCount; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const job = await getDataHubJob(jobKey);
+        if (job.status === 'success') {
+          addSyncResult(taskLabel, 'success', job.message || `任务完成: ${jobKey}`);
+          await loadFactorDefinitions();
+          await loadFactorStats();
+          await loadSyncLogs();
+          updateGlobalSyncStatus((prev) => ({ ...prev, [statusKey]: false }));
+          return;
+        }
+        if (job.status === 'failed' || job.status === 'cancelled') {
+          addSyncResult(taskLabel, 'error', job.error_message || job.message || `任务失败: ${jobKey}`);
+          updateGlobalSyncStatus((prev) => ({ ...prev, [statusKey]: false }));
+          return;
+        }
+      }
+      addSyncResult(taskLabel, 'running', `任务仍在运行，请在数据中台查看: ${jobKey}`);
+    } catch (error: unknown) {
+      addSyncResult(taskLabel, 'error', getErrorDetail(error, '任务状态轮询失败'));
     } finally {
-      updateGlobalSyncStatus(prev => ({ ...prev, init: false }));
+      updateGlobalSyncStatus((prev) => ({ ...prev, [statusKey]: false }));
     }
+  };
+
+  const submitFactorJob = async (
+    taskLabel: string,
+    statusKey: keyof SyncStatus,
+    action: 'init_factor_definitions' | 'sync_factor_spot' | 'sync_factor_technical' | 'sync_factor_all'
+  ) => {
+    updateGlobalSyncStatus((prev) => ({ ...prev, [statusKey]: true }));
+    addSyncResult(taskLabel, 'running', '正在提交到数据中台任务编排...');
+    try {
+      const job = await createDataHubJob({
+        action,
+        scope: 'factor_data',
+        params: {},
+      });
+      addSyncResult(taskLabel, 'running', `任务已提交: ${job.job_key}`);
+      void watchDataHubJob(job.job_key, statusKey, taskLabel);
+    } catch (error: unknown) {
+      console.error(`${taskLabel}失败:`, error);
+      addSyncResult(taskLabel, 'error', getErrorDetail(error, `${taskLabel}失败`));
+      updateGlobalSyncStatus((prev) => ({ ...prev, [statusKey]: false }));
+    }
+  };
+
+  const initFactorDefinitions = async () => {
+    await submitFactorJob('初始化因子定义', 'init', 'init_factor_definitions');
   };
 
   const syncAllFactors = async () => {
-    updateGlobalSyncStatus(prev => ({ ...prev, all: true }));
-    addSyncResult('同步全部因子', 'running', '正在同步全部因子数据（可能需要几分钟）...');
-    try {
-      const response = await apiClient.post('/factors/sync/all', null, { timeout: 300000 }); // 5分钟超时
-      addSyncResult('同步全部因子', 'success', response.data.message || '同步任务已提交');
-      await loadFactorStats();
-      await loadSyncLogs();
-    } catch (error: any) {
-      console.error('同步因子数据失败:', error);
-      addSyncResult('同步全部因子', 'error', error.response?.data?.detail || error.message || '同步失败');
-    } finally {
-      updateGlobalSyncStatus(prev => ({ ...prev, all: false }));
-    }
+    await submitFactorJob('同步全部因子', 'all', 'sync_factor_all');
   };
 
   const syncSpotFactors = async () => {
-    updateGlobalSyncStatus(prev => ({ ...prev, spot: true }));
-    addSyncResult('同步实时因子', 'running', '正在同步实时行情因子...');
-    try {
-      const response = await apiClient.post('/factors/sync/spot', null, { timeout: 120000 }); // 2分钟超时
-      addSyncResult('同步实时因子', 'success', response.data.message || '同步任务已提交');
-      await loadFactorStats();
-      await loadSyncLogs();
-    } catch (error: any) {
-      console.error('同步实时因子失败:', error);
-      addSyncResult('同步实时因子', 'error', error.response?.data?.detail || error.message || '同步失败');
-    } finally {
-      updateGlobalSyncStatus(prev => ({ ...prev, spot: false }));
-    }
+    await submitFactorJob('同步实时因子', 'spot', 'sync_factor_spot');
   };
 
   const syncTechnicalFactors = async () => {
-    updateGlobalSyncStatus(prev => ({ ...prev, technical: true }));
-    addSyncResult('同步技术因子', 'running', '正在同步技术因子（需要计算均线等，耗时较长）...');
-    try {
-      const response = await apiClient.post('/factors/sync/technical', null, { timeout: 600000 }); // 10分钟超时
-      addSyncResult('同步技术因子', 'success', response.data.message || '同步任务已提交');
-      await loadFactorStats();
-      await loadSyncLogs();
-    } catch (error: any) {
-      console.error('同步技术因子失败:', error);
-      addSyncResult('同步技术因子', 'error', error.response?.data?.detail || error.message || '同步失败');
-    } finally {
-      updateGlobalSyncStatus(prev => ({ ...prev, technical: false }));
-    }
+    await submitFactorJob('同步技术因子', 'technical', 'sync_factor_technical');
   };
 
   // 按分类分组因子
@@ -428,6 +443,11 @@ export const FactorLibrary: React.FC = () => {
                   </div>
                 </div>
               </div>
+              {factorSnapshot && (
+                <div className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 rounded px-3 py-2 inline-flex">
+                  {language === 'zh' ? `研究快照版本: ${factorSnapshot}` : `Snapshot version: ${factorSnapshot}`}
+                </div>
+              )}
 
               {/* Category Stats */}
               <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">

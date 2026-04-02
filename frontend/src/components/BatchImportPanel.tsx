@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
-import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle, XCircle, RotateCcw, TrendingUp, Activity, BarChart3, AlertTriangle, LineChart } from 'lucide-react';
-import { importHistoricalData, getImportStatus, cancelImportTask, importMAData, getMADataStats } from '@/api/client';
+import { Calendar, Download, RefreshCw, AlertCircle, CheckCircle, XCircle, TrendingUp, BarChart3, AlertTriangle, LineChart } from 'lucide-react';
+import { importHistoricalData, getImportStatus, cancelImportTask, importMAData, getMADataStats, ImportStatus, MADataStats } from '@/api/client';
 import { useStore } from '@/stores/useStore';
 import { usePolling } from '@/hooks/usePolling';
 import clsx from 'clsx';
@@ -15,7 +15,7 @@ interface ImportTask {
 
 // ============ 模块级全局状态（保持跨组件挂载持久化） ============
 interface ImportStateGlobal {
-  importStatus: any;
+  importStatus: ImportStatus | null;
   isMonitoring: boolean;
   error: string | null;
   success: string | null;
@@ -74,11 +74,11 @@ export const BatchImportPanel: React.FC = () => {
   const setLoading = (val: boolean) => updateGlobalImportState({ loading: val });
   const setError = (val: string | null) => updateGlobalImportState({ error: val });
   const setSuccess = (val: string | null) => updateGlobalImportState({ success: val });
-  const setImportStatus = (val: any) => updateGlobalImportState({ importStatus: val });
+  const setImportStatus = (val: ImportStatus | null) => updateGlobalImportState({ importStatus: val });
   const setIsMonitoring = (val: boolean) => updateGlobalImportState({ isMonitoring: val });
   const setSelectedTask = (val: string | null) => updateGlobalImportState({ selectedTask: val });
 
-  const [maStats, setMaStats] = useState<any>(null);
+  const [maStats, setMaStats] = useState<MADataStats | null>(null);
 
   const importTasks: ImportTask[] = [
     {
@@ -94,13 +94,6 @@ export const BatchImportPanel: React.FC = () => {
       description: language === 'zh' ? '导入股票基本面数据（市值、市盈率、市净率等）' : 'Import fundamental data (market cap, P/E, P/B, etc.)',
       icon: <BarChart3 className="text-purple-400" size={20} />,
       endpoint: 'fundamentals'
-    },
-    {
-      id: 'indicators',
-      name: language === 'zh' ? '技术指标数据' : 'Technical Indicators',
-      description: language === 'zh' ? '导入技术指标数据（MA5/10/20/60、MACD、KDJ、RSI等）' : 'Import technical indicators (MA, MACD, KDJ, RSI)',
-      icon: <Activity className="text-emerald-400" size={20} />,
-      endpoint: 'indicators'
     }
   ];
 
@@ -146,11 +139,7 @@ export const BatchImportPanel: React.FC = () => {
   });
 
   // Load initial status on mount
-  useEffect(() => {
-    loadImportStatus();
-  }, []);
-
-  const loadImportStatus = async () => {
+  const loadImportStatus = useCallback(async () => {
     try {
       const status = await getImportStatus();
       setImportStatus(status);
@@ -160,7 +149,11 @@ export const BatchImportPanel: React.FC = () => {
     } catch (err) {
       console.error('Error loading import status:', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadImportStatus();
+  }, [loadImportStatus]);
 
   // Date validation
   type DateValidationStatus = 'valid' | 'invalid' | 'weekend' | 'future' | 'holiday';
@@ -296,20 +289,6 @@ export const BatchImportPanel: React.FC = () => {
     }
   };
 
-  const getStatusIcon = (status?: any) => {
-    if (!status) return null;
-    
-    if (status.is_running) {
-      return <RotateCcw className="text-blue-500 animate-spin" size={14} />;
-    }
-    
-    if (status.progress === 100) {
-      return <CheckCircle className="text-green-500" size={14} />;
-    }
-    
-    return <AlertCircle className="text-yellow-500" size={14} />;
-  };
-
   return (
     <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between">
@@ -371,7 +350,7 @@ export const BatchImportPanel: React.FC = () => {
         </div>
 
         {/* Import Task Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {importTasks.map((task) => (
             <div
               key={task.id}

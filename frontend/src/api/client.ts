@@ -10,6 +10,225 @@ const retryConfig = {
   retryableStatus: [408, 429, 500, 502, 503, 504],
 };
 
+export interface GenericApiResponse {
+  status?: string;
+  success?: boolean;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export interface PresetTaskParam {
+  name: string;
+  type: string;
+  description: string;
+}
+
+export interface PresetTaskItem {
+  id: string;
+  name: string;
+  description: string;
+  params?: PresetTaskParam[];
+}
+
+export interface PresetTaskExecuteRequest {
+  task_type: string;
+  params?: Record<string, unknown>;
+}
+
+export interface PresetTaskStatus extends GenericApiResponse {
+  is_running: boolean;
+  task_type?: string;
+  progress?: number;
+  current?: number;
+  total?: number;
+}
+
+export interface ImportHistoricalRequest {
+  date: string;
+  task_type: string;
+}
+
+export interface ImportStatus extends GenericApiResponse {
+  task_id?: string | null;
+  is_running: boolean;
+  current?: number;
+  total?: number;
+  processed?: number;
+  progress?: number;
+  current_step?: string;
+}
+
+export interface ImportTaskResponse {
+  success?: boolean;
+  message?: string;
+  status?: ImportStatus;
+  [key: string]: unknown;
+}
+
+export interface MADataStats {
+  stock_count: number;
+  record_count: number;
+  start_date: string | null;
+  end_date: string | null;
+}
+
+export interface MADataStatsResponse extends GenericApiResponse {
+  success: boolean;
+  stats: MADataStats;
+}
+
+export interface DataDevTask {
+  id: number;
+  name: string;
+  description?: string;
+  sql_content?: string;
+  cron_expression?: string;
+  enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  last_status?: string;
+  last_run?: string;
+  last_error?: string;
+  [key: string]: unknown;
+}
+
+export interface DataDevTaskPayload {
+  name: string;
+  description: string;
+  sql_content: string;
+  cron_expression: string;
+  enabled: boolean;
+}
+
+export interface DataDevTaskLog {
+  id: number;
+  execution_start: string;
+  execution_end?: string | null;
+  status: string;
+  error_message?: string | null;
+  affected_rows?: number;
+}
+
+export interface DatabaseTableInfo {
+  name: string;
+  columns: string[];
+  rowCount: number;
+}
+
+export interface DatabaseQueryResult {
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+  rowCount: number;
+  totalCount?: number;
+}
+
+export interface DataHubDataset {
+  id: string;
+  name: string;
+  table: string;
+  exists: boolean;
+  row_count: number;
+  fields: string[];
+  primary_keys: string[];
+  refresh_frequency: string;
+  dependencies: string[];
+  latest_snapshot: string | null;
+  freshness_status: 'green' | 'yellow' | 'red';
+}
+
+export interface DataHubDatasetFreshness {
+  dataset: DataHubDataset;
+  recent_jobs: DataHubJob[];
+}
+
+export interface DataHubJob {
+  job_key: string;
+  action: string;
+  scope?: string | null;
+  params?: Record<string, unknown>;
+  status: 'queued' | 'running' | 'success' | 'failed' | 'cancelled' | string;
+  progress: number;
+  current: number;
+  total: number;
+  message?: string | null;
+  error_message?: string | null;
+  result?: Record<string, unknown> | null;
+  logs?: DataHubJobLog[];
+  parent_job_key?: string | null;
+  created_at?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface DataHubJobLog {
+  timestamp: string;
+  level: string;
+  message: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface DataHubQualityCheck {
+  dataset_id: string;
+  status: 'green' | 'yellow' | 'red';
+  title: string;
+  detail: string;
+  metrics: Record<string, unknown>;
+}
+
+export interface DataHubQualityReport {
+  report_key: string;
+  scope: string[];
+  status: 'green' | 'yellow' | 'red';
+  summary: {
+    total_checks: number;
+    green: number;
+    yellow: number;
+    red: number;
+    status: 'green' | 'yellow' | 'red';
+  };
+  checks: DataHubQualityCheck[];
+  created_at: string;
+  rule_templates?: Array<{
+    id: string;
+    name: string;
+    severity: string;
+  }>;
+}
+
+export interface DataHubScreenerSnapshot {
+  dataset_id: string;
+  as_of: string | null;
+  version: string;
+}
+
+export interface DataHubScreenerResponse {
+  status: string;
+  snapshot: DataHubScreenerSnapshot;
+  data: MAConvergenceStock[];
+  count: number;
+  total_found: number;
+  params: MAConvergenceParams;
+}
+
+export interface DataHubFactorFeaturesResponse {
+  status: string;
+  snapshot: {
+    dataset_id: string;
+    as_of: string | null;
+    version: string;
+  };
+  factor_definitions: Array<Record<string, unknown>>;
+  stats: {
+    factor_count: number;
+    data_count: number;
+    latest_date: string | null;
+    stock_count: number;
+    category_stats: Record<string, number>;
+  };
+  selected_factor?: Record<string, unknown> | null;
+  ranking: Array<Record<string, unknown>>;
+}
+
 // Extend axios config type to include retry count
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   __retryCount?: number;
@@ -195,103 +414,191 @@ export const refreshMarketCalendarWithFreeData = async (months = 6): Promise<Cal
   return response.data;
 };
 
-export const generateMarketCalendarWithAI = async (params: { start_date: string; end_date: string }): Promise<any> => {
-  const response = await apiClient.post<any>('/market/calendar/generate-with-ai', null, { params });
+export const generateMarketCalendarWithAI = async (params: { start_date: string; end_date: string }): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>('/market/calendar/generate-with-ai', null, { params });
   return response.data;
 };
 
 // Preset Tasks API
-export const getPresetTasks = async (): Promise<any[]> => {
-  const response = await apiClient.get<any[]>('/preset-tasks');
+export const getPresetTasks = async (): Promise<PresetTaskItem[]> => {
+  const response = await apiClient.get<PresetTaskItem[]>('/preset-tasks');
   return response.data;
 };
 
-export const executePresetTask = async (request: any): Promise<any> => {
-  const response = await apiClient.post<any>('/preset-tasks/execute', request);
+export const executePresetTask = async (request: PresetTaskExecuteRequest): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>('/preset-tasks/execute', request);
   return response.data;
 };
 
-export const getPresetTaskStatus = async (): Promise<any> => {
-  const response = await apiClient.get<any>('/preset-tasks/status');
+export const getPresetTaskStatus = async (): Promise<PresetTaskStatus> => {
+  const response = await apiClient.get<PresetTaskStatus>('/preset-tasks/status');
   return response.data;
 };
 
-export const cancelPresetTask = async (): Promise<any> => {
-  const response = await apiClient.post<any>('/preset-tasks/cancel');
+export const cancelPresetTask = async (): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>('/preset-tasks/cancel');
   return response.data;
 };
 
 // Batch Import API
-export const importHistoricalData = async (request: any): Promise<any> => {
-  const response = await apiClient.post<any>('/batch-import/historical-data', request);
+export const importHistoricalData = async (request: ImportHistoricalRequest): Promise<ImportTaskResponse> => {
+  const response = await apiClient.post<ImportTaskResponse>('/batch-import/historical-data', request);
   return response.data;
 };
 
-export const getImportStatus = async (): Promise<any> => {
-  const response = await apiClient.get<any>('/batch-import/status');
+export const getImportStatus = async (): Promise<ImportStatus> => {
+  const response = await apiClient.get<ImportStatus>('/batch-import/status');
   return response.data;
 };
 
-export const cancelImportTask = async (): Promise<any> => {
-  const response = await apiClient.post<any>('/batch-import/cancel');
+export const cancelImportTask = async (): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>('/batch-import/cancel');
   return response.data;
 };
 
 // MA Data Import API
-export const importMAData = async (mainBoardOnly: boolean = true): Promise<any> => {
-  const response = await apiClient.post<any>('/batch-import/ma-data', { main_board_only: mainBoardOnly });
+export const importMAData = async (mainBoardOnly: boolean = true): Promise<ImportTaskResponse> => {
+  const response = await apiClient.post<ImportTaskResponse>('/batch-import/ma-data', { main_board_only: mainBoardOnly });
   return response.data;
 };
 
-export const getMADataStats = async (): Promise<any> => {
-  const response = await apiClient.get<any>('/batch-import/ma-data/stats');
+export const getMADataStats = async (): Promise<MADataStatsResponse> => {
+  const response = await apiClient.get<MADataStatsResponse>('/batch-import/ma-data/stats');
   return response.data;
 };
 
 // Data Development API
-export const getDataDevTasks = async (): Promise<any[]> => {
-  const response = await apiClient.get<any[]>('/data-dev/tasks');
+export const getDataDevTasks = async (): Promise<DataDevTask[]> => {
+  const response = await apiClient.get<DataDevTask[]>('/data-dev/tasks');
   return response.data;
 };
 
-export const createDataDevTask = async (task: any): Promise<any> => {
-  const response = await apiClient.post<any>('/data-dev/tasks', task);
+export const createDataDevTask = async (task: DataDevTaskPayload): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>('/data-dev/tasks', task);
   return response.data;
 };
 
-export const updateDataDevTask = async (taskId: number, task: any): Promise<any> => {
-  const response = await apiClient.put<any>(`/data-dev/tasks/${taskId}`, task);
+export const updateDataDevTask = async (taskId: number, task: DataDevTaskPayload): Promise<GenericApiResponse> => {
+  const response = await apiClient.put<GenericApiResponse>(`/data-dev/tasks/${taskId}`, task);
   return response.data;
 };
 
-export const deleteDataDevTask = async (taskId: number): Promise<any> => {
-  const response = await apiClient.delete<any>(`/data-dev/tasks/${taskId}`);
+export const deleteDataDevTask = async (taskId: number): Promise<GenericApiResponse> => {
+  const response = await apiClient.delete<GenericApiResponse>(`/data-dev/tasks/${taskId}`);
   return response.data;
 };
 
-export const runDataDevTask = async (taskId: number): Promise<any> => {
-  const response = await apiClient.post<any>(`/data-dev/tasks/${taskId}/run`);
+export const runDataDevTask = async (taskId: number): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>(`/data-dev/tasks/${taskId}/run`);
   return response.data;
 };
 
-export const getTaskLogs = async (taskId: number, limit = 50): Promise<any> => {
-  const response = await apiClient.get<any>(`/data-dev/tasks/${taskId}/logs?limit=${limit}`);
+export const getTaskLogs = async (taskId: number, limit = 50): Promise<DataDevTaskLog[]> => {
+  const response = await apiClient.get<DataDevTaskLog[]>(`/data-dev/tasks/${taskId}/logs?limit=${limit}`);
+  return response.data;
+};
+
+// Data Hub API
+export const getDataHubDatasets = async (): Promise<DataHubDataset[]> => {
+  const response = await apiClient.get<{ status: string; data: DataHubDataset[] }>('/data-hub/datasets');
+  return response.data.data || [];
+};
+
+export const getDataHubDatasetFreshness = async (datasetId: string): Promise<DataHubDatasetFreshness> => {
+  const response = await apiClient.get<{ status: string; data: DataHubDatasetFreshness }>(
+    `/data-hub/datasets/${datasetId}/freshness`
+  );
+  return response.data.data;
+};
+
+export const createDataHubJob = async (payload: {
+  action: string;
+  scope?: string;
+  params?: Record<string, unknown>;
+}): Promise<DataHubJob> => {
+  const response = await apiClient.post<{ status: string; data: DataHubJob }>('/data-hub/jobs', payload);
+  return response.data.data;
+};
+
+export const getDataHubJobs = async (params?: {
+  action?: string;
+  status?: string;
+  scope?: string;
+  parent_job_key?: string;
+  limit?: number;
+}): Promise<DataHubJob[]> => {
+  const response = await apiClient.get<{ status: string; data: DataHubJob[] }>('/data-hub/jobs', { params });
+  return response.data.data || [];
+};
+
+export const getDataHubJob = async (jobKey: string): Promise<DataHubJob> => {
+  const response = await apiClient.get<{ status: string; data: DataHubJob }>(`/data-hub/jobs/${jobKey}`);
+  return response.data.data;
+};
+
+export const getDataHubJobLogs = async (jobKey: string, limit = 200): Promise<DataHubJobLog[]> => {
+  const response = await apiClient.get<{ status: string; data: DataHubJobLog[] }>(`/data-hub/jobs/${jobKey}/logs`, {
+    params: { limit },
+  });
+  return response.data.data || [];
+};
+
+export const rerunDataHubJob = async (jobKey: string): Promise<DataHubJob> => {
+  const response = await apiClient.post<{ status: string; data: DataHubJob }>(`/data-hub/jobs/${jobKey}/rerun`);
+  return response.data.data;
+};
+
+export const cancelDataHubJob = async (jobKey: string): Promise<DataHubJob> => {
+  const response = await apiClient.post<{ status: string; data: DataHubJob }>(`/data-hub/jobs/${jobKey}/cancel`);
+  return response.data.data;
+};
+
+export const runDataHubQuality = async (datasets?: string[]): Promise<DataHubQualityReport> => {
+  const response = await apiClient.post<{ status: string; data: DataHubQualityReport }>(
+    '/data-hub/quality/run',
+    { datasets }
+  );
+  return response.data.data;
+};
+
+export const getDataHubQualityReport = async (): Promise<DataHubQualityReport | null> => {
+  const response = await apiClient.get<{ status: string; data: DataHubQualityReport | null }>(
+    '/data-hub/quality/report'
+  );
+  return response.data.data;
+};
+
+export const getDataHubScreenerFeatures = async (
+  params?: MAConvergenceParams
+): Promise<DataHubScreenerResponse> => {
+  const response = await apiClient.get<DataHubScreenerResponse>('/data-hub/features/screener', { params });
+  return response.data;
+};
+
+export const getDataHubFactorFeatures = async (params?: {
+  factor_code?: string;
+  date?: string;
+  limit?: number;
+  ascending?: boolean;
+  category?: string;
+}): Promise<DataHubFactorFeaturesResponse> => {
+  const response = await apiClient.get<DataHubFactorFeaturesResponse>('/data-hub/features/factors', { params });
   return response.data;
 };
 
 // Database Management API
-export const getDatabaseTables = async (): Promise<any[]> => {
-  const response = await apiClient.get<any[]>('/database/tables');
+export const getDatabaseTables = async (): Promise<DatabaseTableInfo[]> => {
+  const response = await apiClient.get<DatabaseTableInfo[]>('/database/tables');
   return response.data;
 };
 
-export const executeSqlQuery = async (query: string): Promise<any> => {
-  const response = await apiClient.post<any>('/database/query', { query });
+export const executeSqlQuery = async (query: string): Promise<DatabaseQueryResult> => {
+  const response = await apiClient.post<DatabaseQueryResult>('/database/query', { query });
   return response.data;
 };
 
-export const getTableData = async (tableName: string, limit: number = 100): Promise<any> => {
-  const response = await apiClient.get<any>(`/database/table/${tableName}?limit=${limit}`);
+export const getTableData = async (tableName: string, limit: number = 100): Promise<DatabaseQueryResult> => {
+  const response = await apiClient.get<DatabaseQueryResult>(`/database/table/${tableName}?limit=${limit}`);
   return response.data;
 };
 
@@ -388,13 +695,13 @@ export const scanMAConvergenceStocks = async (params?: MAConvergenceParams): Pro
   return response.data;
 };
 
-export const getStockMADetail = async (symbol: string, days?: number): Promise<any> => {
-  const response = await apiClient.get(`/screener/ma-convergence/${symbol}`, { params: { days } });
+export const getStockMADetail = async (symbol: string, days?: number): Promise<Record<string, unknown>> => {
+  const response = await apiClient.get<Record<string, unknown>>(`/screener/ma-convergence/${symbol}`, { params: { days } });
   return response.data;
 };
 
-export const checkStockMAConvergence = async (symbol: string, days?: number, max_range_pct?: number): Promise<any> => {
-  const response = await apiClient.get(`/screener/ma-convergence/check/${symbol}`, { params: { days, max_range_pct } });
+export const checkStockMAConvergence = async (symbol: string, days?: number, max_range_pct?: number): Promise<Record<string, unknown>> => {
+  const response = await apiClient.get<Record<string, unknown>>(`/screener/ma-convergence/check/${symbol}`, { params: { days, max_range_pct } });
   return response.data;
 };
 
@@ -466,4 +773,33 @@ export const backfillConceptHistory = async (days: number = 30): Promise<Backfil
     timeout: 600000  // 10分钟超时
   });
   return response.data;
+};
+
+export interface ReplayNote {
+  note_date: string;
+  view_mode: 'sector' | 'lianban' | string;
+  template_id?: string | null;
+  headline?: string | null;
+  main_line?: string | null;
+  core_targets?: string | null;
+  risk_alert?: string | null;
+  action_plan?: string | null;
+  extra?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const listReplayNotes = async (limit: number = 60): Promise<ReplayNote[]> => {
+  const response = await apiClient.get<{ status: string; data: ReplayNote[] }>('/market/pulse/replay-notes', { params: { limit } });
+  return response.data.data || [];
+};
+
+export const getReplayNote = async (noteDate: string): Promise<ReplayNote | null> => {
+  const response = await apiClient.get<{ status: string; data: ReplayNote | null }>(`/market/pulse/replay-notes/${noteDate}`);
+  return response.data.data;
+};
+
+export const saveReplayNote = async (payload: Partial<ReplayNote> & { note_date: string }): Promise<ReplayNote> => {
+  const response = await apiClient.post<{ status: string; data: ReplayNote }>('/market/pulse/replay-notes', payload);
+  return response.data.data;
 };

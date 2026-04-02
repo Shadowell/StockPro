@@ -1,20 +1,22 @@
 import React, { useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { useStore } from '../stores/useStore';
-import { getTranslation } from '../lib/i18n';
+import { getTranslation, TranslationKey } from '../lib/i18n';
 
 type ChartPanelMode = 'both' | 'daily' | 'intraday';
 type ChartPanelOrder = 'intraday_first' | 'daily_first';
+type TooltipAxisParam = { dataIndex?: number };
+type AxisPointerLabelParam = { value: number };
 
 export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrder }> = ({ mode = 'both', order = 'intraday_first' }) => {
   const { selectedStock, dailyData, intradayData, isLoadingCharts, fundamentals, language } = useStore();
-  const t = (key: any) => getTranslation(language, key);
+  const t = (key: TranslationKey) => getTranslation(language, key);
 
   // 获取分时数据对应的交易日期
   const intradayTradeDate = useMemo(() => {
     if (!intradayData || intradayData.length === 0) return null;
     // 后端返回的第一条数据中包含 trade_date
-    const firstItem = intradayData[0] as any;
+    const firstItem = intradayData[0];
     if (firstItem.trade_date) {
       return firstItem.trade_date;
     }
@@ -32,7 +34,7 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
   const preClose = useMemo(() => {
     // 1. 优先使用后端返回的昨收价
     if (intradayData && intradayData.length > 0) {
-      const firstItem = intradayData[0] as any;
+      const firstItem = intradayData[0];
       if (firstItem.pre_close != null) {
         return firstItem.pre_close;
       }
@@ -114,12 +116,13 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
         backgroundColor: 'rgba(10, 10, 20, 0.9)',
         borderColor: '#444',
         textStyle: { color: '#fff' },
-        formatter: function(params: any) {
+        formatter: function(params: TooltipAxisParam[]) {
           const dataIndex = params[0]?.dataIndex;
+          if (dataIndex == null) return '';
           const item = limitedData[dataIndex];
           if (!item) return '';
           
-          let result = [
+          const result = [
             `<div style="font-weight:bold;margin-bottom:4px">${item.date}</div>`,
             `开: ${item.open.toFixed(2)}`,
             `高: ${item.high.toFixed(2)}`,
@@ -351,8 +354,9 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
         backgroundColor: 'rgba(10, 10, 20, 0.95)',
         borderColor: '#444',
         textStyle: { color: '#fff' },
-        formatter: function(params: any) {
+        formatter: function(params: TooltipAxisParam[]) {
           const param = params[0];
+          if (!param || param.dataIndex == null) return '';
           const dataIndex = param.dataIndex;
           const time = times[dataIndex];
           const price = prices[dataIndex];
@@ -413,7 +417,6 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
               formatter: (value: number) => {
                 // 同时显示涨跌幅和对应价格
                 if (!preClose) return value.toFixed(2) + '%';
-                const actualPrice = preClose * (1 + value / 100);
                 if (Math.abs(value) < 0.01) {
                   return `0% (${preClose.toFixed(2)})`;
                 }
@@ -440,7 +443,7 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
                 show: true,
                 backgroundColor: '#1e293b',
                 color: '#fff',
-                formatter: (params: any) => {
+                formatter: (params: AxisPointerLabelParam) => {
                   const pct = params.value;
                   const price = preClose ? preClose * (1 + pct / 100) : 0;
                   const sign = pct >= 0 ? '+' : '';

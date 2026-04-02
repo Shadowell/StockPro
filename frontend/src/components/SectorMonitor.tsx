@@ -1,13 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../stores/useStore';
 import { ChevronDown, Filter } from 'lucide-react';
-import { getTranslation } from '../lib/i18n';
 
 type ThresholdOption = '2' | '3' | '5' | '8';
 
 export const SectorMonitor: React.FC = () => {
   const { sectors, isLoadingSectors, language } = useStore();
-  const t = (key: any) => getTranslation(language, key);
   
   const [threshold, setThreshold] = useState<ThresholdOption>(() => {
     if (typeof window !== 'undefined') {

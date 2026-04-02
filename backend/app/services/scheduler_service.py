@@ -8,13 +8,14 @@
 """
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, time, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from app.services.data_sync_service import data_sync_service
 from app.services.factor_sync_service import factor_sync_service
+from app.db.local_db import db_instance as db
 
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,14 @@ class SchedulerService:
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
         self.is_initialized = False
+        self.data_dev_job_prefix = "data_dev_task_"
+        self.manual_task_status: Dict[str, Any] = {
+            "task_id": None,
+            "is_running": False,
+            "total": 0,
+            "processed": 0,
+            "message": "Idle",
+        }
         
     def _is_trading_time(self) -> bool:
         """判断当前是否为交易时间（周一到周五 9:00-15:30）"""
@@ -56,6 +65,345 @@ class SchedulerService:
             return True
         
         return False
+
+    def _data_dev_job_id(self, task_id: int) -> str:
+        return f"{self.data_dev_job_prefix}{task_id}"
+
+    def _schedule_data_dev_task(self, task_id: int, cron_expression: str) -> None:
+        trigger = CronTrigger.from_crontab(cron_expression)
+        self.scheduler.add_job(
+            func=self._execute_data_dev_task_job,
+            trigger=trigger,
+            id=self._data_dev_job_id(task_id),
+            name=f"数据开发任务#{task_id}",
+            args=[task_id],
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=300,
+        )
+
+    def _unschedule_data_dev_task(self, task_id: int) -> None:
+        job_id = self._data_dev_job_id(task_id)
+        try:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+        except Exception:
+            logger.debug("No data-dev job found for task_id=%s", task_id)
+
+    def _reload_data_dev_jobs(self) -> None:
+        try:
+            tasks = self.get_data_dev_tasks()
+            for task in tasks:
+                if task.get("enabled"):
+                    self._schedule_data_dev_task(task["id"], task["cron_expression"])
+                else:
+                    self._unschedule_data_dev_task(task["id"])
+            logger.info("Loaded %s data-dev task jobs", len(tasks))
+        except Exception as e:
+            logger.error("Failed to reload data-dev jobs: %s", e)
+
+    def get_data_dev_tasks(self) -> List[Dict[str, Any]]:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT
+                    t.id,
+                    t.name,
+                    t.description,
+                    t.sql_content,
+                    t.cron_expression,
+                    t.enabled,
+                    t.created_at,
+                    t.updated_at,
+                    l.status AS last_status,
+                    l.execution_start AS last_run,
+                    l.error_message AS last_error
+                FROM data_dev_tasks t
+                LEFT JOIN data_dev_logs l
+                    ON l.id = (
+                        SELECT id
+                        FROM data_dev_logs
+                        WHERE task_id = t.id
+                        ORDER BY execution_start DESC, id DESC
+                        LIMIT 1
+                    )
+                ORDER BY t.updated_at DESC, t.id DESC
+                """
+            )
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "description": row[2],
+                    "sql_content": row[3],
+                    "cron_expression": row[4],
+                    "enabled": bool(row[5]),
+                    "created_at": row[6],
+                    "updated_at": row[7],
+                    "last_status": row[8],
+                    "last_run": row[9],
+                    "last_error": row[10],
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+
+    def add_data_dev_task(
+        self,
+        name: str,
+        description: str,
+        sql_content: str,
+        cron_expression: str,
+        enabled: bool = True,
+    ) -> int:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO data_dev_tasks (name, description, sql_content, cron_expression, enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                """,
+                (name, description, sql_content, cron_expression, 1 if enabled else 0),
+            )
+            task_id = cursor.lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+
+        if enabled:
+            self._schedule_data_dev_task(task_id, cron_expression)
+        else:
+            self._unschedule_data_dev_task(task_id)
+
+        return int(task_id)
+
+    def update_data_dev_task(
+        self,
+        task_id: int,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        sql_content: Optional[str] = None,
+        cron_expression: Optional[str] = None,
+        enabled: Optional[bool] = None,
+    ) -> None:
+        updates: List[str] = []
+        values: List[Any] = []
+        if name is not None:
+            updates.append("name = ?")
+            values.append(name)
+        if description is not None:
+            updates.append("description = ?")
+            values.append(description)
+        if sql_content is not None:
+            updates.append("sql_content = ?")
+            values.append(sql_content)
+        if cron_expression is not None:
+            updates.append("cron_expression = ?")
+            values.append(cron_expression)
+        if enabled is not None:
+            updates.append("enabled = ?")
+            values.append(1 if enabled else 0)
+
+        if not updates:
+            return
+
+        updates.append("updated_at = datetime('now')")
+        values.append(task_id)
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"UPDATE data_dev_tasks SET {', '.join(updates)} WHERE id = ?",
+                values,
+            )
+            if cursor.rowcount == 0:
+                raise ValueError("Task not found")
+            conn.commit()
+
+            cursor.execute(
+                "SELECT cron_expression, enabled FROM data_dev_tasks WHERE id = ?",
+                (task_id,),
+            )
+            row = cursor.fetchone()
+        finally:
+            conn.close()
+
+        if not row:
+            raise ValueError("Task not found")
+
+        next_cron, next_enabled = row[0], bool(row[1])
+        if next_enabled:
+            self._schedule_data_dev_task(task_id, next_cron)
+        else:
+            self._unschedule_data_dev_task(task_id)
+
+    def delete_data_dev_task(self, task_id: int) -> None:
+        self._unschedule_data_dev_task(task_id)
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM data_dev_logs WHERE task_id = ?", (task_id,))
+            cursor.execute("DELETE FROM data_dev_tasks WHERE id = ?", (task_id,))
+            if cursor.rowcount == 0:
+                raise ValueError("Task not found")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_task_logs(self, task_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT id, execution_start, execution_end, status, error_message, affected_rows
+                FROM data_dev_logs
+                WHERE task_id = ?
+                ORDER BY execution_start DESC, id DESC
+                LIMIT ?
+                """,
+                (task_id, max(1, min(int(limit), 500))),
+            )
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "execution_start": row[1],
+                    "execution_end": row[2],
+                    "status": row[3],
+                    "error_message": row[4],
+                    "affected_rows": row[5],
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+
+    async def _execute_data_dev_task_job(self, task_id: int) -> None:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT name, sql_content, enabled FROM data_dev_tasks WHERE id = ?",
+                (task_id,),
+            )
+            row = cursor.fetchone()
+        finally:
+            conn.close()
+
+        if not row:
+            logger.warning("Data-dev task not found: %s", task_id)
+            self._unschedule_data_dev_task(task_id)
+            return
+
+        if not bool(row[2]):
+            return
+
+        await self.execute_data_dev_task(task_id=task_id, sql_content=row[1], task_name=row[0])
+
+    def _execute_data_dev_task_sync(self, task_id: int, sql_content: str, task_name: str) -> Dict[str, Any]:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        log_id: Optional[int] = None
+        affected_rows = 0
+        try:
+            cursor.execute(
+                """
+                INSERT INTO data_dev_logs (task_id, execution_start, status)
+                VALUES (?, datetime('now'), 'running')
+                """,
+                (task_id,),
+            )
+            log_id = cursor.lastrowid
+            conn.commit()
+
+            statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
+            for stmt in statements:
+                cursor.execute(stmt)
+                if cursor.rowcount and cursor.rowcount > 0:
+                    affected_rows += int(cursor.rowcount)
+
+            cursor.execute(
+                """
+                UPDATE data_dev_logs
+                SET execution_end = datetime('now'), status = 'success', affected_rows = ?, error_message = NULL
+                WHERE id = ?
+                """,
+                (affected_rows, log_id),
+            )
+            cursor.execute(
+                "UPDATE data_dev_tasks SET updated_at = datetime('now') WHERE id = ?",
+                (task_id,),
+            )
+            conn.commit()
+            logger.info("Data-dev task executed successfully: %s(%s), affected_rows=%s", task_name, task_id, affected_rows)
+            return {"status": "success", "affected_rows": affected_rows}
+        except Exception as e:
+            conn.rollback()
+            if log_id is not None:
+                try:
+                    cursor.execute(
+                        """
+                        UPDATE data_dev_logs
+                        SET execution_end = datetime('now'), status = 'failed', error_message = ?
+                        WHERE id = ?
+                        """,
+                        (str(e), log_id),
+                    )
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+            logger.error("Data-dev task failed: %s(%s), error=%s", task_name, task_id, e)
+            raise
+        finally:
+            conn.close()
+
+    async def execute_data_dev_task(self, task_id: int, sql_content: str, task_name: str) -> Dict[str, Any]:
+        return await asyncio.to_thread(self._execute_data_dev_task_sync, task_id, sql_content, task_name)
+
+    def get_status(self) -> Dict[str, Any]:
+        return dict(self.manual_task_status)
+
+    async def fetch_and_save_all_stocks_history(self) -> None:
+        if self.manual_task_status.get("is_running"):
+            return
+
+        task_id = f"manual_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.manual_task_status = {
+            "task_id": task_id,
+            "is_running": True,
+            "total": 1,
+            "processed": 0,
+            "message": "Running stock history sync...",
+        }
+
+        try:
+            result = await asyncio.to_thread(data_sync_service.sync_stock_history)
+            status = str(result.get("status", "")).lower()
+            message = str(result.get("message", "Completed"))
+            self.manual_task_status.update(
+                {
+                    "is_running": False,
+                    "processed": 1,
+                    "message": message if status != "error" else f"Error: {message}",
+                }
+            )
+        except Exception as e:
+            logger.error("Manual stock history sync failed: %s", e)
+            self.manual_task_status.update(
+                {
+                    "is_running": False,
+                    "processed": 0,
+                    "message": f"Error: {e}",
+                }
+            )
         
     async def initialize(self):
         """
@@ -178,6 +526,9 @@ class SchedulerService:
         #     name='初始数据同步'
         # )
         logger.info("Initial sync disabled for stability")
+
+        # 加载数据开发任务调度
+        self._reload_data_dev_jobs()
         
         self.is_initialized = True
         logger.info("Scheduler initialized with data sync jobs (daily/hourly/minute)")

@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigation } from './Navigation';
 import { Activity, Languages } from 'lucide-react';
 import { useStore } from '../stores/useStore';
-import { getTranslation } from '../lib/i18n';
+import { getTranslation, TranslationKey } from '../lib/i18n';
 import clsx from 'clsx';
 
 interface MainLayoutProps {
@@ -18,7 +18,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, title }) => {
     setLanguage 
   } = useStore();
 
-  const t = (key: any) => getTranslation(language, key);
+  const t = (key: TranslationKey) => getTranslation(language, key);
 
   // 10秒刷新一次市场指数
   React.useEffect(() => {

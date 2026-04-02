@@ -10,10 +10,32 @@ interface TableInfo {
 
 interface QueryResult {
   columns: string[];
-  rows: any[];
+  rows: Array<Record<string, unknown>>;
   rowCount: number;
   totalCount?: number;
 }
+
+const stringifyCell = (value: unknown): string => {
+  if (value == null) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
+const downloadCsv = (filename: string, columns: string[], rows: Array<Record<string, unknown>>) => {
+  if (!columns.length) return;
+  const escapedHeader = columns.map((col) => `"${col.replace(/"/g, '""')}"`).join(',');
+  const body = rows
+    .map((row) => columns.map((col) => `"${stringifyCell(row[col]).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const csv = `${escapedHeader}\n${body}`;
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+};
 
 export const DatabaseManager: React.FC = () => {
   const [tables, setTables] = useState<TableInfo[]>([]);
@@ -42,6 +64,7 @@ export const DatabaseManager: React.FC = () => {
   const loadTableInfo = async () => {
     try {
       setLoading(true);
+      setError(null);
       const tableList = await getDatabaseTables();
       setTables(tableList);
     } catch (err) {
@@ -58,6 +81,7 @@ export const DatabaseManager: React.FC = () => {
     
     try {
       setLoading(true);
+      setError(null);
       const data = await getTableData(tableName, 10);
       setTableData(data);
     } catch (err) {
@@ -99,6 +123,20 @@ export const DatabaseManager: React.FC = () => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       executeQuery();
     }
+  };
+
+  const handleExportTablePreview = () => {
+    if (!selectedTable || !tableData || !tableData.columns.length || tableData.rows.length === 0) {
+      return;
+    }
+    downloadCsv(`${selectedTable}_preview.csv`, tableData.columns, tableData.rows);
+  };
+
+  const handleExportQueryResult = () => {
+    if (!queryResult || !queryResult.columns.length || queryResult.rows.length === 0) {
+      return;
+    }
+    downloadCsv('sql_query_result.csv', queryResult.columns, queryResult.rows);
   };
 
   return (
@@ -202,7 +240,11 @@ export const DatabaseManager: React.FC = () => {
                     {tableData.rowCount.toLocaleString()} 行
                   </span>
                 </div>
-                <button className="text-xs px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-gray-300">
+                <button
+                  onClick={handleExportTablePreview}
+                  disabled={!tableData || tableData.rows.length === 0}
+                  className="text-xs px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   导出
                 </button>
               </div>
@@ -223,7 +265,7 @@ export const DatabaseManager: React.FC = () => {
                       <tr key={rowIndex} className="hover:bg-slate-800/30">
                         {tableData.columns.map((col, colIndex) => (
                           <td key={colIndex} className="px-3 py-1.5 first:pl-3 last:pr-3 text-gray-200 truncate max-w-xs">
-                            {String(row[col])}
+                            {stringifyCell(row[col])}
                           </td>
                         ))}
                       </tr>
@@ -274,7 +316,11 @@ export const DatabaseManager: React.FC = () => {
                   <span className="text-xs text-slate-400">
                     查询结果: {queryResult.rowCount.toLocaleString()} 行
                   </span>
-                  <button className="text-xs px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-gray-300 flex items-center gap-1">
+                  <button
+                    onClick={handleExportQueryResult}
+                    disabled={queryResult.rows.length === 0}
+                    className="text-xs px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-gray-300 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <Download size={10} />
                     导出CSV
                   </button>
@@ -296,7 +342,7 @@ export const DatabaseManager: React.FC = () => {
                         <tr key={rowIndex} className="hover:bg-slate-800/30">
                           {queryResult.columns.map((col, colIndex) => (
                             <td key={colIndex} className="px-3 py-1.5 first:pl-3 last:pr-3 text-gray-200 truncate max-w-xs">
-                              {String(row[col])}
+                              {stringifyCell(row[col])}
                             </td>
                           ))}
                         </tr>

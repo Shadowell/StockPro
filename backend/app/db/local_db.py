@@ -49,13 +49,39 @@ class LocalDatabase:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
+                current_price REAL,
+                change_percent REAL,
+                turnover_rate REAL,
+                volume_ratio REAL,
+                pe_dynamic REAL,
                 pe REAL,
                 pb REAL,
                 dividend_yield REAL,
+                total_market_cap BIGINT,
+                float_market_cap BIGINT,
+                amplitude REAL,
                 market_cap BIGINT,
+                last_trade_date DATE,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # 兼容历史版本：老库可能缺少新增字段
+        cursor.execute("PRAGMA table_info(stock_fundamentals)")
+        stock_fundamental_columns = {row[1] for row in cursor.fetchall()}
+        stock_fundamental_required_columns = {
+            "current_price": "REAL",
+            "change_percent": "REAL",
+            "turnover_rate": "REAL",
+            "volume_ratio": "REAL",
+            "pe_dynamic": "REAL",
+            "total_market_cap": "BIGINT",
+            "float_market_cap": "BIGINT",
+            "amplitude": "REAL",
+            "last_trade_date": "DATE",
+        }
+        for col, col_type in stock_fundamental_required_columns.items():
+            if col not in stock_fundamental_columns:
+                cursor.execute(f"ALTER TABLE stock_fundamentals ADD COLUMN {col} {col_type}")
         
         # 创建市场日历事件表
         cursor.execute('''
@@ -294,7 +320,38 @@ class LocalDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_strategy_results_execution_time ON strategy_results(execution_time)
         ''')
-        
+
+        # 创建数据开发任务表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS data_dev_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                sql_content TEXT NOT NULL,
+                cron_expression TEXT NOT NULL,
+                enabled BOOLEAN DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_data_dev_tasks_enabled ON data_dev_tasks(enabled)')
+
+        # 创建数据开发任务执行日志表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS data_dev_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER,
+                execution_start DATETIME DEFAULT CURRENT_TIMESTAMP,
+                execution_end DATETIME,
+                status TEXT CHECK(status IN ('success', 'failed', 'running')),
+                error_message TEXT,
+                affected_rows INTEGER,
+                FOREIGN KEY (task_id) REFERENCES data_dev_tasks(id)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_data_dev_logs_task_id ON data_dev_logs(task_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_data_dev_logs_start ON data_dev_logs(execution_start DESC)')
+
         # 创建股票均线数据表（存储每日M5/M10/M20/M30均线）
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS stock_ma_data (
@@ -324,6 +381,24 @@ class LocalDatabase:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_stock_ma_diff ON stock_ma_data(ma_diff_pct)
         ''')
+
+        # 创建M5/M10/M20/M30均线结果表（供预置任务写入）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS stock_ma_indicators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL,
+                date DATE NOT NULL,
+                ma5 REAL,
+                ma10 REAL,
+                ma20 REAL,
+                ma30 REAL,
+                price REAL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(code, date)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_stock_ma_indicators_code_date ON stock_ma_indicators(code, date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_stock_ma_indicators_date ON stock_ma_indicators(date)')
         
         # ============ 因子库相关表 ============
         
@@ -539,6 +614,71 @@ class LocalDatabase:
         ''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_concept_date ON daily_concept_sectors(date DESC)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_daily_concept_name ON daily_concept_sectors(sector_name)')
+
+        # 创建复盘日志表（复盘中心结论持久化）
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS replay_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_date DATE NOT NULL UNIQUE,
+                view_mode TEXT NOT NULL DEFAULT 'sector',
+                template_id TEXT,
+                headline TEXT,
+                main_line TEXT,
+                core_targets TEXT,
+                risk_alert TEXT,
+                action_plan TEXT,
+                extra_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_replay_notes_date ON replay_notes(note_date DESC)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_replay_notes_updated ON replay_notes(updated_at DESC)')
+
+        # ============ 数据中台（Data Hub）相关表 ============
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS data_hub_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_key TEXT NOT NULL UNIQUE,
+                action TEXT NOT NULL,
+                scope TEXT,
+                params_json TEXT,
+                logs_json TEXT,
+                status TEXT NOT NULL DEFAULT 'queued',
+                progress REAL DEFAULT 0,
+                current INTEGER DEFAULT 0,
+                total INTEGER DEFAULT 0,
+                message TEXT,
+                error_message TEXT,
+                result_json TEXT,
+                parent_job_key TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                started_at TIMESTAMP,
+                finished_at TIMESTAMP
+            )
+        ''')
+        cursor.execute("PRAGMA table_info(data_hub_jobs)")
+        data_hub_job_columns = {row[1] for row in cursor.fetchall()}
+        if "logs_json" not in data_hub_job_columns:
+            cursor.execute("ALTER TABLE data_hub_jobs ADD COLUMN logs_json TEXT")
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_data_hub_jobs_status ON data_hub_jobs(status)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_data_hub_jobs_action ON data_hub_jobs(action)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_data_hub_jobs_scope ON data_hub_jobs(scope)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_data_hub_jobs_created ON data_hub_jobs(created_at DESC)')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS data_hub_quality_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                report_key TEXT NOT NULL UNIQUE,
+                scope TEXT,
+                status TEXT NOT NULL,
+                summary_json TEXT,
+                checks_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_data_hub_quality_created ON data_hub_quality_reports(created_at DESC)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_data_hub_quality_status ON data_hub_quality_reports(status)')
         
         conn.commit()
         conn.close()
@@ -596,18 +736,37 @@ class LocalDatabase:
         """插入股票基本面数据"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
+        current_price = fundamentals.get('current_price', fundamentals.get('price'))
+        change_percent = fundamentals.get('change_percent')
+        turnover_rate = fundamentals.get('turnover_rate', fundamentals.get('turnover'))
+        pe_dynamic = fundamentals.get('pe_dynamic', fundamentals.get('pe'))
+        total_market_cap = fundamentals.get('total_market_cap', fundamentals.get('market_cap'))
+
         cursor.execute('''
             INSERT OR REPLACE INTO stock_fundamentals
-            (symbol, name, pe, pb, dividend_yield, market_cap)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (
+                symbol, name, current_price, change_percent, turnover_rate, volume_ratio,
+                pe_dynamic, pe, pb, dividend_yield, total_market_cap, float_market_cap,
+                amplitude, market_cap, last_trade_date, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ''', (
             fundamentals.get('symbol', symbol),
             fundamentals.get('name', ''),
-            fundamentals.get('pe'),
+            current_price,
+            change_percent,
+            turnover_rate,
+            fundamentals.get('volume_ratio'),
+            pe_dynamic,
+            fundamentals.get('pe', pe_dynamic),
             fundamentals.get('pb'),
             fundamentals.get('dividend_yield'),
-            fundamentals.get('market_cap')
+            total_market_cap,
+            fundamentals.get('float_market_cap'),
+            fundamentals.get('amplitude'),
+            fundamentals.get('market_cap', total_market_cap),
+            fundamentals.get('date')
         ))
         
         conn.commit()
@@ -619,17 +778,36 @@ class LocalDatabase:
         cursor = conn.cursor()
         
         for record in records:
+            current_price = record.get('current_price', record.get('price'))
+            change_percent = record.get('change_percent')
+            turnover_rate = record.get('turnover_rate', record.get('turnover'))
+            pe_dynamic = record.get('pe_dynamic', record.get('pe'))
+            total_market_cap = record.get('total_market_cap', record.get('market_cap'))
+
             cursor.execute('''
                 INSERT OR REPLACE INTO stock_fundamentals
-                (symbol, name, pe, pb, dividend_yield, market_cap)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (
+                    symbol, name, current_price, change_percent, turnover_rate, volume_ratio,
+                    pe_dynamic, pe, pb, dividend_yield, total_market_cap, float_market_cap,
+                    amplitude, market_cap, last_trade_date, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ''', (
                 record.get('code', record.get('symbol')),
                 record.get('name', ''),
-                record.get('pe_dynamic', record.get('pe')),
+                current_price,
+                change_percent,
+                turnover_rate,
+                record.get('volume_ratio'),
+                pe_dynamic,
+                record.get('pe', pe_dynamic),
                 record.get('pb'),
                 record.get('dividend_yield'),
-                record.get('total_market_cap', record.get('market_cap'))
+                total_market_cap,
+                record.get('float_market_cap'),
+                record.get('amplitude'),
+                record.get('market_cap', total_market_cap),
+                record.get('date')
             ))
         
         conn.commit()
@@ -638,14 +816,14 @@ class LocalDatabase:
     def get_stock_fundamentals(self, symbol: str) -> Optional[Dict]:
         """获取股票基本面数据"""
         conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT * FROM stock_fundamentals WHERE symbol = ?", (symbol,))
         row = cursor.fetchone()
         
         if row:
-            columns = ['id', 'symbol', 'name', 'pe', 'pb', 'dividend_yield', 'market_cap', 'updated_at']
-            result = dict(zip(columns, row))
+            result = dict(row)
             conn.close()
             return result
         
@@ -936,7 +1114,7 @@ class LocalDatabase:
         # 从基本面表获取股票信息（包含最新价格）
         # 优先匹配代码开头，然后是名称包含关键字
         cursor.execute('''
-            SELECT symbol, name, price, change_percent FROM stock_fundamentals
+            SELECT symbol, name, current_price AS price, change_percent FROM stock_fundamentals
             WHERE symbol LIKE ? OR name LIKE ?
             ORDER BY 
                 CASE WHEN symbol LIKE ? THEN 0 ELSE 1 END,
@@ -3177,6 +3355,127 @@ except Exception as e:
         
         conn.close()
         return dates
+
+    # ============ 复盘日志（Review Notes） ============
+
+    def upsert_replay_note(self, payload: Dict) -> Dict:
+        """新增或更新复盘日志"""
+        note_date = payload.get("note_date")
+        if not note_date:
+            raise ValueError("note_date is required")
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            INSERT INTO replay_notes (
+                note_date, view_mode, template_id, headline, main_line,
+                core_targets, risk_alert, action_plan, extra_json, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(note_date) DO UPDATE SET
+                view_mode = excluded.view_mode,
+                template_id = excluded.template_id,
+                headline = excluded.headline,
+                main_line = excluded.main_line,
+                core_targets = excluded.core_targets,
+                risk_alert = excluded.risk_alert,
+                action_plan = excluded.action_plan,
+                extra_json = excluded.extra_json,
+                updated_at = datetime('now')
+            ''',
+            (
+                note_date,
+                payload.get("view_mode", "sector"),
+                payload.get("template_id"),
+                payload.get("headline"),
+                payload.get("main_line"),
+                payload.get("core_targets"),
+                payload.get("risk_alert"),
+                payload.get("action_plan"),
+                json.dumps(payload.get("extra") or {}, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+        conn.close()
+        return self.get_replay_note(note_date) or {}
+
+    def get_replay_note(self, note_date: str) -> Optional[Dict]:
+        """按日期获取复盘日志"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            SELECT note_date, view_mode, template_id, headline, main_line, core_targets,
+                   risk_alert, action_plan, extra_json, created_at, updated_at
+            FROM replay_notes
+            WHERE note_date = ?
+            LIMIT 1
+            ''',
+            (note_date,),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            return None
+        extra_json = row[8]
+        try:
+            extra = json.loads(extra_json) if extra_json else {}
+        except Exception:
+            extra = {}
+        return {
+            "note_date": row[0],
+            "view_mode": row[1],
+            "template_id": row[2],
+            "headline": row[3],
+            "main_line": row[4],
+            "core_targets": row[5],
+            "risk_alert": row[6],
+            "action_plan": row[7],
+            "extra": extra,
+            "created_at": row[9],
+            "updated_at": row[10],
+        }
+
+    def list_replay_notes(self, limit: int = 60) -> List[Dict]:
+        """获取复盘日志列表（按日期倒序）"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            SELECT note_date, view_mode, template_id, headline, main_line, core_targets,
+                   risk_alert, action_plan, extra_json, created_at, updated_at
+            FROM replay_notes
+            ORDER BY note_date DESC
+            LIMIT ?
+            ''',
+            (limit,),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        result: List[Dict] = []
+        for row in rows:
+            extra_json = row[8]
+            try:
+                extra = json.loads(extra_json) if extra_json else {}
+            except Exception:
+                extra = {}
+            result.append(
+                {
+                    "note_date": row[0],
+                    "view_mode": row[1],
+                    "template_id": row[2],
+                    "headline": row[3],
+                    "main_line": row[4],
+                    "core_targets": row[5],
+                    "risk_alert": row[6],
+                    "action_plan": row[7],
+                    "extra": extra,
+                    "created_at": row[9],
+                    "updated_at": row[10],
+                }
+            )
+        return result
 
 
 # 全局数据库实例

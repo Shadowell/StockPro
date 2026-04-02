@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Body, HTTPException
 from app.services.market_service import MarketService
 from app.db.local_db import db_instance as db
 from typing import List, Dict, Any
@@ -171,3 +171,27 @@ async def backfill_concept_history(
         None, 
         lambda: data_sync_service.backfill_concept_history(days)
     )
+
+@router.get("/pulse/replay-notes")
+async def list_replay_notes(
+    limit: int = Query(60, ge=1, le=365, description="返回最近N条复盘日志")
+) -> Dict[str, Any]:
+    from app.db.local_db import db_instance
+    return {"status": "success", "data": db_instance.list_replay_notes(limit)}
+
+@router.get("/pulse/replay-notes/{note_date}")
+async def get_replay_note(note_date: str) -> Dict[str, Any]:
+    from app.db.local_db import db_instance
+    item = db_instance.get_replay_note(note_date)
+    if not item:
+        return {"status": "success", "data": None}
+    return {"status": "success", "data": item}
+
+@router.post("/pulse/replay-notes")
+async def save_replay_note(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    from app.db.local_db import db_instance
+    try:
+        item = db_instance.upsert_replay_note(payload)
+        return {"status": "success", "data": item}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

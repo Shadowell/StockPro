@@ -1,7 +1,7 @@
 {
   "config": {
-    "configFile": "/Users/jie.feng/wlb/daily_expore/explore/stock_app/frontend/playwright.config.ts",
-    "rootDir": "/Users/jie.feng/wlb/daily_expore/explore/stock_app/frontend/tests/e2e",
+    "configFile": "/Users/jie.feng/wlb/StockPro/frontend/playwright.config.ts",
+    "rootDir": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e",
     "forbidOnly": false,
     "fullyParallel": true,
     "globalSetup": null,
@@ -11,7 +11,7 @@
     "grepInvert": null,
     "maxFailures": 0,
     "metadata": {
-      "actualWorkers": 4
+      "actualWorkers": 3
     },
     "preserveOutput": "always",
     "reporter": [
@@ -39,15 +39,15 @@
     "quiet": false,
     "projects": [
       {
-        "outputDir": "/Users/jie.feng/wlb/daily_expore/explore/stock_app/frontend/test-results",
+        "outputDir": "/Users/jie.feng/wlb/StockPro/frontend/test-results",
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
-          "actualWorkers": 4
+          "actualWorkers": 3
         },
         "id": "chromium",
         "name": "chromium",
-        "testDir": "/Users/jie.feng/wlb/daily_expore/explore/stock_app/frontend/tests/e2e",
+        "testDir": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e",
         "testIgnore": [],
         "testMatch": [
           "**/*.@(spec|test).?(c|m)[jt]s?(x)"
@@ -76,7 +76,7 @@
       "line": 0,
       "specs": [
         {
-          "title": "NewsCalendar 页面可渲染并切换消息流 tab",
+          "title": "所有页面路由可访问并完成基础渲染",
           "ok": true,
           "tags": [],
           "tests": [
@@ -91,12 +91,70 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1080,
+                  "duration": 4401,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-01-18T14:05:34.874Z",
+                  "steps": [
+                    {
+                      "title": "访问 /",
+                      "duration": 617
+                    },
+                    {
+                      "title": "访问 /market",
+                      "duration": 512
+                    },
+                    {
+                      "title": "访问 /sentiment",
+                      "duration": 489
+                    },
+                    {
+                      "title": "访问 /analysis",
+                      "duration": 442
+                    },
+                    {
+                      "title": "访问 /ai",
+                      "duration": 473
+                    },
+                    {
+                      "title": "访问 /news",
+                      "duration": 185
+                    },
+                    {
+                      "title": "访问 /news-calendar",
+                      "duration": 105
+                    },
+                    {
+                      "title": "访问 /calendar",
+                      "duration": 202
+                    },
+                    {
+                      "title": "访问 /strategy-dev",
+                      "duration": 186
+                    },
+                    {
+                      "title": "访问 /strategy-exec",
+                      "duration": 208
+                    },
+                    {
+                      "title": "访问 /factors",
+                      "duration": 196
+                    },
+                    {
+                      "title": "访问 /pulse",
+                      "duration": 208
+                    },
+                    {
+                      "title": "访问 /screener",
+                      "duration": 190
+                    },
+                    {
+                      "title": "访问 /trading",
+                      "duration": 192
+                    }
+                  ],
+                  "startTime": "2026-04-02T10:27:54.163Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -104,13 +162,13 @@
               "status": "expected"
             }
           ],
-          "id": "c31ff144dc4fee3acd0a-4f2302a8c5e36ba1e0ff",
+          "id": "c31ff144dc4fee3acd0a-ab706d06abd520fe9b75",
           "file": "app.spec.ts",
-          "line": 7,
+          "line": 461,
           "column": 1
         },
         {
-          "title": "Home 页面渲染正常",
+          "title": "消息流页面可切换所有 tab",
           "ok": true,
           "tags": [],
           "tests": [
@@ -125,12 +183,12 @@
                   "workerIndex": 1,
                   "parallelIndex": 1,
                   "status": "passed",
-                  "duration": 903,
+                  "duration": 1111,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-01-18T14:05:34.891Z",
+                  "startTime": "2026-04-02T10:27:54.187Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -138,77 +196,395 @@
               "status": "expected"
             }
           ],
-          "id": "c31ff144dc4fee3acd0a-05b62d1aed71d92aedbd",
+          "id": "c31ff144dc4fee3acd0a-b77fc7350863f2af4a65",
           "file": "app.spec.ts",
-          "line": 100,
+          "line": 538,
           "column": 1
-        },
+        }
+      ]
+    },
+    {
+      "title": "real-backend.spec.ts",
+      "file": "real-backend.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
         {
-          "title": "路由：Market / Analysis / AI / StrategyDev / Backtest 均可进入",
+          "title": "后端健康接口可访问",
           "ok": true,
           "tags": [],
           "tests": [
             {
               "timeout": 60000,
-              "annotations": [],
-              "expectedStatus": "passed",
+              "annotations": [
+                {
+                  "type": "skip",
+                  "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                  "location": {
+                    "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                    "line": 3,
+                    "column": 6
+                  }
+                }
+              ],
+              "expectedStatus": "skipped",
               "projectId": "chromium",
               "projectName": "chromium",
               "results": [
                 {
-                  "workerIndex": 2,
-                  "parallelIndex": 2,
-                  "status": "passed",
-                  "duration": 1693,
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-01-18T14:05:34.878Z",
-                  "annotations": [],
+                  "startTime": "2026-04-02T10:27:53.336Z",
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                      "location": {
+                        "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                        "line": 3,
+                        "column": 6
+                      }
+                    }
+                  ],
                   "attachments": []
                 }
               ],
-              "status": "expected"
+              "status": "skipped"
             }
           ],
-          "id": "c31ff144dc4fee3acd0a-046302270c2d876128fe",
-          "file": "app.spec.ts",
-          "line": 122,
+          "id": "df095fff05eee119001b-82ec5abf78575d75bf8d",
+          "file": "real-backend.spec.ts",
+          "line": 7,
           "column": 1
         },
         {
-          "title": "MarketOverview：选择概念默认龙头股，概念 Tab 可拖拽并持久化",
+          "title": "股票搜索接口返回数组",
           "ok": true,
           "tags": [],
           "tests": [
             {
               "timeout": 60000,
-              "annotations": [],
-              "expectedStatus": "passed",
+              "annotations": [
+                {
+                  "type": "skip",
+                  "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                  "location": {
+                    "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                    "line": 3,
+                    "column": 6
+                  }
+                }
+              ],
+              "expectedStatus": "skipped",
               "projectId": "chromium",
               "projectName": "chromium",
               "results": [
                 {
-                  "workerIndex": 3,
-                  "parallelIndex": 3,
-                  "status": "passed",
-                  "duration": 1416,
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-01-18T14:05:34.901Z",
-                  "annotations": [],
+                  "startTime": "2026-04-02T10:27:53.337Z",
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                      "location": {
+                        "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                        "line": 3,
+                        "column": 6
+                      }
+                    }
+                  ],
                   "attachments": []
                 }
               ],
-              "status": "expected"
+              "status": "skipped"
             }
           ],
-          "id": "c31ff144dc4fee3acd0a-1a879bf7b4761e622f93",
-          "file": "app.spec.ts",
-          "line": 188,
+          "id": "df095fff05eee119001b-9614ca94edc7b049147a",
+          "file": "real-backend.spec.ts",
+          "line": 17,
+          "column": 1
+        },
+        {
+          "title": "市场概览接口返回关键结构",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "skip",
+                  "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                  "location": {
+                    "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                    "line": 3,
+                    "column": 6
+                  }
+                }
+              ],
+              "expectedStatus": "skipped",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-02T10:27:53.337Z",
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                      "location": {
+                        "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                        "line": 3,
+                        "column": 6
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "df095fff05eee119001b-3c97986aa734e1e12c35",
+          "file": "real-backend.spec.ts",
+          "line": 25,
+          "column": 1
+        },
+        {
+          "title": "SQL 查询接口可执行且拦截非 SELECT",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "skip",
+                  "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                  "location": {
+                    "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                    "line": 3,
+                    "column": 6
+                  }
+                }
+              ],
+              "expectedStatus": "skipped",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-02T10:27:53.338Z",
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                      "location": {
+                        "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                        "line": 3,
+                        "column": 6
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "df095fff05eee119001b-4d6c52aa22821816d84c",
+          "file": "real-backend.spec.ts",
+          "line": 45,
+          "column": 1
+        },
+        {
+          "title": "DataDev 任务 CRUD + 运行 + 日志可用",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "skip",
+                  "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                  "location": {
+                    "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                    "line": 3,
+                    "column": 6
+                  }
+                }
+              ],
+              "expectedStatus": "skipped",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-02T10:27:53.338Z",
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                      "location": {
+                        "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                        "line": 3,
+                        "column": 6
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "df095fff05eee119001b-9f05b01ca236b7e7d801",
+          "file": "real-backend.spec.ts",
+          "line": 66,
+          "column": 1
+        },
+        {
+          "title": "后台任务状态接口可访问",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "skip",
+                  "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                  "location": {
+                    "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                    "line": 3,
+                    "column": 6
+                  }
+                }
+              ],
+              "expectedStatus": "skipped",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-02T10:27:53.338Z",
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                      "location": {
+                        "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                        "line": 3,
+                        "column": 6
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "df095fff05eee119001b-e16490c01fc22f18800d",
+          "file": "real-backend.spec.ts",
+          "line": 114,
+          "column": 1
+        },
+        {
+          "title": "数据中心页面基础渲染正常",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [
+                {
+                  "type": "skip",
+                  "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                  "location": {
+                    "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                    "line": 3,
+                    "column": 6
+                  }
+                }
+              ],
+              "expectedStatus": "skipped",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": -1,
+                  "parallelIndex": -1,
+                  "status": "skipped",
+                  "duration": 0,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-04-02T10:27:53.338Z",
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "This suite requires real backend mode. Set MOCK_API=false.",
+                      "location": {
+                        "file": "/Users/jie.feng/wlb/StockPro/frontend/tests/e2e/real-backend.spec.ts",
+                        "line": 3,
+                        "column": 6
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "skipped"
+            }
+          ],
+          "id": "df095fff05eee119001b-629652e3b66172d1c988",
+          "file": "real-backend.spec.ts",
+          "line": 123,
           "column": 1
         }
       ]
@@ -216,10 +592,10 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-01-18T14:05:32.115Z",
-    "duration": 5079.626,
-    "expected": 4,
-    "skipped": 0,
+    "startTime": "2026-04-02T10:27:51.364Z",
+    "duration": 7550.991,
+    "expected": 2,
+    "skipped": 7,
     "unexpected": 0,
     "flaky": 0
   }

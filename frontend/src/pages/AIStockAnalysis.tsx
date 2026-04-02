@@ -1,13 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BrainCircuit, RefreshCw, Search, TrendingUp, TrendingDown, AlertTriangle, Target, Shield, Zap, BarChart3, Activity, ArrowUpRight, ArrowDownRight, Minus, Clock, MessageSquare, Star, CheckCircle2, XCircle, HelpCircle, ChevronRight, Sparkles } from 'lucide-react';
+import { BrainCircuit, RefreshCw, Search, AlertTriangle, Target, Zap, BarChart3, Activity, ArrowUpRight, ArrowDownRight, Minus, Star, HelpCircle, ChevronRight, Sparkles } from 'lucide-react';
 import { analyzeStockByAI, getDailyChart, getIntradayChart, searchStocks, getStockFundamentals } from '@/api/client';
 import { AIStockAnalyzeResponse, DailyChartData, IntradayChartData, StockCandidate, StockFundamentals } from '@/types';
 import { useStore } from '@/stores/useStore';
 import { MainLayout } from '@/components/MainLayout';
-import { getTranslation } from '@/lib/i18n';
+import { getTranslation, TranslationKey } from '@/lib/i18n';
 import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
+
+type TooltipAxisParam = { dataIndex?: number };
+type RecordValue = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is RecordValue => typeof value === 'object' && value !== null;
+const asRecord = (value: unknown): RecordValue => (isRecord(value) ? value : {});
+const asString = (value: unknown, fallback = ''): string => (typeof value === 'string' ? value : fallback);
+const asStringArray = (value: unknown): string[] => (
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+);
 
 // 评分等级组件
 const RatingBadge: React.FC<{ rating: 'buy' | 'hold' | 'sell' | 'neutral' }> = ({ rating }) => {
@@ -108,7 +118,7 @@ const AnalysisDimension: React.FC<{
 export const AIStockAnalysis: React.FC = () => {
   const { language } = useStore();
   const [searchParams] = useSearchParams();
-  const t = (key: any) => getTranslation(language, key);
+  const t = (key: TranslationKey) => getTranslation(language, key);
 
   const [symbol, setSymbol] = useState(searchParams.get('symbol') || '');
   const [loading, setLoading] = useState(false);
@@ -122,8 +132,8 @@ export const AIStockAnalysis: React.FC = () => {
   const [candidates, setCandidates] = useState<StockCandidate[]>([]);
   const [showCandidates, setShowCandidates] = useState(false);
 
-  const onAnalyze = useCallback(async () => {
-    const sym = symbol.trim();
+  const onAnalyze = useCallback(async (symbolInput?: string) => {
+    const sym = (symbolInput ?? symbol).trim();
     if (!sym) return;
     setLoading(true);
     setError(null);
@@ -159,12 +169,11 @@ export const AIStockAnalysis: React.FC = () => {
   }, [symbol]);
 
   useEffect(() => {
-    const symFromUrl = searchParams.get('symbol');
-    if (symFromUrl && symFromUrl !== symbol) {
-      setSymbol(symFromUrl);
-      setTimeout(() => onAnalyze(), 300);
-    }
-  }, [searchParams]);
+    const symFromUrl = searchParams.get('symbol')?.trim();
+    if (!symFromUrl || symFromUrl === symbol) return;
+    setSymbol(symFromUrl);
+    void onAnalyze(symFromUrl);
+  }, [onAnalyze, searchParams, symbol]);
 
   useEffect(() => {
     const q = symbol.trim();
@@ -191,14 +200,13 @@ export const AIStockAnalysis: React.FC = () => {
   // 解析AI分析结果
   const analysis = useMemo(() => {
     if (!result || !result.result) return null;
-    const r = result.result as Record<string, any>;
+    const r = asRecord(result.result);
+    const trend = asRecord(r.trend);
+    const keyLevels = asRecord(r.key_levels);
+    const plan = asRecord(r.plan);
+    const technicalAnalysis = asRecord(r.technical_analysis);
 
-    const trend = r.trend || {};
-    const keyLevels = r.key_levels || {};
-    const plan = r.plan || {};
-    const technicalAnalysis = r.technical_analysis || {};
-
-    const bias = trend.bias || '';
+    const bias = asString(trend.bias);
     let rating: 'buy' | 'hold' | 'sell' | 'neutral' = 'neutral';
     if (bias.includes('多') || bias.includes('涨') || bias.includes('强')) {
       rating = 'buy';
@@ -209,32 +217,32 @@ export const AIStockAnalysis: React.FC = () => {
     }
 
     // 处理股票名称显示（优先使用AI返回的名称）
-    const stockName = r.stock_name || result.name || result.symbol;
-    const stockCode = r.stock_code || result.symbol;
+    const stockName = asString(r.stock_name) || result.name || result.symbol;
+    const stockCode = asString(r.stock_code) || result.symbol;
 
     return {
       stockName,
       stockCode,
-      summary: r.summary || '暂无分析摘要',
+      summary: asString(r.summary, '暂无分析摘要'),
       rating,
       bias,
-      shortTermTrend: trend.short_term || '',
-      midTermTrend: trend.mid_term || '',
-      evidence: Array.isArray(trend.evidence) ? trend.evidence : [],
-      support: Array.isArray(keyLevels.support) ? keyLevels.support : [],
-      resistance: Array.isArray(keyLevels.resistance) ? keyLevels.resistance : [],
-      stopLoss: keyLevels.stop_loss || '',
-      catalysts: Array.isArray(r.catalysts) ? r.catalysts : [],
-      risks: Array.isArray(r.risks) ? r.risks : [],
-      shortTerm: plan.short_term || '',
-      swing: plan.swing || '',
-      invalid: plan.invalid || '',
+      shortTermTrend: asString(trend.short_term),
+      midTermTrend: asString(trend.mid_term),
+      evidence: asStringArray(trend.evidence),
+      support: asStringArray(keyLevels.support),
+      resistance: asStringArray(keyLevels.resistance),
+      stopLoss: asString(keyLevels.stop_loss),
+      catalysts: asStringArray(r.catalysts),
+      risks: asStringArray(r.risks),
+      shortTerm: asString(plan.short_term),
+      swing: asString(plan.swing),
+      invalid: asString(plan.invalid),
       // 新增技术分析详情
-      maAnalysis: technicalAnalysis.ma_analysis || '',
-      volumeAnalysis: technicalAnalysis.volume_analysis || '',
-      pattern: technicalAnalysis.pattern || '',
-      indicators: technicalAnalysis.indicators || '',
-      dataNotes: r.data_notes || '',
+      maAnalysis: asString(technicalAnalysis.ma_analysis),
+      volumeAnalysis: asString(technicalAnalysis.volume_analysis),
+      pattern: asString(technicalAnalysis.pattern),
+      indicators: asString(technicalAnalysis.indicators),
+      dataNotes: asString(r.data_notes),
     };
   }, [result]);
 
@@ -307,12 +315,13 @@ export const AIStockAnalysis: React.FC = () => {
         backgroundColor: 'rgba(15, 23, 42, 0.95)',
         borderColor: '#334155',
         textStyle: { color: '#e2e8f0', fontSize: 11 },
-        formatter: function(params: any) {
+        formatter: function(params: TooltipAxisParam[]) {
           const dataIndex = params[0]?.dataIndex;
+          if (dataIndex == null) return '';
           const item = dailyData[dataIndex];
           if (!item) return '';
           
-          let result = [
+          const result = [
             `<div style="font-weight:bold;margin-bottom:4px">${item.date}</div>`,
             `开: ${item.open.toFixed(2)} 高: ${item.high.toFixed(2)}`,
             `低: ${item.low.toFixed(2)} 收: ${item.close.toFixed(2)}`
@@ -472,7 +481,7 @@ export const AIStockAnalysis: React.FC = () => {
               )}
             </div>
             <button
-              onClick={onAnalyze}
+              onClick={() => { void onAnalyze(); }}
               disabled={loading || !symbol.trim()}
               className={clsx(
                 "flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-bold transition-all",

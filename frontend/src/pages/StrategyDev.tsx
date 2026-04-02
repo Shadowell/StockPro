@@ -3,13 +3,20 @@ import { getStrategies, saveStrategy, deleteStrategy, executeStrategy } from '..
 import { Strategy } from '../types';
 import { MainLayout } from '../components/MainLayout';
 import { useStore } from '../stores/useStore';
-import { getTranslation, TranslationKey } from '../lib/i18n';
 import { Code, Play, Save, Trash2, Clock } from 'lucide-react';
 import clsx from 'clsx';
 
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (typeof error === 'object' && error !== null) {
+    const maybeError = error as { message?: unknown };
+    if (typeof maybeError.message === 'string' && maybeError.message.trim()) return maybeError.message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+};
+
 export const StrategyDev: React.FC = () => {
   const { language } = useStore();
-  const t = (key: TranslationKey) => getTranslation(language, key);
 
   // 策略列表
   const [strategies, setStrategies] = useState<Strategy[]>([]);
@@ -155,8 +162,8 @@ print(json.dumps(output, ensure_ascii=False))
       } else {
         setTestResult(`❌ 保存失败: ${result.error}`);
       }
-    } catch (e: any) {
-      setTestResult(`❌ 保存失败: ${e.message}`);
+    } catch (e: unknown) {
+      setTestResult(`❌ 保存失败: ${getErrorMessage(e, '未知错误')}`);
     } finally {
       setIsSaving(false);
     }
@@ -209,8 +216,8 @@ print(json.dumps(output, ensure_ascii=False))
       }
       
       await fetchStrategies();
-    } catch (e: any) {
-      setTestResult(`❌ 执行失败: ${e.message}`);
+    } catch (e: unknown) {
+      setTestResult(`❌ 执行失败: ${getErrorMessage(e, '未知错误')}`);
     } finally {
       setIsTestRunning(false);
     }
@@ -224,10 +231,35 @@ print(json.dumps(output, ensure_ascii=False))
       await fetchStrategies();
       if (editingStrategy?.id === strategyId) {
         setEditingStrategy(null);
-        handleNewStrategy();
+        setDevStrategyName('');
+        setDevStrategyDesc('');
+        setDevStrategyCode(`# 快速筛选示例 - 主板涨幅前10
+import akshare as ak
+import json
+
+df = ak.stock_zh_a_spot_em()
+
+# 过滤主板：排除ST、创业板、科创板、北交所
+df = df[~df['名称'].str.contains('ST', na=False)]
+df = df[~df['代码'].str.startswith(('30', '688', '8', '43', '9'))]
+
+# 按涨幅排序取前10
+result = df.nlargest(10, '涨跌幅')
+
+output = {
+    "stocks": [
+        {"code": row['代码'], "name": row['名称'], "reason": f"涨{row['涨跌幅']:.2f}%"}
+        for _, row in result.iterrows()
+    ]
+}
+print(json.dumps(output, ensure_ascii=False))
+`);
+        setDevInterval(60);
+        setTestResult(null);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Delete failed:', e);
+      setTestResult(`❌ 删除失败: ${getErrorMessage(e, '未知错误')}`);
     }
   }, [editingStrategy, fetchStrategies]);
 

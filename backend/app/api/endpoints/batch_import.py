@@ -5,9 +5,11 @@ import asyncio
 from datetime import datetime
 from app.services.batch_import_service import BatchImportService
 from app.services.ma_sync_service import ma_sync_service
+from app.services.data_hub_service import data_hub_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+DEPRECATION_NOTICE = "Deprecated: please migrate to /api/v1/data-hub/jobs"
 
 # Global variable to track import status
 import_status = {
@@ -31,13 +33,27 @@ async def update_progress(current: int, total: int, message: str):
 async def import_historical_data_by_date(request: Dict[str, Any], background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """根据指定日期批量导入历史数据"""
     global import_status
-    
+
     if import_status["is_running"]:
-        raise HTTPException(status_code=400, detail="Import task is already running")
+        hub_job_key = import_status.get("data_hub_job_key")
+        if hub_job_key:
+            hub_job = data_hub_service.get_job(str(hub_job_key))
+            if not hub_job or hub_job.get("status") in {"success", "failed", "cancelled"}:
+                import_status["is_running"] = False
+            else:
+                raise HTTPException(status_code=400, detail="Import task is already running")
+        else:
+            raise HTTPException(status_code=400, detail="Import task is already running")
     
     target_date = request.get("date")
     if not target_date:
         raise HTTPException(status_code=400, detail="Date is required")
+    
+    task_type = str(request.get("task_type", "all")).strip().lower()
+    if task_type == "indicators":
+        raise HTTPException(status_code=400, detail="Task type 'indicators' is not supported by this endpoint. Use /batch-import/ma-data")
+    if task_type not in {"history", "fundamentals", "all"}:
+        raise HTTPException(status_code=400, detail="Invalid task_type. Supported values: history, fundamentals, all")
     
     # Validate date format
     try:
@@ -45,37 +61,47 @@ async def import_historical_data_by_date(request: Dict[str, Any], background_tas
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
-    # Reset status
+    scope = "stock_fundamentals" if task_type == "fundamentals" else "stock_history"
+    job = data_hub_service.create_job(
+        action="import_daily_data",
+        scope=scope,
+        params={
+            "date": target_date,
+            "task_type": task_type,
+            "datasets": ["stock_history", "stock_fundamentals"] if task_type == "all" else [scope],
+        },
+    )
+    # 兼容旧状态字段：映射至 data-hub job
     import_status = {
         "is_running": True,
         "current": 0,
         "total": 0,
         "message": "Initializing...",
         "progress": 0,
-        "task_id": f"import_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        "task_id": job["job_key"],
+        "data_hub_job_key": job["job_key"],
     }
-    
-    # Start background import task
-    background_tasks.add_task(_run_import_task, target_date)
     
     return {
-        "message": f"Historical data import started for {target_date}",
+        "message": f"Historical data import started for {target_date} (mode: {task_type})",
         "task_id": import_status["task_id"],
-        "status": import_status
+        "status": import_status,
+        "deprecated": True,
+        "deprecated_notice": DEPRECATION_NOTICE,
     }
 
-async def _run_import_task(target_date: str):
+async def _run_import_task(target_date: str, task_type: str = "all"):
     """Run the import task in background"""
     global import_status
     try:
         service = BatchImportService()
-        result = await service.import_historical_data_by_date(target_date, update_progress)
+        result = await service.import_historical_data_by_date(target_date, update_progress, task_type=task_type)
         
         import_status["is_running"] = False
         import_status["message"] = f"Completed: {result['message']}"
         import_status["progress"] = 100
         
-        logger.info(f"Batch import completed for {target_date}: {result}")
+        logger.info(f"Batch import completed for {target_date} (mode={task_type}): {result}")
     except Exception as e:
         logger.error(f"Error in batch import task: {e}")
         import_status["is_running"] = False
@@ -85,7 +111,27 @@ async def _run_import_task(target_date: str):
 @router.get("/status")
 async def get_import_status() -> Dict[str, Any]:
     """Get the current import status"""
-    return import_status
+    # 如果来自 data-hub job，实时同步状态
+    hub_job_key = import_status.get("data_hub_job_key")
+    if hub_job_key:
+        hub_job = data_hub_service.get_job(str(hub_job_key))
+        if hub_job:
+            mapped = {
+                "is_running": hub_job["status"] in {"queued", "running"},
+                "current": int(hub_job.get("current") or 0),
+                "total": int(hub_job.get("total") or 0),
+                "message": hub_job.get("message") or "",
+                "progress": float(hub_job.get("progress") or 0),
+                "task_id": hub_job.get("job_key"),
+                "data_hub_job_key": hub_job.get("job_key"),
+            }
+            import_status.update(mapped)
+
+    return {
+        **import_status,
+        "deprecated": True,
+        "deprecated_notice": DEPRECATION_NOTICE,
+    }
 
 @router.post("/single-stock")
 async def import_single_stock_historical_data(request: Dict[str, Any]) -> Dict[str, Any]:
@@ -116,12 +162,35 @@ async def cancel_import_task() -> Dict[str, Any]:
     """Cancel the current import task"""
     global import_status
     
+    hub_job_key = import_status.get("data_hub_job_key")
+    if hub_job_key:
+        try:
+            cancelled = data_hub_service.cancel_job(str(hub_job_key))
+            import_status["is_running"] = cancelled.get("status") in {"queued", "running"}
+            import_status["message"] = str(cancelled.get("message") or "Cancellation requested")
+        except Exception:
+            import_status["is_running"] = False
+            import_status["message"] = "Cancellation requested"
+        return {
+            "message": "Import task cancel request submitted",
+            "deprecated": True,
+            "deprecated_notice": DEPRECATION_NOTICE,
+        }
+
     if import_status["is_running"]:
         import_status["is_running"] = False
         import_status["message"] = "Task cancelled by user"
-        return {"message": "Import task cancelled"}
+        return {
+            "message": "Import task cancelled",
+            "deprecated": True,
+            "deprecated_notice": DEPRECATION_NOTICE,
+        }
     else:
-        return {"message": "No running import task to cancel"}
+        return {
+            "message": "No running import task to cancel",
+            "deprecated": True,
+            "deprecated_notice": DEPRECATION_NOTICE,
+        }
 
 
 # ============ 均线数据导入 ============
@@ -155,7 +224,9 @@ async def import_ma_data(request: Dict[str, Any], background_tasks: BackgroundTa
     return {
         "message": "均线数据导入任务已启动",
         "task_id": import_status["task_id"],
-        "status": import_status
+        "status": import_status,
+        "deprecated": True,
+        "deprecated_notice": DEPRECATION_NOTICE,
     }
 
 

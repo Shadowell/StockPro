@@ -1,11 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { MainLayout } from '../components/MainLayout';
 import { useStore } from '../stores/useStore';
-import { scanMAConvergenceStocks, MAConvergenceStock, MAConvergenceParams } from '../api/client';
+import {
+  MAConvergenceStock,
+  MAConvergenceParams,
+  getDataHubScreenerFeatures,
+} from '../api/client';
 import { 
   Search, 
   Filter, 
-  RefreshCw, 
   TrendingUp, 
   AlertCircle,
   ChevronDown,
@@ -14,6 +17,20 @@ import {
   Loader2
 } from 'lucide-react';
 
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (typeof error === 'object' && error !== null) {
+    const maybeError = error as {
+      message?: unknown;
+      response?: { data?: { detail?: unknown } };
+    };
+    const detail = maybeError.response?.data?.detail;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+    if (typeof maybeError.message === 'string' && maybeError.message.trim()) return maybeError.message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+};
+
 export const StockScreener: React.FC = () => {
   const { language, selectStock } = useStore();
   
@@ -21,6 +38,7 @@ export const StockScreener: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<MAConvergenceStock[]>([]);
   const [totalFound, setTotalFound] = useState(0);
+  const [snapshotDate, setSnapshotDate] = useState<string | null>(null);
   const [showParams, setShowParams] = useState(true);
   
   // 筛选参数
@@ -37,12 +55,13 @@ export const StockScreener: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await scanMAConvergenceStocks(params);
-      setResults(response.data);
-      setTotalFound(response.total_found);
-    } catch (e: any) {
+      const response = await getDataHubScreenerFeatures(params);
+      setResults(response.data || []);
+      setTotalFound(response.total_found || 0);
+      setSnapshotDate(response.snapshot?.as_of || null);
+    } catch (e: unknown) {
       console.error('扫描失败:', e);
-      setError(e.response?.data?.detail || e.message || '扫描失败');
+      setError(getErrorMessage(e, '扫描失败（Data Hub 特征服务）'));
     } finally {
       setLoading(false);
     }
@@ -213,6 +232,11 @@ export const StockScreener: React.FC = () => {
                     {language === 'zh' 
                       ? `找到 ${totalFound} 只符合条件的股票` 
                       : `Found ${totalFound} matching stocks`}
+                  </span>
+                )}
+                {snapshotDate && (
+                  <span className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 px-2 py-1 rounded">
+                    {language === 'zh' ? `研究快照: ${snapshotDate}` : `Snapshot: ${snapshotDate}`}
                   </span>
                 )}
               </div>

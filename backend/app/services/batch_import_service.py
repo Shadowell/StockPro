@@ -29,7 +29,7 @@ class BatchImportService:
             return f"BJ_{code}"
         return code
 
-    async def import_historical_data_by_date(self, target_date: str, progress_callback=None) -> Dict:
+    async def import_historical_data_by_date(self, target_date: str, progress_callback=None, task_type: str = "all") -> Dict:
         """
         根据指定日期批量导入历史数据
         
@@ -41,6 +41,19 @@ class BatchImportService:
             Dict: 包含导入结果的字典
         """
         try:
+            task_mode = str(task_type or "all").strip().lower()
+            if task_mode not in {"history", "fundamentals", "all"}:
+                return {
+                    "success": False,
+                    "message": f"Unsupported task_type: {task_type}",
+                    "processed": 0,
+                    "total": 0,
+                    "errors": [f"Unsupported task_type: {task_type}"],
+                }
+
+            import_history = task_mode in {"history", "all"}
+            import_fundamentals = task_mode in {"fundamentals", "all"}
+
             # 将目标日期转换为所需格式
             date_obj = datetime.strptime(target_date, "%Y-%m-%d")
             start_date = target_date.replace("-", "")
@@ -65,7 +78,7 @@ class BatchImportService:
             logger.info(f"Starting historical data import for date {target_date} for {total_stocks} stocks")
             
             if progress_callback:
-                await progress_callback(0, total_stocks, f"开始导入 {target_date} 的数据...")
+                await progress_callback(0, total_stocks, f"开始导入 {target_date} 的数据（模式: {task_mode}）...")
             
             # 准备批量插入的数据
             all_db_records = []
@@ -85,30 +98,31 @@ class BatchImportService:
                     df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start_date, end_date=end_date, adjust="")
                     
                     if not df.empty:
-                        # 处理日线数据
-                        db_records = []
-                        for _, row in df.iterrows():
-                            date_str = str(row['日期'])  # '2023-10-27'
+                        if import_history:
+                            # 处理日线数据
+                            db_records = []
+                            for _, row in df.iterrows():
+                                date_str = str(row['日期'])  # '2023-10-27'
+                                
+                                # 准备数据库记录
+                                record = {
+                                    "symbol": self._get_market_prefix(code),
+                                    "name": name or "",
+                                    "date": date_str,
+                                    "open": float(row['开盘']) if pd.notna(row['开盘']) else 0.0,
+                                    "close": float(row['收盘']) if pd.notna(row['收盘']) else 0.0,
+                                    "high": float(row['最高']) if pd.notna(row['最高']) else 0.0,
+                                    "low": float(row['最低']) if pd.notna(row['最低']) else 0.0,
+                                    "volume": int(row['成交量']) if pd.notna(row['成交量']) else 0,
+                                    "turnover": float(row['换手率']) if '换手率' in row and pd.notna(row['换手率']) else 0.0,
+                                }
+                                
+                                db_records.append(record)
                             
-                            # 准备数据库记录
-                            record = {
-                                "symbol": self._get_market_prefix(code),
-                                "name": name or "",
-                                "date": date_str,
-                                "open": float(row['开盘']) if pd.notna(row['开盘']) else 0.0,
-                                "close": float(row['收盘']) if pd.notna(row['收盘']) else 0.0,
-                                "high": float(row['最高']) if pd.notna(row['最高']) else 0.0,
-                                "low": float(row['最低']) if pd.notna(row['最低']) else 0.0,
-                                "volume": int(row['成交量']) if pd.notna(row['成交量']) else 0,
-                                "turnover": float(row['换手率']) if '换手率' in row and pd.notna(row['换手率']) else 0.0,
-                            }
-                            
-                            db_records.append(record)
-                        
-                        all_db_records.extend(db_records)
+                            all_db_records.extend(db_records)
                         
                         # 如果有当日数据，也准备基本面数据
-                        if len(df) > 0:
+                        if import_fundamentals and len(df) > 0:
                             last_row = df.iloc[-1]
                             fundamental_record = {
                                 "code": self._get_market_prefix(code),
@@ -156,7 +170,7 @@ class BatchImportService:
                     logger.error(error_msg)
                     errors.append(error_msg)
             
-            if all_fundamental_records:
+            if import_fundamentals and all_fundamental_records:
                 try:
                     # 分批插入基本面数据
                     batch_size = 500
@@ -177,11 +191,13 @@ class BatchImportService:
             
             return {
                 "success": True,
-                "message": f"Successfully imported historical data for {target_date}",
+                "message": f"Successfully imported {task_mode} data for {target_date}",
                 "processed": processed,
                 "total": total_stocks,
                 "errors": errors,
-                "records_saved": len(all_db_records)
+                "records_saved": len(all_db_records),
+                "history_records_saved": len(all_db_records),
+                "fundamental_records_saved": len(all_fundamental_records),
             }
             
         except Exception as e:

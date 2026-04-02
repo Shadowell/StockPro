@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../stores/useStore';
 import { SectorMonitor } from '../components/SectorMonitor';
 import { MainLayout } from '../components/MainLayout';
-import { getTranslation } from '../lib/i18n';
+import { getTranslation, TranslationKey } from '../lib/i18n';
 import { TrendingUp, Activity, PieChart, Info, Zap } from 'lucide-react';
 import { getShortLineIndices } from '../api/client';
 
@@ -18,8 +18,8 @@ interface ShortLineIndex {
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
-  const { fetchStocks, fetchSectors, fetchMarketOverview, marketOverview, sectors, stocks, language } = useStore();
-  const t = (key: any) => getTranslation(language, key);
+  const { fetchStocks, fetchSectors, marketOverview, sectors, stocks, language } = useStore();
+  const t = (key: TranslationKey) => getTranslation(language, key);
   
   const [shortLineIndices, setShortLineIndices] = useState<ShortLineIndex[]>([]);
   const [isLoadingShortLine, setIsLoadingShortLine] = useState(false);
@@ -39,18 +39,16 @@ export const Home: React.FC = () => {
   useEffect(() => {
     fetchStocks();
     fetchSectors();
-    fetchMarketOverview();
     fetchShortLineIndices();
 
     const interval = setInterval(() => {
       fetchStocks();
       fetchSectors();
-      fetchMarketOverview();
       fetchShortLineIndices();
     }, 30000); // Auto refresh every 30s
 
     return () => clearInterval(interval);
-  }, [fetchSectors, fetchStocks, fetchMarketOverview, fetchShortLineIndices]);
+  }, [fetchSectors, fetchStocks, fetchShortLineIndices]);
 
   const highVolCount = stocks.filter(s => s.change_percent >= 9.5 || s.change_percent <= -9.5).length;
 

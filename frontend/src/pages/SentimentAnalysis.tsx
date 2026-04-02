@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { MainLayout } from '@/components/MainLayout';
 import { useStore } from '@/stores/useStore';
-import { getTranslation } from '@/lib/i18n';
-import { RefreshCw, Activity, TrendingUp, TrendingDown, BarChart3, Flame, Zap, Shield, AlertTriangle, Target, ArrowUpCircle, ArrowDownCircle, MinusCircle, DollarSign, Layers } from 'lucide-react';
-import { getMarketOverview, getHotConcepts, getThsHot, getLianbanLadder, getShortLineIndices } from '@/api/client';
-import { HotConceptItem, ThsHotItem, LianbanLadderResponse, MarketOverview } from '@/types';
+import { RefreshCw, Activity, TrendingUp, BarChart3, Flame, Zap, Target, ArrowUpCircle, ArrowDownCircle, MinusCircle, DollarSign, Layers } from 'lucide-react';
+import { getHotConcepts, getThsHot, getLianbanLadder, getShortLineIndices } from '@/api/client';
+import { HotConceptItem, ThsHotItem, LianbanLadderResponse } from '@/types';
 import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
 
@@ -110,11 +109,9 @@ const StatCard: React.FC<{
 );
 
 export const SentimentAnalysis: React.FC = () => {
-  const { language } = useStore();
-  const t = (key: any) => getTranslation(language, key);
+  const { language, marketOverview } = useStore();
 
   const [isLoading, setIsLoading] = useState(false);
-  const [marketData, setMarketData] = useState<MarketOverview | null>(null);
   const [hotConcepts, setHotConcepts] = useState<HotConceptItem[]>([]);
   const [thsHot, setThsHot] = useState<ThsHotItem[]>([]);
   const [lianban, setLianban] = useState<LianbanLadderResponse | null>(null);
@@ -123,14 +120,12 @@ export const SentimentAnalysis: React.FC = () => {
   const fetchAllData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [overview, concepts, hot, ladder, shortLine] = await Promise.all([
-        getMarketOverview(),
+      const [concepts, hot, ladder, shortLine] = await Promise.all([
         getHotConcepts(30),
         getThsHot(50),
         getLianbanLadder(),
         getShortLineIndices(),
       ]);
-      setMarketData(overview);
       setHotConcepts(concepts);
       setThsHot(hot);
       setLianban(ladder);
@@ -149,12 +144,12 @@ export const SentimentAnalysis: React.FC = () => {
   }, [fetchAllData]);
 
   // 计算综合情绪分数
-  const sentimentScore = marketData?.sentiment?.score || 50;
+  const sentimentScore = marketOverview?.sentiment?.score || 50;
   
   // 涨跌统计
-  const advancing = marketData?.sentiment?.advancing || 0;
-  const declining = marketData?.sentiment?.declining || 0;
-  const unchanged = marketData?.sentiment?.unchanged || 0;
+  const advancing = marketOverview?.sentiment?.advancing || 0;
+  const declining = marketOverview?.sentiment?.declining || 0;
+  const unchanged = marketOverview?.sentiment?.unchanged || 0;
   const total = advancing + declining + unchanged;
   const advancingPct = total > 0 ? ((advancing / total) * 100).toFixed(1) : '0';
   const decliningPct = total > 0 ? ((declining / total) * 100).toFixed(1) : '0';
@@ -260,15 +255,15 @@ export const SentimentAnalysis: React.FC = () => {
         <div className="flex items-center gap-4 text-slate-400">
           <Activity size={18} />
           <span className="text-sm font-medium">
-            {marketData?.is_open ? (
+            {marketOverview?.is_open ? (
               <span className="text-green-400">● 交易中</span>
             ) : (
               <span className="text-red-400">● 已休市</span>
             )}
           </span>
-          {marketData?.last_update && (
+          {marketOverview?.last_update && (
             <span className="text-xs text-slate-500">
-              更新于 {new Date(marketData.last_update).toLocaleTimeString()}
+              更新于 {new Date(marketOverview.last_update).toLocaleTimeString()}
             </span>
           )}
           {isLoading && (
@@ -324,14 +319,14 @@ export const SentimentAnalysis: React.FC = () => {
             <StatCard
               icon={<DollarSign size={14} className="text-blue-400" />}
               label="成交金额"
-              value={`${marketData?.volume?.amount || 0}`}
-              subValue={marketData?.volume?.unit || '亿'}
+              value={`${marketOverview?.volume?.amount || 0}`}
+              subValue={marketOverview?.volume?.unit || '亿'}
               color="blue"
             />
             <StatCard
               icon={<BarChart3 size={14} className="text-cyan-400" />}
               label="量比"
-              value={marketData?.volume?.ratio || 1}
+              value={marketOverview?.volume?.ratio || 1}
               subValue="平均量比"
               color="cyan"
             />
@@ -422,7 +417,24 @@ export const SentimentAnalysis: React.FC = () => {
           </div>
         </div>
 
-        {/* 第三行：热门股票排行 */}
+        {/* 第三行：板块资金流向 */}
+        <div className="bg-[#111827] border border-slate-800 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
+              <DollarSign size={16} className="text-blue-400" />
+              板块资金流向
+            </h3>
+          </div>
+          <div className="p-4 h-[280px]">
+            {flowChartOption ? (
+              <ReactECharts option={flowChartOption} style={{ height: '100%', width: '100%' }} />
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-600">暂无资金流向数据</div>
+            )}
+          </div>
+        </div>
+
+        {/* 第四行：热门股票排行 */}
         <div className="bg-[#111827] border border-slate-800 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">

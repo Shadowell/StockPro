@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "check": "tsc -b --noEmit",
     "test:e2e": "playwright test",
+    "test:e2e:mock": "cross-env MOCK_API=true playwright test",
+    "test:e2e:real": "cross-env MOCK_API=false E2E_REAL_BACKEND=1 playwright test tests/e2e/real-backend.spec.ts",
     "test:e2e:report": "playwright show-report",
     "electron:dev": "cross-env NODE_ENV=development electron .",
     "electron:build": "npm run build && electron-builder --dir",
