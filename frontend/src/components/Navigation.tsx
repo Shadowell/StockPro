@@ -70,7 +70,7 @@ export const Navigation: React.FC<NavigationProps> = ({ orientation = 'horizonta
       {
         id: 'execution-risk',
         title: language === 'zh' ? '执行风控' : 'Execution & Risk',
-        items: [{ id: 'live-trading', to: '/trading', label: language === 'zh' ? '实盘交易' : 'Live Trading', Icon: Wallet }],
+        items: [{ id: 'live-trading', to: '/trading', label: language === 'zh' ? '模拟/实盘交易' : 'Sim/Live Trading', Icon: Wallet }],
       },
     ],
     [language]
