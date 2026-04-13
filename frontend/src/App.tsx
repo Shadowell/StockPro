@@ -9,11 +9,6 @@ const Home = lazy(() =>
 const MarketOverview = lazy(() =>
   import("./pages/MarketOverview").then((m) => ({ default: m.MarketOverview }))
 );
-const DataProcessingAnalysis = lazy(() =>
-  import("./pages/DataProcessingAnalysis").then((m) => ({
-    default: m.DataProcessingAnalysis,
-  }))
-);
 const AIStockAnalysis = lazy(() =>
   import("./pages/AIStockAnalysis").then((m) => ({ default: m.AIStockAnalysis }))
 );
@@ -65,7 +60,6 @@ export default function App() {
               <Route path="/" element={<Home />} />
               <Route path="/market" element={<MarketOverview />} />
               <Route path="/sentiment" element={<SentimentAnalysis />} />
-              <Route path="/analysis" element={<DataProcessingAnalysis />} />
               <Route path="/ai" element={<AIStockAnalysis />} />
               <Route path="/news" element={<NewsCalendar />} />
               <Route path="/news-calendar" element={<NewsCalendar />} />
