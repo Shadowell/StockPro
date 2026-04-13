@@ -11,7 +11,6 @@ import {
   Zap,
   FlaskConical,
   Wallet,
-  Search,
   ShieldCheck,
   Microscope,
 } from 'lucide-react';
@@ -54,8 +53,7 @@ export const Navigation: React.FC<NavigationProps> = ({ orientation = 'horizonta
           { id: 'market-overview', to: '/market', label: language === 'zh' ? '市场概览' : 'Market', Icon: BarChart2 },
           { id: 'sentiment-analysis', to: '/sentiment', label: language === 'zh' ? '市场情绪' : 'Sentiment', Icon: Activity },
           { id: 'news-feed', to: '/news', label: language === 'zh' ? '消息中心' : 'News', Icon: Newspaper },
-          { id: 'ai-analysis', to: '/ai', label: language === 'zh' ? 'AI 研究' : 'AI Research', Icon: BrainCircuit },
-          { id: 'stock-screener', to: '/screener', label: language === 'zh' ? '智能选股' : 'Screener', Icon: Search },
+          { id: 'ai-analysis', to: '/ai', label: language === 'zh' ? '智能选股' : 'AI Screener', Icon: BrainCircuit },
           { id: 'factor-library', to: '/factors', label: language === 'zh' ? '因子研究' : 'Factor Lab', Icon: FlaskConical },
           { id: 'trading-calendar', to: '/calendar', label: language === 'zh' ? '交易日历' : 'Calendar', Icon: CalendarDays },
         ],

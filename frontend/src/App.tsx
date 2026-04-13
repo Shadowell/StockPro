@@ -40,10 +40,6 @@ const MarketPulse = lazy(() =>
 const LiveTrading = lazy(() =>
   import("./pages/LiveTrading").then((m) => ({ default: m.LiveTrading }))
 );
-const StockScreener = lazy(() =>
-  import("./pages/StockScreener").then((m) => ({ default: m.StockScreener }))
-);
-
 const PageFallback: React.FC = () => (
   <div className="min-h-screen w-full bg-[#0b1120] text-slate-300 flex items-center justify-center">
     <div className="text-sm tracking-wide">Loading...</div>
@@ -69,7 +65,6 @@ export default function App() {
               <Route path="/factors" element={<FactorLibrary />} />
               <Route path="/pulse" element={<MarketPulse />} />
               <Route path="/trading" element={<LiveTrading />} />
-              <Route path="/screener" element={<StockScreener />} />
             </Routes>
           </Suspense>
           <TaskProgress />
