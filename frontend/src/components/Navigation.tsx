@@ -12,7 +12,6 @@ import {
   FlaskConical,
   Wallet,
   Search,
-  Workflow,
   ShieldCheck,
   Microscope,
 } from 'lucide-react';
@@ -45,7 +44,6 @@ export const Navigation: React.FC<NavigationProps> = ({ orientation = 'horizonta
         id: 'data-hub',
         title: language === 'zh' ? '数据中台' : 'Data Hub',
         items: [
-          { id: 'data-analysis', to: '/analysis', label: language === 'zh' ? '中台工作流' : 'Hub Workflow', Icon: Workflow },
           { id: 'dashboard', to: '/', label: language === 'zh' ? '总览看板' : 'Dashboard', Icon: LayoutDashboard },
         ],
       },
