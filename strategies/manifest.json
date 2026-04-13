@@ -1,0 +1,44 @@
+[
+  {
+    "filename": "mainboard_top10.py",
+    "name": "主板涨幅TOP10",
+    "description": "实时获取主板涨幅前10的股票，排除ST、创业板、科创板",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "volume_breakout.py",
+    "name": "放量突破策略",
+    "description": "筛选近20天无涨停、当日放量1.75倍以上的主板股票(30-160亿市值)",
+    "interval_seconds": 300
+  },
+  {
+    "filename": "limit_up_monitor.py",
+    "name": "涨停板监控",
+    "description": "实时监控主板涨停股票，按成交额排序",
+    "interval_seconds": 30
+  },
+  {
+    "filename": "flat_volume_breakout.py",
+    "name": "平底放量突破首板",
+    "description": "筛选近20天无涨停、当日放量1.75倍以上、低开高走的主板股票(30-160亿市值)，适合做首板",
+    "interval_seconds": 300
+  },
+  {
+    "filename": "consecutive_limit_monitor.py",
+    "name": "连板股监控",
+    "description": "实时监控2板及以上的连板股票",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "hot_stocks_top20.py",
+    "name": "热门股票TOP20",
+    "description": "获取东方财富热门股票排行榜TOP20",
+    "interval_seconds": 120
+  },
+  {
+    "filename": "ma_convergence_breakout.py",
+    "name": "平底均线图突破",
+    "description": "筛选最近15天M5/M10/M20/M30均线几乎平行的主板股票，寻找横盘整理后的突破机会",
+    "interval_seconds": 600
+  }
+]
