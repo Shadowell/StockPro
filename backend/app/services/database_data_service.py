@@ -22,15 +22,43 @@ class DatabaseDataService:
     
     def get_filtered_stocks_from_db(self) -> Dict[str, Any]:
         """
-        从数据库获取过滤后的股票数据
+        从数据库获取过滤后的股票数据，优先使用实时缓存表。
         """
         try:
-            # 获取最近日期的股票数据
+            realtime_rows = self.db.get_all_stocks_realtime()
+            if realtime_rows:
+                stocks = []
+                for row in realtime_rows:
+                    code = str(row.get("code") or "").strip()
+                    if not code:
+                        continue
+                    price = float(row.get("price") or 0)
+                    change_pct = float(row.get("change_percent") or 0)
+                    volume = int(float(row.get("volume") or 0))
+                    market_cap = int(float(row.get("total_market_cap") or 0))
+                    stocks.append({
+                        "code": code,
+                        "name": str(row.get("name") or ""),
+                        "current_price": price,
+                        "change_percent": change_pct,
+                        "volume": volume,
+                        "market_cap": market_cap,
+                        "is_short": change_pct < 0,
+                    })
+
+                logger.info(f"Retrieved {len(stocks)} stocks from all_stocks_realtime cache")
+                return {
+                    "stocks": stocks,
+                    "total_count": len(stocks),
+                    "filter_time": datetime.now(),
+                    "latest_date": None,
+                }
+
             conn = self.db.get_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT DISTINCT date FROM stock_history ORDER BY date DESC LIMIT 1")
             latest_date_row = cursor.fetchone()
-            
+
             if not latest_date_row:
                 logger.warning("No stock history data found in database")
                 conn.close()
@@ -38,53 +66,44 @@ class DatabaseDataService:
                     "stocks": [],
                     "total_count": 0,
                     "filter_time": datetime.now(),
-                    "latest_date": None
+                    "latest_date": None,
                 }
-            
+
             latest_date = latest_date_row[0]
-            
-            # 获取该日期的所有股票数据
+
             cursor.execute("""
-                SELECT symbol, name, open, high, low, close, volume, turnover, date
-                FROM stock_history 
+                SELECT symbol, name, close, volume, turnover
+                FROM stock_history
                 WHERE date = ?
                 ORDER BY close DESC
             """, (latest_date,))
-            
+
             rows = cursor.fetchall()
-            
+            conn.close()
+
             stocks = []
             for row in rows:
-                stock = {
-                    "code": row[0],
-                    "name": row[1],
-                    "open": float(row[2]) if row[2] is not None else 0.0,
-                    "high": float(row[3]) if row[3] is not None else 0.0,
-                    "low": float(row[4]) if row[4] is not None else 0.0,
-                    "close": float(row[5]) if row[5] is not None else 0.0,
-                    "volume": int(row[6]) if row[6] is not None else 0,
-                    "amount": float(row[7]) if row[7] is not None else 0.0,
-                    "change_amount": 0.0,  # SQLite表中没有这些字段，暂时设为0
+                close_price = float(row[2]) if row[2] is not None else 0.0
+                volume = int(row[3]) if row[3] is not None else 0
+                market_cap = int(float(row[4])) if row[4] is not None else 0
+                stocks.append({
+                    "code": str(row[0] or ""),
+                    "name": str(row[1] or ""),
+                    "current_price": close_price,
                     "change_percent": 0.0,
-                    "turnover_rate": 0.0,
-                    "pe_ttm": 0.0,
-                    "pb": 0.0,
-                    "total_mv": 0.0,
-                    "circ_mv": 0.0,
-                    "date": str(row[8])
-                }
-                stocks.append(stock)
-            
-            conn.close()
-            logger.info(f"Retrieved {len(stocks)} stocks from database for date {latest_date}")
-            
+                    "volume": volume,
+                    "market_cap": market_cap,
+                    "is_short": False,
+                })
+
+            logger.info(f"Retrieved {len(stocks)} stocks from stock_history for date {latest_date}")
             return {
                 "stocks": stocks,
                 "total_count": len(stocks),
                 "filter_time": datetime.now(),
-                "latest_date": str(latest_date)
+                "latest_date": str(latest_date),
             }
-                
+
         except Exception as e:
             logger.error(f"Error getting filtered stocks from database: {str(e)}")
             return {
@@ -92,7 +111,7 @@ class DatabaseDataService:
                 "total_count": 0,
                 "filter_time": datetime.now(),
                 "latest_date": None,
-                "error": str(e)
+                "error": str(e),
             }
     
     def get_hot_sectors_from_db(self) -> List[Dict[str, Any]]:
