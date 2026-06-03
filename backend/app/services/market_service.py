@@ -4,6 +4,7 @@ import logging
 import math
 import calendar as pycalendar
 import hashlib
+import requests
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 from functools import lru_cache
@@ -18,6 +19,43 @@ from app.db.local_db import db_instance
 db = db_instance
 
 logger = logging.getLogger(__name__)
+
+EASTMONEY_A_SPOT_URLS = [
+    "https://82.push2.eastmoney.com/api/qt/clist/get",
+    "https://push2.eastmoney.com/api/qt/clist/get",
+]
+EASTMONEY_A_SPOT_FIELDS = (
+    "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,"
+    "f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152"
+)
+EASTMONEY_A_SPOT_HEADERS = {
+    "Accept": "application/json,text/plain,*/*",
+    "Referer": "https://quote.eastmoney.com/center/gridlist.html",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36"
+    ),
+}
+EASTMONEY_A_SPOT_COLUMN_MAP = {
+    "f2": "最新价",
+    "f3": "涨跌幅",
+    "f4": "涨跌额",
+    "f5": "成交量",
+    "f6": "成交额",
+    "f7": "振幅",
+    "f8": "换手率",
+    "f9": "市盈率-动态",
+    "f10": "量比",
+    "f12": "代码",
+    "f14": "名称",
+    "f15": "最高",
+    "f16": "最低",
+    "f17": "今开",
+    "f18": "昨收",
+    "f20": "总市值",
+    "f21": "流通市值",
+    "f23": "市净率",
+}
 
 
 def _find_column(df: pd.DataFrame, candidates: Sequence[str]) -> Optional[str]:
@@ -41,6 +79,72 @@ def _find_column(df: pd.DataFrame, candidates: Sequence[str]) -> Optional[str]:
                 return c
                 
     return None
+
+
+def _fetch_eastmoney_a_spot_direct(page_size: int = 100, timeout: int = 12) -> pd.DataFrame:
+    base_params = {
+        "pn": "1",
+        "pz": str(page_size),
+        "po": "1",
+        "np": "1",
+        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+        "fltt": "2",
+        "invt": "2",
+        "fid": "f12",
+        "fs": "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
+        "fields": EASTMONEY_A_SPOT_FIELDS,
+    }
+    rows: list[dict[str, Any]] = []
+    total = 0
+    page = 1
+
+    while page == 1 or (total and len(rows) < total):
+        params = {**base_params, "pn": str(page)}
+        data_json: dict[str, Any] | None = None
+        last_error: Exception | None = None
+
+        for url in EASTMONEY_A_SPOT_URLS:
+            try:
+                response = requests.get(
+                    url,
+                    params=params,
+                    headers=EASTMONEY_A_SPOT_HEADERS,
+                    timeout=timeout,
+                )
+                response.raise_for_status()
+                data_json = response.json()
+                break
+            except Exception as exc:
+                last_error = exc
+
+        if data_json is None:
+            if page == 1:
+                raise RuntimeError(f"EastMoney direct request failed: {last_error}")
+            logger.warning("EastMoney direct page %s failed, using %s partial rows: %s", page, len(rows), last_error)
+            break
+
+        data = data_json.get("data") or {}
+        diff = data.get("diff") or []
+        if not isinstance(diff, list) or not diff:
+            break
+
+        total = int(data.get("total") or len(diff))
+        rows.extend(item for item in diff if isinstance(item, dict))
+
+        if len(diff) < page_size:
+            break
+        page += 1
+        if page > 1:
+            time.sleep(0.15)
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows).rename(columns=EASTMONEY_A_SPOT_COLUMN_MAP)
+    for column in ("代码", "名称"):
+        if column not in df.columns:
+            df[column] = ""
+    return df
 
 
 # Common column name mappings for reuse
@@ -258,18 +362,11 @@ class MarketService:
         indices_data = db.get_market_indices_realtime()
         stocks = db.get_all_stocks_realtime()
         
-        # 如果数据库没有数据，直接从API获取
+        # Overview must stay fast for page rendering. Full-market stock fetches are heavy
+        # and unreliable on some networks, so this endpoint only uses realtime cache.
         if not stocks or len(stocks) == 0:
-            if MarketService._external_fetch_enabled():
-                try:
-                    stocks = MarketService.get_all_stocks()
-                    logger.info(f"Fetched {len(stocks)} stocks from API for market overview")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch stocks from API: {e}")
-                    stocks = []
-            else:
-                logger.info("External market fetch disabled; using cache-only stocks for market overview")
-                stocks = []
+            logger.info("No cached realtime stocks for market overview; returning neutral breadth data")
+            stocks = []
         
         # 如果指数数据为空，尝试获取
         if not indices_data or len(indices_data) == 0:
@@ -490,8 +587,19 @@ class MarketService:
             
             # Priority 1: Try East Money interface with retry
             df = fetch_with_retry(ak.stock_zh_a_spot_em, "EastMoney", max_retries=2)
-            
-            # Priority 2: Try hot rank as a lightweight alternative
+
+            # Priority 2: Direct EastMoney fallback with browser headers and controlled paging
+            if df is None or df.empty:
+                logger.info("Trying direct EastMoney A-share spot fallback...")
+                try:
+                    direct_df = _fetch_eastmoney_a_spot_direct()
+                    if direct_df is not None and not direct_df.empty:
+                        logger.info("Successfully fetched %s stocks from direct EastMoney fallback", len(direct_df))
+                        df = direct_df
+                except Exception as e:
+                    logger.warning("Direct EastMoney fallback failed: %s", e)
+
+            # Priority 3: Try hot rank as a lightweight alternative
             if df is None or df.empty:
                 logger.info("Trying stock_hot_rank_em as alternative...")
                 try:
@@ -509,11 +617,6 @@ class MarketService:
                         df = hot_df.rename(columns=col_map)
                 except Exception as e:
                     logger.warning(f"Hot rank failed: {e}")
-            
-            # Priority 3: Fallback to alternative interface (slower)
-            if df is None or df.empty:
-                logger.info("Trying alternative stock_zh_a_spot interface (slow)...")
-                df = fetch_with_retry(ak.stock_zh_a_spot, "Sina", max_retries=1)
 
             if df is None or df.empty:
                 logger.warning("No stock data available from any interface")
