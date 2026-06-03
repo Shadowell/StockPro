@@ -15,12 +15,12 @@ on:
         type: boolean
 
 concurrency:
-  group: stockpro-production-deploy
+  group: stockpro-production-deploy-v2
   cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
 
 jobs:
   build-and-deploy:
-    runs-on: [self-hosted, stockpro-production]
+    runs-on: [self-hosted, bitpro-production]
     steps:
       - name: Require main branch
         if: ${{ github.ref != 'refs/heads/main' }}
@@ -30,13 +30,24 @@ jobs:
           exit 1
 
       - name: Setup SSH
+        id: ssh_setup
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
         run: |
+          if [ -z "${SSH_PRIVATE_KEY}" ] || [ -z "${SERVER_HOST}" ]; then
+            echo "ssh_available=false" >> "${GITHUB_OUTPUT}"
+            echo "StockPro deployment secrets are not configured; using local self-hosted runner deployment."
+            exit 0
+          fi
+
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -T 30 -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh-keyscan -T 30 -H "${SERVER_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
           echo "StrictHostKeyChecking no" >> ~/.ssh/config
           chmod 644 ~/.ssh/config
+          echo "ssh_available=true" >> "${GITHUB_OUTPUT}"
 
       - name: Check deployment gate
         id: deploy_gate
@@ -45,13 +56,21 @@ jobs:
           FORCE_DEPLOY: ${{ github.event_name == 'workflow_dispatch' && inputs.force_deploy == true }}
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_AVAILABLE: ${{ steps.ssh_setup.outputs.ssh_available }}
         run: |
           SSH_OPTS="-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
-          LAST_DEPLOYED_SHA="$(ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "mkdir -p /opt/stockpro/deploy && cat /opt/stockpro/deploy/last_deployed_sha 2>/dev/null || true" | tr -d '[:space:]')"
+          if [ "${SSH_AVAILABLE}" = "true" ] && [ -n "${SERVER_USER}" ] && [ -n "${SERVER_HOST}" ]; then
+            LAST_DEPLOYED_SHA="$(ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "mkdir -p /opt/stockpro/deploy && cat /opt/stockpro/deploy/last_deployed_sha 2>/dev/null || true" | tr -d '[:space:]')"
+            DEPLOY_TARGET="${SERVER_USER}@${SERVER_HOST}"
+          else
+            LAST_DEPLOYED_SHA="$(cat /opt/stockpro/deploy/last_deployed_sha 2>/dev/null | tr -d '[:space:]' || true)"
+            DEPLOY_TARGET="local self-hosted runner"
+          fi
 
           echo "current_sha=${CURRENT_SHA}"
           echo "last_deployed_sha=${LAST_DEPLOYED_SHA:-<none>}"
           echo "force_deploy=${FORCE_DEPLOY}"
+          echo "deploy_target=${DEPLOY_TARGET}"
 
           if [ "${FORCE_DEPLOY}" = "true" ]; then
             echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
@@ -126,6 +145,7 @@ jobs:
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_AVAILABLE: ${{ steps.ssh_setup.outputs.ssh_available }}
         timeout-minutes: 45
         run: |
           SSH_OPTS="-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
@@ -137,40 +157,92 @@ jobs:
             until "$@"; do
               local exit_code=$?
               if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "Command failed after ${attempt} attempts: $*" >&2
                 return "$exit_code"
               fi
+              echo "Command failed with ${exit_code}; retrying in ${delay_seconds}s (${attempt}/${max_attempts}): $*" >&2
               attempt=$((attempt + 1))
               sleep "$delay_seconds"
             done
           }
 
-          retry ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "echo 'SSH OK' && mkdir -p /opt/stockpro/{backend,frontend/dist,deploy,logs,strategies,scripts}"
+          run_root() {
+            if [ "$(id -u)" -eq 0 ]; then
+              "$@"
+            else
+              sudo "$@"
+            fi
+          }
 
-          retry rsync -azP --delete -e "${RSYNC_SSH}" \
-            --exclude='venv/' \
-            --exclude='__pycache__/' \
-            --exclude='*.pyc' \
-            --exclude='.env' \
-            --exclude='*.db' \
-            --exclude='*.sqlite' \
-            --exclude='logs/' \
-            backend/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/backend/
+          if [ "${SSH_AVAILABLE}" = "true" ] && [ -n "${SERVER_USER}" ] && [ -n "${SERVER_HOST}" ]; then
+            echo "Deploying StockPro through SSH, matching the BitPro production flow."
+            retry ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "echo 'SSH OK' && mkdir -p /opt/stockpro/{backend,frontend/dist,deploy,logs,strategies,scripts}"
 
-          retry rsync -azP --delete -e "${RSYNC_SSH}" \
-            frontend/dist/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/frontend/dist/
+            retry rsync -azP --delete -e "${RSYNC_SSH}" \
+              --exclude='venv/' \
+              --exclude='__pycache__/' \
+              --exclude='*.pyc' \
+              --exclude='.env' \
+              --exclude='*.db' \
+              --exclude='*.sqlite' \
+              --exclude='logs/' \
+              backend/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/backend/
 
-          retry rsync -azP -e "${RSYNC_SSH}" \
-            deploy/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/deploy/
+            retry rsync -azP --delete -e "${RSYNC_SSH}" \
+              frontend/dist/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/frontend/dist/
 
-          retry rsync -azP --delete -e "${RSYNC_SSH}" \
-            strategies/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/strategies/
+            retry rsync -azP -e "${RSYNC_SSH}" \
+              deploy/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/deploy/
 
-          retry rsync -azP --delete -e "${RSYNC_SSH}" \
-            --exclude='__pycache__/' \
-            --exclude='*.pyc' \
-            scripts/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/scripts/
+            if [ -d strategies ]; then
+              retry rsync -azP --delete -e "${RSYNC_SSH}" \
+                strategies/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/strategies/
+            else
+              retry ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "rm -rf /opt/stockpro/strategies && mkdir -p /opt/stockpro/strategies"
+            fi
 
-          retry ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "chmod +x /opt/stockpro/deploy/deploy.sh && bash /opt/stockpro/deploy/deploy.sh"
+            retry rsync -azP --delete -e "${RSYNC_SSH}" \
+              --exclude='__pycache__/' \
+              --exclude='*.pyc' \
+              scripts/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/scripts/
+
+            retry ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "chmod +x /opt/stockpro/deploy/deploy.sh && bash /opt/stockpro/deploy/deploy.sh"
+          else
+            echo "Deploying StockPro locally on the self-hosted runner because StockPro secrets are not configured."
+            retry run_root mkdir -p /opt/stockpro/{backend,frontend/dist,deploy,logs,strategies,scripts}
+
+            retry run_root rsync -azP --delete \
+              --exclude='venv/' \
+              --exclude='__pycache__/' \
+              --exclude='*.pyc' \
+              --exclude='.env' \
+              --exclude='*.db' \
+              --exclude='*.sqlite' \
+              --exclude='logs/' \
+              backend/ /opt/stockpro/backend/
+
+            retry run_root rsync -azP --delete \
+              frontend/dist/ /opt/stockpro/frontend/dist/
+
+            retry run_root rsync -azP \
+              deploy/ /opt/stockpro/deploy/
+
+            if [ -d strategies ]; then
+              retry run_root rsync -azP --delete \
+                strategies/ /opt/stockpro/strategies/
+            else
+              retry run_root rm -rf /opt/stockpro/strategies
+              retry run_root mkdir -p /opt/stockpro/strategies
+            fi
+
+            retry run_root rsync -azP --delete \
+              --exclude='__pycache__/' \
+              --exclude='*.pyc' \
+              scripts/ /opt/stockpro/scripts/
+
+            retry run_root chmod +x /opt/stockpro/deploy/deploy.sh
+            retry run_root bash /opt/stockpro/deploy/deploy.sh
+          fi
 
       - name: Record deployed SHA
         if: ${{ steps.deploy_gate.outputs.should_deploy == 'true' }}
@@ -178,6 +250,15 @@ jobs:
           CURRENT_SHA: ${{ github.sha }}
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
+          SSH_AVAILABLE: ${{ steps.ssh_setup.outputs.ssh_available }}
         run: |
           SSH_OPTS="-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
-          ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "mkdir -p /opt/stockpro/deploy && printf '%s\n' '${CURRENT_SHA}' > /opt/stockpro/deploy/last_deployed_sha"
+          if [ "${SSH_AVAILABLE}" = "true" ] && [ -n "${SERVER_USER}" ] && [ -n "${SERVER_HOST}" ]; then
+            ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "mkdir -p /opt/stockpro/deploy && printf '%s\n' '${CURRENT_SHA}' > /opt/stockpro/deploy/last_deployed_sha"
+          elif [ "$(id -u)" -eq 0 ]; then
+            mkdir -p /opt/stockpro/deploy
+            printf '%s\n' "${CURRENT_SHA}" > /opt/stockpro/deploy/last_deployed_sha
+          else
+            sudo mkdir -p /opt/stockpro/deploy
+            printf '%s\n' "${CURRENT_SHA}" | sudo tee /opt/stockpro/deploy/last_deployed_sha >/dev/null
+          fi
