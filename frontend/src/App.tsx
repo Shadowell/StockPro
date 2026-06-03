@@ -1,5 +1,6 @@
 import React, { Suspense, lazy } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { RequireAdmin } from "./components/RequireAdmin";
 import { TaskProgress } from "./components/TaskProgress";
 import { ToastProvider } from "./components/Toast";
 
@@ -40,6 +41,14 @@ const MarketPulse = lazy(() =>
 const LiveTrading = lazy(() =>
   import("./pages/LiveTrading").then((m) => ({ default: m.LiveTrading }))
 );
+const DataProcessingAnalysis = lazy(() =>
+  import("./pages/DataProcessingAnalysis").then((m) => ({
+    default: m.DataProcessingAnalysis,
+  }))
+);
+const AdminLogin = lazy(() =>
+  import("./pages/AdminLogin").then((m) => ({ default: m.AdminLogin }))
+);
 const PageFallback: React.FC = () => (
   <div className="min-h-screen w-full bg-[#0b1120] text-slate-300 flex items-center justify-center">
     <div className="text-sm tracking-wide">Loading...</div>
@@ -65,6 +74,15 @@ export default function App() {
               <Route path="/factors" element={<FactorLibrary />} />
               <Route path="/pulse" element={<MarketPulse />} />
               <Route path="/trading" element={<LiveTrading />} />
+              <Route path="/admin-login" element={<AdminLogin />} />
+              <Route
+                path="/data"
+                element={
+                  <RequireAdmin>
+                    <DataProcessingAnalysis />
+                  </RequireAdmin>
+                }
+              />
             </Routes>
           </Suspense>
           <TaskProgress />

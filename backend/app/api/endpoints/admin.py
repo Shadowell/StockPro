@@ -1,7 +1,8 @@
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends
+from app.core.admin_auth import require_admin
 from app.services.scheduler_service import scheduler_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 @router.post("/fetch-history")
 async def trigger_history_fetch(background_tasks: BackgroundTasks):

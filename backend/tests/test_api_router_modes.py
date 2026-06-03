@@ -10,6 +10,8 @@ class ApiRouterModeTests(unittest.TestCase):
 
         self.assertIn("/health/health", paths)
         self.assertIn("/health/storage", paths)
+        self.assertIn("/auth/admin/login", paths)
+        self.assertIn("/auth/admin/me", paths)
         self.assertNotIn("/health/health/storage", paths)
         self.assertNotIn("/stocks/search", paths)
         self.assertNotIn("/database/tables", paths)
@@ -19,6 +21,7 @@ class ApiRouterModeTests(unittest.TestCase):
         paths = {route.path for route in router.routes}
 
         self.assertIn("/health/health", paths)
+        self.assertIn("/auth/admin/login", paths)
         self.assertIn("/stocks/search", paths)
         self.assertIn("/database/tables", paths)
 

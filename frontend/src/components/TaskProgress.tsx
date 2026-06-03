@@ -1,11 +1,27 @@
 import React, { useState, useCallback } from 'react';
-import { getTaskStatus } from '../api/client';
+import { ADMIN_AUTH_CHANGED_EVENT, getTaskStatus, hasAdminToken } from '../api/client';
 import { TaskStatus } from '../types';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { usePolling } from '../hooks/usePolling';
 
 export const TaskProgress: React.FC = () => {
   const [status, setStatus] = useState<TaskStatus | null>(null);
+  const [shouldPoll, setShouldPoll] = useState(hasAdminToken());
+
+  React.useEffect(() => {
+    const syncAdminState = () => {
+      const nextShouldPoll = hasAdminToken();
+      setShouldPoll(nextShouldPoll);
+      if (!nextShouldPoll) setStatus(null);
+    };
+
+    window.addEventListener(ADMIN_AUTH_CHANGED_EVENT, syncAdminState);
+    window.addEventListener('storage', syncAdminState);
+    return () => {
+      window.removeEventListener(ADMIN_AUTH_CHANGED_EVENT, syncAdminState);
+      window.removeEventListener('storage', syncAdminState);
+    };
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     const data = await getTaskStatus();
@@ -14,7 +30,7 @@ export const TaskProgress: React.FC = () => {
 
   const { error, consecutiveErrors, manualRefresh } = usePolling<TaskStatus>({
     fetchFn: fetchStatus,
-    shouldPoll: true,
+    shouldPoll,
     onSuccess: (data) => setStatus(data),
     onError: (err) => console.error("Failed to fetch task status", err),
     initialInterval: 2000,

@@ -124,6 +124,17 @@ async function mockApi(page: Page) {
     const method = request.method().toUpperCase();
     const path = url.pathname.replace(/^\/api\/v1/, '');
 
+    if (method === 'POST' && path === '/auth/admin/login') {
+      return route.fulfill(
+        json({
+          access_token: 'mock-admin-token',
+          token_type: 'bearer',
+          expires_in: 3600,
+          username: 'admin',
+        })
+      );
+    }
+    if (method === 'GET' && path === '/auth/admin/me') return route.fulfill(json({ username: 'admin' }));
     if (method === 'GET' && path === '/market/overview') return route.fulfill(json(marketOverviewFixture));
     if (method === 'GET' && path === '/admin/task-status') {
       return route.fulfill(json({ is_running: false, total: 0, processed: 0, message: '', task_id: null }));
@@ -218,6 +229,51 @@ async function mockApi(page: Page) {
     if (method === 'GET' && path === '/batch-import/status') {
       return route.fulfill(json({ is_running: false, progress: 0, task_id: null, total: 0, processed: 0 }));
     }
+    if (method === 'GET' && path === '/data-hub/datasets') {
+      return route.fulfill(
+        json({
+          status: 'success',
+          data: [
+            {
+              id: 'stock_history',
+              name: '行情历史',
+              table: 'stock_history',
+              exists: true,
+              row_count: 1000,
+              fields: ['code', 'date', 'close'],
+              primary_keys: ['code', 'date'],
+              refresh_frequency: 'daily',
+              dependencies: [],
+              latest_snapshot: '2026-04-01',
+              freshness_status: 'green',
+            },
+          ],
+        })
+      );
+    }
+    if (method === 'GET' && path === '/data-hub/datasets/stock_history/freshness') {
+      return route.fulfill(
+        json({
+          status: 'success',
+          data: {
+            dataset: {
+              id: 'stock_history',
+              name: '行情历史',
+              table: 'stock_history',
+              exists: true,
+              row_count: 1000,
+              fields: ['code', 'date', 'close'],
+              primary_keys: ['code', 'date'],
+              refresh_frequency: 'daily',
+              dependencies: [],
+              latest_snapshot: '2026-04-01',
+              freshness_status: 'green',
+            },
+            recent_jobs: [],
+          },
+        })
+      );
+    }
     if (method === 'GET' && path === '/batch-import/ma-data/stats') {
       return route.fulfill(json({ success: true, stats: { stock_count: 10, record_count: 1000, start_date: '2026-01-01', end_date: '2026-04-01' } }));
     }
@@ -288,6 +344,19 @@ test('所有页面路由可访问并完成基础渲染', async ({ page }) => {
   }
 
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
+test('管理员登录后可访问数据中台', async ({ page }) => {
+  await page.goto('/data', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('h1')).toContainText('管理员登录');
+
+  await page.getByLabel('账号').fill('admin');
+  await page.getByLabel('密码').fill('secret-password');
+  await page.getByRole('button', { name: '登录' }).click();
+
+  await expect(page.locator('header h2')).toContainText('数据中台', { timeout: 15000 });
+  await expect(page.getByText('数据资产注册表')).toBeVisible();
+  await expect(page.getByText('行情历史').first()).toBeVisible();
 });
 
 test('消息流页面可切换所有 tab', async ({ page }) => {
