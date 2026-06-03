@@ -1,36 +1,123 @@
 # Progress Log
 
-## Snapshot (2026-04-02)
+## Snapshot (2026-06-03)
 
 - Workspace: `/Users/jie.feng/wlb/StockPro`
-- Focus: stabilize data modules and unblock page-level usability
-- Verification mode: frontend E2E (mocked API) + backend smoke/static checks
+- Focus: cloud B/S deployment foundation, Postgres migration runner, BitPro-style production deploy upgrade
+- Active contract: `docs/contracts/active-cloud-bs-pg-deploy.md`
+- Production target: `root@47.79.36.92`, public entry `http://47.79.36.92:4444`
+- Deployment status: live on `47.79.36.92:4444` with Postgres `stockpro_prod`
 
-## Module Completion
+## Latest Completed Work (2026-06-03)
 
-| Module | Route | Status | Evidence | Remaining Risk |
-|---|---|---|---|---|
-| Dashboard | `/` | Usable | Playwright route render pass | Uses mocked API in E2E |
-| Market Overview | `/market` | Usable | Playwright route render pass | Real-time source stability not covered |
-| Sentiment | `/sentiment` | Usable | Playwright route render pass | Data freshness not covered |
-| Data Center | `/analysis` | Partially stable | Tab render pass + type/lint/build pass | SQL/data quality checks rely on local DB health |
-| AI Analysis | `/ai` | Usable | Playwright route render pass | Model/network path not covered in E2E |
-| News Center | `/news` | Usable | Route + tab switching pass | Real feed reliability not covered |
-| Calendar | `/calendar` | Usable | Playwright route render pass | External data sync not covered |
-| Strategy Dev | `/strategy-dev` | Usable | Playwright route render pass | Strategy runtime behavior not covered |
-| Strategy Watch | `/strategy-exec` | Usable | Playwright route render pass | Live execution not covered |
-| Factor Library | `/factors` | Usable | Playwright route render pass | Large-data performance not covered |
-| Review Center | `/pulse` | Usable | Playwright route render pass | Backfill job runtime not covered |
-| Live Trading | `/trading` | Usable | Playwright route render pass | Broker/live order path not covered |
-| Stock Screener | `/screener` | Usable | Route/navigation/e2e coverage added | Depends on MA data completeness |
+1. Product and sprint direction updated
+- Replaced template-oriented `docs/spec.md` with StockPro cloud B/S product spec.
+- Added active sprint contract for React + FastAPI + Postgres deployment foundation.
+
+2. Postgres foundation added
+- Added `backend/app/db/postgres_migrations.py` migration runner.
+- Added initial PG schema under `backend/postgres/migrations/202606030001_strategy_workbench_core.sql`.
+- Added backend unit tests for migration sorting, skipping applied migrations, and recording applied versions.
+- Added `psycopg[binary]` dependency and `DATABASE_URL` config support.
+
+3. Deployment upgraded toward PG-only production
+- Updated `deploy/deploy.sh` to validate `.env`, install dependencies, compile backend code, run PG migrations, restart systemd, reload Nginx, and health-check services.
+- Updated `deploy/setup-server.sh` and added `deploy/setup-postgres.sh`.
+- Updated Nginx config with WebSocket proxy headers.
+- Updated GitHub Actions deployment to keep main-only SHA-gated deploy and remove SQLite seed/import step.
+- Enforced PG-only production deploy: `DB_MODE` must be `postgres` and `ENABLE_LEGACY_SQLITE_MODULES` must be `false`.
+
+4. SQLite removed from default production runtime
+- Changed backend default `DB_MODE` to `postgres`.
+- Added lazy legacy SQLite proxy so importing `app.db.local_db` no longer creates a SQLite database file.
+- Gated legacy SQLite API routes behind `ENABLE_LEGACY_SQLITE_MODULES`.
+- Gated legacy scheduler/realtime/strategy background services behind `ENABLE_LEGACY_SQLITE_MODULES`.
+
+5. Documentation updated
+- Rewrote `docs/deployment.md` for `47.79.36.92:4444`, Postgres `stockpro_prod`, and BitPro-style single-server deployment.
+- Updated README environment/deployment notes for `DB_MODE=postgres` and PG-only production.
+
+6. Production server initialized and deployed
+- Installed PostgreSQL on `47.79.36.92`.
+- Created `stockpro_prod` and `stockpro_app` with a server-local generated password.
+- Created root-only `/opt/stockpro/backend/.env` with `DB_MODE=postgres` and legacy SQLite modules disabled.
+- Deployed React static frontend + FastAPI backend through Nginx/systemd.
+- Moved old `/opt/stockpro/data/stockpro.db` to `/opt/stockpro/legacy-backups/stockpro-sqlite-disabled-20260603120645.bak`.
+
+## Verification Evidence (2026-06-03)
+
+- `python3 -m unittest tests/test_postgres_migrations.py` from `backend/` (pass, 2/2)
+- `PYTHONPATH=backend python3 -m unittest backend.tests.test_local_db_lazy` (pass, 1/1)
+- `PYTHONPATH=backend python3 -m unittest backend.tests.test_api_router_modes` (pass, 2/2)
+- `./scripts/check.sh` (pass: frontend build, frontend lint, deploy shell syntax, backend unit tests 5/5, backend compile)
+- Remote deploy: `bash /opt/stockpro/deploy/deploy.sh` (pass, no pending migrations on second deploy)
+- Remote health: `curl http://47.79.36.92:4444/api/v1/health/health` (pass)
+- Remote storage health: `curl http://47.79.36.92:4444/api/v1/health/storage` (pass: `db_mode=postgres`, `applied_migrations=1`)
+- Remote service state: `stockpro-backend` active, `postgresql` active, no `.db`/`.sqlite` files remain under `/opt/stockpro`
+
+## Known Gaps (2026-06-03)
+
+1. Legacy modules still use SQLite-specific services and need phased migration to Postgres repositories before their API routes are re-enabled in production.
+2. PG-only production currently exposes health/storage foundations first; existing research/strategy pages will need PG-backed APIs before they are production-functional.
+3. IP-only HTTP remains the production entry for now; HTTPS/domain should be added before real broker integration.
+
+## Recommended Next Steps (2026-06-03)
+
+1. Migrate the first research/strategy module from legacy SQLite access to Postgres repositories.
+2. Add PG-backed APIs for strategy versions, backtest runs, signals, portfolios, and paper orders.
+3. Add HTTPS/domain before broker integration.
+
+---
+
+## Snapshot (2026-05-28)
+
+- Workspace: `/Users/jie.feng/wlb/StockPro`
+- Focus: full-stack smoke test, API/page auto-fix, E2E alignment with current 11 routes
+- Verification: `./scripts/check.sh`, Playwright real-backend (7/7), mocked pages (2/2), manual API sweep (19/19)
 
 ## Latest Completed Work
 
-1. DataDev backend unblock
-- Added missing `SchedulerService` DataDev methods (task CRUD, logs, run, scheduler reload).
-- Added `data_dev_tasks` / `data_dev_logs` table init into local DB bootstrap.
+1. Fixed `/api/v1/stocks/filter` 500 error
+- Root cause: `database_data_service.get_filtered_stocks_from_db()` returned fields (`close`, `amount`) incompatible with `StockFilterResponse` schema (`current_price`, `market_cap`).
+- Fix: prefer `all_stocks_realtime` cache and map to `StockBase` fields; fallback to `stock_history` with correct mapping.
 
-2. Route/navigation completeness
+2. Page title alignment
+- `LiveTrading` page title updated to `模拟/实盘交易`.
+- E2E routes updated: removed `/analysis`, `/screener`; updated `/ai` and `/trading` titles.
+
+3. E2E config
+- Playwright default base URL/port aligned to Vite dev server (`4444` / backend `4445`).
+
+4. Full verification pass
+- 11 frontend pages: all render with data, no API 4xx/5xx on page load.
+- 19 core backend endpoints: all return 200 via direct backend and frontend proxy.
+
+## Module Completion
+
+| Module | Route | Status | Evidence |
+|---|---|---|---|
+| Dashboard | `/` | Usable | Page + API pass |
+| Market Overview | `/market` | Usable | Page + API pass |
+| Sentiment | `/sentiment` | Usable | Page + API pass |
+| News Center | `/news` | Usable | Page + tab E2E pass |
+| AI Screener | `/ai` | Usable | Page + API pass |
+| Factor Library | `/factors` | Usable | Page + API pass |
+| Calendar | `/calendar` | Usable | Page + API pass |
+| Strategy Dev | `/strategy-dev` | Usable | Page + API pass |
+| Strategy Watch | `/strategy-exec` | Usable | Page + API pass |
+| Review Center | `/pulse` | Usable | Page + API pass |
+| Sim/Live Trading | `/trading` | Usable | Page pass |
+
+## Next Step
+
+- Consider adding `.env.example` with `VITE_DEV_API_PROXY_TARGET=http://127.0.0.1:8012` when port 8000 is occupied by other local services.
+
+---
+
+## Historical Log (2026-04-02)
+
+1. DataDev backend unblock
+- Added `data_dev_tasks` / `data_dev_logs` table init into local DB bootstrap.
 - Wired `StockScreener` route and sidebar entry.
 - Added `/screener` into Playwright route coverage.
 

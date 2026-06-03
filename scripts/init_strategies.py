@@ -32,7 +32,8 @@ def main():
     args = parser.parse_args()
 
     manifest = load_manifest()
-    db = LocalDatabase()
+    db_path = os.environ.get("LOCAL_DB_PATH")
+    db = LocalDatabase(db_path) if db_path else LocalDatabase()
 
     existing = {s["name"] for s in db.get_strategies()}
     imported, skipped = 0, 0

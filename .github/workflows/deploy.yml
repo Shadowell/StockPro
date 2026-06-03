@@ -1,0 +1,183 @@
+name: Deploy StockPro
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '2/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deploy even if this main SHA is already recorded on the server'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: stockpro-production-deploy
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+
+jobs:
+  build-and-deploy:
+    runs-on: [self-hosted, stockpro-production]
+    steps:
+      - name: Require main branch
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "Production deployment is allowed only from main."
+          echo "Current ref: ${{ github.ref }}"
+          exit 1
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -T 30 -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+          chmod 644 ~/.ssh/config
+
+      - name: Check deployment gate
+        id: deploy_gate
+        env:
+          CURRENT_SHA: ${{ github.sha }}
+          FORCE_DEPLOY: ${{ github.event_name == 'workflow_dispatch' && inputs.force_deploy == true }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          SSH_OPTS="-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+          LAST_DEPLOYED_SHA="$(ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "mkdir -p /opt/stockpro/deploy && cat /opt/stockpro/deploy/last_deployed_sha 2>/dev/null || true" | tr -d '[:space:]')"
+
+          echo "current_sha=${CURRENT_SHA}"
+          echo "last_deployed_sha=${LAST_DEPLOYED_SHA:-<none>}"
+          echo "force_deploy=${FORCE_DEPLOY}"
+
+          if [ "${FORCE_DEPLOY}" = "true" ]; then
+            echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
+            echo "reason=manual force deploy" >> "${GITHUB_OUTPUT}"
+          elif [ "${LAST_DEPLOYED_SHA}" = "${CURRENT_SHA}" ]; then
+            echo "should_deploy=false" >> "${GITHUB_OUTPUT}"
+            echo "reason=main SHA already deployed" >> "${GITHUB_OUTPUT}"
+          else
+            echo "should_deploy=true" >> "${GITHUB_OUTPUT}"
+            echo "reason=main SHA differs from deployed SHA" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Deployment skipped
+        if: ${{ steps.deploy_gate.outputs.should_deploy != 'true' }}
+        run: |
+          echo "No deployment needed: ${{ steps.deploy_gate.outputs.reason }}"
+
+      - name: Checkout with retry
+        if: ${{ steps.deploy_gate.outputs.should_deploy == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          retry_git_fetch() {
+            local attempt=1
+            local max_attempts=5
+            local delay_seconds=20
+            until git "$@"; do
+              local exit_code=$?
+              if [ "${attempt}" -ge "${max_attempts}" ]; then
+                return "${exit_code}"
+              fi
+              attempt=$((attempt + 1))
+              sleep "${delay_seconds}"
+            done
+          }
+          auth_token="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 | tr -d '\n')"
+          auth_header="AUTHORIZATION: basic ${auth_token}"
+          git init .
+          git remote remove origin 2>/dev/null || true
+          git remote add origin "https://github.com/${REPOSITORY}.git"
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git config --local gc.auto 0
+          retry_git_fetch -c "http.https://github.com/.extraheader=${auth_header}" \
+            fetch --no-tags --prune --no-recurse-submodules --depth=1 \
+            origin "+${CURRENT_SHA}:refs/remotes/origin/main"
+          git checkout --force -B main refs/remotes/origin/main
+          git reset --hard "${CURRENT_SHA}"
+          git clean -ffdx
+
+      - name: Setup Node.js
+        if: ${{ steps.deploy_gate.outputs.should_deploy == 'true' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Frontend
+        if: ${{ steps.deploy_gate.outputs.should_deploy == 'true' }}
+        working-directory: frontend
+        env:
+          VITE_API_URL: /api/v1
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Server
+        if: ${{ steps.deploy_gate.outputs.should_deploy == 'true' }}
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        timeout-minutes: 45
+        run: |
+          SSH_OPTS="-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+          RSYNC_SSH="ssh ${SSH_OPTS}"
+          retry() {
+            local attempt=1
+            local max_attempts=8
+            local delay_seconds=20
+            until "$@"; do
+              local exit_code=$?
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                return "$exit_code"
+              fi
+              attempt=$((attempt + 1))
+              sleep "$delay_seconds"
+            done
+          }
+
+          retry ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "echo 'SSH OK' && mkdir -p /opt/stockpro/{backend,frontend/dist,deploy,logs,strategies,scripts}"
+
+          retry rsync -azP --delete -e "${RSYNC_SSH}" \
+            --exclude='venv/' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            --exclude='.env' \
+            --exclude='*.db' \
+            --exclude='*.sqlite' \
+            --exclude='logs/' \
+            backend/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/backend/
+
+          retry rsync -azP --delete -e "${RSYNC_SSH}" \
+            frontend/dist/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/frontend/dist/
+
+          retry rsync -azP -e "${RSYNC_SSH}" \
+            deploy/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/deploy/
+
+          retry rsync -azP --delete -e "${RSYNC_SSH}" \
+            strategies/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/strategies/
+
+          retry rsync -azP --delete -e "${RSYNC_SSH}" \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            scripts/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/scripts/
+
+          retry ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "chmod +x /opt/stockpro/deploy/deploy.sh && bash /opt/stockpro/deploy/deploy.sh"
+
+      - name: Record deployed SHA
+        if: ${{ steps.deploy_gate.outputs.should_deploy == 'true' }}
+        env:
+          CURRENT_SHA: ${{ github.sha }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          SSH_OPTS="-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+          ssh ${SSH_OPTS} ${SERVER_USER}@${SERVER_HOST} "mkdir -p /opt/stockpro/deploy && printf '%s\n' '${CURRENT_SHA}' > /opt/stockpro/deploy/last_deployed_sha"

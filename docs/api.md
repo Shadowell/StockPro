@@ -825,19 +825,19 @@ AI单股深度分析
 
 ```bash
 # 获取市场概览
-curl -X GET "http://localhost:8000/api/v1/market/overview"
+curl -X GET "http://localhost:4445/api/v1/market/overview"
 
 # 获取短线指标
-curl -X GET "http://localhost:8000/api/v1/market/short-line-indices"
+curl -X GET "http://localhost:4445/api/v1/market/short-line-indices"
 
 # 获取热门概念
-curl -X GET "http://localhost:8000/api/v1/market/hot-concepts?limit=20"
+curl -X GET "http://localhost:4445/api/v1/market/hot-concepts?limit=20"
 
 # 获取概念龙头股
-curl -X GET "http://localhost:8000/api/v1/market/hot-concept/leaders?name=BC电池&limit=10"
+curl -X GET "http://localhost:4445/api/v1/market/hot-concept/leaders?name=BC电池&limit=10"
 
 # AI分析
-curl -X POST "http://localhost:8000/api/v1/ai/analyze-stock" \
+curl -X POST "http://localhost:4445/api/v1/ai/analyze-stock" \
   -H "Content-Type: application/json" \
   -d '{"symbol": "600519"}'
 ```

@@ -19,9 +19,9 @@ NC='\033[0m' # No Color
 
 # 1. 停止后端服务
 echo -e "\n${YELLOW}📦 停止后端服务...${NC}"
-if lsof -t -i :8000 > /dev/null 2>&1; then
-    echo "  发现端口 8000 正在使用，正在关闭..."
-    lsof -t -i :8000 | xargs kill -9 2>/dev/null || true
+if lsof -t -i :4445 > /dev/null 2>&1; then
+    echo "  发现端口 4445 正在使用，正在关闭..."
+    lsof -t -i :4445 | xargs kill -9 2>/dev/null || true
     echo -e "  ${GREEN}✓ 后端服务已停止${NC}"
 else
     echo "  后端服务未运行"
@@ -32,9 +32,9 @@ sleep 1
 
 # 2. 停止前端服务
 echo -e "\n${YELLOW}🎨 停止前端服务...${NC}"
-if lsof -t -i :9999 > /dev/null 2>&1; then
-    echo "  发现端口 9999 正在使用，正在关闭..."
-    lsof -t -i :9999 | xargs kill -9 2>/dev/null || true
+if lsof -t -i :4444 > /dev/null 2>&1; then
+    echo "  发现端口 4444 正在使用，正在关闭..."
+    lsof -t -i :4444 | xargs kill -9 2>/dev/null || true
     echo -e "  ${GREEN}✓ 前端服务已停止${NC}"
 else
     echo "  前端服务未运行"
@@ -72,8 +72,8 @@ else
 fi
 
 # 启动 FastAPI
-echo "  启动 FastAPI (端口 8000)..."
-nohup uvicorn app.main:app --reload --port 8000 > ../logs/backend.log 2>&1 &
+echo "  启动 FastAPI (端口 4445)..."
+nohup uvicorn app.main:app --reload --port 4445 > ../logs/backend.log 2>&1 &
 BACKEND_PID=$!
 echo -e "  ${GREEN}✓ 后端服务已启动 (PID: $BACKEND_PID)${NC}"
 
@@ -89,8 +89,8 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# 启动 Vite (固定端口 9999)
-echo "  启动 Vite (端口 9999)..."
+# 启动 Vite (固定端口 4444)
+echo "  启动 Vite (端口 4444)..."
 nohup npm run dev > ../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
 echo -e "  ${GREEN}✓ 前端服务已启动 (PID: $FRONTEND_PID)${NC}"
@@ -105,16 +105,16 @@ sleep 3
 echo -e "\n${YELLOW}🔍 检查服务状态...${NC}"
 
 # 检查后端
-if lsof -t -i :8000 > /dev/null 2>&1; then
-    echo -e "  ${GREEN}✓ 后端服务运行正常 (http://localhost:8000)${NC}"
+if lsof -t -i :4445 > /dev/null 2>&1; then
+    echo -e "  ${GREEN}✓ 后端服务运行正常 (http://localhost:4445)${NC}"
 else
     echo -e "  ${RED}✗ 后端服务启动失败${NC}"
     echo "  请查看日志: tail -f logs/backend.log"
 fi
 
 # 检查前端
-if lsof -t -i :9999 > /dev/null 2>&1; then
-    echo -e "  ${GREEN}✓ 前端服务运行正常 (http://localhost:9999)${NC}"
+if lsof -t -i :4444 > /dev/null 2>&1; then
+    echo -e "  ${GREEN}✓ 前端服务运行正常 (http://localhost:4444)${NC}"
 else
     echo -e "  ${RED}✗ 前端服务启动失败${NC}"
     echo "  请查看日志: tail -f logs/frontend.log"
@@ -129,9 +129,9 @@ echo -e "${GREEN}✨ 应用重启完成！${NC}"
 echo "================================"
 echo ""
 echo "📝 服务信息:"
-echo "  - 后端: http://localhost:8000"
-echo "  - 前端: http://localhost:9999"
-echo "  - API文档: http://localhost:8000/docs"
+echo "  - 后端: http://localhost:4445"
+echo "  - 前端: http://localhost:4444"
+echo "  - API文档: http://localhost:4445/docs"
 echo ""
 echo "📋 日志文件:"
 echo "  - 后端日志: tail -f logs/backend.log"
