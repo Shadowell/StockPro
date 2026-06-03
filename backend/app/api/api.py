@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.endpoints import health
+from app.api.endpoints import auth, health
 from app.core.config import settings
 
 
@@ -47,6 +47,7 @@ def _include_legacy_sqlite_routes(router: APIRouter) -> None:
 def create_api_router(include_legacy_sqlite_routes: bool | None = None) -> APIRouter:
     router = APIRouter()
     router.include_router(health.router, prefix="/health", tags=["health"])
+    router.include_router(auth.router, prefix="/auth", tags=["auth"])
 
     if include_legacy_sqlite_routes is None:
         include_legacy_sqlite_routes = _legacy_sqlite_routes_enabled()

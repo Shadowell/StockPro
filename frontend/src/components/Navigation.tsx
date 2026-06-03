@@ -44,6 +44,7 @@ export const Navigation: React.FC<NavigationProps> = ({ orientation = 'horizonta
         title: language === 'zh' ? '数据中台' : 'Data Hub',
         items: [
           { id: 'dashboard', to: '/', label: language === 'zh' ? '总览看板' : 'Dashboard', Icon: LayoutDashboard },
+          { id: 'admin-data', to: '/data', label: language === 'zh' ? '管理后台' : 'Admin', Icon: ShieldCheck },
         ],
       },
       {
