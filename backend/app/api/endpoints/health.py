@@ -3,6 +3,8 @@
 """
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
+from app.core.config import settings
+from app.db.postgres_migrations import load_migrations, psycopg
 from app.utils.dns_check import DNSChecker
 from app.utils.dashscope_utils import DashScopeConfig, DashScopeConnectionManager
 import logging
@@ -23,7 +25,46 @@ async def health_check() -> Dict[str, str]:
     }
 
 
-@router.get("/health/dns-diagnostic", tags=["Health"])
+@router.get("/storage", tags=["Health"])
+async def storage_health_check() -> Dict[str, Any]:
+    """
+    Storage health check for cloud B/S deployment.
+    """
+    result: Dict[str, Any] = {
+        "status": "healthy",
+        "db_mode": settings.DB_MODE,
+        "migration_files": len(load_migrations()),
+    }
+
+    if settings.DB_MODE != "postgres":
+        return result
+
+    if not settings.DATABASE_URL:
+        return {
+            **result,
+            "status": "error",
+            "message": "DATABASE_URL is required when DB_MODE=postgres",
+        }
+
+    try:
+        with psycopg.connect(settings.DATABASE_URL) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM schema_migrations")
+                row = cursor.fetchone()
+        return {
+            **result,
+            "applied_migrations": int(row[0]) if row else 0,
+        }
+    except Exception as e:
+        logger.error("Storage health check failed: %s", e)
+        return {
+            **result,
+            "status": "error",
+            "message": str(e),
+        }
+
+
+@router.get("/dns-diagnostic", tags=["Health"])
 async def dns_diagnostic() -> Dict[str, Any]:
     """
     DNS 诊断 - 检查 DashScope API 连接
@@ -44,7 +85,7 @@ async def dns_diagnostic() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health/dashscope-endpoint", tags=["Health"])
+@router.get("/dashscope-endpoint", tags=["Health"])
 async def check_dashscope_endpoint() -> Dict[str, Any]:
     """
     检查可用的 DashScope 端点
@@ -75,7 +116,7 @@ async def check_dashscope_endpoint() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health/report", tags=["Health"])
+@router.get("/report", tags=["Health"])
 async def diagnostic_report() -> Dict[str, str]:
     """
     获取完整诊断报告（文本格式）

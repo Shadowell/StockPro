@@ -6,12 +6,12 @@ import { traeBadgePlugin } from 'vite-plugin-trae-solo-badge';
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const proxyTarget = env.VITE_DEV_API_PROXY_TARGET || "http://127.0.0.1:8000";
+  const proxyTarget = env.VITE_DEV_API_PROXY_TARGET || "http://127.0.0.1:4445";
 
   return {
     server: {
       host: true,
-      port: 9999,
+      port: 4444,
       proxy: {
         "/api": {
           target: proxyTarget,

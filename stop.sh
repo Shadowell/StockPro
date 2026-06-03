@@ -45,22 +45,22 @@ fi
 # 2. 按端口停止服务
 echo -e "\n${YELLOW}🔍 检查端口占用...${NC}"
 
-# 停止后端服务 (端口 8000)
-if lsof -t -i :8000 > /dev/null 2>&1; then
-    echo "  发现端口 8000 正在使用，正在关闭..."
-    lsof -t -i :8000 | xargs kill -9 2>/dev/null || true
-    echo -e "  ${GREEN}✓ 端口 8000 已释放${NC}"
+# 停止后端服务 (端口 4445)
+if lsof -t -i :4445 > /dev/null 2>&1; then
+    echo "  发现端口 4445 正在使用，正在关闭..."
+    lsof -t -i :4445 | xargs kill -9 2>/dev/null || true
+    echo -e "  ${GREEN}✓ 端口 4445 已释放${NC}"
 else
-    echo "  端口 8000 未被占用"
+    echo "  端口 4445 未被占用"
 fi
 
-# 停止前端服务 (端口 9999)
-if lsof -t -i :9999 > /dev/null 2>&1; then
-    echo "  发现端口 9999 正在使用，正在关闭..."
-    lsof -t -i :9999 | xargs kill -9 2>/dev/null || true
-    echo -e "  ${GREEN}✓ 端口 9999 已释放${NC}"
+# 停止前端服务 (端口 4444)
+if lsof -t -i :4444 > /dev/null 2>&1; then
+    echo "  发现端口 4444 正在使用，正在关闭..."
+    lsof -t -i :4444 | xargs kill -9 2>/dev/null || true
+    echo -e "  ${GREEN}✓ 端口 4444 已释放${NC}"
 else
-    echo "  端口 9999 未被占用"
+    echo "  端口 4444 未被占用"
 fi
 
 # 3. 清理进程
@@ -74,16 +74,16 @@ sleep 1
 
 # 4. 最终检查
 echo -e "\n${YELLOW}✅ 最终检查...${NC}"
-if lsof -t -i :8000 > /dev/null 2>&1; then
-    echo -e "  ${RED}⚠️  警告: 端口 8000 仍被占用${NC}"
+if lsof -t -i :4445 > /dev/null 2>&1; then
+    echo -e "  ${RED}⚠️  警告: 端口 4445 仍被占用${NC}"
 else
-    echo -e "  ${GREEN}✓ 端口 8000 已释放${NC}"
+    echo -e "  ${GREEN}✓ 端口 4445 已释放${NC}"
 fi
 
-if lsof -t -i :9999 > /dev/null 2>&1; then
-    echo -e "  ${RED}⚠️  警告: 端口 9999 仍被占用${NC}"
+if lsof -t -i :4444 > /dev/null 2>&1; then
+    echo -e "  ${RED}⚠️  警告: 端口 4444 仍被占用${NC}"
 else
-    echo -e "  ${GREEN}✓ 端口 9999 已释放${NC}"
+    echo -e "  ${GREEN}✓ 端口 4444 已释放${NC}"
 fi
 
 echo -e "\n================================"
