@@ -15,13 +15,13 @@ else
 fi
 
 # Start FastAPI
-# Use lsof to check if port 8000 is free, if not kill it
-if lsof -t -i :8000 > /dev/null; then
-    echo "Port 8000 is in use, killing process..."
-    lsof -t -i :8000 | xargs kill -9
+# Use lsof to check if port 4445 is free, if not kill it
+if lsof -t -i :4445 > /dev/null; then
+    echo "Port 4445 is in use, killing process..."
+    lsof -t -i :4445 | xargs kill -9
 fi
 
-uvicorn app.main:app --reload --port 8000 &
+uvicorn app.main:app --reload --port 4445 &
 BACKEND_PID=$!
 cd ..
 
@@ -47,7 +47,7 @@ sleep 5
 
 # Open Browser
 echo "Opening Browser..."
-open http://localhost:9999
+open http://localhost:4444
 
 echo "Application is running."
 echo "Press CTRL+C to stop the servers..."

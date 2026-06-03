@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/api/v1/health/health}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:4445/api/v1/health/health}"
 DO_PING="${1:-}"
 
 if [ ! -d "$BACKEND_DIR" ]; then

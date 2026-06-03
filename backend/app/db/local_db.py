@@ -1,7 +1,7 @@
 import sqlite3
 import os
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 import json
 
 
@@ -3078,4 +3078,36 @@ class LocalDatabase:
 
 
 # 全局数据库实例
-db_instance = LocalDatabase()
+def _resolve_db_path() -> str:
+    try:
+        from app.core.config import settings
+        if settings.LOCAL_DB_PATH:
+            return settings.LOCAL_DB_PATH
+    except Exception:
+        pass
+
+    import platform
+    if platform.system() == "Darwin":
+        return os.path.expanduser("~/Library/Application Support/StockApp/stock_data.db")
+    if platform.system() == "Windows":
+        return os.path.expanduser("~/AppData/Roaming/StockApp/stock_data.db")
+    return os.path.expanduser("~/.local/share/StockApp/stock_data.db")
+
+
+class LazyLocalDatabase:
+    """Delay SQLite file creation until a legacy local database call is made."""
+
+    def __init__(self, factory: Callable[[], LocalDatabase] | None = None):
+        self._factory = factory or (lambda: LocalDatabase(_resolve_db_path()))
+        self._instance: LocalDatabase | None = None
+
+    def _get_instance(self) -> LocalDatabase:
+        if self._instance is None:
+            self._instance = self._factory()
+        return self._instance
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get_instance(), name)
+
+
+db_instance = LazyLocalDatabase()

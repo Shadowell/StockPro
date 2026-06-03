@@ -268,8 +268,7 @@ test('所有页面路由可访问并完成基础渲染', async ({ page }) => {
     { path: '/', title: '实时大盘', marker: '短线指标' },
     { path: '/market', title: '市场概览与分析', marker: '热门概念板块' },
     { path: '/sentiment', title: '市场情绪分析', marker: '市场情绪指数' },
-    { path: '/analysis', title: '数据中心', marker: '数据库管理' },
-    { path: '/ai', title: 'AI 智能研报', marker: '一键智能分析' },
+    { path: '/ai', title: '智能选股', marker: '一键智能分析' },
     { path: '/news', title: '消息流', marker: '7x24 实时快讯' },
     { path: '/news-calendar', title: '消息流', marker: '7x24 实时快讯' },
     { path: '/calendar', title: '交易日历', marker: '交易日历' },
@@ -277,8 +276,7 @@ test('所有页面路由可访问并完成基础渲染', async ({ page }) => {
     { path: '/strategy-exec', title: '实时策略盯盘', marker: '筛选结果汇总' },
     { path: '/factors', title: '因子库', marker: '因子总数' },
     { path: '/pulse', title: '复盘中心', marker: '每日显示' },
-    { path: '/screener', title: '智能选股', marker: '开始扫描' },
-    { path: '/trading', title: '实盘交易', marker: '账户概览' },
+    { path: '/trading', title: '模拟/实盘交易', marker: '账户概览' },
   ] as const;
 
   for (const route of routes) {

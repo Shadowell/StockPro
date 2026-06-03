@@ -150,12 +150,12 @@ test('后台任务状态接口可访问', async ({ request }) => {
   expect(typeof data.is_running).toBe('boolean');
 });
 
-test('数据中心页面基础渲染正常', async ({ page }) => {
+test('首页基础渲染正常', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
 
-  await page.goto('/analysis', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('header h2')).toContainText(/数据中心|Data Center/, { timeout: 15000 });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('header h2')).toContainText(/实时大盘|Dashboard/, { timeout: 15000 });
 
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });

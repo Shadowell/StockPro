@@ -890,7 +890,7 @@ export const LiveTrading: React.FC = () => {
   }, [saveData]);
 
   return (
-    <MainLayout title={language === 'zh' ? '实盘交易' : 'Live Trading'}>
+    <MainLayout title={language === 'zh' ? '模拟/实盘交易' : 'Sim/Live Trading'}>
       <div className="flex flex-col gap-6 h-full overflow-auto custom-scrollbar">
         {/* 提示信息 */}
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">

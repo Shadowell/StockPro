@@ -1014,7 +1014,7 @@ QWEN_STOCK_MODEL=qwen-plus
 AKSHARE_TIMEOUT=30
 
 # 应用配置
-BACKEND_CORS_ORIGINS=["http://localhost:5173"]
+BACKEND_CORS_ORIGINS=["http://localhost:4444"]
 ```
 
 ### 9.2 前端环境变量
@@ -1034,7 +1034,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:4445',
         changeOrigin: true
       }
     }
@@ -1054,7 +1054,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 4445
 
 # 2. 启动前端
 cd frontend
@@ -1066,7 +1066,7 @@ npm run dev
 
 ```bash
 # 后端
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn app.main:app --host 0.0.0.0 --port 4445 --workers 4
 
 # 前端构建
 npm run build

@@ -104,27 +104,27 @@
 │  ECharts 6 · Monaco Editor · React Router 7 · Axios          │
 │  Electron 40 (桌面端可选)                                     │
 └────────────────────────────┬────────────────────────────────┘
-                             │ Vite /api proxy → :8000
+                             │ Vite /api proxy → :4445
 ┌────────────────────────────▼────────────────────────────────┐
 │                  Backend · FastAPI 0.104+                     │
 │  Python 3.11 · Pydantic 2 · AkShare · DashScope              │
 │  APScheduler · Backtrader · SQLAlchemy 2 · httpx              │
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ RealtimeSync │  │  Scheduler   │  │ StrategyExecution │  │
-│  │   10-30s 轮询 │  │  定时任务调度  │  │   策略并行执行     │  │
+│  │ Research API │  │ Strategy API │  │ Execution / Risk  │  │
+│  │  A 股研究数据 │  │  版本与回测   │  │  模拟/实盘适配      │  │
 │  └──────┬───────┘  └──────┬───────┘  └────────┬──────────┘  │
 │         └─────────────────┼───────────────────┘              │
 │                    ┌──────▼──────┐                            │
-│                    │   SQLite    │                            │
-│                    │  本地持久化   │                            │
+│                    │  Postgres   │                            │
+│                    │ stockpro_prod│                            │
 │                    └─────────────┘                            │
 └────────────────────────────┬────────────────────────────────┘
                              │
             ┌────────────────┼────────────────┐
             ▼                ▼                ▼
-        AkShare          千问大模型        Supabase
-       (行情数据)        (AI 分析)       (云端存储·可选)
+        AkShare          千问大模型        Broker Adapter
+       (行情数据)        (AI 分析)       (后续实盘适配)
 ```
 
 ### 后端服务拓扑
@@ -206,10 +206,16 @@ cat > .env << 'EOF'
 QWEN_API_KEY=your-qwen-api-key
 QWEN_STOCK_MODEL=qwen-plus
 AKSHARE_TIMEOUT=30
-BACKEND_CORS_ORIGINS=["http://localhost:9999"]
+DB_MODE=postgres
+DATABASE_URL=postgresql://stockpro_app:<password>@127.0.0.1:5432/stockpro_prod
+ENABLE_SCHEDULER=false
+ENABLE_REALTIME_SYNC=false
+ENABLE_STRATEGY_EXECUTION=false
+ENABLE_LEGACY_SQLITE_MODULES=false
+BACKEND_CORS_ORIGINS=["http://localhost:4444"]
 EOF
 
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 4445
 ```
 
 ### 3. 启动前端
@@ -222,9 +228,9 @@ npm run dev
 
 ### 4. 访问应用
 
-打开浏览器访问 **http://localhost:9999**
+打开浏览器访问 **http://localhost:4444**
 
-> 前端开发服务器端口 `9999`（在 `vite.config.ts` 中配置），通过 Vite proxy 将 `/api` 请求转发到后端 `:8000`。
+> 前端开发服务器端口 `4444`（在 `vite.config.ts` 中配置），通过 Vite proxy 将 `/api` 请求转发到后端 `:4445`。
 
 ---
 
@@ -237,24 +243,25 @@ npm run dev
 | `QWEN_API_KEY` | 是（AI 功能） | `""` | 通义千问 API Key |
 | `QWEN_STOCK_MODEL` | 否 | `qwen-plus` | AI 分析使用的模型 |
 | `AKSHARE_TIMEOUT` | 否 | `30` | AkShare 请求超时（秒） |
-| `BACKEND_CORS_ORIGINS` | 否 | `["http://localhost:5173"]` | 允许的跨域来源，JSON 数组或逗号分隔 |
-| `SUPABASE_URL` | 否 | `""` | Supabase 项目 URL |
-| `SUPABASE_KEY` | 否 | `""` | Supabase anon key |
-| `SUPABASE_SERVICE_KEY` | 否 | `""` | Supabase service role key |
-| `ENABLE_SCHEDULER` | 否 | `true` | 启用 APScheduler 定时任务调度 |
-| `ENABLE_REALTIME_SYNC` | 否 | `true` | 启用实时行情数据同步 |
-| `ENABLE_STRATEGY_EXECUTION` | 否 | `true` | 启用策略执行引擎 |
+| `BACKEND_CORS_ORIGINS` | 否 | `["http://localhost:4444"]` | 允许的跨域来源，JSON 数组或逗号分隔 |
+| `DATABASE_URL` | 生产必填 | `""` | Postgres 连接串，云端 B/S 生产使用 |
+| `SUPABASE_URL` | 否 | `""` | Supabase 项目 URL（legacy 可选） |
+| `SUPABASE_KEY` | 否 | `""` | Supabase anon key（legacy 可选） |
+| `SUPABASE_SERVICE_KEY` | 否 | `""` | Supabase service role key（legacy 可选） |
+| `ENABLE_SCHEDULER` | 否 | `false` | legacy 调度服务开关，生产 PG-only 默认关闭 |
+| `ENABLE_REALTIME_SYNC` | 否 | `false` | legacy 实时同步服务开关，生产 PG-only 默认关闭 |
+| `ENABLE_STRATEGY_EXECUTION` | 否 | `false` | legacy 策略执行服务开关，生产 PG-only 默认关闭 |
 | `ENABLE_EXTERNAL_MARKET_FETCH` | 否 | `true` | 启用外部行情数据拉取 |
+| `ENABLE_LEGACY_SQLITE_MODULES` | 否 | `false` | 是否挂载旧 SQLite API/后台模块，生产必须保持关闭 |
 | `ENFORCE_OPERATION_ALLOWLIST` | 否 | `false` | 启用 API 操作白名单（生产环境安全限制） |
-| `DB_MODE` | 否 | `local` | 数据库模式：`local`（SQLite）/ `supabase` |
-| `LOCAL_DB_PATH` | 否 | 自动 | 自定义 SQLite 数据库文件路径 |
+| `DB_MODE` | 否 | `postgres` | 数据库模式；云端 B/S 生产只支持 `postgres` |
 
 ### 前端 (`frontend/.env`)
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `VITE_API_URL` | `/api/v1` | 后端 API 基础路径 |
-| `VITE_DEV_API_PROXY_TARGET` | `http://127.0.0.1:8000` | Vite 开发代理目标地址 |
+| `VITE_DEV_API_PROXY_TARGET` | `http://127.0.0.1:4445` | Vite 开发代理目标地址 |
 
 ---
 
@@ -296,7 +303,8 @@ StockPro/
 │   │   │   ├── ma_convergence_service.py #   均线粘合算法
 │   │   │   ├── sentiment_service.py      #   市场情绪计算
 │   │   │   └── ...                       #   其余 9 个服务
-│   │   └── db/local_db.py               # SQLite ORM & 数据访问层
+│   │   ├── db/postgres_migrations.py    # Postgres migration runner
+│   │   └── db/local_db.py               # legacy SQLite，仅显式开启时使用
 │   └── requirements.txt
 │
 ├── frontend/
@@ -367,7 +375,7 @@ StockPro/
 
 ## API 概览
 
-后端运行后可访问 http://localhost:8000/docs 查看完整的 Swagger 交互式文档。
+后端运行后可访问 http://localhost:4445/docs 查看完整的 Swagger 交互式文档。
 
 ### 核心接口
 
@@ -428,58 +436,32 @@ npm run test:e2e:report   # 查看测试报告
 
 ## 部署
 
-### Docker（推荐）
+生产部署参考 BitPro 单机模式，详见 [docs/deployment.md](docs/deployment.md)。
 
-```bash
-# 后端
-cd backend
-docker build -t stockpro-backend .
-docker run -p 8000:8000 --env-file .env stockpro-backend
-
-# 前端（构建静态文件后用 Nginx 等托管）
-cd frontend
-npm run build
-# dist/ 目录即为构建产物
-```
-
-### 手动部署
-
-```bash
-# 后端：使用 gunicorn + uvicorn worker 获取更好的并发性能
-pip install gunicorn
-gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
-
-# 前端：构建后部署到任意静态文件服务器
-cd frontend && npm run build
-```
-
-### Electron 桌面客户端
-
-项目已集成 Electron 40，可打包为桌面应用：
-
-```bash
-cd frontend
-npm run electron:build
-```
+- 目标服务器：`root@47.79.36.92`
+- 数据库：服务器已有 Postgres，新建 `stockpro_prod`
+- 公网入口：**Nginx `:4444`**（前端静态资源 + `/api` 反代）
+- 后端内部：`127.0.0.1:4445`（systemd `stockpro-backend`）
+- 部署目录：`/opt/stockpro`
 
 ---
 
 ## 常见问题
 
 **Q: 启动后页面显示"加载失败"？**
-检查后端是否在运行，以及 `frontend/.env` 中的 `VITE_DEV_API_PROXY_TARGET` 是否指向正确的后端地址（默认 `http://127.0.0.1:8000`）。
+检查后端是否在运行，以及 `frontend/.env` 中的 `VITE_DEV_API_PROXY_TARGET` 是否指向正确的后端地址（默认 `http://127.0.0.1:4445`）。
 
 **Q: 短线指标没有数据？**
 确保后端服务已启动且处于 A 股交易时段（9:30-15:00）。非交易时段会展示上一交易日缓存数据。
 
 **Q: 概念龙头股加载慢？**
-首次查询从 AkShare 远程拉取并缓存到本地 SQLite，后续查询直接读取缓存（<100ms）。
+当前 legacy 模块首次查询会从 AkShare 远程拉取并缓存；云端平台方向是逐步迁移到 Postgres 数据集。
 
 **Q: AI 分析功能不可用？**
 检查 `backend/.env` 中的 `QWEN_API_KEY` 是否正确配置。需要在[阿里云百炼](https://bailian.console.aliyun.com/)申请 API Key。
 
-**Q: 如何切换到 Supabase 云端存储？**
-在 `backend/.env` 中设置 `DB_MODE=supabase` 并配置 `SUPABASE_URL` 和 `SUPABASE_KEY`。
+**Q: 云端生产如何配置数据库？**
+在 `backend/.env` 中设置 `DB_MODE=postgres` 和 `DATABASE_URL=postgresql://stockpro_app:<password>@127.0.0.1:5432/stockpro_prod`。
 
 **Q: 策略在新设备上看不到？**
 克隆项目后重启后端即可自动导入，或手动运行 `python scripts/init_strategies.py`。
