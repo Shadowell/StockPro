@@ -4,7 +4,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 from app.utils.dns_check import DNSChecker
-from app.utils.dashscope_utils import DashScopeConfig, DashScopeConnectionManager
+from app.utils.dashscope_utils import DashScopeConfig
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/health", tags=["Health"])
+@router.get("/", tags=["Health"])
 async def health_check() -> Dict[str, str]:
     """
     基础健康检查
@@ -23,7 +23,7 @@ async def health_check() -> Dict[str, str]:
     }
 
 
-@router.get("/health/dns-diagnostic", tags=["Health"])
+@router.get("/dns-diagnostic", tags=["Health"])
 async def dns_diagnostic() -> Dict[str, Any]:
     """
     DNS 诊断 - 检查 DashScope API 连接
@@ -44,7 +44,7 @@ async def dns_diagnostic() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health/dashscope-endpoint", tags=["Health"])
+@router.get("/dashscope-endpoint", tags=["Health"])
 async def check_dashscope_endpoint() -> Dict[str, Any]:
     """
     检查可用的 DashScope 端点
@@ -75,7 +75,7 @@ async def check_dashscope_endpoint() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health/report", tags=["Health"])
+@router.get("/report", tags=["Health"])
 async def diagnostic_report() -> Dict[str, str]:
     """
     获取完整诊断报告（文本格式）

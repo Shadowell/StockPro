@@ -1,7 +1,7 @@
 {
   "config": {
-    "configFile": "/Users/jie.feng/wlb/daily_expore/explore/stock_app/frontend/playwright.config.ts",
-    "rootDir": "/Users/jie.feng/wlb/daily_expore/explore/stock_app/frontend/tests/e2e",
+    "configFile": "/Users/jie.feng/Dev/Github/Private/StockPro/frontend/playwright.config.ts",
+    "rootDir": "/Users/jie.feng/Dev/Github/Private/StockPro/frontend/tests/e2e",
     "forbidOnly": false,
     "fullyParallel": true,
     "globalSetup": null,
@@ -11,7 +11,7 @@
     "grepInvert": null,
     "maxFailures": 0,
     "metadata": {
-      "actualWorkers": 4
+      "actualWorkers": 7
     },
     "preserveOutput": "always",
     "reporter": [
@@ -39,15 +39,15 @@
     "quiet": false,
     "projects": [
       {
-        "outputDir": "/Users/jie.feng/wlb/daily_expore/explore/stock_app/frontend/test-results",
+        "outputDir": "/Users/jie.feng/Dev/Github/Private/StockPro/frontend/test-results",
         "repeatEach": 1,
         "retries": 0,
         "metadata": {
-          "actualWorkers": 4
+          "actualWorkers": 7
         },
         "id": "chromium",
         "name": "chromium",
-        "testDir": "/Users/jie.feng/wlb/daily_expore/explore/stock_app/frontend/tests/e2e",
+        "testDir": "/Users/jie.feng/Dev/Github/Private/StockPro/frontend/tests/e2e",
         "testIgnore": [],
         "testMatch": [
           "**/*.@(spec|test).?(c|m)[jt]s?(x)"
@@ -62,8 +62,8 @@
     "version": "1.57.0",
     "workers": 7,
     "webServer": {
-      "command": "npm run dev -- --host 127.0.0.1 --port 5173",
-      "url": "http://127.0.0.1:5173",
+      "command": "npm run dev -- --host 127.0.0.1 --port 4444 --strictPort",
+      "url": "http://127.0.0.1:4444",
       "reuseExistingServer": true,
       "timeout": 120000
     }
@@ -76,7 +76,7 @@
       "line": 0,
       "specs": [
         {
-          "title": "NewsCalendar 页面可渲染并切换消息流 tab",
+          "title": "根路径展示 BitPro 风格大盘并只显示七个核心入口",
           "ok": true,
           "tags": [],
           "tests": [
@@ -91,12 +91,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1080,
+                  "duration": 983,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-01-18T14:05:34.874Z",
+                  "startTime": "2026-06-04T12:27:58.793Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -104,13 +104,13 @@
               "status": "expected"
             }
           ],
-          "id": "c31ff144dc4fee3acd0a-4f2302a8c5e36ba1e0ff",
+          "id": "c31ff144dc4fee3acd0a-ed53339e0df4f9e5509c",
           "file": "app.spec.ts",
-          "line": 7,
+          "line": 589,
           "column": 1
         },
         {
-          "title": "Home 页面渲染正常",
+          "title": "大盘模块恢复市场概览、市场情绪和消息流三个子模块",
           "ok": true,
           "tags": [],
           "tests": [
@@ -125,12 +125,12 @@
                   "workerIndex": 1,
                   "parallelIndex": 1,
                   "status": "passed",
-                  "duration": 903,
+                  "duration": 1022,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-01-18T14:05:34.891Z",
+                  "startTime": "2026-06-04T12:27:58.794Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -138,13 +138,13 @@
               "status": "expected"
             }
           ],
-          "id": "c31ff144dc4fee3acd0a-05b62d1aed71d92aedbd",
+          "id": "c31ff144dc4fee3acd0a-f8437646c07659f6510d",
           "file": "app.spec.ts",
-          "line": 100,
+          "line": 624,
           "column": 1
         },
         {
-          "title": "路由：Market / Analysis / AI / StrategyDev / Backtest 均可进入",
+          "title": "旧路由兼容跳转到新的核心页面",
           "ok": true,
           "tags": [],
           "tests": [
@@ -159,12 +159,12 @@
                   "workerIndex": 2,
                   "parallelIndex": 2,
                   "status": "passed",
-                  "duration": 1693,
+                  "duration": 802,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-01-18T14:05:34.878Z",
+                  "startTime": "2026-06-04T12:27:58.799Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -172,13 +172,13 @@
               "status": "expected"
             }
           ],
-          "id": "c31ff144dc4fee3acd0a-046302270c2d876128fe",
+          "id": "c31ff144dc4fee3acd0a-b26800caeceba6ecfc91",
           "file": "app.spec.ts",
-          "line": 122,
+          "line": 657,
           "column": 1
         },
         {
-          "title": "MarketOverview：选择概念默认龙头股，概念 Tab 可拖拽并持久化",
+          "title": "策略页只做策略生成和编辑，不混放回测或模拟盘",
           "ok": true,
           "tags": [],
           "tests": [
@@ -193,12 +193,12 @@
                   "workerIndex": 3,
                   "parallelIndex": 3,
                   "status": "passed",
-                  "duration": 1416,
+                  "duration": 849,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-01-18T14:05:34.901Z",
+                  "startTime": "2026-06-04T12:27:58.796Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -206,9 +206,281 @@
               "status": "expected"
             }
           ],
-          "id": "c31ff144dc4fee3acd0a-1a879bf7b4761e622f93",
+          "id": "c31ff144dc4fee3acd0a-7d660904ee2d3c2b4b3c",
           "file": "app.spec.ts",
-          "line": 188,
+          "line": 670,
+          "column": 1
+        },
+        {
+          "title": "策略详情页复刻 BitPro 详情态",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 4,
+                  "status": "passed",
+                  "duration": 907,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-06-04T12:27:58.797Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c31ff144dc4fee3acd0a-5a184715f94157089ac4",
+          "file": "app.spec.ts",
+          "line": 727,
+          "column": 1
+        },
+        {
+          "title": "回测页可运行 Backtrader 多股组合并展示指标曲线和交易明细",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 5,
+                  "parallelIndex": 5,
+                  "status": "passed",
+                  "duration": 991,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-06-04T12:27:58.796Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c31ff144dc4fee3acd0a-ea0123198b631036eaad",
+          "file": "app.spec.ts",
+          "line": 757,
+          "column": 1
+        },
+        {
+          "title": "回测结果详情页复刻 BitPro 详情态",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 6,
+                  "parallelIndex": 6,
+                  "status": "passed",
+                  "duration": 1233,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-06-04T12:27:58.792Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c31ff144dc4fee3acd0a-39414de425812b6629df",
+          "file": "app.spec.ts",
+          "line": 803,
+          "column": 1
+        },
+        {
+          "title": "模拟页可按 BitPro 向导启动、刷新、停止模拟盘并展示运行指标",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 1253,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-06-04T12:27:59.799Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c31ff144dc4fee3acd0a-3c02b2bea1f1a0a1ff46",
+          "file": "app.spec.ts",
+          "line": 860,
+          "column": 1
+        },
+        {
+          "title": "模拟实例详情页复刻 BitPro 详情态",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 981,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-06-04T12:27:59.844Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c31ff144dc4fee3acd0a-c3d74f980093b48f1697",
+          "file": "app.spec.ts",
+          "line": 972,
+          "column": 1
+        },
+        {
+          "title": "行情页复刻 BitPro 行情工作区",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 4,
+                  "status": "passed",
+                  "duration": 677,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-06-04T12:27:59.909Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c31ff144dc4fee3acd0a-7a9a70fc30d4e6eea9a9",
+          "file": "app.spec.ts",
+          "line": 1025,
+          "column": 1
+        },
+        {
+          "title": "行情、监控、数据页核心内容可用",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 90000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2169,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-06-04T12:27:59.981Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c31ff144dc4fee3acd0a-da7255c6b05f12988e25",
+          "file": "app.spec.ts",
+          "line": 1053,
+          "column": 1
+        },
+        {
+          "title": "数据页接近 BitPro 数据管理完整流程",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 5,
+                  "parallelIndex": 5,
+                  "status": "passed",
+                  "duration": 564,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-06-04T12:27:59.991Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "c31ff144dc4fee3acd0a-efac61b5fa7b0475f05b",
+          "file": "app.spec.ts",
+          "line": 1164,
           "column": 1
         }
       ]
@@ -216,9 +488,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-01-18T14:05:32.115Z",
-    "duration": 5079.626,
-    "expected": 4,
+    "startTime": "2026-06-04T12:27:58.295Z",
+    "duration": 3892.5910000000003,
+    "expected": 12,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

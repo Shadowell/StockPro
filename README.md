@@ -92,7 +92,7 @@ cp .env.example .env
 # 编辑 .env 文件，填入 QWEN_API_KEY
 
 # 启动服务
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 4445
 ```
 
 ### 3. 启动前端
@@ -105,7 +105,7 @@ npm run dev
 
 ### 4. 访问应用
 
-打开浏览器访问 http://localhost:5173
+打开浏览器访问 http://localhost:4444
 
 ---
 
@@ -122,7 +122,7 @@ QWEN_STOCK_MODEL=qwen-plus
 AKSHARE_TIMEOUT=30
 
 # CORS 配置
-BACKEND_CORS_ORIGINS=["http://localhost:5173"]
+BACKEND_CORS_ORIGINS=["http://localhost:4444"]
 ```
 
 ### 前端环境变量 (frontend/.env)

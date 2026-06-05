@@ -1,7 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { Stock, Sector, StockFilterResponse, AIAnalysis, DailyChartData, IntradayChartData, MarketSector, MarketStock, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest } from '../types';
+import { Stock, Sector, StockFilterResponse, AIAnalysis, DailyChartData, IntradayChartData, MarketSector, MarketStock, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || '/api/v2';
 
 // Retry configuration
 const retryConfig = {
@@ -307,6 +307,11 @@ export const saveStrategy = async (data: SaveStrategyRequest): Promise<{ success
   return response.data;
 };
 
+export const updateStrategy = async (strategyId: number, data: SaveStrategyRequest): Promise<Strategy> => {
+  const response = await apiClient.put<Strategy>(`/strategy/${strategyId}`, data);
+  return response.data;
+};
+
 export const deleteStrategy = async (strategyId: number): Promise<{ success: boolean; message?: string; error?: string }> => {
   const response = await apiClient.delete<{ success: boolean; message?: string; error?: string }>(`/strategy/${strategyId}`);
   return response.data;
@@ -339,5 +344,161 @@ export const getLatestStrategyResult = async (strategyId: number): Promise<Strat
 
 export const getRunningStrategies = async (): Promise<Strategy[]> => {
   const response = await apiClient.get<Strategy[]>('/strategy/running/list');
+  return response.data;
+};
+
+export const autoDevelopStrategy = async (
+  request: AutoDevelopStrategyRequest
+): Promise<AutoDevelopStrategyResult> => {
+  const response = await apiClient.post<AutoDevelopStrategyResult>('/strategy/auto-develop', request);
+  return response.data;
+};
+
+export const runStrategyBacktest = async (
+  strategyId: number,
+  request: StrategyBacktestRequest
+): Promise<StrategyBacktestResult> => {
+  const response = await apiClient.post<StrategyBacktestResult>('/backtest/run', {
+    strategy_id: strategyId,
+    ...request,
+  });
+  return response.data;
+};
+
+export const listBacktestResults = async (limit = 20): Promise<{ items: StrategyBacktestResult[]; total: number }> => {
+  const response = await apiClient.get<{ items: StrategyBacktestResult[]; total: number }>('/backtest/results', { params: { limit } });
+  return response.data;
+};
+
+export const runPaperTrading = async (
+  strategyId: number,
+  request: PaperRunRequest
+): Promise<PaperRunResult> => {
+  const response = await apiClient.post<PaperRunResult>('/paper/run', {
+    strategy_id: strategyId,
+    ...request,
+  });
+  return response.data;
+};
+
+export const listPaperAccounts = async (): Promise<{ accounts: PaperAccount[]; total: number }> => {
+  const response = await apiClient.get<{ accounts: PaperAccount[]; total: number }>('/paper/accounts');
+  return response.data;
+};
+
+export const getPaperAccount = async (accountId: number): Promise<PaperAccount> => {
+  const response = await apiClient.get<PaperAccount>(`/paper/${accountId}`);
+  return response.data;
+};
+
+export const refreshPaperAccount = async (accountId: number): Promise<PaperRunResult> => {
+  const response = await apiClient.post<PaperRunResult>(`/paper/${accountId}/refresh`);
+  return response.data;
+};
+
+export const stopPaperAccount = async (accountId: number): Promise<PaperRunResult> => {
+  const response = await apiClient.post<PaperRunResult>(`/paper/${accountId}/stop`);
+  return response.data;
+};
+
+export const getDataStatus = async (): Promise<any> => {
+  const response = await apiClient.get<any>('/data/status');
+  return response.data;
+};
+
+export const triggerDataSync = async (request?: {
+  symbols?: string[];
+  timeframes?: string[];
+  start_date?: string;
+  end_date?: string;
+  job_name?: string;
+}): Promise<any> => {
+  const response = await apiClient.post<any>('/data/sync', request || {});
+  return response.data;
+};
+
+export type DataSyncConfigResponse = {
+  defaultSymbols: string[];
+  defaultTimeframes: string[];
+  defaultHistoryDays: number;
+};
+
+export type DataSyncScheduleConfig = {
+  enabled: boolean;
+  mode?: string;
+  syncAllAshare?: boolean;
+  runHour?: number;
+  runMinute?: number;
+  intervalMinutes: number;
+  historyDays: number;
+  symbols: string[];
+  timeframes: string[];
+  lastRunAt?: string | null;
+  lastStartedAt?: string | null;
+  lastFinishedAt?: string | null;
+  nextRunAt?: string | null;
+  lastJobId?: string | null;
+  lastError?: string | null;
+};
+
+export type DataTableStatsResponse = {
+  totalRecords: number;
+  totalPairs: number;
+  marketStats?: Record<string, { totalRecords: number; totalPairs: number; totalSymbols: number }>;
+  tables: Array<{
+    tableName: string;
+    exchange?: string;
+    symbol?: string;
+    timeframe?: string;
+    recordCount: number;
+    firstTimestamp?: number | null;
+    lastTimestamp?: number | null;
+  }>;
+};
+
+export const getDataConfig = async (): Promise<DataSyncConfigResponse> => {
+  const response = await apiClient.get<DataSyncConfigResponse>('/data/config');
+  return response.data;
+};
+
+export const getDataTableStats = async (): Promise<DataTableStatsResponse> => {
+  const response = await apiClient.get<DataTableStatsResponse>('/data/table-stats');
+  return response.data;
+};
+
+export const getDataSchedule = async (): Promise<DataSyncScheduleConfig> => {
+  const response = await apiClient.get<DataSyncScheduleConfig>('/data/schedule');
+  return response.data;
+};
+
+export const updateDataSchedule = async (request: Partial<DataSyncScheduleConfig>): Promise<DataSyncScheduleConfig> => {
+  const response = await apiClient.put<DataSyncScheduleConfig>('/data/schedule', request);
+  return response.data;
+};
+
+export const startDataSync = async (request?: {
+  symbols?: string[];
+  timeframes?: string[];
+  startDate?: string;
+  endDate?: string;
+  historyDays?: number;
+  jobName?: string;
+}): Promise<any> => {
+  const response = await apiClient.post<any>('/data/start', request || {});
+  return response.data;
+};
+
+export const addDataSymbol = async (symbol: string): Promise<{ symbol: string; added: boolean; defaultSymbols: string[] }> => {
+  const response = await apiClient.post<{ symbol: string; added: boolean; defaultSymbols: string[] }>('/data/symbols', { symbol });
+  return response.data;
+};
+
+export const removeDataSymbol = async (symbol: string): Promise<{ symbol: string; removed: boolean; defaultSymbols: string[] }> => {
+  const response = await apiClient.delete<{ symbol: string; removed: boolean; defaultSymbols: string[] }>('/data/symbols', { data: { symbol } });
+  return response.data;
+};
+
+export const deleteDataKlines = async (request: { symbol: string; timeframe?: string }): Promise<{ message: string; deleted: number }> => {
+  const response = await apiClient.post<{ message: string; deleted: number }>('/data/delete-data', request);
   return response.data;
 };
