@@ -3,21 +3,20 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional
 import json
+from app.core.config import settings
 
 
 class LocalDatabase:
     def __init__(self, db_path: str = None):
+        if db_path is None and settings.LOCAL_DB_PATH:
+            db_path = os.path.abspath(os.path.expanduser(settings.LOCAL_DB_PATH))
         if db_path is None:
-            # 在用户数据目录中创建数据库
-            import platform
-            if platform.system() == "Darwin":  # macOS
-                db_path = os.path.expanduser("~/Library/Application Support/StockApp/stock_data.db")
-            elif platform.system() == "Windows":
-                db_path = os.path.expanduser("~/AppData/Roaming/StockApp/stock_data.db")
-            else:  # Linux and others
-                db_path = os.path.expanduser("~/.local/share/StockApp/stock_data.db")
+            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            db_path = os.path.join(backend_dir, "data", "stock_data.db")
         
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        directory = os.path.dirname(db_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
         self.db_path = db_path
         self.init_db()
 
@@ -293,6 +292,98 @@ class LocalDatabase:
         ''')
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_strategy_results_execution_time ON strategy_results(execution_time)
+        ''')
+
+        # 创建策略回测结果表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS strategy_backtest_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                strategy_id INTEGER NOT NULL,
+                symbols TEXT NOT NULL,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                initial_capital REAL NOT NULL,
+                final_capital REAL NOT NULL,
+                total_return REAL NOT NULL,
+                max_drawdown REAL NOT NULL,
+                win_rate REAL NOT NULL,
+                total_trades INTEGER NOT NULL,
+                equity_curve TEXT,
+                trades TEXT,
+                status TEXT NOT NULL DEFAULT 'completed',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (strategy_id) REFERENCES strategy_scripts(id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_strategy_backtest_strategy_id
+            ON strategy_backtest_results(strategy_id)
+        ''')
+
+        # 创建模拟交易账户、订单、持仓表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS paper_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                strategy_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                initial_capital REAL NOT NULL,
+                cash REAL NOT NULL,
+                equity REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'running',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (strategy_id) REFERENCES strategy_scripts(id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_paper_accounts_strategy_id
+            ON paper_accounts(strategy_id)
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS paper_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                strategy_id INTEGER NOT NULL,
+                symbol TEXT NOT NULL,
+                name TEXT,
+                side TEXT NOT NULL CHECK(side IN ('buy', 'sell')),
+                price REAL NOT NULL,
+                quantity INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                fee REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'filled',
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES paper_accounts(id),
+                FOREIGN KEY (strategy_id) REFERENCES strategy_scripts(id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_paper_orders_account_id
+            ON paper_orders(account_id)
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS paper_positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                strategy_id INTEGER NOT NULL,
+                symbol TEXT NOT NULL,
+                name TEXT,
+                quantity INTEGER NOT NULL,
+                avg_price REAL NOT NULL,
+                last_price REAL NOT NULL,
+                market_value REAL NOT NULL,
+                pnl REAL NOT NULL,
+                pnl_pct REAL NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(account_id, symbol),
+                FOREIGN KEY (account_id) REFERENCES paper_accounts(id),
+                FOREIGN KEY (strategy_id) REFERENCES strategy_scripts(id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_paper_positions_account_id
+            ON paper_positions(account_id)
         ''')
         
         # 创建股票均线数据表（存储每日M5/M10/M20/M30均线）
@@ -1797,5 +1888,10 @@ except Exception as e:
                 )
 
 
-# 全局数据库实例
-db_instance = LocalDatabase()
+# 全局数据库实例：StockPro V1 默认 PostgreSQL。SQLite 仅作为显式 legacy 模式保留。
+if settings.DB_MODE.lower() == "postgres":
+    from app.db.postgres_db import PostgresDatabase
+
+    db_instance = PostgresDatabase()
+else:
+    db_instance = LocalDatabase()

@@ -1,111 +1,168 @@
-import React from 'react';
-import { Navigation } from './Navigation';
-import { Activity, Languages } from 'lucide-react';
-import { useStore } from '../stores/useStore';
-import { getTranslation } from '../lib/i18n';
+import React, { useEffect, useRef, useState } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
+import {
+  Activity,
+  BarChart3,
+  Bell,
+  Code2,
+  Database,
+  FlaskConical,
+  LineChart,
+  Radio,
+  Settings,
+  X,
+} from 'lucide-react';
 import clsx from 'clsx';
+import { useSettingsStore, type ColorScheme } from '../stores/useSettingsStore';
 
 interface MainLayoutProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   title?: string;
 }
 
-export const MainLayout: React.FC<MainLayoutProps> = ({ children, title }) => {
-  const { 
-    fetchMarketOverview,
-    marketOverview,
-    language, 
-    setLanguage 
-  } = useStore();
+const navItems = [
+  { path: '/', icon: BarChart3, label: '大盘' },
+  { path: '/market', icon: LineChart, label: '行情' },
+  { path: '/strategy', icon: Code2, label: '策略' },
+  { path: '/backtest', icon: FlaskConical, label: '回测' },
+  { path: '/paper', icon: Radio, label: '模拟' },
+  { path: '/monitor', icon: Bell, label: '监控' },
+  { path: '/data', icon: Database, label: '数据' },
+];
 
-  const t = (key: any) => getTranslation(language, key);
-
-  // 10秒刷新一次市场指数
-  React.useEffect(() => {
-    // Initial fetch
-    fetchMarketOverview();
-    
-    // Set up 10-second interval for market indices refresh
-    const interval = setInterval(() => {
-      fetchMarketOverview();
-    }, 10000); // 10 seconds
-
-    return () => clearInterval(interval);
-  }, [fetchMarketOverview]);
+function ColorSchemeCard({
+  label,
+  scheme,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  scheme: ColorScheme;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const isRedUp = scheme === 'redUpGreenDown';
+  const upColor = isRedUp ? '#FF1744' : '#00C853';
+  const downColor = isRedUp ? '#00C853' : '#FF1744';
 
   return (
-    <div className="flex h-screen bg-[#0b0f19] text-slate-200 overflow-hidden font-sans">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#111827] border-r border-slate-800 flex flex-col">
-        <div className="p-6 flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-lg shadow-lg shadow-blue-900/20">
-            <Activity className="text-white" size={24} />
+    <button
+      onClick={onSelect}
+      className={clsx(
+        'w-full rounded-lg border-2 p-3 transition-all',
+        selected ? 'border-blue-500 bg-blue-500/10' : 'border-crypto-border bg-crypto-card hover:border-gray-500'
+      )}
+    >
+      <div className="mb-2 flex h-10 items-end justify-center gap-1">
+        <div className="h-5 w-3 rounded-sm" style={{ backgroundColor: upColor }} />
+        <div className="h-4 w-3 rounded-sm" style={{ backgroundColor: downColor }} />
+        <div className="h-7 w-3 rounded-sm" style={{ backgroundColor: upColor }} />
+      </div>
+      <div className="text-xs font-medium text-gray-300">{label}</div>
+      <div className="mt-1 flex items-center justify-center gap-2 text-[10px]">
+        <span style={{ color: upColor }}>涨</span>
+        <span style={{ color: downColor }}>跌</span>
+      </div>
+    </button>
+  );
+}
+
+export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+  const { colorScheme, setColorScheme } = useSettingsStore();
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showSettings) return;
+    const handleClick = (event: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showSettings]);
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-crypto-bg text-gray-100">
+      <aside className="flex w-16 shrink-0 flex-col overflow-hidden border-r border-crypto-border bg-crypto-card">
+        <div className="flex h-16 items-center justify-center border-b border-crypto-border">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600">
+            <Activity className="h-6 w-6 text-white" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-            StockPro AI
-          </h1>
         </div>
-        
-        <div className="flex-1 overflow-y-auto py-4 px-3">
-          <Navigation orientation="vertical" />
+
+        <nav className="flex-1 py-3">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.path === '/'}
+              className={({ isActive }) =>
+                clsx(
+                  'flex h-16 flex-col items-center justify-center px-1 text-[11px] transition-colors',
+                  isActive ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'
+                )
+              }
+            >
+              <item.icon className="mb-1 h-5 w-5" />
+              <span className="max-w-full truncate text-center leading-tight">{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="space-y-1 border-t border-crypto-border p-1">
+          <div className="flex w-full items-center justify-center rounded bg-blue-600 py-1.5 text-[10px] font-semibold text-white">
+            A股
+          </div>
+          <button
+            onClick={() => setShowSettings(true)}
+            className={clsx(
+              'flex h-10 w-full items-center justify-center rounded transition-colors',
+              showSettings ? 'bg-blue-500/10 text-blue-400' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100'
+            )}
+            aria-label="设置"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Header - 简化版，只保留标题和市场指数 */}
-        <header className="h-14 bg-[#111827]/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6 z-10">
-          <h2 className="text-lg font-semibold text-slate-100">
-            {title || t('home.title')}
-          </h2>
+      <main className="flex-1 overflow-auto">{children || <Outlet />}</main>
 
-          {/* Market Tickers */}
-          <div className="flex items-center gap-4 text-xs font-medium">
-            {marketOverview?.indices.map((idx, i) => (
-              <div key={i} className="flex flex-col">
-                <span className="text-slate-500">{idx.name}</span>
-                <span className={clsx(
-                  "font-bold",
-                  idx.change_amount >= 0 ? "text-red-500" : "text-green-500"
-                )}>
-                  {idx.price.toLocaleString()} ({idx.change_percent >= 0 ? '+' : ''}{idx.change_percent}%)
-                </span>
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div ref={settingsRef} className="max-h-[80vh] w-80 overflow-y-auto rounded-xl border border-crypto-border bg-crypto-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-crypto-border p-4">
+              <h3 className="text-sm font-semibold text-white">设置</h3>
+              <button onClick={() => setShowSettings(false)} className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white" aria-label="关闭设置">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-4 p-4">
+              <div>
+                <div className="mb-3 text-xs font-medium text-gray-400">K线涨跌颜色</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <ColorSchemeCard
+                    label="红涨绿跌"
+                    scheme="redUpGreenDown"
+                    selected={colorScheme === 'redUpGreenDown'}
+                    onSelect={() => setColorScheme('redUpGreenDown')}
+                  />
+                  <ColorSchemeCard
+                    label="绿涨红跌"
+                    scheme="greenUpRedDown"
+                    selected={colorScheme === 'greenUpRedDown'}
+                    onSelect={() => setColorScheme('greenUpRedDown')}
+                  />
+                </div>
               </div>
-            ))}
-            {marketOverview && (
-              <div className="flex items-center gap-1.5 ml-2 px-2 py-1 rounded-full border border-slate-700">
-                <span className={clsx(
-                  "w-2 h-2 rounded-full",
-                  marketOverview.is_open ? "bg-green-500 animate-pulse" : "bg-red-500"
-                )}></span>
-                <span className={clsx(
-                  "text-[10px] font-bold",
-                  marketOverview.is_open ? "text-green-400" : "text-red-400"
-                )}>
-                  {marketOverview.is_open ? (language === 'zh' ? '开市中' : 'Open') : (language === 'zh' ? '已休市' : 'Closed')}
-                </span>
-              </div>
-            )}
-            {/* 语言切换按钮 - 放在开市/休市状态后面 */}
-            <button
-              onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
-              className="flex items-center gap-1 ml-2 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded text-[10px] font-bold uppercase tracking-tight transition-all border border-slate-700"
-              title={language === 'zh' ? 'Switch to English' : '切换至中文'}
-            >
-              <Languages size={12} />
-              <span>{language === 'zh' ? 'EN' : '中'}</span>
-            </button>
-            {!marketOverview && (
-              <div className="text-slate-500 text-[10px]">{t('layout.loading_market')}</div>
-            )}
+            </div>
           </div>
-        </header>
-
-        {/* Content Area */}
-        <main className="flex-1 overflow-auto p-6 scrollbar-thin scrollbar-thumb-slate-800">
-          {children}
-        </main>
-      </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default MainLayout;

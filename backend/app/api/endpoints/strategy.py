@@ -7,6 +7,7 @@ from pydantic import BaseModel
 import logging
 
 from app.services.strategy_execution_service import strategy_execution_service
+from app.services.strategy_lab_service import strategy_lab_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -23,6 +24,26 @@ class SaveStrategyRequest(BaseModel):
 
 class StartStrategyRequest(BaseModel):
     interval_seconds: Optional[int] = None
+
+
+class BacktestRequest(BaseModel):
+    symbols: Optional[List[str]] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    initial_capital: float = 100000.0
+    position_pct: float = 0.95
+
+
+class PaperRunRequest(BaseModel):
+    symbols: Optional[List[str]] = None
+    initial_capital: float = 100000.0
+    position_pct: float = 0.3
+
+
+class AutoDevelopRequest(BaseModel):
+    objective: str = "首板突破"
+    symbols: Optional[List[str]] = None
+    risk_level: str = "balanced"
 
 
 # ============ API端点 ============
@@ -107,6 +128,81 @@ async def execute_strategy(strategy_id: int) -> Dict[str, Any]:
         return result
     except Exception as e:
         logger.error(f"Error executing strategy {strategy_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{strategy_id}/backtest")
+async def run_strategy_backtest(strategy_id: int, request: BacktestRequest) -> Dict[str, Any]:
+    """运行A股策略回测"""
+    try:
+        return strategy_lab_service.run_backtest(
+            strategy_id=strategy_id,
+            symbols=request.symbols,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            initial_capital=request.initial_capital,
+            position_pct=request.position_pct,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error running strategy backtest {strategy_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/auto-develop")
+async def auto_develop_strategy(request: AutoDevelopRequest) -> Dict[str, Any]:
+    """自动生成并保存一条A股策略"""
+    try:
+        return strategy_lab_service.auto_develop_strategy(
+            objective=request.objective,
+            symbols=request.symbols,
+            risk_level=request.risk_level,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error auto developing strategy: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{strategy_id}/paper/run")
+async def run_strategy_paper_trading(strategy_id: int, request: PaperRunRequest) -> Dict[str, Any]:
+    """启动一次A股模拟交易实例"""
+    try:
+        return strategy_lab_service.run_paper_trading(
+            strategy_id=strategy_id,
+            symbols=request.symbols,
+            initial_capital=request.initial_capital,
+            position_pct=request.position_pct,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error running paper trading {strategy_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/paper/accounts")
+async def list_paper_accounts() -> Dict[str, Any]:
+    """获取最近的模拟交易账户"""
+    try:
+        accounts = strategy_lab_service.list_paper_accounts()
+        return {"accounts": accounts, "total": len(accounts)}
+    except Exception as e:
+        logger.error(f"Error listing paper accounts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/paper/accounts/{account_id}")
+async def get_paper_account(account_id: int) -> Dict[str, Any]:
+    """获取模拟交易账户详情"""
+    try:
+        return strategy_lab_service.get_paper_account(account_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting paper account {account_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, BarChart2, Database, BrainCircuit, Newspaper, GripVertical, Activity, CalendarDays, Code, Zap } from 'lucide-react';
+import { GripVertical } from 'lucide-react';
 import { useStore } from '../stores/useStore';
 import { getTranslation, TranslationKey } from '../lib/i18n';
+import { appModules, moduleGroups } from '../modules/moduleRegistry';
 import clsx from 'clsx';
 
 interface NavigationProps {
@@ -16,27 +17,17 @@ export const Navigation: React.FC<NavigationProps> = ({ orientation = 'horizonta
   const { language } = useStore();
   const t = (key: TranslationKey) => getTranslation(language, key);
 
-  type TabDef = {
-    id: string;
-    to: string;
-    label: string;
-    Icon: React.ComponentType<{ size?: string | number; className?: string }>;
-  };
-
-  const tabs: TabDef[] = useMemo(
-    () => [
-      { id: 'strategy-filter', to: '/', label: t('nav.dashboard'), Icon: LayoutDashboard },
-      { id: 'strategy-exec', to: '/strategy-exec', label: language === 'zh' ? '实时策略盯盘' : 'Strategy Watch', Icon: Zap },
-      { id: 'market-overview', to: '/market', label: t('nav.market'), Icon: BarChart2 },
-      { id: 'sentiment-analysis', to: '/sentiment', label: t('nav.sentiment'), Icon: Activity },
-      { id: 'news-feed', to: '/news', label: language === 'zh' ? '消息流' : 'News', Icon: Newspaper },
-      { id: 'ai-analysis', to: '/ai', label: t('nav.ai'), Icon: BrainCircuit },
-      { id: 'strategy-dev', to: '/strategy-dev', label: language === 'zh' ? '策略开发' : 'Strategy Dev', Icon: Code },
-      { id: 'data-analysis', to: '/analysis', label: t('nav.data'), Icon: Database },
-      { id: 'trading-calendar', to: '/calendar', label: language === 'zh' ? '交易日历' : 'Calendar', Icon: CalendarDays },
-    ],
-    [t, language]
+  const tabs = useMemo(
+    () => appModules.map((module) => ({ ...module, to: module.path, label: t(module.labelKey) })),
+    [t]
   );
+  const tabsByGroup = useMemo(() => {
+    return moduleGroups.map((group) => ({
+      ...group,
+      label: t(group.labelKey),
+      tabs: tabs.filter((tab) => tab.groupId === group.id),
+    })).filter((group) => group.tabs.length > 0);
+  }, [tabs, t]);
 
   const storageKey = 'nav_tab_order_v1';
   const defaultOrder = useMemo(() => tabs.map((t) => t.id), [tabs]);
@@ -76,7 +67,7 @@ export const Navigation: React.FC<NavigationProps> = ({ orientation = 'horizonta
 
   const orderedTabs = useMemo(() => {
     const byId = new Map(tabs.map((t) => [t.id, t]));
-    return order.map((id) => byId.get(id)).filter((t): t is TabDef => Boolean(t));
+    return order.map((id) => byId.get(id)).filter((t): t is (typeof tabs)[number] => Boolean(t));
   }, [order, tabs]);
 
   const persistOrder = (next: string[]) => {
@@ -132,10 +123,43 @@ export const Navigation: React.FC<NavigationProps> = ({ orientation = 'horizonta
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
   }, [handleDragHandleMouseUp]);
 
+  if (orientation === 'vertical') {
+    return (
+      <nav className="space-y-6">
+        {tabsByGroup.map((group) => (
+          <section key={group.id} className="rounded-lg border border-slate-800 bg-[#0d1424]/45 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-800 text-[11px] font-black tracking-widest text-slate-500">
+              {group.label}
+            </div>
+            <div className="p-3 space-y-1.5">
+              {group.tabs.map((tab) => (
+                <NavLink
+                  key={tab.id}
+                  to={tab.to}
+                  className={({ isActive }) =>
+                    clsx(
+                      'flex items-center gap-3 px-4 py-3 rounded-md text-sm font-semibold transition-colors select-none',
+                      isActive
+                        ? 'bg-blue-600/15 text-blue-300 ring-1 ring-inset ring-blue-500/50'
+                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
+                    )
+                  }
+                >
+                  <tab.Icon size={20} className="shrink-0" />
+                  <span className="truncate">{tab.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </section>
+        ))}
+      </nav>
+    );
+  }
+
   return (
     <nav className={clsx(
       "flex gap-2",
-      orientation === 'vertical' ? "flex-col" : "flex-row mb-6 border-b border-slate-700 pb-2 overflow-x-auto"
+      "flex-row mb-6 border-b border-slate-700 pb-2 overflow-x-auto"
     )}>
       {orderedTabs.map((tab) => (
         <div key={tab.id} className="relative flex items-center group/nav">

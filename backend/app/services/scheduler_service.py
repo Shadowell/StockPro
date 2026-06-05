@@ -5,8 +5,10 @@ import asyncio
 import logging
 from typing import Optional
 from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from app.core.config import settings
 from app.services.data_sync_service import data_sync_service
 
 
@@ -38,6 +40,15 @@ class SchedulerService:
             name='同步股票历史数据',
             replace_existing=True
         )
+
+        # 每天收盘后同步全量 A 股日 K，任务进度写入 v2 数据模块的同步任务表
+        self.scheduler.add_job(
+            func=self._sync_all_ashare_klines,
+            trigger=CronTrigger(hour=18, minute=10, timezone=ZoneInfo("Asia/Shanghai")),
+            id='sync_all_ashare_klines',
+            name='每日同步全量A股K线',
+            replace_existing=True
+        )
         
         # 每天下午3点同步一次热门概念和基本面数据
         self.scheduler.add_job(
@@ -57,14 +68,16 @@ class SchedulerService:
             replace_existing=True
         )
         
-        # 立即运行一次初始同步
-        self.scheduler.add_job(
-            func=self._initial_sync,
-            trigger='date',
-            run_date=datetime.now(),
-            id='initial_sync',
-            name='初始数据同步'
-        )
+        if settings.RUN_STARTUP_DATA_SYNC:
+            self.scheduler.add_job(
+                func=self._initial_sync,
+                trigger='date',
+                run_date=datetime.now(),
+                id='initial_sync',
+                name='初始数据同步'
+            )
+        else:
+            logger.info("Startup data sync skipped; scheduled/manual sync remains available")
         
         self.is_initialized = True
         logger.info("Scheduler initialized with data sync jobs")
@@ -101,6 +114,19 @@ class SchedulerService:
             logger.info(f"Stock history sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in stock history sync: {str(e)}")
+
+    async def _sync_all_ashare_klines(self):
+        """
+        每日同步全量 A 股日 K 数据
+        """
+        try:
+            logger.info("Starting daily all A-share kline sync")
+            from app.api.v2.endpoints import data as data_module
+
+            result = await data_module.run_scheduled_all_ashare_sync()
+            logger.info(f"Daily all A-share kline sync completed: {result}")
+        except Exception as e:
+            logger.error(f"Error in daily all A-share kline sync: {str(e)}")
     
     async def _sync_market_data(self):
         """

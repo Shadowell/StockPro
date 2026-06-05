@@ -109,7 +109,7 @@ const StatCard: React.FC<{
   </div>
 );
 
-export const SentimentAnalysis: React.FC = () => {
+export const SentimentAnalysisContent: React.FC = () => {
   const { language } = useStore();
   const t = (key: any) => getTranslation(language, key);
 
@@ -254,8 +254,7 @@ export const SentimentAnalysis: React.FC = () => {
   }, [hotConcepts]);
 
   return (
-    <MainLayout title={language === 'zh' ? '市场情绪分析' : 'Market Sentiment'}>
-      <div className="flex flex-col gap-6 h-full overflow-auto custom-scrollbar">
+    <div className="flex flex-col gap-6 h-full overflow-auto custom-scrollbar">
         {/* 顶部状态栏 */}
         <div className="flex items-center gap-4 text-slate-400">
           <Activity size={18} />
@@ -474,7 +473,16 @@ export const SentimentAnalysis: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
+    </div>
+  );
+};
+
+export const SentimentAnalysis: React.FC = () => {
+  const { language } = useStore();
+
+  return (
+    <MainLayout title={language === 'zh' ? '市场情绪分析' : 'Market Sentiment'}>
+      <SentimentAnalysisContent />
     </MainLayout>
   );
 };

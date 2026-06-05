@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     
     # Akshare
     AKSHARE_TIMEOUT: int = 30
+    RUN_STARTUP_DATA_SYNC: bool = False
+    START_REALTIME_SYNC_SERVICE: bool = False
 
     # Operation allowlist
     ENFORCE_OPERATION_ALLOWLIST: bool = False
@@ -47,9 +49,11 @@ class Settings(BaseSettings):
             return v
         raise ValueError(v)
     
-    # Database mode: 'supabase' or 'local'
-    DB_MODE: str = "local"  # 默认使用本地数据库
-    LOCAL_DB_PATH: Union[str, None] = None  # 本地数据库路径，如果为None则使用默认路径
+    # Database mode: V1 core uses PostgreSQL. SQLite remains legacy-only and is
+    # not used unless DB_MODE is explicitly set to "local".
+    DB_MODE: str = "postgres"
+    DATABASE_URL: str = "postgresql://stockpro:stockpro@127.0.0.1:55432/stockpro"
+    LOCAL_DB_PATH: Union[str, None] = None
     
     model_config = SettingsConfigDict(
         env_file=".env",

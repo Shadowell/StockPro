@@ -5,6 +5,7 @@ from starlette.responses import JSONResponse
 from app.core.config import settings
 from app.core.operation_allowlist import compile_allowlist, is_operation_allowed
 from app.api import api_router
+from app.api.v2.api import api_router_v2
 from app.services.scheduler_service import init_scheduler
 from app.services.realtime_sync_service import realtime_sync_service
 from app.services.strategy_execution_service import strategy_execution_service
@@ -48,7 +49,7 @@ async def operation_allowlist_middleware(request: Request, call_next):
 allow_origins = (
     [str(origin) for origin in settings.BACKEND_CORS_ORIGINS]
     if settings.BACKEND_CORS_ORIGINS
-    else ["http://localhost:5173", "http://127.0.0.1:5173"]
+    else ["http://localhost:4444", "http://127.0.0.1:4444"]
 )
 app.add_middleware(
     CORSMiddleware,
@@ -59,6 +60,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router_v2, prefix="/api/v2")
 
 @app.on_event("startup")
 async def startup_event():
@@ -72,9 +74,12 @@ async def startup_event():
     # 初始化并启动调度器
     await init_scheduler()
     logger.info("Scheduler started successfully")
-    # 启动实时数据同步服务
-    realtime_sync_service.start()
-    logger.info("Realtime sync service started successfully")
+    # 实时同步会访问外部行情源，默认不开机即跑，避免页面启动被网络波动拖慢。
+    if settings.START_REALTIME_SYNC_SERVICE:
+        realtime_sync_service.start()
+        logger.info("Realtime sync service started successfully")
+    else:
+        logger.info("Realtime sync service skipped; manual and scheduled sync remain available")
     # 启动策略执行服务
     strategy_execution_service.start()
     logger.info("Strategy execution service started successfully")
@@ -83,8 +88,9 @@ async def startup_event():
 async def shutdown_event():
     logger.info("Shutting down application...")
     # 停止实时数据同步服务
-    realtime_sync_service.stop()
-    logger.info("Realtime sync service stopped")
+    if settings.START_REALTIME_SYNC_SERVICE:
+        realtime_sync_service.stop()
+        logger.info("Realtime sync service stopped")
     # 停止策略执行服务
     strategy_execution_service.stop()
     logger.info("Strategy execution service stopped")

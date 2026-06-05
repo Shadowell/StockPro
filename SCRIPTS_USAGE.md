@@ -14,8 +14,8 @@
 ```
 
 **执行流程**:
-1. 停止后端服务 (端口 8000)
-2. 停止前端服务 (端口 9999)
+1. 停止后端服务 (端口 4445)
+2. 停止前端服务 (端口 4444)
 3. 清理僵尸进程
 4. 准备日志目录
 5. 启动后端服务 (FastAPI + uvicorn)
@@ -113,10 +113,10 @@ stock_app/
 
 启动成功后，可以访问以下地址：
 
-- **前端应用**: http://localhost:9999
-- **后端API**: http://localhost:8000
-- **API文档**: http://localhost:8000/docs
-- **ReDoc文档**: http://localhost:8000/redoc
+- **前端应用**: http://localhost:4444
+- **后端API**: http://localhost:4445
+- **API文档**: http://localhost:4445/docs
+- **ReDoc文档**: http://localhost:4445/redoc
 
 ---
 
@@ -134,12 +134,12 @@ stock_app/
 
 ```bash
 # 查看端口占用
-lsof -i :8000
-lsof -i :9999
+lsof -i :4445
+lsof -i :4444
 
 # 手动杀死进程
-kill -9 $(lsof -t -i :8000)
-kill -9 $(lsof -t -i :9999)
+kill -9 $(lsof -t -i :4445)
+kill -9 $(lsof -t -i :4444)
 ```
 
 ### 2. 服务启动失败
@@ -202,7 +202,7 @@ ps aux | grep -E "uvicorn|vite"
 ```bash
 # 只重启后端
 kill $(cat logs/backend.pid)
-cd backend && source venv/bin/activate && nohup uvicorn app.main:app --reload --port 8000 > ../logs/backend.log 2>&1 &
+cd backend && source venv/bin/activate && nohup uvicorn app.main:app --reload --port 4445 > ../logs/backend.log 2>&1 &
 
 # 只重启前端
 kill $(cat logs/frontend.pid)
@@ -215,7 +215,7 @@ cd frontend && nohup npm run dev > ../logs/frontend.log 2>&1 &
 
 1. **日志文件**: 日志会持续追加，定期清理 `logs/` 目录避免占用过多空间
 2. **虚拟环境**: 后端使用虚拟环境，确保依赖隔离
-3. **端口固定**: 前端固定使用 9999 端口，后端固定使用 8000 端口
+3. **端口固定**: 前端固定使用 4444 端口，后端固定使用 4445 端口
 4. **进程管理**: 脚本会保存进程ID到 `logs/*.pid` 文件，便于管理
 
 ---

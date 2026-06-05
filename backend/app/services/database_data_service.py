@@ -62,6 +62,7 @@ class DatabaseDataService:
                     "high": float(row[3]) if row[3] is not None else 0.0,
                     "low": float(row[4]) if row[4] is not None else 0.0,
                     "close": float(row[5]) if row[5] is not None else 0.0,
+                    "current_price": float(row[5]) if row[5] is not None else 0.0,
                     "volume": int(row[6]) if row[6] is not None else 0,
                     "amount": float(row[7]) if row[7] is not None else 0.0,
                     "change_amount": 0.0,  # SQLite表中没有这些字段，暂时设为0
@@ -70,6 +71,7 @@ class DatabaseDataService:
                     "pe_ttm": 0.0,
                     "pb": 0.0,
                     "total_mv": 0.0,
+                    "market_cap": 0,
                     "circ_mv": 0.0,
                     "date": str(row[8])
                 }
