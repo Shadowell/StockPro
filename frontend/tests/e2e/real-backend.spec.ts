@@ -137,7 +137,24 @@ test('DataDev 任务 CRUD + 运行 + 日志可用', async ({ request }) => {
 });
 
 test('后台任务状态接口可访问', async ({ request }) => {
-  const resp = await request.get('/api/v1/admin/task-status');
+  const adminPassword = process.env.E2E_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD;
+  test.skip(!adminPassword, 'Set E2E_ADMIN_PASSWORD or ADMIN_PASSWORD to test protected admin APIs.');
+
+  const loginResp = await request.post('/api/v1/auth/admin/login', {
+    data: {
+      username: process.env.E2E_ADMIN_USERNAME || process.env.ADMIN_USERNAME || 'admin',
+      password: adminPassword,
+    },
+  });
+  expect(loginResp.ok()).toBeTruthy();
+  const loginData = (await loginResp.json()) as { access_token?: unknown };
+  expect(typeof loginData.access_token).toBe('string');
+
+  const resp = await request.get('/api/v1/admin/task-status', {
+    headers: {
+      Authorization: `Bearer ${loginData.access_token}`,
+    },
+  });
   expect(resp.ok()).toBeTruthy();
 
   const data = (await resp.json()) as {
