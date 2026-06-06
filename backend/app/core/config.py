@@ -53,6 +53,12 @@ class Settings(BaseSettings):
         elif isinstance(v, (list, str)):
             return v
         raise ValueError(v)
+
+    # Admin authentication
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = ""
+    ADMIN_TOKEN_SECRET: str = ""
+    ADMIN_TOKEN_TTL_SECONDS: int = 60 * 60 * 12
     
     # Database mode: production defaults to Postgres. Legacy SQLite is opt-in.
     DB_MODE: str = "postgres"

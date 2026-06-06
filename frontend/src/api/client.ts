@@ -2,6 +2,8 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { Stock, Sector, StockFilterResponse, AIAnalysis, DailyChartData, IntradayChartData, MarketSector, MarketStock, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
+export const ADMIN_AUTH_CHANGED_EVENT = 'stockpro_admin_auth_changed';
 
 // Retry configuration
 const retryConfig = {
@@ -16,6 +18,36 @@ export interface GenericApiResponse {
   message?: string;
   [key: string]: unknown;
 }
+
+export interface AdminLoginResponse {
+  access_token: string;
+  token_type: 'bearer';
+  expires_in: number;
+  username: string;
+}
+
+export interface AdminProfile {
+  username: string;
+}
+
+export const getAdminToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+};
+
+export const setAdminToken = (token: string): void => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+  window.dispatchEvent(new Event(ADMIN_AUTH_CHANGED_EVENT));
+};
+
+export const clearAdminToken = (): void => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  window.dispatchEvent(new Event(ADMIN_AUTH_CHANGED_EVENT));
+};
+
+export const hasAdminToken = (): boolean => Boolean(getAdminToken());
 
 export interface PresetTaskParam {
   name: string;
@@ -242,10 +274,22 @@ export const apiClient = axios.create({
   },
 });
 
+apiClient.interceptors.request.use((config) => {
+  const token = getAdminToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // Response interceptor for automatic retry with exponential backoff
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
+    if (error.response?.status === 401) {
+      clearAdminToken();
+    }
+
     const config = error.config as RetryableRequestConfig | undefined;
     if (!config) {
       return Promise.reject(error);
@@ -274,6 +318,17 @@ apiClient.interceptors.response.use(
     return apiClient(config);
   }
 );
+
+export const adminLogin = async (username: string, password: string): Promise<AdminLoginResponse> => {
+  const response = await apiClient.post<AdminLoginResponse>('/auth/admin/login', { username, password });
+  setAdminToken(response.data.access_token);
+  return response.data;
+};
+
+export const getAdminProfile = async (): Promise<AdminProfile> => {
+  const response = await apiClient.get<AdminProfile>('/auth/admin/me');
+  return response.data;
+};
 
 export const getMarketOverview = async (): Promise<MarketOverview> => {
   const response = await apiClient.get<MarketOverview>('/market/overview');

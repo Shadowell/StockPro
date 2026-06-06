@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { MainLayout } from '@/components/MainLayout';
 import { useStore } from '@/stores/useStore';
+import { clearAdminToken } from '@/api/client';
+import { useNavigate } from 'react-router-dom';
 import {
   Database,
   Workflow,
@@ -11,6 +13,7 @@ import {
   FileCode2,
   Download,
   Package,
+  LogOut,
 } from 'lucide-react';
 import { DataHubDatasetPanel } from '@/components/DataHubDatasetPanel';
 import { DataHubJobsPanel } from '@/components/DataHubJobsPanel';
@@ -27,20 +30,34 @@ type LegacyTab = 'batchimport' | 'datadev' | 'database' | 'sql' | 'repair';
 
 export const DataProcessingAnalysis: React.FC = () => {
   const { language } = useStore();
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<DataHubTab>('assets');
   const [legacyTab, setLegacyTab] = useState<LegacyTab>('batchimport');
 
   const title = language === 'zh' ? '数据中台' : 'Data Hub';
+  const handleLogout = () => {
+    clearAdminToken();
+    navigate('/admin-login', { replace: true });
+  };
 
   return (
     <MainLayout title={title}>
       <div className="flex flex-col gap-4 h-full">
-        <div className="rounded border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
-          <div className="font-semibold mb-1">Data Hub V1</div>
-          <div className="text-xs text-blue-200/80">
-            当前以“数据资产 -&gt; 生产任务 -&gt; 质量治理 -&gt; 特征服务”为主线。旧版入口保留在“兼容入口”页签。
+        <div className="flex items-center justify-between gap-3 rounded border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
+          <div>
+            <div className="font-semibold mb-1">Data Hub V1</div>
+            <div className="text-xs text-blue-200/80">
+              当前以“数据资产 -&gt; 生产任务 -&gt; 质量治理 -&gt; 特征服务”为主线。旧版入口保留在“兼容入口”页签。
+            </div>
           </div>
+          <button
+            onClick={handleLogout}
+            className="shrink-0 flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:border-red-500/40 hover:text-red-200"
+          >
+            <LogOut size={14} />
+            {language === 'zh' ? '退出' : 'Logout'}
+          </button>
         </div>
 
         <div className="flex flex-wrap border-b border-slate-800 bg-[#0d121f]">
