@@ -57,7 +57,7 @@ const getCacheTTL = (): number => {
   return 5 * 60 * 1000;
 };
 
-export const MarketOverview: React.FC = () => {
+export const MarketOverviewContent: React.FC = () => {
   const { selectStock, selectedStock, language } = useStore();
   const t = useCallback((key: TranslationKey) => getTranslation(language, key), [language]);
 
@@ -423,8 +423,7 @@ export const MarketOverview: React.FC = () => {
   }, []);
 
   return (
-    <MainLayout title={t('market.title')}>
-      <div className="flex flex-col gap-6 h-full">
+    <div className="flex flex-col gap-6 h-full">
         <div className="flex flex-wrap gap-2 items-center">
           <button
             onClick={() => setActiveTab('hot_concepts')}
@@ -640,6 +639,7 @@ export const MarketOverview: React.FC = () => {
                     {conceptTabOrder.map((k) => (
                       <button
                         key={k}
+                        title={language === 'zh' ? '拖动可调整顺序' : 'Drag to reorder'}
                         draggable
                         onDragStart={(e) => {
                           setDraggingConceptTab(k);
@@ -970,7 +970,12 @@ export const MarketOverview: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
-    </MainLayout>
+    </div>
   );
 };
+
+export const MarketOverview: React.FC = () => (
+  <MainLayout title="市场概览与分析">
+    <MarketOverviewContent />
+  </MainLayout>
+);

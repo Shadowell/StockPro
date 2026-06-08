@@ -1,14 +1,13 @@
 from fastapi import APIRouter, HTTPException, Response
 from typing import Dict, List, Any
 import logging
-import sqlite3
 
-from app.db.local_db import db_instance
+from app.db import db_instance
 from app.services.data_hub_service import data_hub_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-DEPRECATION_NOTICE = "Deprecated: please migrate to /api/v1/data-hub/datasets and /api/v1/data-hub/features/*"
+DEPRECATION_NOTICE = "Deprecated: please migrate to /api/data-hub/datasets and /api/data-hub/features/*"
 
 @router.get("/tables")
 async def get_tables_info(response: Response) -> List[Dict[str, Any]]:
@@ -30,19 +29,33 @@ async def get_tables_info(response: Response) -> List[Dict[str, Any]]:
                 for item in datasets
             ]
 
-        # fallback: keep legacy behavior if no dataset metadata is available
         conn = db_instance.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        cursor.execute(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+            ORDER BY table_name
+            """
+        )
         tables = cursor.fetchall()
         tables_info = []
         for table_row in tables:
             table_name = table_row[0]
-            cursor.execute(f"PRAGMA table_info({table_name});")
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                (table_name,),
+            )
             columns_info = cursor.fetchall()
             cursor.execute(f"SELECT COUNT(*) FROM {table_name};")
             row_count = cursor.fetchone()[0]
-            columns = [col[1] for col in columns_info]
+            columns = [col[0] for col in columns_info]
             tables_info.append({"name": table_name, "columns": columns, "rowCount": row_count})
         conn.close()
         return tables_info
@@ -105,9 +118,6 @@ async def execute_sql_query(request: Dict[str, Any], response: Response) -> Dict
             "rowCount": len(result_data)
         }
         
-    except sqlite3.Error as e:
-        logger.error(f"SQLite error in query: {e}")
-        raise HTTPException(status_code=400, detail=f"SQL error: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
@@ -124,15 +134,20 @@ async def get_table_data(table_name: str, response: Response, limit: int = 100) 
         conn = db_instance.get_connection()
         cursor = conn.cursor()
         
-        # 获取所有表名
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        cursor.execute(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+            """
+        )
         tables = [row[0] for row in cursor.fetchall()]
         
         if table_name not in tables:
             raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
         
         # 构建安全的查询
-        query = f"SELECT * FROM {table_name} LIMIT ?"
+        query = f"SELECT * FROM {table_name} LIMIT %s"
         cursor.execute(query, (limit,))
         rows = cursor.fetchall()
         

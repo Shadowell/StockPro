@@ -4,6 +4,8 @@
 # 使用方法: ./stop.sh 或 sh stop.sh
 
 cd "$(dirname "$0")"
+BACKEND_SESSION="stockpro-backend"
+FRONTEND_SESSION="stockpro-frontend"
 
 echo "================================"
 echo "🛑 停止应用服务..."
@@ -15,8 +17,19 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+stop_tmux_session() {
+    local session_name="$1"
+    if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$session_name" >/dev/null 2>&1; then
+        echo "  停止 tmux 会话: $session_name"
+        tmux kill-session -t "$session_name" >/dev/null 2>&1 || true
+    fi
+}
+
 # 1. 从PID文件停止服务
 echo -e "\n${YELLOW}📦 尝试从PID文件停止服务...${NC}"
+stop_tmux_session "$BACKEND_SESSION"
+stop_tmux_session "$FRONTEND_SESSION"
+rm -f logs/backend.session logs/frontend.session
 
 if [ -f "logs/backend.pid" ]; then
     BACKEND_PID=$(cat logs/backend.pid)

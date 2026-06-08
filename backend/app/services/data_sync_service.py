@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 import akshare as ak
 import pandas as pd
 from sqlalchemy import text
-from app.db.local_db import db_instance as local_db_instance
+from app.db import db_instance as pg_db_instance
 from app.core.config import settings
 
 
@@ -21,7 +21,7 @@ class DataSyncService:
     """
     
     def __init__(self):
-        self.db = local_db_instance
+        self.db = pg_db_instance
         self.is_running = False
         
     def sync_stock_history(self, date: Optional[str] = None) -> Dict[str, Any]:
@@ -65,34 +65,22 @@ class DataSyncService:
                 }
                 records.append(record)
             
-            # 批量插入数据库
             if records:
-                # 由于我们使用SQLite，需要转换为适合SQLite的格式
-                # 首先删除当天的旧数据
-                conn = self.db.get_connection()
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM stock_history WHERE date = ?", (date,))
-                
-                # 插入新数据
-                for record in records:
-                    cursor.execute('''
-                        INSERT OR REPLACE INTO stock_history 
-                        (date, symbol, name, open, high, low, close, volume, turnover)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        record['date'], 
-                        record['code'], 
-                        record['name'], 
-                        record['open'], 
-                        record['high'], 
-                        record['low'], 
-                        record['close'], 
-                        record['volume'], 
-                        record.get('amount', record.get('turnover', 0))  # 使用amount或turnover字段
-                    ))
-                
-                conn.commit()
-                conn.close()
+                history_records = [
+                    {
+                        "date": record["date"],
+                        "symbol": record["code"],
+                        "name": record["name"],
+                        "open": record["open"],
+                        "high": record["high"],
+                        "low": record["low"],
+                        "close": record["close"],
+                        "volume": record["volume"],
+                        "turnover": record.get("amount", record.get("turnover", 0)),
+                    }
+                    for record in records
+                ]
+                self.db.insert_stock_history_batch(history_records)
                     
                 logger.info(f"Successfully synced {len(records)} stock history records for date {date}")
                 return {
@@ -144,27 +132,17 @@ class DataSyncService:
                     records.append(record)
                 
                 if records:
-                    # 删除当天的旧数据
-                    conn = self.db.get_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM concept_flow WHERE date = ?", (date or datetime.now().strftime('%Y-%m-%d'),))
-                    
-                    # 插入新数据
-                    for record in records:
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO concept_flow 
-                            (date, concept_name, net_amount, net_volume, main_net_amount, super_large_net_amount, 
-                             large_net_amount, medium_net_amount, small_net_amount, rank)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            record['date'], record['concept_name'], record['net_amount'], 
-                            record['net_volume'], record['main_net_amount'], record['super_large_net_amount'], 
-                            record['large_net_amount'], record['medium_net_amount'], 
-                            record['small_net_amount'], record['rank']
-                        ))
-                    
-                    conn.commit()
-                    conn.close()
+                    self.db.update_hot_concepts_realtime(
+                        [
+                            {
+                                "rank": record["rank"],
+                                "name": record["concept_name"],
+                                "change_percent": 0,
+                                "net_inflow": record["net_amount"],
+                            }
+                            for record in records
+                        ]
+                    )
                     
                     logger.info(f"Successfully synced {len(records)} concept flow records")
                     return {
@@ -227,30 +205,26 @@ class DataSyncService:
                 records.append(record)
             
             if records:
-                # 批量插入数据库
-                conn = self.db.get_connection()
-                cursor = conn.cursor()
-                
-                # 清空表（也可以做更新操作）
-                cursor.execute("DELETE FROM stock_fundamentals")
-                
-                # 插入新数据
-                for record in records:
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO stock_fundamentals 
-                        (symbol, name, price, change_amount, change_percent, volume, amount, amplitude, 
-                         turnover_rate, pe, pb, market_cap, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        record['code'], record['name'], record['price'], 
-                        record['change_amount'], record['change_percent'], 
-                        record['volume'], record['amount'], record['amplitude'], 
-                        record['turnover_rate'], record['pe_ttm'], record['pb'], 
-                        record['total_mv'], record['last_updated']
-                    ))
-                
-                conn.commit()
-                conn.close()
+                self.db.insert_stock_fundamentals_batch(
+                    [
+                        {
+                            "code": record["code"],
+                            "name": record["name"],
+                            "price": record["price"],
+                            "current_price": record["price"],
+                            "change_amount": record["change_amount"],
+                            "change_percent": record["change_percent"],
+                            "volume": record["volume"],
+                            "amount": record["amount"],
+                            "amplitude": record["amplitude"],
+                            "turnover_rate": record["turnover_rate"],
+                            "pe": record["pe_ttm"],
+                            "pb": record["pb"],
+                            "market_cap": record["total_mv"],
+                        }
+                        for record in records
+                    ]
+                )
                 
                 logger.info(f"Successfully synced {len(records)} fundamentals records")
                 return {
@@ -296,25 +270,8 @@ class DataSyncService:
                     records.append(record)
                 
                 if records:
-                    # 删除当天的旧数据
-                    conn = self.db.get_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM ths_hot_rank WHERE date = ?", (datetime.now().strftime('%Y-%m-%d'),))
-                    
-                    # 插入新数据
-                    for record in records:
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO ths_hot_rank 
-                            (rank, code, name, price, change_amount, change_percent, date, last_updated)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            record['rank'], record['code'], record['name'], 
-                            record['price'], record['change_amount'], 
-                            record['change_percent'], record['date'], record['last_updated']
-                        ))
-                    
-                    conn.commit()
-                    conn.close()
+                    self.db.update_ths_hot_realtime(records)
+                    self.db.insert_ths_hot_history(datetime.now().strftime('%Y-%m-%d'), records)
                     
                     logger.info(f"Successfully synced {len(records)} THS hot rank records")
                     return {

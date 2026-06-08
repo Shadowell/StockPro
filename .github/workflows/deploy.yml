@@ -135,7 +135,7 @@ jobs:
         if: ${{ steps.deploy_gate.outputs.should_deploy == 'true' }}
         working-directory: frontend
         env:
-          VITE_API_URL: /api/v1
+          VITE_API_URL: /api
         run: |
           npm ci
           npm run build
@@ -184,7 +184,6 @@ jobs:
               --exclude='*.pyc' \
               --exclude='.env' \
               --exclude='*.db' \
-              --exclude='*.sqlite' \
               --exclude='logs/' \
               backend/ ${SERVER_USER}@${SERVER_HOST}:/opt/stockpro/backend/
 
@@ -217,7 +216,6 @@ jobs:
               --exclude='*.pyc' \
               --exclude='.env' \
               --exclude='*.db' \
-              --exclude='*.sqlite' \
               --exclude='logs/' \
               backend/ /opt/stockpro/backend/
 

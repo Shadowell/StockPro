@@ -32,14 +32,14 @@ The production target is `root@47.79.36.92`, served at `http://47.79.36.92:4444`
 
 - Frontend: React + Vite, deployed as static assets under `/opt/stockpro/frontend/dist`.
 - Backend: FastAPI, deployed as `stockpro-backend` systemd service under `/opt/stockpro/backend`.
-- Database: Postgres only for the cloud platform, using `DB_MODE=postgres` and `DATABASE_URL`.
+- Database: Postgres only for the cloud platform, using `DATABASE_URL`.
 - Public entry: Nginx on `:4444`, proxying `/api/` to FastAPI on `127.0.0.1:4445`.
 - Deployment: GitHub Actions main-only, self-hosted runner label `stockpro-production`, SHA gate via `/opt/stockpro/deploy/last_deployed_sha`.
 - Electron: optional shell only; not part of the core platform architecture.
 
 ## Current Architecture Notes
 
-The repository still contains legacy SQLite service code used by older application modules. PG-only production disables those legacy API routes and background services by default; new cloud-platform work must use Postgres migrations and repositories. Legacy SQLite paths should be replaced module by module rather than expanded.
+The runtime is Postgres-only. New and migrated modules must use Postgres migrations plus repository/adapter methods; do not add local file database fallbacks or versioned API prefixes.
 
 ## Constraints
 

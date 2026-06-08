@@ -16,7 +16,7 @@ from typing import Dict, List, Any, Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from app.db.local_db import db_instance as db
+from app.db import db_instance as db
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +116,30 @@ class StrategyExecutionService:
     def get_strategy(self, strategy_id: int) -> Optional[Dict]:
         """获取单个策略"""
         return db.get_strategy_by_id(strategy_id)
+
+    def update_strategy(
+        self,
+        strategy_id: int,
+        name: str,
+        script_content: str,
+        description: str = "",
+        interval_seconds: int = 60,
+    ) -> Dict[str, Any]:
+        """按 ID 更新策略脚本"""
+        try:
+            strategy = db.update_strategy(
+                strategy_id=strategy_id,
+                name=name,
+                script_content=script_content,
+                description=description,
+                interval_seconds=interval_seconds,
+            )
+            if not strategy:
+                return {"success": False, "error": "Strategy not found"}
+            return {**strategy, "success": True}
+        except Exception as e:
+            logger.error(f"Error updating strategy: {e}")
+            return {"success": False, "error": str(e)}
     
     def delete_strategy(self, strategy_id: int) -> Dict[str, Any]:
         """删除策略"""

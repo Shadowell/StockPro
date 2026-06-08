@@ -88,7 +88,7 @@ class ChartService:
         # 方法3: 从数据库读取缓存数据
         if df is None or df.empty:
             try:
-                from app.db.local_db import db_instance
+                from app.db import db_instance
                 response_data = db_instance.get_stock_history(prefixed_symbol)
                 if response_data:
                     logger.info(f"使用数据库缓存的日线数据 {code}")
@@ -140,7 +140,7 @@ class ChartService:
 
         # 保存到数据库
         try:
-            from app.db.local_db import db_instance
+            from app.db import db_instance
             db_instance.insert_stock_history_batch(db_records)
         except Exception as db_err:
             logger.warning(f"保存日线数据到数据库失败 {code}: {db_err}")

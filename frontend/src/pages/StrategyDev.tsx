@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getStrategies, saveStrategy, deleteStrategy, executeStrategy } from '../api/client';
 import { Strategy } from '../types';
 import { MainLayout } from '../components/MainLayout';
+import { StrategyLabWorkflow } from '../components/StrategyLabWorkflow';
 import { useStore } from '../stores/useStore';
 import { Code, Play, Save, Trash2, Clock } from 'lucide-react';
 import clsx from 'clsx';
@@ -272,6 +273,14 @@ print(json.dumps(output, ensure_ascii=False))
     setTestResult(null);
   }, []);
 
+  const handleStrategyCreated = useCallback((strategy: Strategy) => {
+    setStrategies((prev) => {
+      const without = prev.filter((item) => item.id !== strategy.id);
+      return [strategy, ...without];
+    });
+    handleEditStrategy(strategy);
+  }, [handleEditStrategy]);
+
   const handleNewStrategy = useCallback(() => {
     setEditingStrategy(null);
     setDevStrategyName('');
@@ -304,6 +313,14 @@ print(json.dumps(output, ensure_ascii=False))
   return (
     <MainLayout title={language === 'zh' ? '策略开发' : 'Strategy Development'}>
       <div className="flex flex-col gap-6 h-full">
+        <StrategyLabWorkflow
+          strategies={strategies}
+          activeStrategyId={editingStrategy?.id || null}
+          language={language}
+          onSelectStrategy={handleEditStrategy}
+          onStrategyCreated={handleStrategyCreated}
+        />
+
         <div className="flex-1 overflow-hidden flex bg-[#111827] rounded-xl border border-slate-800 shadow-2xl min-h-[600px]">
           <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3 divide-x divide-slate-800">
             {/* 左侧：代码编辑器 */}

@@ -41,7 +41,7 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         FastAPI 后端服务 (Python 3.11)                        │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                           API 路由层 (/api/v1)                         │   │
+│  │                           API 路由层 (/api)                         │   │
 │  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐   │   │
 │  │  │stocks  │ │market  │ │charts  │ │  ai    │ │analysis│ │database│   │   │
 │  │  └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘   │   │
@@ -61,7 +61,7 @@
           │                    │                    │
           ▼                    ▼                    ▼
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────────┐
-│   SQLite 数据库  │  │   AkShare API   │  │       千问大模型 API            │
+│   Postgres 数据库  │  │   AkShare API   │  │       千问大模型 API            │
 │   (本地缓存)     │  │   (股票数据)     │  │    (AI 分析 / 日历生成)         │
 └─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
 ```
@@ -81,7 +81,7 @@
     │              │            │                            │
     │              ▼            │                            │
     │  ┌───────────────────────┐│  ┌──────────────────────┐  │
-    │  │    SQLite 本地数据库   │├──►    API 请求/响应     ├──►
+    │  │    Postgres Postgres 数据库   │├──►    API 请求/响应     ├──►
     │  │  (缓存 + 历史数据)     ││  └──────────────────────┘  │
     │  └───────────────────────┘│                            │
     │                           │                            │
@@ -113,7 +113,7 @@
 | FastAPI | 0.104+ | Web 框架 |
 | Uvicorn | 0.40+ | ASGI 服务器 |
 | AkShare | 1.x | 股票数据获取 |
-| SQLite | 3.x | 本地数据库 |
+| Postgres | 3.x | Postgres 数据库 |
 | APScheduler | 3.x | 定时任务 |
 | DashScope | - | 千问大模型 SDK |
 
@@ -212,7 +212,7 @@ backend/app/
 │   ├── scheduler_service.py   # 定时任务服务
 │   └── batch_import_service.py   # 批量导入服务
 ├── db/
-│   └── local_db.py            # 本地数据库操作
+│   └── postgres_db.py            # Postgres 数据库操作
 ├── core/
 │   └── config.py              # 配置管理
 ├── models/
@@ -253,11 +253,11 @@ backend/app/
 
 ### 5.1 数据库概览
 
-**数据库类型**：SQLite (本地文件数据库)  
+**数据库类型**：Postgres (Postgres 数据库)
 **文件位置**：
-- macOS: `~/Library/Application Support/StockApp/stock_data.db`
-- Windows: `~/AppData/Roaming/StockApp/stock_data.db`
-- Linux: `~/.local/share/StockApp/stock_data.db`
+- macOS: `DATABASE_URL 指向的 Postgres 数据库`
+- Windows: `DATABASE_URL 指向的 Postgres 数据库`
+- Linux: `DATABASE_URL 指向的 Postgres 数据库`
 
 ### 5.2 表结构详解
 
@@ -581,7 +581,7 @@ CREATE TABLE message_stream (
 
 ### 6.1 Market 模块 - 市场数据
 
-#### GET /api/v1/market/overview
+#### GET /api/market/overview
 **功能**：获取市场概览数据（指数、涨跌统计、成交量等）
 
 **请求参数**：无
@@ -600,7 +600,7 @@ CREATE TABLE message_stream (
 }
 ```
 
-#### GET /api/v1/market/short-line-indices
+#### GET /api/market/short-line-indices
 **功能**：获取短线指标数据
 
 **响应示例**：
@@ -615,7 +615,7 @@ CREATE TABLE message_stream (
 ]
 ```
 
-#### GET /api/v1/market/hot-concepts
+#### GET /api/market/hot-concepts
 **功能**：获取热门概念板块列表
 
 **请求参数**：
@@ -640,7 +640,7 @@ CREATE TABLE message_stream (
 ]
 ```
 
-#### GET /api/v1/market/hot-concept/leaders
+#### GET /api/market/hot-concept/leaders
 **功能**：获取概念板块龙头股列表（优先从缓存读取）
 
 **请求参数**：
@@ -657,7 +657,7 @@ CREATE TABLE message_stream (
 ]
 ```
 
-#### GET /api/v1/market/hot-concept/intraday
+#### GET /api/market/hot-concept/intraday
 **功能**：获取概念板块分时K线
 
 **请求参数**：
@@ -666,7 +666,7 @@ CREATE TABLE message_stream (
 | name | string | 是 | 概念名称 |
 | period | string | 否 | 周期 (默认"1") |
 
-#### GET /api/v1/market/ths-hot
+#### GET /api/market/ths-hot
 **功能**：获取同花顺人气榜
 
 **请求参数**：
@@ -675,7 +675,7 @@ CREATE TABLE message_stream (
 | limit | int | 否 | 100 |
 | date | string | 否 | 当天 |
 
-#### GET /api/v1/market/lianban-ladder
+#### GET /api/market/lianban-ladder
 **功能**：获取连板天梯数据
 
 **请求参数**：
@@ -703,7 +703,7 @@ CREATE TABLE message_stream (
 }
 ```
 
-#### GET /api/v1/market/message-stream
+#### GET /api/market/message-stream
 **功能**：获取消息流数据（异动、利好利空、财联社、雪球、东财）
 
 **响应结构**：
@@ -720,17 +720,17 @@ CREATE TABLE message_stream (
 }
 ```
 
-#### GET /api/v1/market/fundamentals/{symbol}
+#### GET /api/market/fundamentals/{symbol}
 **功能**：获取单只股票基本面数据
 
 ### 6.2 Stocks 模块 - 股票筛选
 
-#### GET /api/v1/stocks/filter
+#### GET /api/stocks/filter
 **功能**：获取策略筛选股票列表
 
 **响应**：返回符合打板策略的股票列表
 
-#### GET /api/v1/stocks/search
+#### GET /api/stocks/search
 **功能**：搜索股票
 
 **请求参数**：
@@ -741,7 +741,7 @@ CREATE TABLE message_stream (
 
 ### 6.3 Charts 模块 - 图表数据
 
-#### GET /api/v1/charts/daily/{symbol}
+#### GET /api/charts/daily/{symbol}
 **功能**：获取日K线数据
 
 **响应示例**：
@@ -751,12 +751,12 @@ CREATE TABLE message_stream (
 ]
 ```
 
-#### GET /api/v1/charts/intraday/{symbol}
+#### GET /api/charts/intraday/{symbol}
 **功能**：获取分时数据
 
 ### 6.4 AI 模块 - 智能分析
 
-#### POST /api/v1/ai/analyze-stock
+#### POST /api/ai/analyze-stock
 **功能**：AI 单股深度分析
 
 **请求体**：
@@ -782,29 +782,29 @@ CREATE TABLE message_stream (
 
 ### 6.5 Analysis 模块 - 情绪分析
 
-#### POST /api/v1/analysis/run-sentiment
+#### POST /api/analysis/run-sentiment
 **功能**：计算市场情绪因子
 
-#### GET /api/v1/analysis/sentiment
+#### GET /api/analysis/sentiment
 **功能**：获取情绪榜单
 
 ### 6.6 Database 模块 - 数据管理
 
-#### GET /api/v1/database/tables
+#### GET /api/database/tables
 **功能**：获取所有表信息
 
-#### POST /api/v1/database/query
+#### POST /api/database/query
 **功能**：执行 SQL 查询（只读）
 
 ### 6.7 Calendar 模块 - 交易日历
 
-#### GET /api/v1/market/calendar
+#### GET /api/market/calendar
 **功能**：获取市场日历事件
 
-#### POST /api/v1/market/calendar/refresh
+#### POST /api/market/calendar/refresh
 **功能**：刷新日历数据（从交易日历计算）
 
-#### POST /api/v1/market/calendar/generate-with-ai
+#### POST /api/market/calendar/generate-with-ai
 **功能**：使用 AI 生成日历事件
 
 ---
@@ -815,7 +815,7 @@ CREATE TABLE message_stream (
 
 **位置**：`backend/app/services/realtime_sync_service.py`
 
-**职责**：后台线程定期同步实时数据到本地数据库
+**职责**：后台线程定期同步实时数据到Postgres 数据库
 
 #### 同步任务
 
@@ -1006,8 +1006,8 @@ def _is_market_hours(self) -> bool:
 QWEN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 QWEN_STOCK_MODEL=qwen-plus
 
-# 数据库配置 (可选，默认使用本地 SQLite)
-# SUPABASE_URL=https://xxx.supabase.co
+# 数据库配置 (可选，默认使用本地 Postgres)
+# SUPABASE_URL=https://xxx.postgres.co
 # SUPABASE_KEY=xxx
 
 # 股票数据配置
@@ -1023,7 +1023,7 @@ BACKEND_CORS_ORIGINS=["http://localhost:4444"]
 # frontend/.env
 
 # API 配置
-VITE_API_URL=/api/v1
+VITE_API_URL=/api
 ```
 
 ### 9.3 Vite 代理配置

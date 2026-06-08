@@ -6,7 +6,7 @@
 
 ## Tab 设计
 ### 1) 热门概念板块
-- 数据：`GET /api/v1/market/hot-concepts?limit=50`
+- 数据：`GET /api/market/hot-concepts?limit=50`
 - 字段：
   - `rank`：排名
   - `name`：概念名称
@@ -18,7 +18,7 @@
 - 展示：表格按涨幅排序，展示排名、概念名称、涨跌幅、流入/流出/净流入（单位：亿元）
 
 ### 2) 热榜
-- 数据：`GET /api/v1/market/ths-hot?limit=100`
+- 数据：`GET /api/market/ths-hot?limit=100`
 - 字段：
   - `rank`、`code`、`name`
   - `hot`：热度（若数据源不提供则为 0）
@@ -26,7 +26,7 @@
   - `reason/tags`：上榜原因/标签（若可用）
 
 ### 3) 连板天梯
-- 数据：`GET /api/v1/market/lianban-ladder?date=YYYYMMDD`
+- 数据：`GET /api/market/lianban-ladder?date=YYYYMMDD`
 - 返回结构：
   - `date`：今日交易日（YYYYMMDD）
   - `prev_date`：昨日交易日（YYYYMMDD）

@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import APIRouter, Query, Body, HTTPException
 from app.services.market_service import MarketService
-from app.db.local_db import db_instance as db
+from app.db import db_instance as db
 from typing import List, Dict, Any
 
 router = APIRouter()
@@ -145,7 +145,7 @@ async def get_daily_stats(
     top_n: int = Query(15, ge=5, le=30, description="每天显示的板块数量")
 ) -> List[Dict[str, Any]]:
     """获取每日板块涨幅统计数据（从数据库读取）"""
-    from app.db.local_db import db_instance
+    from app.db import db_instance
     return db_instance.get_daily_concept_sectors_multi_days(days, min_change_pct, top_n)
 
 @router.post("/pulse/sync-today")
@@ -176,12 +176,12 @@ async def backfill_concept_history(
 async def list_replay_notes(
     limit: int = Query(60, ge=1, le=365, description="返回最近N条复盘日志")
 ) -> Dict[str, Any]:
-    from app.db.local_db import db_instance
+    from app.db import db_instance
     return {"status": "success", "data": db_instance.list_replay_notes(limit)}
 
 @router.get("/pulse/replay-notes/{note_date}")
 async def get_replay_note(note_date: str) -> Dict[str, Any]:
-    from app.db.local_db import db_instance
+    from app.db import db_instance
     item = db_instance.get_replay_note(note_date)
     if not item:
         return {"status": "success", "data": None}
@@ -189,7 +189,7 @@ async def get_replay_note(note_date: str) -> Dict[str, Any]:
 
 @router.post("/pulse/replay-notes")
 async def save_replay_note(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    from app.db.local_db import db_instance
+    from app.db import db_instance
     try:
         item = db_instance.upsert_replay_note(payload)
         return {"status": "success", "data": item}

@@ -11,7 +11,6 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.services.market_service import MarketService
-from app.db.local_db import db_instance
 
 
 def populate_calendar_data():

@@ -6,7 +6,7 @@ from app.services.data_hub_service import data_hub_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-DEPRECATION_NOTICE = "Deprecated: please migrate to /api/v1/data-hub/jobs?action=run_data_dev_task"
+DEPRECATION_NOTICE = "Deprecated: please migrate to /api/data-hub/jobs?action=run_data_dev_task"
 
 @router.get("/tasks")
 async def get_data_dev_tasks(response: Response) -> List[Dict[str, Any]]:

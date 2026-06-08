@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from sqlalchemy import text
-from app.db.local_db import db_instance as local_db_instance
+from app.db import db_instance as pg_db_instance
 from app.core.config import settings
 
 
@@ -18,7 +18,7 @@ class DatabaseDataService:
     """
     
     def __init__(self):
-        self.db = local_db_instance
+        self.db = pg_db_instance
     
     def get_filtered_stocks_from_db(self) -> Dict[str, Any]:
         """
@@ -74,7 +74,7 @@ class DatabaseDataService:
             cursor.execute("""
                 SELECT symbol, name, close, volume, turnover
                 FROM stock_history
-                WHERE date = ?
+                WHERE date = %s
                 ORDER BY close DESC
             """, (latest_date,))
 
@@ -183,7 +183,7 @@ class DatabaseDataService:
                 SELECT 
                     COUNT(*) as total_stocks
                 FROM stock_history 
-                WHERE date = ?
+                WHERE date = %s
             """, (latest_date,))
             
             stats_row = cursor.fetchone()
@@ -193,7 +193,7 @@ class DatabaseDataService:
             cursor.execute("""
                 SELECT symbol, name, close
                 FROM stock_history 
-                WHERE date = ?
+                WHERE date = %s
                 ORDER BY change_percent DESC
                 LIMIT 10
             """, (latest_date,))
@@ -204,14 +204,14 @@ class DatabaseDataService:
                     "code": row[0],
                     "name": row[1],
                     "close": float(row[2]) if row[2] is not None else 0.0,
-                    "change_percent": 0.0  # SQLite表中没有change_percent，暂时设为0
+                    "change_percent": 0.0  # PG 缓存表暂未提供 change_percent，暂时设为 0
                 })
             
             # 获取跌幅榜前10
             cursor.execute("""
                 SELECT symbol, name, close
                 FROM stock_history 
-                WHERE date = ?
+                WHERE date = %s
                 ORDER BY change_percent ASC
                 LIMIT 10
             """, (latest_date,))
@@ -222,7 +222,7 @@ class DatabaseDataService:
                     "code": row[0],
                     "name": row[1],
                     "close": float(row[2]) if row[2] is not None else 0.0,
-                    "change_percent": 0.0  # SQLite表中没有change_percent，暂时设为0
+                    "change_percent": 0.0  # PG 缓存表暂未提供 change_percent，暂时设为 0
                 })
             
             # 沪深300/上证指数等数据需要单独的指数表，这里模拟一些数据
@@ -242,9 +242,9 @@ class DatabaseDataService:
                 "top_gainers": top_gainers,
                 "top_losers": top_losers,
                 "total_stocks": total_stocks,
-                "up_limit_count": 0,  # SQLite表中没有涨跌停统计
+                "up_limit_count": 0,  # PG 缓存表暂未提供涨跌停统计
                 "down_limit_count": 0,
-                "avg_change": 0.0,  # SQLite表中没有平均涨跌幅
+                "avg_change": 0.0,  # PG 缓存表暂未提供平均涨跌幅
                 "latest_date": str(latest_date)
             }
                 
@@ -284,9 +284,9 @@ class DatabaseDataService:
             cursor.execute("""
                 SELECT name, net_inflow, change_percent
                 FROM hot_concepts_history
-                WHERE date = ?
+                WHERE date = %s
                 ORDER BY rank ASC
-                LIMIT ?
+                LIMIT %s
             """, (date, limit))
             
             rows = cursor.fetchall()
@@ -296,13 +296,13 @@ class DatabaseDataService:
                 concept = {
                     "name": row[0],
                     "net_amount": float(row[1]) if row[1] is not None else 0.0,
-                    "net_volume": 0.0,  # SQLite表中没有这个字段
+                    "net_volume": 0.0,  # PG 缓存表暂未提供这个字段
                     "main_net_amount": 0.0,
                     "super_large_net_amount": 0.0,
                     "large_net_amount": 0.0,
                     "medium_net_amount": 0.0,
                     "small_net_amount": 0.0,
-                    "rank": 0  # SQLite表中没有这个字段
+                    "rank": 0  # PG 缓存表暂未提供这个字段
                 }
                 concepts.append(concept)
             
@@ -335,9 +335,9 @@ class DatabaseDataService:
             cursor.execute("""
                 SELECT rank, code, name, price, change_percent
                 FROM ths_hot_history
-                WHERE date = ?
+                WHERE date = %s
                 ORDER BY rank ASC
-                LIMIT ?
+                LIMIT %s
             """, (date, limit))
             
             rows = cursor.fetchall()
@@ -349,7 +349,7 @@ class DatabaseDataService:
                     "code": row[1],
                     "name": row[2],
                     "price": float(row[3]) if row[3] is not None else 0.0,
-                    "change_amount": 0.0,  # SQLite表中没有这个字段
+                    "change_amount": 0.0,  # PG 缓存表暂未提供这个字段
                     "change_percent": float(row[4]) if row[4] is not None else 0.0
                 }
                 hot_stocks.append(hot_stock)
@@ -372,7 +372,7 @@ class DatabaseDataService:
             cursor.execute("""
                 SELECT symbol, name, price, pe, pb, market_cap, updated_at
                 FROM stock_fundamentals
-                WHERE symbol = ?
+                WHERE symbol = %s
                 LIMIT 1
             """, (symbol,))
             
@@ -389,21 +389,21 @@ class DatabaseDataService:
                 "price": float(row[2]) if row[2] is not None else 0.0,
                 "change_amount": float(row[3]) if row[3] is not None else 0.0,  # 使用price字段作为临时替代
                 "change_percent": float(row[4]) if row[4] is not None else 0.0,  # 使用pe字段作为临时替代
-                "volume": 0,  # SQLite表中没有这个字段
-                "amount": 0.0,  # SQLite表中没有这个字段
-                "amplitude": 0.0,  # SQLite表中没有这个字段
-                "turnover_rate": 0.0,  # SQLite表中没有这个字段
+                "volume": 0,  # PG 缓存表暂未提供这个字段
+                "amount": 0.0,  # PG 缓存表暂未提供这个字段
+                "amplitude": 0.0,  # PG 缓存表暂未提供这个字段
+                "turnover_rate": 0.0,  # PG 缓存表暂未提供这个字段
                 "pe_ttm": float(row[3]) if row[3] is not None else 0.0,
                 "pb": float(row[4]) if row[4] is not None else 0.0,
                 "total_mv": float(row[5]) if row[5] is not None else 0.0,  # market_cap对应total_mv
-                "circ_mv": 0.0,  # SQLite表中没有这个字段
-                "high_52w": 0.0,  # SQLite表中没有这个字段
-                "low_52w": 0.0,  # SQLite表中没有这个字段
-                "eps": 0.0,  # SQLite表中没有这个字段
-                "bvps": 0.0,  # SQLite表中没有这个字段
-                "roe": 0.0,  # SQLite表中没有这个字段
-                "net_profit_margin": 0.0,  # SQLite表中没有这个字段
-                "debt_to_equity": 0.0,  # SQLite表中没有这个字段
+                "circ_mv": 0.0,  # PG 缓存表暂未提供这个字段
+                "high_52w": 0.0,  # PG 缓存表暂未提供这个字段
+                "low_52w": 0.0,  # PG 缓存表暂未提供这个字段
+                "eps": 0.0,  # PG 缓存表暂未提供这个字段
+                "bvps": 0.0,  # PG 缓存表暂未提供这个字段
+                "roe": 0.0,  # PG 缓存表暂未提供这个字段
+                "net_profit_margin": 0.0,  # PG 缓存表暂未提供这个字段
+                "debt_to_equity": 0.0,  # PG 缓存表暂未提供这个字段
                 "last_updated": str(row[6]) if row[6] is not None else str(datetime.now())  # 使用updated_at字段
             }
             

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getStrategies, executeStrategy, startStrategy, stopStrategy, getLatestStrategyResult } from '../api/client';
-import { Strategy, StrategyStock } from '../types';
+import { getStrategies, executeStrategy, startStrategy, stopStrategy, getLatestStrategyResult, listPaperAccounts } from '../api/client';
+import { PaperAccount, Strategy, StrategyStock } from '../types';
 import { ChartPanel } from '../components/ChartPanel';
 import { MainLayout } from '../components/MainLayout';
 import { useStore } from '../stores/useStore';
@@ -38,6 +38,7 @@ export const StrategyExec: React.FC = () => {
   
   // 当前选中的槽位（用于显示K线图）
   const [activeSlotId, setActiveSlotId] = useState<number>(1);
+  const [paperAccounts, setPaperAccounts] = useState<PaperAccount[]>([]);
 
   // 加载策略列表
   const fetchStrategies = useCallback(async () => {
@@ -54,6 +55,19 @@ export const StrategyExec: React.FC = () => {
     // 进入页面时清空之前选中的股票
     clearSelectedStock();
   }, [fetchStrategies, clearSelectedStock]);
+
+  const fetchPaperAccounts = useCallback(async () => {
+    try {
+      const data = await listPaperAccounts();
+      setPaperAccounts(data.accounts);
+    } catch (e) {
+      console.error('Failed to fetch paper accounts:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPaperAccounts();
+  }, [fetchPaperAccounts]);
 
   // 更新槽位
   const updateSlot = useCallback((slotId: number, updates: Partial<StrategySlot>) => {
@@ -167,8 +181,58 @@ export const StrategyExec: React.FC = () => {
   );
 
   return (
-    <MainLayout title={language === 'zh' ? '实时策略盯盘' : 'Strategy Watch'}>
+    <MainLayout title={language === 'zh' ? '回测/模拟交易' : 'Backtest / Paper Trading'}>
       <div className="flex flex-col gap-4 h-full">
+        <div className="bg-[#111827] border border-slate-800 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-800 bg-[#0d121f] flex items-center justify-between">
+            <div>
+              <div className="text-sm font-bold text-slate-100">
+                {language === 'zh' ? '模拟账户总览' : 'Paper Account Overview'}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                {language === 'zh' ? '仅执行模拟盘和策略盯盘，不接入真实券商下单' : 'Paper trading only. No live broker orders are connected.'}
+              </div>
+            </div>
+            <button
+              onClick={fetchPaperAccounts}
+              className="p-2 rounded-lg hover:bg-slate-700 transition-colors"
+              title={language === 'zh' ? '刷新模拟账户' : 'Refresh paper accounts'}
+            >
+              <RefreshCw size={16} className="text-slate-400" />
+            </button>
+          </div>
+          <div className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            {paperAccounts.length === 0 ? (
+              <div className="md:col-span-3 py-6 text-center text-sm text-slate-500">
+                {language === 'zh' ? '暂无模拟账户，请先在策略研发页创建模拟盘' : 'No paper accounts yet. Create one from Strategy Lab.'}
+              </div>
+            ) : (
+              paperAccounts.slice(0, 3).map((account) => (
+                <div key={account.account_id} className="rounded-lg border border-slate-800 bg-[#0d121f] p-3">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="font-bold text-sm text-slate-100 truncate">{account.name}</div>
+                    <span className="text-[10px] text-green-400 font-bold">{account.status}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <div className="text-slate-500">{language === 'zh' ? '权益' : 'Equity'}</div>
+                      <div className="font-black text-slate-100">{Number(account.equity || 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500">{language === 'zh' ? '现金' : 'Cash'}</div>
+                      <div className="font-black text-slate-100">{Number(account.cash || 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500">{language === 'zh' ? 'ID' : 'ID'}</div>
+                      <div className="font-black text-slate-100">#{account.account_id}</div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
         {/* 策略槽位区域 - 横向3个 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {slots.map((slot) => {

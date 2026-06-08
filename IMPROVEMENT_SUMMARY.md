@@ -62,7 +62,7 @@
 - FastAPI 框架
 - Python 3.8+
 - AkShare 数据源
-- Supabase 数据库
+- Postgres 数据库
 
 ### 2.3 数据源
 - AkShare 提供实时和历史数据
@@ -123,7 +123,7 @@
 ### 7.1 部署方式
 - 前端：Vite 构建后部署
 - 后端：FastAPI 应用
-- 数据库：Supabase
+- 数据库：Postgres
 
 ### 7.2 环境配置
 - 支持本地开发环境
