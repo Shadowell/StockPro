@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { Activity, CircleDot, DatabaseZap, LogOut, Settings, ShieldCheck, X } from 'lucide-react';
+import { Activity, BarChart3, CircleDot, Code2, DatabaseZap, FlaskConical, LogOut, Radio, Settings, ShieldCheck, X } from 'lucide-react';
 import clsx from 'clsx';
 import { clearAdminToken } from '../api/client';
 import { useSettingsStore, type ColorScheme } from '../stores/useSettingsStore';
@@ -71,6 +71,14 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
     navigate('/admin-login', { replace: true });
   };
 
+  const pipeline = [
+    { label: '数据', Icon: DatabaseZap },
+    { label: '研究', Icon: BarChart3 },
+    { label: '策略', Icon: Code2 },
+    { label: '回测', Icon: FlaskConical },
+    { label: '执行', Icon: Radio },
+  ];
+
   return (
     <div className="flex h-screen overflow-hidden bg-crypto-bg text-gray-100">
       <aside className="hidden w-[276px] shrink-0 flex-col border-r border-crypto-border bg-crypto-card lg:flex">
@@ -81,7 +89,7 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
             </div>
             <div className="min-w-0">
               <div className="text-sm font-black tracking-wide text-white">StockPro</div>
-              <div className="truncate text-[11px] font-semibold text-gray-500">A股研究与策略工作台</div>
+              <div className="truncate text-[11px] font-semibold text-gray-500">A股量化交易与研究系统</div>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
@@ -100,6 +108,20 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
               <div className="mt-0.5 text-[10px] text-gray-500">全站鉴权</div>
             </div>
           </div>
+          <div className="mt-3 rounded-md border border-crypto-border bg-crypto-bg/70 px-2 py-2">
+            <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              <span>Quant Pipeline</span>
+              <span className="text-blue-300">A-SHARE</span>
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {pipeline.map(({ label, Icon }) => (
+                <div key={label} className="flex min-w-0 flex-col items-center gap-1 rounded border border-crypto-border bg-crypto-card/70 px-1 py-1.5">
+                  <Icon className="h-3.5 w-3.5 text-blue-300" />
+                  <span className="text-[10px] font-semibold text-gray-400">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
@@ -112,7 +134,7 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
               <span>Data Source</span>
               <DatabaseZap className="h-3.5 w-3.5 text-blue-300" />
             </div>
-            <div className="mt-1 truncate text-xs font-semibold text-gray-300">TuShare 优先 · AKShare 兜底</div>
+            <div className="mt-1 truncate text-xs font-semibold text-gray-300">行情采集 · 因子缓存 · 策略运行</div>
           </div>
           <button
             type="button"
@@ -142,7 +164,7 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
               </div>
               <div>
                 <span className="block text-sm font-black text-white">StockPro</span>
-                <span className="block text-[10px] font-semibold text-gray-500">PG · Admin</span>
+                <span className="block text-[10px] font-semibold text-gray-500">量化交易 · PG · Admin</span>
               </div>
             </div>
             <div className="flex items-center gap-1">

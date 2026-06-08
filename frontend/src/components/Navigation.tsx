@@ -44,29 +44,29 @@ type NavGroup = {
 export const NAV_GROUPS: NavGroup[] = [
   {
     id: 'dashboard',
-    titleZh: '大盘驾驶舱',
-    titleEn: 'Dashboard',
+    titleZh: '量化总览',
+    titleEn: 'Quant Overview',
     items: [
-      { id: 'dashboard', to: '/', labelZh: '大盘驾驶舱', labelEn: 'Dashboard', Icon: Gauge, end: true },
-      { id: 'research-overview', to: '/research/overview', labelZh: '市场概览', labelEn: 'Market Overview', Icon: BarChart3 },
+      { id: 'dashboard', to: '/', labelZh: '交易中枢', labelEn: 'Command Center', Icon: Gauge, end: true },
+      { id: 'research-overview', to: '/research/overview', labelZh: '市场结构', labelEn: 'Market Structure', Icon: BarChart3 },
     ],
   },
   {
     id: 'market',
-    titleZh: '行情',
-    titleEn: 'Market',
+    titleZh: '行情数据层',
+    titleEn: 'Market Data',
     items: [
       { id: 'market', to: '/market', labelZh: '行情终端', labelEn: 'Market', Icon: LineChart },
-      { id: 'data', to: '/data', labelZh: '数据中心', labelEn: 'Data Center', Icon: Database },
+      { id: 'data', to: '/data', labelZh: '数据仓库', labelEn: 'Data Warehouse', Icon: Database },
     ],
   },
   {
     id: 'research',
-    titleZh: '研究工坊',
-    titleEn: 'Research Lab',
+    titleZh: '研究因子层',
+    titleEn: 'Research Layer',
     items: [
-      { id: 'sentiment', to: '/sentiment', labelZh: '市场情绪', labelEn: 'Sentiment', Icon: Activity },
-      { id: 'news', to: '/news', labelZh: '消息中心', labelEn: 'News', Icon: Newspaper },
+      { id: 'sentiment', to: '/sentiment', labelZh: '情绪因子', labelEn: 'Sentiment Factor', Icon: Activity },
+      { id: 'news', to: '/news', labelZh: '事件消息', labelEn: 'Event Stream', Icon: Newspaper },
       { id: 'ai', to: '/ai', labelZh: '智能选股', labelEn: 'AI Screener', Icon: BrainCircuit },
       { id: 'factors', to: '/factors', labelZh: '因子研究', labelEn: 'Factors', Icon: FlaskConical },
       { id: 'calendar', to: '/calendar', labelZh: '交易日历', labelEn: 'Calendar', Icon: CalendarDays },
@@ -74,21 +74,21 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: 'strategy',
-    titleZh: '策略工厂',
-    titleEn: 'Strategy Factory',
+    titleZh: '策略执行层',
+    titleEn: 'Strategy Runtime',
     items: [
-      { id: 'strategy', to: '/strategy', labelZh: '策略开发', labelEn: 'Strategy', Icon: Code2 },
-      { id: 'backtest', to: '/backtest', labelZh: '回测复盘', labelEn: 'Backtest', Icon: TrendingUp },
-      { id: 'paper', to: '/paper', labelZh: '模拟盘', labelEn: 'Paper', Icon: Radio },
-      { id: 'monitor', to: '/monitor', labelZh: '监控', labelEn: 'Monitor', Icon: Bell },
+      { id: 'strategy', to: '/strategy', labelZh: '策略研发', labelEn: 'Strategy R&D', Icon: Code2 },
+      { id: 'backtest', to: '/backtest', labelZh: '回测评估', labelEn: 'Backtest', Icon: TrendingUp },
+      { id: 'paper', to: '/paper', labelZh: '模拟执行', labelEn: 'Paper Runtime', Icon: Radio },
+      { id: 'monitor', to: '/monitor', labelZh: '风险监控', labelEn: 'Risk Monitor', Icon: Bell },
     ],
   },
   {
     id: 'ops',
-    titleZh: '数据运维',
-    titleEn: 'Operations',
+    titleZh: '系统运维层',
+    titleEn: 'System Ops',
     items: [
-      { id: 'data-processing', to: '/data/processing', labelZh: '后台任务', labelEn: 'Ops', Icon: ShieldCheck },
+      { id: 'data-processing', to: '/data/processing', labelZh: '任务调度', labelEn: 'Scheduler', Icon: ShieldCheck },
     ],
   },
 ];
