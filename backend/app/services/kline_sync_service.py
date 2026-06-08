@@ -7,7 +7,7 @@ StockPro 使用单一 Postgres 数据通道，把这些语义全部映射到 Pos
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 
 from app.db import db_instance as default_db
@@ -24,7 +24,7 @@ class KlineSyncService:
 
     def __init__(self, db=None, fetcher: Optional[KlineFetcher] = None):
         self.db = db or default_db
-        self.fetcher = fetcher or self._fetch_from_akshare
+        self.fetcher = fetcher or self._fetch_from_provider
 
     def create_history_sync_job(
         self,
@@ -48,7 +48,7 @@ class KlineSyncService:
             timeframes=normalized_timeframes,
             start_date=start_date,
             end_date=end_date,
-            source="akshare",
+            source="tushare",
         )
 
     def run_job(self, job_id: int) -> Dict[str, Any]:
@@ -91,7 +91,7 @@ class KlineSyncService:
             job = self.db.get_sync_job(job_id)
         return job or {"id": job_id, "status": "unknown"}
 
-    def _fetch_from_akshare(self, symbol: str, timeframe: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    def _fetch_from_provider(self, symbol: str, timeframe: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         if self._normalize_timeframe(timeframe) != "1d":
             raise ValueError("Only daily kline sync is supported")
         digits = "".join(ch for ch in symbol if ch.isdigit())
@@ -124,7 +124,7 @@ class KlineSyncService:
                     "close": self._float(row.get("收盘")),
                     "volume": self._int(row.get("成交量")),
                     "turnover": self._float(row.get("成交额")),
-                    "source": "akshare",
+                    "source": "tushare",
                 }
             )
         return records

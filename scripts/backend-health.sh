@@ -26,6 +26,7 @@ required = [
     "fastapi",
     "uvicorn",
     "apscheduler",
+    "tushare",
     "akshare",
     "pandas",
 ]
@@ -51,6 +52,7 @@ echo "[backend-health] compiling critical backend files..."
     app/main.py \
     app/db/postgres_db.py \
     app/db/postgres_migrations.py \
+    app/services/tushare_provider.py \
     app/services/scheduler_service.py \
     app/services/batch_import_service.py \
     app/api/endpoints/data_dev.py \

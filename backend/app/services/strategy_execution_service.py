@@ -183,6 +183,7 @@ class StrategyExecutionService:
                 
                 # 设置环境变量，确保使用虚拟环境
                 env = os.environ.copy()
+                env['PYTHONPATH'] = backend_dir + os.pathsep + env.get('PYTHONPATH', '')
                 venv_dir = os.path.join(backend_dir, 'venv')
                 if os.path.exists(venv_dir):
                     if sys.platform == 'win32':

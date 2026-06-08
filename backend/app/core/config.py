@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     QWEN_API_KEY: str = ""
     QWEN_STOCK_MODEL: str = "qwen-plus"
 
+    TUSHARE_TOKEN: str = ""
+    TUSHARE_REALTIME_SOURCE: str = "dc"
+    ENABLE_TUSHARE: bool = True
     AKSHARE_TIMEOUT: int = 30
     RUN_STARTUP_DATA_SYNC: bool = False
     ENABLE_SCHEDULER: bool = True

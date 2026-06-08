@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """
-AkShare 股票接口快速参考和测试脚本
-此脚本演示了项目中常用的各种AkShare接口的使用方法
+统一行情 provider 股票接口快速参考和测试脚本
+此脚本演示了项目中常用的行情接口；TuShare 可用时优先使用，缺少同形接口时由 AKShare 兜底
 """
 
-import akshare as ak
+import os
+import sys
+
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(ROOT_DIR, "backend"))
+
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 import datetime
 
@@ -31,7 +37,7 @@ def test_interface(interface_name, func, *args, **kwargs):
 
 
 def main():
-    print("=== AkShare 股票接口快速参考 ===\n")
+    print("=== 统一行情 provider 股票接口快速参考 ===\n")
 
     # 1. A股实时行情
     print("1. A股实时行情:")

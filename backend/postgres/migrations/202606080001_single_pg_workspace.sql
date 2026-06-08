@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS kline_history (
     close DOUBLE PRECISION,
     volume BIGINT,
     turnover DOUBLE PRECISION,
-    source TEXT DEFAULT 'akshare',
+    source TEXT DEFAULT 'tushare',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(exchange, symbol, timeframe, timestamp_ms)
 );
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS kline_1m (
     close DOUBLE PRECISION,
     volume BIGINT,
     turnover DOUBLE PRECISION,
-    source TEXT DEFAULT 'akshare',
+    source TEXT DEFAULT 'tushare',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(exchange, symbol, timestamp_ms)
 );
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS sync_metadata (
 CREATE TABLE IF NOT EXISTS sync_jobs (
     id BIGSERIAL PRIMARY KEY,
     job_name TEXT NOT NULL,
-    source TEXT NOT NULL DEFAULT 'akshare',
+    source TEXT NOT NULL DEFAULT 'tushare',
     start_date DATE,
     end_date DATE,
     status TEXT NOT NULL DEFAULT 'pending',

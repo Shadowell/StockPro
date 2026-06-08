@@ -864,7 +864,7 @@ class PostgresDatabase:
         timeframes: List[str],
         start_date: str,
         end_date: str,
-        source: str = "akshare",
+        source: str = "tushare",
     ) -> int:
         symbols = [symbol for symbol in symbols if symbol]
         timeframes = [self._normalize_timeframe(timeframe) for timeframe in timeframes if timeframe]
@@ -1494,7 +1494,7 @@ class PostgresDatabase:
         title: str = "",
         category: str = "",
         market: str = "A股",
-        source: str = "akshare",
+        source: str = "tushare",
         details: str = "",
         event_key: str = None,
         **legacy_fields,
@@ -1526,18 +1526,18 @@ class PostgresDatabase:
 
     def init_factor_definitions(self) -> None:
         defaults = [
-            ("PE_DYNAMIC", "动态市盈率", "估值因子", "行情快照", "动态市盈率", "AkShare", "daily", ""),
-            ("PB", "市净率", "估值因子", "行情快照", "市净率", "AkShare", "daily", ""),
-            ("TOTAL_MV", "总市值", "市值因子", "行情快照", "总市值", "AkShare", "daily", "元"),
-            ("CIRC_MV", "流通市值", "市值因子", "行情快照", "流通市值", "AkShare", "daily", "元"),
-            ("TURNOVER_RATE", "换手率", "交易因子", "行情快照", "换手率", "AkShare", "daily", "%"),
-            ("VOLUME_RATIO", "量比", "交易因子", "行情快照", "量比", "AkShare", "daily", ""),
-            ("AMPLITUDE", "振幅", "交易因子", "行情快照", "振幅", "AkShare", "daily", "%"),
-            ("CHANGE_PCT_1D", "单日涨跌幅", "动量因子", "行情快照", "当日涨跌幅", "AkShare", "daily", "%"),
-            ("MA5", "5日均线", "技术因子", "均线", "5日移动平均", "AkShare", "daily", ""),
-            ("MA10", "10日均线", "技术因子", "均线", "10日移动平均", "AkShare", "daily", ""),
-            ("MA20", "20日均线", "技术因子", "均线", "20日移动平均", "AkShare", "daily", ""),
-            ("MA_DEVIATION", "均线偏离度", "技术因子", "均线", "收盘价相对20日均线偏离", "AkShare", "daily", "%"),
+            ("PE_DYNAMIC", "动态市盈率", "估值因子", "行情快照", "动态市盈率", "Tushare", "daily", ""),
+            ("PB", "市净率", "估值因子", "行情快照", "市净率", "Tushare", "daily", ""),
+            ("TOTAL_MV", "总市值", "市值因子", "行情快照", "总市值", "Tushare", "daily", "元"),
+            ("CIRC_MV", "流通市值", "市值因子", "行情快照", "流通市值", "Tushare", "daily", "元"),
+            ("TURNOVER_RATE", "换手率", "交易因子", "行情快照", "换手率", "Tushare", "daily", "%"),
+            ("VOLUME_RATIO", "量比", "交易因子", "行情快照", "量比", "Tushare", "daily", ""),
+            ("AMPLITUDE", "振幅", "交易因子", "行情快照", "振幅", "Tushare", "daily", "%"),
+            ("CHANGE_PCT_1D", "单日涨跌幅", "动量因子", "行情快照", "当日涨跌幅", "Tushare", "daily", "%"),
+            ("MA5", "5日均线", "技术因子", "均线", "5日移动平均", "Tushare", "daily", ""),
+            ("MA10", "10日均线", "技术因子", "均线", "10日移动平均", "Tushare", "daily", ""),
+            ("MA20", "20日均线", "技术因子", "均线", "20日移动平均", "Tushare", "daily", ""),
+            ("MA_DEVIATION", "均线偏离度", "技术因子", "均线", "收盘价相对20日均线偏离", "Tushare", "daily", "%"),
         ]
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
@@ -2043,7 +2043,7 @@ class PostgresDatabase:
             self._coerce_float(record.get("close")),
             self._coerce_int(record.get("volume")),
             self._coerce_float(record.get("turnover") or record.get("amount")),
-            str(record.get("source") or "akshare"),
+            str(record.get("source") or "tushare"),
             datetime.now(),
         )
 
@@ -2305,7 +2305,7 @@ class AshareMomentumTemplate(bt.Strategy):
             close DOUBLE PRECISION,
             volume BIGINT,
             turnover DOUBLE PRECISION,
-            source TEXT DEFAULT 'akshare',
+            source TEXT DEFAULT 'tushare',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(exchange, symbol, timeframe, timestamp_ms)
         );
@@ -2323,7 +2323,7 @@ class AshareMomentumTemplate(bt.Strategy):
             close DOUBLE PRECISION,
             volume BIGINT,
             turnover DOUBLE PRECISION,
-            source TEXT DEFAULT 'akshare',
+            source TEXT DEFAULT 'tushare',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(exchange, symbol, timestamp_ms)
         );
@@ -2341,7 +2341,7 @@ class AshareMomentumTemplate(bt.Strategy):
             close DOUBLE PRECISION,
             volume BIGINT,
             turnover DOUBLE PRECISION,
-            source TEXT DEFAULT 'akshare',
+            source TEXT DEFAULT 'tushare',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(exchange, symbol, timestamp_ms)
         );
@@ -2359,7 +2359,7 @@ class AshareMomentumTemplate(bt.Strategy):
             close DOUBLE PRECISION,
             volume BIGINT,
             turnover DOUBLE PRECISION,
-            source TEXT DEFAULT 'akshare',
+            source TEXT DEFAULT 'tushare',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(exchange, symbol, timestamp_ms)
         );
@@ -2377,7 +2377,7 @@ class AshareMomentumTemplate(bt.Strategy):
             close DOUBLE PRECISION,
             volume BIGINT,
             turnover DOUBLE PRECISION,
-            source TEXT DEFAULT 'akshare',
+            source TEXT DEFAULT 'tushare',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(exchange, symbol, timestamp_ms)
         );
@@ -2395,7 +2395,7 @@ class AshareMomentumTemplate(bt.Strategy):
             close DOUBLE PRECISION,
             volume BIGINT,
             turnover DOUBLE PRECISION,
-            source TEXT DEFAULT 'akshare',
+            source TEXT DEFAULT 'tushare',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(exchange, symbol, timestamp_ms)
         );
@@ -2413,7 +2413,7 @@ class AshareMomentumTemplate(bt.Strategy):
             close DOUBLE PRECISION,
             volume BIGINT,
             turnover DOUBLE PRECISION,
-            source TEXT DEFAULT 'akshare',
+            source TEXT DEFAULT 'tushare',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(exchange, symbol, timestamp_ms)
         );
@@ -2431,7 +2431,7 @@ class AshareMomentumTemplate(bt.Strategy):
             close DOUBLE PRECISION,
             volume BIGINT,
             turnover DOUBLE PRECISION,
-            source TEXT DEFAULT 'akshare',
+            source TEXT DEFAULT 'tushare',
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(exchange, symbol, timestamp_ms)
         );
@@ -2455,7 +2455,7 @@ class AshareMomentumTemplate(bt.Strategy):
         CREATE TABLE IF NOT EXISTS sync_jobs (
             id BIGSERIAL PRIMARY KEY,
             job_name TEXT NOT NULL,
-            source TEXT NOT NULL DEFAULT 'akshare',
+            source TEXT NOT NULL DEFAULT 'tushare',
             start_date DATE,
             end_date DATE,
             status TEXT NOT NULL DEFAULT 'pending',

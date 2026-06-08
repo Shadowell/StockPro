@@ -1,11 +1,11 @@
 """
-后台数据同步服务：定时从AkShare获取数据并写入数据库
+后台数据同步服务：定时从统一行情 provider 获取数据并写入数据库
 """
 import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 from sqlalchemy import text
 from app.db import db_instance as pg_db_instance
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class DataSyncService:
     """
-    数据同步服务，负责从AkShare获取数据并写入数据库
+    数据同步服务，负责从 TuShare-first provider 获取数据并写入数据库
     """
     
     def __init__(self):

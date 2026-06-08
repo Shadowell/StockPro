@@ -1,9 +1,9 @@
 """
 后台数据刷新服务
-- 定时从akshare获取数据并写入数据库
+- 定时从统一行情 provider 获取数据并写入数据库
 - 前端API直接从数据库读取，提高响应速度
 """
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 import logging
 import threading

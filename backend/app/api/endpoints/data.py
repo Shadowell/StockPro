@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 import psycopg2.extras
 from fastapi import APIRouter, Body, HTTPException, Query
@@ -831,7 +831,7 @@ async def _sync_in_background():
         {
             "is_running": True,
             "last_started_at": datetime.now().isoformat(timespec="seconds"),
-            "message": "AkShare 同步中",
+            "message": "TuShare 优先同步中",
         }
     )
     loop = asyncio.get_running_loop()
@@ -846,7 +846,7 @@ async def _sync_in_background():
             }
         )
     except Exception as exc:
-        logger.exception("AkShare sync failed")
+        logger.exception("TuShare-first sync failed")
         sync_status.update(
             {
                 "is_running": False,
@@ -947,7 +947,7 @@ def _sync_market_cache() -> Dict[str, Any]:
         try:
             result[name] = sync_fn()
         except Exception as exc:
-            logger.warning("AkShare sync step failed: %s", name, exc_info=True)
+            logger.warning("TuShare-first sync step failed: %s", name, exc_info=True)
             result[name] = 0
             result["errors"][name] = str(exc)
     if not result["errors"]:

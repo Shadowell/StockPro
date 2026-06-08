@@ -107,7 +107,7 @@
                              │ Vite /api proxy → :4445
 ┌────────────────────────────▼────────────────────────────────┐
 │                  Backend · FastAPI 0.104+                     │
-│  Python 3.11 · Pydantic 2 · AkShare · DashScope              │
+│  Python 3.11 · Pydantic 2 · TuShare-first · DashScope        │
 │  APScheduler · Backtrader · SQLAlchemy 2 · httpx              │
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
@@ -123,8 +123,8 @@
                              │
             ┌────────────────┼────────────────┐
             ▼                ▼                ▼
-        AkShare          千问大模型        Broker Adapter
-       (行情数据)        (AI 分析)       (后续实盘适配)
+   TuShare / AKShare     千问大模型        Broker Adapter
+  (行情主源/兜底)        (AI 分析)       (后续实盘适配)
 ```
 
 ### 后端服务拓扑
@@ -142,11 +142,11 @@
 
 | 数据类型 | 同步间隔 | 来源 |
 |---------|---------|------|
-| 大盘指数（上证/深证/创业板等） | 10 秒 | AkShare |
-| 全市场股票实时行情快照 | 30 秒 | AkShare |
-| 热门概念板块涨幅排名 | 2 分钟 | AkShare |
-| 概念龙头股明细 | 5 分钟缓存 | AkShare |
-| 连板股票梯队分布 | 2 分钟 | AkShare |
+| 大盘指数（上证/深证/创业板等） | 10 秒 | TuShare 优先，AKShare 兜底 |
+| 全市场股票实时行情快照 | 30 秒 | TuShare 优先，AKShare 兜底 |
+| 热门概念板块涨幅排名 | 2 分钟 | AKShare 兜底 |
+| 概念龙头股明细 | 5 分钟缓存 | AKShare 兜底 |
+| 连板股票梯队分布 | 2 分钟 | TuShare 优先，AKShare 兜底 |
 | 市场情绪指标 | 2 分钟 | 计算聚合 |
 
 ---
@@ -246,7 +246,10 @@ npm run dev
 | `API_PREFIX` | 否 | `/api` | 唯一后端 API 前缀 |
 | `QWEN_API_KEY` | 是（AI 功能） | `""` | 通义千问 API Key |
 | `QWEN_STOCK_MODEL` | 否 | `qwen-plus` | AI 分析使用的模型 |
-| `AKSHARE_TIMEOUT` | 否 | `30` | AkShare 请求超时（秒） |
+| `TUSHARE_TOKEN` | 是（行情主源） | `""` | TuShare token；为空时自动走 AKShare 兜底 |
+| `TUSHARE_REALTIME_SOURCE` | 否 | `dc` | TuShare 实时行情源 |
+| `ENABLE_TUSHARE` | 否 | `true` | 是否启用 TuShare 优先数据源 |
+| `AKSHARE_TIMEOUT` | 否 | `30` | AKShare 兜底请求超时（秒） |
 | `BACKEND_CORS_ORIGINS` | 否 | `["http://localhost:4444"]` | 允许的跨域来源，JSON 数组或逗号分隔 |
 | `DATABASE_URL` | 是 | `postgresql://stockpro:stockpro@127.0.0.1:55432/stockpro` | Postgres 连接串，所有运行路径统一使用 |
 | `ADMIN_USERNAME` | 是 | `admin` | 管理员登录用户名 |
@@ -367,7 +370,8 @@ StockPro/
 | FastAPI | 0.104+ | Web 框架 |
 | Uvicorn | 0.24+ | ASGI 服务器 |
 | Pydantic | 2.5+ | 数据验证与配置管理 |
-| AkShare | 1.12+ | A 股实时/历史行情数据 |
+| TuShare | 1.4+ | A 股实时/历史行情主数据源 |
+| AKShare | 1.12+ | TuShare 无同形接口时的兜底数据源 |
 | DashScope | 1.14+ | 通义千问大模型 SDK |
 | APScheduler | 3.10+ | 定时任务调度 |
 | Backtrader | 1.9+ | 回测引擎 |
@@ -462,7 +466,7 @@ npm run test:e2e:report   # 查看测试报告
 确保后端服务已启动且处于 A 股交易时段（9:30-15:00）。非交易时段会展示上一交易日缓存数据。
 
 **Q: 概念龙头股加载慢？**
-首次查询会从 AkShare 远程拉取并写入 Postgres 缓存，后续优先读取缓存数据。
+首次查询会从统一行情 provider 远程拉取并写入 Postgres 缓存；TuShare 无同形接口时使用 AKShare 兜底，后续优先读取缓存数据。
 
 **Q: AI 分析功能不可用？**
 检查 `backend/.env` 中的 `QWEN_API_KEY` 是否正确配置。需要在[阿里云百炼](https://bailian.console.aliyun.com/)申请 API Key。
