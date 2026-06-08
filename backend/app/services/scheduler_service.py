@@ -10,12 +10,14 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from app.core.config import settings
 from app.services.data_sync_service import data_sync_service
 from app.services.factor_sync_service import factor_sync_service
-from app.db.local_db import db_instance as db
+from app.db import db_instance as db
 
 
 logger = logging.getLogger(__name__)
@@ -167,11 +169,12 @@ class SchedulerService:
             cursor.execute(
                 """
                 INSERT INTO data_dev_tasks (name, description, sql_content, cron_expression, enabled, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id
                 """,
-                (name, description, sql_content, cron_expression, 1 if enabled else 0),
+                (name, description, sql_content, cron_expression, enabled),
             )
-            task_id = cursor.lastrowid
+            task_id = cursor.fetchone()[0]
             conn.commit()
         finally:
             conn.close()
@@ -195,32 +198,32 @@ class SchedulerService:
         updates: List[str] = []
         values: List[Any] = []
         if name is not None:
-            updates.append("name = ?")
+            updates.append("name = %s")
             values.append(name)
         if description is not None:
-            updates.append("description = ?")
+            updates.append("description = %s")
             values.append(description)
         if sql_content is not None:
-            updates.append("sql_content = ?")
+            updates.append("sql_content = %s")
             values.append(sql_content)
         if cron_expression is not None:
-            updates.append("cron_expression = ?")
+            updates.append("cron_expression = %s")
             values.append(cron_expression)
         if enabled is not None:
-            updates.append("enabled = ?")
-            values.append(1 if enabled else 0)
+            updates.append("enabled = %s")
+            values.append(enabled)
 
         if not updates:
             return
 
-        updates.append("updated_at = datetime('now')")
+        updates.append("updated_at = CURRENT_TIMESTAMP")
         values.append(task_id)
 
         conn = db.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
-                f"UPDATE data_dev_tasks SET {', '.join(updates)} WHERE id = ?",
+                f"UPDATE data_dev_tasks SET {', '.join(updates)} WHERE id = %s",
                 values,
             )
             if cursor.rowcount == 0:
@@ -228,7 +231,7 @@ class SchedulerService:
             conn.commit()
 
             cursor.execute(
-                "SELECT cron_expression, enabled FROM data_dev_tasks WHERE id = ?",
+                "SELECT cron_expression, enabled FROM data_dev_tasks WHERE id = %s",
                 (task_id,),
             )
             row = cursor.fetchone()
@@ -249,8 +252,8 @@ class SchedulerService:
         conn = db.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("DELETE FROM data_dev_logs WHERE task_id = ?", (task_id,))
-            cursor.execute("DELETE FROM data_dev_tasks WHERE id = ?", (task_id,))
+            cursor.execute("DELETE FROM data_dev_logs WHERE task_id = %s", (task_id,))
+            cursor.execute("DELETE FROM data_dev_tasks WHERE id = %s", (task_id,))
             if cursor.rowcount == 0:
                 raise ValueError("Task not found")
             conn.commit()
@@ -265,9 +268,9 @@ class SchedulerService:
                 """
                 SELECT id, execution_start, execution_end, status, error_message, affected_rows
                 FROM data_dev_logs
-                WHERE task_id = ?
+                WHERE task_id = %s
                 ORDER BY execution_start DESC, id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (task_id, max(1, min(int(limit), 500))),
             )
@@ -291,7 +294,7 @@ class SchedulerService:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "SELECT name, sql_content, enabled FROM data_dev_tasks WHERE id = ?",
+                "SELECT name, sql_content, enabled FROM data_dev_tasks WHERE id = %s",
                 (task_id,),
             )
             row = cursor.fetchone()
@@ -317,11 +320,12 @@ class SchedulerService:
             cursor.execute(
                 """
                 INSERT INTO data_dev_logs (task_id, execution_start, status)
-                VALUES (?, datetime('now'), 'running')
+                VALUES (%s, CURRENT_TIMESTAMP, 'running')
+                RETURNING id
                 """,
                 (task_id,),
             )
-            log_id = cursor.lastrowid
+            log_id = cursor.fetchone()[0]
             conn.commit()
 
             statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
@@ -333,13 +337,13 @@ class SchedulerService:
             cursor.execute(
                 """
                 UPDATE data_dev_logs
-                SET execution_end = datetime('now'), status = 'success', affected_rows = ?, error_message = NULL
-                WHERE id = ?
+                SET execution_end = CURRENT_TIMESTAMP, status = 'success', affected_rows = %s, error_message = NULL
+                WHERE id = %s
                 """,
                 (affected_rows, log_id),
             )
             cursor.execute(
-                "UPDATE data_dev_tasks SET updated_at = datetime('now') WHERE id = ?",
+                "UPDATE data_dev_tasks SET updated_at = CURRENT_TIMESTAMP WHERE id = %s",
                 (task_id,),
             )
             conn.commit()
@@ -352,8 +356,8 @@ class SchedulerService:
                     cursor.execute(
                         """
                         UPDATE data_dev_logs
-                        SET execution_end = datetime('now'), status = 'failed', error_message = ?
-                        WHERE id = ?
+                        SET execution_end = CURRENT_TIMESTAMP, status = 'failed', error_message = %s
+                        WHERE id = %s
                         """,
                         (str(e), log_id),
                     )
@@ -420,6 +424,15 @@ class SchedulerService:
             trigger=CronTrigger(hour=16, minute=0, day_of_week='mon-fri'),
             id='daily_stock_history',
             name='同步股票历史数据',
+            replace_existing=True
+        )
+
+        # 每天收盘后同步全量 A 股日 K，任务进度写入 v2 数据模块的同步任务表
+        self.scheduler.add_job(
+            func=self._sync_all_ashare_klines,
+            trigger=CronTrigger(hour=18, minute=10, timezone=ZoneInfo("Asia/Shanghai")),
+            id='sync_all_ashare_klines',
+            name='每日同步全量A股K线',
             replace_existing=True
         )
         
@@ -498,7 +511,7 @@ class SchedulerService:
         )
         
         # ========== 分钟级任务 ==========
-        
+
         # 全市场行情 - 交易时间每5分钟
         self.scheduler.add_job(
             func=self._sync_realtime_stocks,
@@ -507,6 +520,17 @@ class SchedulerService:
             name='同步实时行情',
             replace_existing=True
         )
+
+        if settings.RUN_STARTUP_DATA_SYNC:
+            self.scheduler.add_job(
+                func=self._initial_sync,
+                trigger='date',
+                run_date=datetime.now(),
+                id='initial_sync',
+                name='初始数据同步'
+            )
+        else:
+            logger.info("Startup data sync skipped; scheduled/manual sync remains available")
         
         # 快讯资讯 - 每分钟
         self.scheduler.add_job(
@@ -565,6 +589,19 @@ class SchedulerService:
             logger.info(f"Stock history sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in stock history sync: {str(e)}")
+
+    async def _sync_all_ashare_klines(self):
+        """
+        每日同步全量 A 股日 K 数据
+        """
+        try:
+            logger.info("Starting daily all A-share kline sync")
+            from app.api.endpoints import data as data_module
+
+            result = await data_module.run_scheduled_all_ashare_sync()
+            logger.info(f"Daily all A-share kline sync completed: {result}")
+        except Exception as e:
+            logger.error(f"Error in daily all A-share kline sync: {str(e)}")
     
     async def _sync_market_data(self):
         """

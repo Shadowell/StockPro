@@ -69,12 +69,11 @@ vim /opt/stockpro/backend/.env
 关键项：
 
 ```bash
-DB_MODE=postgres
 DATABASE_URL=postgresql://stockpro_app:<password>@127.0.0.1:5432/stockpro_prod
 ENABLE_SCHEDULER=false
 ENABLE_REALTIME_SYNC=false
 ENABLE_STRATEGY_EXECUTION=false
-ENABLE_LEGACY_SQLITE_MODULES=false
+
 BACKEND_CORS_ORIGINS=["http://47.79.36.92:4444"]
 QWEN_API_KEY=<your-qwen-api-key>
 ```
@@ -86,11 +85,11 @@ QWEN_API_KEY=<your-qwen-api-key>
 ```bash
 # 构建前端
 cd frontend
-VITE_API_URL=/api/v1 npm run build
+VITE_API_URL=/api npm run build
 cd ..
 
 # 同步到服务器
-rsync -azP --delete --exclude='venv/' --exclude='.env' --exclude='*.db' --exclude='*.sqlite' \
+rsync -azP --delete --exclude='venv/' --exclude='.env' \
   backend/ root@47.79.36.92:/opt/stockpro/backend/
 rsync -azP --delete frontend/dist/ root@47.79.36.92:/opt/stockpro/frontend/dist/
 rsync -azP deploy/ root@47.79.36.92:/opt/stockpro/deploy/
@@ -104,7 +103,7 @@ ssh root@47.79.36.92 "chmod +x /opt/stockpro/deploy/deploy.sh && bash /opt/stock
 `deploy.sh` 会：
 
 1. 校验 `/opt/stockpro/backend/.env` 存在。
-2. 校验 `DB_MODE=postgres` 且 `ENABLE_LEGACY_SQLITE_MODULES=false`。
+2. 校验 `DATABASE_URL` 存在并指向 Postgres。
 3. 安装 Python 依赖。
 4. 编译后端源码。
 5. 运行 `python -m app.db.postgres_migrations`。
@@ -145,16 +144,16 @@ GitHub Secrets：
 服务器本机：
 
 ```bash
-curl http://127.0.0.1:4445/api/v1/health/health
-curl http://127.0.0.1:4445/api/v1/health/storage
+curl http://127.0.0.1:4445/api/health/health
+curl http://127.0.0.1:4445/api/health/storage
 curl -I http://127.0.0.1:4444/
 ```
 
 外网：
 
 ```bash
-curl http://47.79.36.92:4444/api/v1/health/health
-curl http://47.79.36.92:4444/api/v1/health/storage
+curl http://47.79.36.92:4444/api/health/health
+curl http://47.79.36.92:4444/api/health/storage
 curl -I http://47.79.36.92:4444/
 ```
 
@@ -169,5 +168,5 @@ nginx -t && systemctl reload nginx
 ## 当前限制
 
 - 生产入口暂时是 IP + 端口，未启用 HTTPS；接入真实交易前应迁移到域名 + TLS。
-- 仓库仍包含 legacy SQLite 服务代码，但 PG-only 生产默认不挂载旧 SQLite API，也不启动旧后台任务；旧模块需要按 sprint 逐步迁移到 PG repositories。
+- 当前运行路径为 Postgres-only；旧模块需要继续通过 PG repositories 承载，不再新增本地文件数据库路径。
 - 实盘交易默认不启用；broker adapter 和 live order submission 必须单独开 contract。

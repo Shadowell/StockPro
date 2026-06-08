@@ -1,11 +1,10 @@
 import asyncio
 import json
 import logging
-import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from app.db.local_db import db_instance
+from app.db import db_instance
 from app.services.batch_import_service import BatchImportService
 from app.services.data_sync_service import data_sync_service
 from app.services.factor_sync_service import factor_sync_service
@@ -137,10 +136,14 @@ class DataHubService:
         except Exception:
             return default
 
-    def _table_exists(self, conn: sqlite3.Connection, table_name: str) -> bool:
+    def _table_exists(self, conn, table_name: str) -> bool:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?",
+            """
+            SELECT COUNT(*)
+            FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = %s
+            """,
             (table_name,),
         )
         row = cursor.fetchone()
@@ -171,11 +174,24 @@ class DataHubService:
         except Exception:
             return "yellow"
 
-    def _dataset_row_count(self, conn: sqlite3.Connection, table: str) -> int:
+    def _dataset_row_count(self, conn, table: str) -> int:
         cursor = conn.cursor()
         cursor.execute(f"SELECT COUNT(*) FROM {table}")
         row = cursor.fetchone()
         return int(row[0]) if row else 0
+
+    def _table_fields(self, conn, table_name: str) -> List[str]:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = %s
+            ORDER BY ordinal_position
+            """,
+            (table_name,),
+        )
+        return [str(row[0]) for row in cursor.fetchall()]
 
     def _parse_datetime_text(self, value: Optional[str]) -> Optional[datetime]:
         if not value:
@@ -219,7 +235,7 @@ class DataHubService:
         conn = db_instance.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT logs_json FROM data_hub_jobs WHERE job_key = ?", (job_key,))
+            cursor.execute("SELECT logs_json FROM data_hub_jobs WHERE job_key = %s", (job_key,))
             row = cursor.fetchone()
             if not row:
                 return
@@ -235,7 +251,7 @@ class DataHubService:
             if len(logs) > 300:
                 logs = logs[-300:]
             cursor.execute(
-                "UPDATE data_hub_jobs SET logs_json = ? WHERE job_key = ?",
+                "UPDATE data_hub_jobs SET logs_json = %s WHERE job_key = %s",
                 (self._serialize(logs), job_key),
             )
             conn.commit()
@@ -246,7 +262,7 @@ class DataHubService:
         if dataset_id == "stock_fundamentals":
             return {
                 "where": """
-                    WHERE scope = ?
+                    WHERE scope = %s
                        OR (
                            action = 'import_daily_data'
                            AND (
@@ -260,7 +276,7 @@ class DataHubService:
         if dataset_id == "stock_history":
             return {
                 "where": """
-                    WHERE scope = ?
+                    WHERE scope = %s
                        OR (
                            action = 'import_daily_data'
                            AND (
@@ -274,12 +290,12 @@ class DataHubService:
         if dataset_id == "daily_concept_sectors":
             return {
                 "where": """
-                    WHERE scope = ?
+                    WHERE scope = %s
                        OR action IN ('backfill_concept_history', 'sync_today_concepts')
                 """,
                 "params": [dataset_id],
             }
-        return {"where": "WHERE scope = ?", "params": [dataset_id]}
+        return {"where": "WHERE scope = %s", "params": [dataset_id]}
 
     def list_datasets(self) -> List[Dict[str, Any]]:
         conn = db_instance.get_connection()
@@ -298,8 +314,7 @@ class DataHubService:
                     cursor.execute(ds["latest_sql"])
                     latest_row = cursor.fetchone()
                     latest_snapshot = str(latest_row[0]) if latest_row and latest_row[0] else None
-                    cursor.execute(f"PRAGMA table_info({table_name})")
-                    fields = [str(r[1]) for r in cursor.fetchall()]
+                    fields = self._table_fields(conn, table_name)
 
                 result.append(
                     {
@@ -368,7 +383,7 @@ class DataHubService:
                 """
                 INSERT INTO data_hub_jobs
                 (job_key, action, scope, params_json, logs_json, status, progress, current, total, message, parent_job_key)
-                VALUES (?, ?, ?, ?, ?, 'queued', 0, 0, 0, 'Queued', ?)
+                VALUES (%s, %s, %s, %s, %s, 'queued', 0, 0, 0, 'Queued', %s)
                 """,
                 (job_key, action, scope, self._serialize(params), self._serialize([]), parent_job_key),
             )
@@ -383,9 +398,9 @@ class DataHubService:
         conn = db_instance.get_connection()
         try:
             cursor = conn.cursor()
-            assignments = ", ".join([f"{k} = ?" for k in fields.keys()])
+            assignments = ", ".join([f"{k} = %s" for k in fields.keys()])
             values = list(fields.values()) + [job_key]
-            cursor.execute(f"UPDATE data_hub_jobs SET {assignments} WHERE job_key = ?", values)
+            cursor.execute(f"UPDATE data_hub_jobs SET {assignments} WHERE job_key = %s", values)
             conn.commit()
         finally:
             conn.close()
@@ -400,7 +415,7 @@ class DataHubService:
                     job_key, action, scope, params_json, status, progress, current, total, message,
                     error_message, result_json, logs_json, parent_job_key, created_at, started_at, finished_at
                 FROM data_hub_jobs
-                WHERE job_key = ?
+                WHERE job_key = %s
                 """,
                 (job_key,),
             )
@@ -470,18 +485,18 @@ class DataHubService:
             """
             params: List[Any] = []
             if action:
-                query += " AND action = ?"
+                query += " AND action = %s"
                 params.append(action)
             if status:
-                query += " AND status = ?"
+                query += " AND status = %s"
                 params.append(status)
             if scope:
-                query += " AND scope = ?"
+                query += " AND scope = %s"
                 params.append(scope)
             if parent_job_key:
-                query += " AND parent_job_key = ?"
+                query += " AND parent_job_key = %s"
                 params.append(parent_job_key)
-            query += " ORDER BY id DESC LIMIT ?"
+            query += " ORDER BY id DESC LIMIT %s"
             params.append(max(1, min(limit, 500)))
             cursor = conn.cursor()
             cursor.execute(query, params)
@@ -842,7 +857,7 @@ class DataHubService:
                 """
                 INSERT INTO data_hub_quality_reports
                 (report_key, scope, status, summary_json, checks_json)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
                 (
                     payload["report_key"],

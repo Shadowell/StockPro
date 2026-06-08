@@ -27,11 +27,11 @@ class AdminAuthTests(unittest.TestCase):
 
     def test_admin_login_issues_token_and_me_accepts_it(self):
         app = FastAPI()
-        app.include_router(create_api_router(include_legacy_sqlite_routes=False), prefix="/api/v1")
+        app.include_router(create_api_router(), prefix="/api")
         client = TestClient(app)
 
         login_response = client.post(
-            "/api/v1/auth/admin/login",
+            "/api/auth/admin/login",
             json={"username": "admin", "password": "secret-password"},
         )
 
@@ -42,7 +42,7 @@ class AdminAuthTests(unittest.TestCase):
         self.assertIsInstance(payload["access_token"], str)
 
         me_response = client.get(
-            "/api/v1/auth/admin/me",
+            "/api/auth/admin/me",
             headers={"Authorization": f"Bearer {payload['access_token']}"},
         )
 
@@ -51,11 +51,11 @@ class AdminAuthTests(unittest.TestCase):
 
     def test_admin_login_rejects_wrong_password(self):
         app = FastAPI()
-        app.include_router(create_api_router(include_legacy_sqlite_routes=False), prefix="/api/v1")
+        app.include_router(create_api_router(), prefix="/api")
         client = TestClient(app)
 
         response = client.post(
-            "/api/v1/auth/admin/login",
+            "/api/auth/admin/login",
             json={"username": "admin", "password": "wrong"},
         )
 
@@ -64,11 +64,11 @@ class AdminAuthTests(unittest.TestCase):
     def test_admin_login_rejects_when_password_is_not_configured(self):
         settings.ADMIN_PASSWORD = ""
         app = FastAPI()
-        app.include_router(create_api_router(include_legacy_sqlite_routes=False), prefix="/api/v1")
+        app.include_router(create_api_router(), prefix="/api")
         client = TestClient(app)
 
         response = client.post(
-            "/api/v1/auth/admin/login",
+            "/api/auth/admin/login",
             json={"username": "admin", "password": "secret-password"},
         )
 
@@ -93,6 +93,21 @@ class AdminAuthTests(unittest.TestCase):
         valid_response = client.get("/private", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(200, valid_response.status_code)
         self.assertEqual({"ok": True}, valid_response.json())
+
+    def test_business_routes_require_admin_token(self):
+        app = FastAPI()
+        app.include_router(create_api_router(), prefix="/api")
+        client = TestClient(app)
+
+        missing_response = client.get("/api/market/overview")
+        self.assertEqual(401, missing_response.status_code)
+
+        token = admin_auth.create_admin_token("admin")
+        authed_response = client.get(
+            "/api/market/overview",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertNotEqual(401, authed_response.status_code)
 
 
 if __name__ == "__main__":

@@ -21,9 +21,9 @@
 - **详情**：采用专业研报风格重构分析结论展示区。包含“一句话结论”、“趋势判断”、“关键价位（压力/支撑）”、“交易计划”等模块。配色符合 A 股红涨绿跌习惯。
 
 ## 3. 数据同步逻辑测试
-### 3.1 本地数据库 (SQLite) 集成
+### 3.1 Postgres 数据库 (Postgres) 集成
 - **测试结果**：成功。
-- **详情**：在 `~/Library/Application Support/StockApp/` 目录下成功创建并维护 `stock_data.db`。包含 `stock_history` 和 `stock_fundamentals` 等核心表。
+- **详情**：通过 `DATABASE_URL` 连接并维护 Postgres schema。包含 `stock_history` 和 `stock_fundamentals` 等核心表。
 
 ### 3.2 自动同步调度 (Scheduler)
 - **测试结果**：成功。
@@ -31,7 +31,7 @@
 
 ### 3.3 数据回补 fallback
 - **测试结果**：成功。
-- **详情**：验证了当 AkShare 接口因网络或限制失效时，系统能自动从本地 SQLite 数据库读取历史日线数据进行展示。
+- **详情**：验证了当 AkShare 接口因网络或限制失效时，系统能自动从本地 Postgres 数据库读取历史日线数据进行展示。
 
 ## 4. 性能指标
 - **页面加载速度**：由于本地数据缓存，二次访问股票详情的速度提升了约 70%。

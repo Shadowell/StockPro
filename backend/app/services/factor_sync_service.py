@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 import akshare as ak
 import pandas as pd
 import numpy as np
-from app.db.local_db import db_instance
+from app.db import db_instance
 
 logger = logging.getLogger(__name__)
 

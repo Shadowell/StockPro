@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 import akshare as ak
 import pandas as pd
-from app.db.local_db import db_instance as db
+from app.db import db_instance as db
 
 logger = logging.getLogger(__name__)
 

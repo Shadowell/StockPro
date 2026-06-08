@@ -30,7 +30,7 @@ import pandas as pd
 
 def get_db():
     """获取数据库实例"""
-    from backend.app.db.local_db import LocalDatabase
+    from backend.app.db.postgres_db import PostgresDatabase
     return LocalDatabase()
 
 

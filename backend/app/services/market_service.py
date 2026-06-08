@@ -14,7 +14,7 @@ from app.db import get_database
 from app.core.config import settings
 
 import threading
-from app.db.local_db import db_instance
+from app.db import db_instance
 
 db = db_instance
 
@@ -1606,7 +1606,7 @@ class MarketService:
         """
         优先从数据库读取新闻，如果没有足够数据则触发同步
         """
-        from app.db.local_db import db_instance
+        from app.db import db_instance
         
         # 从数据库读取
         try:

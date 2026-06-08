@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import numpy as np
-from app.db.local_db import db_instance
+from app.db import db_instance
 
 logger = logging.getLogger(__name__)
 
