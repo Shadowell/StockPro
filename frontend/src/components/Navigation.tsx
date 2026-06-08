@@ -99,21 +99,24 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
   const vertical = orientation === 'vertical';
 
   return (
-    <nav className={clsx(vertical ? 'space-y-5' : 'flex gap-3 overflow-x-auto pb-2')}>
+    <nav className={clsx(vertical ? 'space-y-4' : 'flex gap-2 overflow-x-auto pb-2')}>
       {NAV_GROUPS.map((group) => (
         <section
           key={group.id}
           className={clsx(
-            vertical ? 'space-y-1.5' : 'flex min-w-max items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-3 py-2',
+            vertical
+              ? 'space-y-1.5'
+              : 'flex min-w-max items-center gap-2 rounded-lg border border-crypto-border bg-crypto-bg/70 px-3 py-2',
           )}
         >
           <div
             className={clsx(
-              'font-bold uppercase tracking-widest text-gray-500',
+              'flex items-center gap-2 font-bold uppercase tracking-widest text-gray-500',
               vertical ? 'px-3 text-[10px]' : 'mr-1 text-[10px]',
             )}
           >
-            {isZh ? group.titleZh : group.titleEn}
+            <span>{isZh ? group.titleZh : group.titleEn}</span>
+            {vertical && <span className="h-px min-w-0 flex-1 bg-crypto-border/70" />}
           </div>
           <div className={clsx(vertical ? 'space-y-1' : 'flex items-center gap-1')}>
             {group.items.map((item) => (
@@ -123,16 +126,20 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
                 end={item.end}
                 className={({ isActive }) =>
                   clsx(
-                    'flex items-center gap-2 rounded-md text-sm font-semibold transition-colors',
-                    vertical ? 'px-3 py-2.5' : 'px-3 py-2',
+                    'group flex items-center gap-2 rounded-md text-sm font-semibold transition-colors',
+                    vertical ? 'px-3 py-2' : 'px-3 py-2',
                     isActive
-                      ? 'bg-blue-500/15 text-blue-300 ring-1 ring-blue-500/30'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100',
+                      ? 'border border-blue-500/25 bg-blue-500/10 text-blue-200 shadow-[inset_3px_0_0_rgba(59,130,246,0.75)]'
+                      : 'border border-transparent text-gray-400 hover:border-crypto-border hover:bg-gray-800/70 hover:text-gray-100',
                   )
                 }
               >
-                <item.Icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{isZh ? item.labelZh : item.labelEn}</span>
+                {({ isActive }) => (
+                  <>
+                    <item.Icon className={clsx('h-4 w-4 shrink-0 transition-colors group-hover:text-gray-200', isActive ? 'text-blue-300' : 'text-gray-500')} />
+                    <span className="truncate">{isZh ? item.labelZh : item.labelEn}</span>
+                  </>
+                )}
               </NavLink>
             ))}
           </div>

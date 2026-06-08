@@ -56,26 +56,27 @@ export default function App() {
                 <Route path="/paper" element={<Paper />} />
                 <Route path="/monitor" element={<Monitor />} />
                 <Route path="/data" element={<DataCenter />} />
+
+                <Route path="/research/overview" element={<MarketOverview />} />
+                <Route path="/sentiment" element={<SentimentAnalysis />} />
+                <Route path="/news" element={<NewsCalendar />} />
+                <Route path="/calendar" element={<TradingCalendarPage />} />
+                <Route path="/ai" element={<AIStockAnalysis />} />
+                <Route path="/factors" element={<FactorLibrary />} />
+                <Route path="/data/processing" element={<DataProcessingAnalysis />} />
+
+                <Route path="/strategy-dev" element={<Navigate to="/strategy?tab=code" replace />} />
+                <Route path="/strategy-exec" element={<Navigate to="/paper?tab=execution" replace />} />
+                <Route path="/pulse" element={<Navigate to="/backtest?tab=review" replace />} />
+                <Route path="/trading" element={<Navigate to="/paper?tab=trading" replace />} />
+                <Route path="/strategy-backtest" element={<Navigate to="/backtest" replace />} />
+                <Route path="/strategy-paper" element={<Navigate to="/paper" replace />} />
+                <Route path="/market-overview" element={<Navigate to="/research/overview" replace />} />
+                <Route path="/analysis" element={<Navigate to="/data/processing" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
 
-              <Route path="/research/overview" element={<Protected><MarketOverview /></Protected>} />
-              <Route path="/sentiment" element={<Protected><SentimentAnalysis /></Protected>} />
-              <Route path="/news" element={<Protected><NewsCalendar /></Protected>} />
               <Route path="/news-calendar" element={<Navigate to="/news" replace />} />
-              <Route path="/calendar" element={<Protected><TradingCalendarPage /></Protected>} />
-              <Route path="/ai" element={<Protected><AIStockAnalysis /></Protected>} />
-              <Route path="/factors" element={<Protected><FactorLibrary /></Protected>} />
-              <Route path="/data/processing" element={<Protected><DataProcessingAnalysis /></Protected>} />
-
-              <Route path="/strategy-dev" element={<Navigate to="/strategy?tab=code" replace />} />
-              <Route path="/strategy-exec" element={<Navigate to="/paper?tab=execution" replace />} />
-              <Route path="/pulse" element={<Navigate to="/backtest?tab=review" replace />} />
-              <Route path="/trading" element={<Navigate to="/paper?tab=trading" replace />} />
-              <Route path="/strategy-backtest" element={<Navigate to="/backtest" replace />} />
-              <Route path="/strategy-paper" element={<Navigate to="/paper" replace />} />
-              <Route path="/market-overview" element={<Navigate to="/research/overview" replace />} />
-              <Route path="/analysis" element={<Navigate to="/data/processing" replace />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
           <TaskProgress />
