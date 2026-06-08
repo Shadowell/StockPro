@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Activity, BarChart3, DatabaseZap, Gauge, LineChart, Newspaper, RefreshCw, ShieldCheck, TrendingDown, TrendingUp, Zap } from 'lucide-react';
+import { Activity, BarChart3, Bell, Code2, DatabaseZap, FlaskConical, Gauge, LineChart, Newspaper, Radio, RefreshCw, ShieldCheck, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { getHotConcepts, getMarketOverview, getShortLineIndices } from '../api/client';
 import { NewsFeed } from '../components/NewsFeed';
@@ -27,6 +27,15 @@ const dashboardModules: Array<{
   { id: 'overview', label: '市场概览与分析', description: '热门概念、同花顺热榜、连板梯队', Icon: LineChart },
   { id: 'sentiment', label: '市场情绪分析', description: '情绪指数、涨跌统计、资金流向', Icon: Gauge },
   { id: 'news', label: '消息流', description: '异动、利好利空、财联社与雪球', Icon: Newspaper },
+];
+
+const quantPipeline = [
+  { id: 'data', label: '行情数据层', metric: 'PG + TuShare', description: 'K线、实时快照、数据新鲜度', Icon: DatabaseZap },
+  { id: 'research', label: '研究因子层', metric: 'Alpha Lab', description: '情绪、事件、因子、AI选股', Icon: BarChart3 },
+  { id: 'strategy', label: '策略研发层', metric: 'Code + Rules', description: '策略开发、参数、版本管理', Icon: Code2 },
+  { id: 'backtest', label: '回测评估层', metric: 'Risk/Return', description: '收益、回撤、交易归因', Icon: FlaskConical },
+  { id: 'runtime', label: '模拟执行层', metric: 'Paper Runtime', description: '账户、委托、执行回放', Icon: Radio },
+  { id: 'risk', label: '风控监控层', metric: 'Monitor', description: '告警、运行状态、异常处理', Icon: Bell },
 ];
 
 const normalizeModule = (value: string | null): DashboardModule => {
@@ -102,13 +111,13 @@ export function Dashboard() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-black text-white">大盘驾驶舱</h1>
+            <h1 className="text-xl font-black text-white">量化交易中枢</h1>
             <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
               <ShieldCheck className="h-3 w-3" />
-              PG LIVE
+              Quant Stack
             </span>
           </div>
-          <p className="mt-1 text-xs font-medium text-gray-500">指数、宽度、短线强度、主线板块与消息流</p>
+          <p className="mt-1 text-xs font-medium text-gray-500">数据采集 → 研究因子 → 策略研发 → 回测评估 → 模拟执行 → 风险监控</p>
         </div>
         <button
           onClick={load}
@@ -119,11 +128,37 @@ export function Dashboard() {
         </button>
       </div>
 
+      <section className="mb-4 rounded-lg border border-crypto-border bg-crypto-card">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border bg-crypto-bg/35 px-4 py-3">
+          <div>
+            <h2 className="text-sm font-black uppercase tracking-widest text-white">量化交易模块链路</h2>
+            <p className="mt-1 text-xs text-gray-500">从数据到执行的闭环结构，页面模块按交易生产线组织</p>
+          </div>
+          <span className="rounded-md border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-blue-200">
+            Research To Runtime
+          </span>
+        </div>
+        <div className="grid grid-cols-1 divide-y divide-crypto-border sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-6">
+          {quantPipeline.map(({ id, label, metric, description, Icon }) => (
+            <div key={id} className="min-h-[116px] p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md border border-blue-500/20 bg-blue-500/10">
+                  <Icon className="h-4 w-4 text-blue-300" />
+                </div>
+                <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-gray-500">{metric}</span>
+              </div>
+              <div className="text-sm font-bold text-gray-100">{label}</div>
+              <div className="mt-1 min-h-[32px] text-xs leading-4 text-gray-500">{description}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="mb-4 overflow-hidden rounded-lg border border-crypto-border bg-crypto-card">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border bg-crypto-bg/35 px-4 py-3">
           <div>
             <h2 className="text-sm font-black uppercase tracking-widest text-white">实时大盘</h2>
-            <p className="mt-1 text-xs text-gray-500">缓存优先展示，外部源不可用时保持页面可读</p>
+            <p className="mt-1 text-xs text-gray-500">作为量化交易前置状态面板，缓存优先展示，外部源不可用时保持页面可读</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className={clsx('inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold', overview?.is_open ? 'border-crypto-border bg-up text-up' : 'border-crypto-border bg-crypto-card text-gray-300')}>
@@ -162,7 +197,7 @@ export function Dashboard() {
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-gray-300">
               <BarChart3 className="h-4 w-4 text-blue-400" />
-              市场宽度
+              市场宽度因子
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
@@ -186,7 +221,7 @@ export function Dashboard() {
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-gray-300">
               <Zap className="h-4 w-4 text-yellow-400" />
-              短线指标
+              短线强度因子
             </div>
             <div className="grid grid-cols-2 gap-2">
               {shortLine.slice(0, 4).map((item) => (
@@ -202,7 +237,7 @@ export function Dashboard() {
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-gray-300">
               <TrendingUp className="h-4 w-4 text-red-400" />
-              热门板块
+              主线板块因子
             </div>
             <div className="space-y-2">
               {hotConcepts.slice(0, 3).map((item) => (
