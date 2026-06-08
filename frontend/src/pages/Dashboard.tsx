@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Activity, BarChart3, Gauge, LineChart, Newspaper, RefreshCw, TrendingDown, TrendingUp, Zap } from 'lucide-react';
+import { Activity, BarChart3, DatabaseZap, Gauge, LineChart, Newspaper, RefreshCw, ShieldCheck, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { getHotConcepts, getMarketOverview, getShortLineIndices } from '../api/client';
 import { NewsFeed } from '../components/NewsFeed';
@@ -98,41 +98,53 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-full bg-crypto-bg p-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">大盘模块</h1>
-          <p className="mt-1 text-sm text-gray-400">恢复市场概览、市场情绪和消息流三个看盘入口</p>
+    <div className="min-h-full bg-crypto-bg p-4 sm:p-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-black text-white">大盘驾驶舱</h1>
+            <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+              <ShieldCheck className="h-3 w-3" />
+              PG LIVE
+            </span>
+          </div>
+          <p className="mt-1 text-xs font-medium text-gray-500">指数、宽度、短线强度、主线板块与消息流</p>
         </div>
         <button
           onClick={load}
-          className="flex items-center gap-2 rounded border border-crypto-border bg-crypto-card px-4 py-2 text-sm text-gray-200 hover:border-blue-500"
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-crypto-border bg-crypto-card px-3 text-sm font-semibold text-gray-200 transition-colors hover:border-blue-500/60 hover:bg-gray-800/70"
         >
           <RefreshCw className={clsx('h-4 w-4', loading && 'animate-spin')} />
           刷新
         </button>
       </div>
 
-      <section className="mb-5 rounded-lg border border-crypto-border bg-crypto-card">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">
+      <section className="mb-4 overflow-hidden rounded-lg border border-crypto-border bg-crypto-card">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border bg-crypto-bg/35 px-4 py-3">
           <div>
-            <h2 className="text-lg font-semibold text-white">实时大盘</h2>
-            <p className="mt-1 text-xs text-gray-500">A股指数、市场宽度、短线强度与热门板块</p>
+            <h2 className="text-sm font-black uppercase tracking-widest text-white">实时大盘</h2>
+            <p className="mt-1 text-xs text-gray-500">缓存优先展示，外部源不可用时保持页面可读</p>
           </div>
-          <div className={clsx('flex items-center gap-2 text-sm font-semibold', overview?.is_open ? 'text-up' : 'text-gray-300')}>
-            <Activity className="h-4 w-4" />
-            {overview?.is_open ? '开市中' : '休市'}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={clsx('inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold', overview?.is_open ? 'border-crypto-border bg-up text-up' : 'border-crypto-border bg-crypto-card text-gray-300')}>
+              <Activity className="h-3.5 w-3.5" />
+              {overview?.is_open ? '开市中' : '休市'}
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-md border border-blue-500/20 bg-blue-500/10 px-2.5 py-1.5 text-xs font-semibold text-blue-200">
+              <DatabaseZap className="h-3.5 w-3.5" />
+              TuShare 优先
+            </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 divide-y divide-crypto-border lg:grid-cols-4 lg:divide-x lg:divide-y-0">
           {(overview?.indices || []).map((index) => (
             <div key={index.name} className="p-4">
-              <div className="mb-3 flex items-center justify-between text-sm text-gray-400">
+              <div className="mb-3 flex items-center justify-between text-xs font-semibold text-gray-500">
                 <span>{index.name}</span>
                 {(index.change_percent || 0) >= 0 ? <TrendingUp className="h-4 w-4 text-up" /> : <TrendingDown className="h-4 w-4 text-down" />}
               </div>
-              <div className="text-2xl font-semibold text-white">{formatNumber(index.price)}</div>
+              <div className="text-xl font-semibold text-white">{formatNumber(index.price)}</div>
               <div className="mt-2 text-sm">
                 <Pct value={index.change_percent} />
                 <span className="ml-2 text-gray-500">{formatNumber(index.change_amount)}</span>
@@ -146,7 +158,7 @@ export function Dashboard() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 border-t border-crypto-border p-5 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 border-t border-crypto-border p-4 lg:grid-cols-3">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-gray-300">
               <BarChart3 className="h-4 w-4 text-blue-400" />
@@ -208,19 +220,19 @@ export function Dashboard() {
         </div>
       </section>
 
-      <div className="mb-5 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap gap-1 rounded-lg border border-crypto-border bg-crypto-card p-1">
         {dashboardModules.map((item) => (
           <button
             key={item.id}
             onClick={() => openModule(item.id)}
             className={clsx(
-              'flex min-w-[180px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors',
+              'flex min-w-[180px] flex-1 items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors',
               activeModule === item.id
-                ? 'border-blue-500 bg-blue-600/15 text-blue-300'
-                : 'border-crypto-border bg-crypto-card text-gray-400 hover:border-gray-600 hover:text-gray-100'
+                ? 'border-blue-500/35 bg-blue-500/15 text-blue-200'
+                : 'border-transparent text-gray-400 hover:border-crypto-border hover:bg-gray-800/70 hover:text-gray-100'
             )}
           >
-            <item.Icon className="h-5 w-5 shrink-0" />
+            <item.Icon className="h-4 w-4 shrink-0" />
             <span>
               <span className="block text-sm font-semibold">{item.label}</span>
               <span className="mt-0.5 block text-xs text-gray-500">{item.description}</span>
@@ -232,21 +244,21 @@ export function Dashboard() {
       <section className="min-h-[720px]">
         {activeModule === 'overview' && (
           <div className="h-full">
-            <h2 className="mb-4 text-xl font-bold text-white">市场概览与分析</h2>
+            <h2 className="mb-3 text-base font-bold text-white">市场概览与分析</h2>
             <MarketOverviewContent />
           </div>
         )}
 
         {activeModule === 'sentiment' && (
           <div className="h-full">
-            <h2 className="mb-4 text-xl font-bold text-white">市场情绪分析</h2>
+            <h2 className="mb-3 text-base font-bold text-white">市场情绪分析</h2>
             <SentimentAnalysisContent />
           </div>
         )}
 
         {activeModule === 'news' && (
           <div className="flex min-h-[720px] flex-col">
-            <h2 className="mb-4 text-xl font-bold text-white">消息流</h2>
+            <h2 className="mb-3 text-base font-bold text-white">消息流</h2>
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-800 bg-[#111827]">
               <div className="border-b border-slate-800 bg-[#0d121f] px-6 py-4">
                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-100">7x24 实时快讯</h3>
