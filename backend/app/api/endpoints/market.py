@@ -38,7 +38,7 @@ async def get_hot_concepts(
     limit: int = Query(50, ge=1, le=200),
     date: str | None = Query(None)
 ) -> List[Dict[str, Any]]:
-    """获取热门概念板块 - 实时获取"""
+    """获取热门概念板块 - 页面只读 PG 缓存/历史"""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: MarketService.get_hot_concepts(limit, date))
 
@@ -47,7 +47,7 @@ async def get_ths_hot(
     limit: int = Query(100, ge=1, le=200),
     date: str | None = Query(None)
 ) -> List[Dict[str, Any]]:
-    """获取同花顺热榜 - 实时获取"""
+    """获取同花顺热榜 - 页面只读 PG 缓存/历史"""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: MarketService.get_ths_hot(limit, date))
 

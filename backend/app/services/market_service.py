@@ -897,163 +897,76 @@ class MarketService:
 
     @staticmethod
     def get_hot_concepts(limit: int = 50, date: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get hot concepts with caching and history support"""
+        """Get hot concepts from PG cache/history for page-safe rendering."""
         start_time = time.time()
         logger.info(f"Fetching hot concepts (date={date})...")
-        
-        # If date is provided and is in the past, check DB first
-        today_str = datetime.now().strftime('%Y%m%d')
+        limit = max(1, min(int(limit), 200))
+
         if date:
             db_date = date.replace('-', '')
-            if db_date < today_str:
-                try:
-                    hist = db.get_hot_concepts_history(db_date)
-                    if hist:
-                        logger.info(f"Found {len(hist)} historical hot concepts in DB for {db_date}")
-                        return hist[:limit]
-                except Exception as e:
-                    logger.warning(f"Failed to fetch hot concepts history from DB: {e}")
-
-        # Real-time or fallback to current
-        results = MarketService._get_cached_hot_concepts()
-        
-        # Save to history and realtime if it's "today" or recent
-        if not date or date == datetime.now().strftime('%Y%m%d') or date == datetime.now().strftime('%Y-%m-%d'):
             try:
-                save_date = datetime.now().strftime('%Y%m%d')
-                db.insert_hot_concepts_history(save_date, results)
-                db.update_hot_concepts_realtime(results)
+                hist = db.get_hot_concepts_history(db_date)
+                if hist:
+                    logger.info(f"Found {len(hist)} historical hot concepts in DB for {db_date}")
+                    return hist[:limit]
             except Exception as e:
-                logger.warning(f"Failed to save today's hot concepts to DB: {e}")
+                logger.warning(f"Failed to fetch hot concepts history from DB: {e}")
+            logger.info(f"No cached hot concepts history for {db_date}")
+            return []
 
-        # Apply limit to the cached results
-        limited_results = results[:limit] if len(results) > limit else results
-        
+        try:
+            results = db.get_hot_concepts_realtime(limit)
+            if results:
+                return results[:limit]
+        except Exception as e:
+            logger.warning(f"Failed to fetch realtime hot concepts from DB: {e}")
+
+        today = datetime.now().strftime('%Y%m%d')
+        try:
+            hist = db.get_hot_concepts_history(today)
+            if hist:
+                return hist[:limit]
+        except Exception as e:
+            logger.warning(f"Failed to fetch today's hot concepts history from DB: {e}")
+
         elapsed_time = time.time() - start_time
-        logger.info(f"Fetched {len(limited_results)} hot concepts in {elapsed_time:.2f} seconds")
-        
-        return limited_results
+        logger.info(f"No cached hot concepts available; returned empty list in {elapsed_time:.2f} seconds")
+        return []
 
     @staticmethod
     def get_ths_hot(limit: int = 100, date: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
             limit = max(1, min(int(limit), 200))
 
-            # If date is provided and is in the past, check DB first
-            today_str = datetime.now().strftime('%Y%m%d')
             if date:
                 db_date = date.replace('-', '')
-                if db_date < today_str:
-                    try:
-                        hist = db.get_ths_hot_history(db_date)
-                        if hist:
-                            logger.info(f"Found {len(hist)} historical THS hot in DB for {db_date}")
-                            return hist[:limit]
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch THS hot history from DB: {e}")
-
-            hot_df = None
-            for fn_name in ["stock_hot_rank_wc", "stock_hot_rank_em"]:
                 try:
-                    hot_df = getattr(ak, fn_name)()
-                    if isinstance(hot_df, pd.DataFrame) and not hot_df.empty:
-                        break
-                except Exception:
-                    hot_df = None
-
-            if hot_df is None or not isinstance(hot_df, pd.DataFrame) or hot_df.empty:
+                    hist = db.get_ths_hot_history(db_date)
+                    if hist:
+                        logger.info(f"Found {len(hist)} historical THS hot in DB for {db_date}")
+                        return hist[:limit]
+                except Exception as e:
+                    logger.warning(f"Failed to fetch THS hot history from DB: {e}")
+                logger.info(f"No cached THS hot history for {db_date}")
                 return []
 
-            code_col = None
-            for c in ["代码", "股票代码", "symbol", "ts_code"]:
-                if c in hot_df.columns:
-                    code_col = c
-                    break
-            name_col = None
-            for c in ["名称", "股票名称", "name", "ts_name"]:
-                if c in hot_df.columns:
-                    name_col = c
-                    break
+            try:
+                results = db.get_ths_hot_realtime(limit)
+                if results:
+                    return results[:limit]
+            except Exception as e:
+                logger.warning(f"Failed to fetch realtime THS hot from DB: {e}")
 
-            rank_col = None
-            for c in ["当前排名", "排名", "rank", "序号"]:
-                if c in hot_df.columns:
-                    rank_col = c
-                    break
+            today = datetime.now().strftime('%Y%m%d')
+            try:
+                hist = db.get_ths_hot_history(today)
+                if hist:
+                    return hist[:limit]
+            except Exception as e:
+                logger.warning(f"Failed to fetch today's THS hot history from DB: {e}")
 
-            hot_col = None
-            # stock_hot_rank_em 接口没有热度列，用排名作为热度替代
-            for c in ["热度", "hot", "热度值", "热度值(万)", "热度指数"]:
-                if c in hot_df.columns:
-                    hot_col = c
-                    break
-
-            pct_col = None
-            for c in ["涨跌幅", "pct_change", "涨跌幅%", "涨跌幅(%)"] :
-                if c in hot_df.columns:
-                    pct_col = c
-                    break
-
-            price_col = None
-            for c in ["现价", "当前价格", "current_price", "最新价"]:
-                if c in hot_df.columns:
-                    price_col = c
-                    break
-
-            reason_col = None
-            for c in ["上榜解读", "rank_reason", "解读", "原因"]:
-                if c in hot_df.columns:
-                    reason_col = c
-                    break
-
-            tag_col = None
-            for c in ["标签", "concept", "题材", "概念"]:
-                if c in hot_df.columns:
-                    tag_col = c
-                    break
-
-            hot_df = hot_df.head(limit)
-
-            results: List[Dict[str, Any]] = []
-            for idx, row in hot_df.iterrows():
-                rank = int(pd.to_numeric(row.get(rank_col), errors='coerce')) if rank_col else int(idx) + 1
-                if pd.isna(rank):
-                    rank = int(idx) + 1
-                code = str(row.get(code_col) or '').strip() if code_col else ''
-                name = str(row.get(name_col) or '').strip() if name_col else ''
-                # 如果没有热度列，用 (100 - 排名) 作为热度值的替代
-                hot_val = float(pd.to_numeric(row.get(hot_col), errors='coerce')) if hot_col else max(100 - rank, 1)
-                pct = float(pd.to_numeric(row.get(pct_col), errors='coerce')) if pct_col else 0.0
-                price = float(pd.to_numeric(row.get(price_col), errors='coerce')) if price_col else 0.0
-                reason = str(row.get(reason_col) or '').strip() if reason_col else ''
-                tags = str(row.get(tag_col) or '').strip() if tag_col else ''
-                if pd.isna(hot_val):
-                    hot_val = max(100 - rank, 1)
-                if pd.isna(pct):
-                    pct = 0.0
-                if pd.isna(price):
-                    price = 0.0
-                results.append({
-                    "rank": rank,
-                    "code": code,
-                    "name": name,
-                    "hot": hot_val,
-                    "change_percent": pct,
-                    "price": price,
-                    "reason": reason,
-                    "tags": tags,
-                })
-
-            # Save to history and realtime if it's real-time fetch
-            if not date:
-                try:
-                    save_date = datetime.now().strftime('%Y%m%d')
-                    db.insert_ths_hot_history(save_date, results)
-                    db.update_ths_hot_realtime(results)
-                except Exception as e:
-                    logger.warning(f"Failed to save today's THS hot to DB: {e}")
-
-            return results
+            logger.info("No cached THS hot available; returning empty list")
+            return []
         except Exception as e:
             logger.error(f"Error fetching THS hot rank: {e}")
             return []
@@ -1604,55 +1517,28 @@ class MarketService:
     @staticmethod
     def _get_news_from_db_or_api(source: str, limit: int) -> List[Dict[str, Any]]:
         """
-        优先从数据库读取新闻，如果没有足够数据则触发同步
+        从数据库读取新闻。页面请求保持只读，外部同步由定时/手动接口负责。
         """
         from app.db import db_instance
-        
-        # 从数据库读取
+
         try:
             db_news = db_instance.get_news_stream(limit=limit, source=source)
-            if db_news and len(db_news) >= 5:
-                # 转换格式
-                items = []
-                for n in db_news:
-                    items.append({
-                        "id": hashlib.sha1(f"{n.get('source')}:{n.get('publish_time')}:{n.get('title', '')[:30]}".encode("utf-8")).hexdigest(),
-                        "time": n.get('publish_time', ''),
-                        "title": n.get('title') or n.get('content', '')[:100],
-                        "source": n.get('source', source),
-                        "url": None,
-                        "sentiment": None,
-                        "related_stocks": [],
-                    })
+            items = []
+            for n in db_news or []:
+                items.append({
+                    "id": hashlib.sha1(f"{n.get('source')}:{n.get('publish_time')}:{n.get('title', '')[:30]}".encode("utf-8")).hexdigest(),
+                    "time": n.get('publish_time', ''),
+                    "title": n.get('title') or n.get('content', '')[:100],
+                    "source": n.get('source', source),
+                    "url": None,
+                    "sentiment": None,
+                    "related_stocks": [],
+                })
+            if items:
                 logger.info(f"从数据库读取 {len(items)} 条 {source} 新闻")
-                return items
+            return items
         except Exception as e:
             logger.warning(f"从数据库读取 {source} 新闻失败: {e}")
-        
-        # 数据库没有，尝试同步并读取
-        try:
-            from app.services.data_sync_service import data_sync_service
-            logger.info(f"数据库无 {source} 新闻，触发同步...")
-            data_sync_service.sync_news(sources=[source])
-            
-            # 再次从数据库读取
-            db_news = db_instance.get_news_stream(limit=limit, source=source)
-            if db_news:
-                items = []
-                for n in db_news:
-                    items.append({
-                        "id": hashlib.sha1(f"{n.get('source')}:{n.get('publish_time')}:{n.get('title', '')[:30]}".encode("utf-8")).hexdigest(),
-                        "time": n.get('publish_time', ''),
-                        "title": n.get('title') or n.get('content', '')[:100],
-                        "source": n.get('source', source),
-                        "url": None,
-                        "sentiment": None,
-                        "related_stocks": [],
-                    })
-                return items
-        except Exception as e:
-            logger.warning(f"同步 {source} 新闻失败: {e}")
-        
         return []
 
     @staticmethod

@@ -266,12 +266,12 @@ class DataHubService:
                        OR (
                            action = 'import_daily_data'
                            AND (
-                               params_json LIKE '%"task_type": "fundamentals"%'
-                               OR params_json LIKE '%"task_type": "all"%'
+                               params_json LIKE %s
+                               OR params_json LIKE %s
                            )
                        )
                 """,
-                "params": [dataset_id],
+                "params": [dataset_id, '%"task_type": "fundamentals"%', '%"task_type": "all"%'],
             }
         if dataset_id == "stock_history":
             return {
@@ -280,12 +280,12 @@ class DataHubService:
                        OR (
                            action = 'import_daily_data'
                            AND (
-                               params_json LIKE '%"task_type": "history"%'
-                               OR params_json LIKE '%"task_type": "all"%'
+                               params_json LIKE %s
+                               OR params_json LIKE %s
                            )
                        )
                 """,
-                "params": [dataset_id],
+                "params": [dataset_id, '%"task_type": "history"%', '%"task_type": "all"%'],
             }
         if dataset_id == "daily_concept_sectors":
             return {

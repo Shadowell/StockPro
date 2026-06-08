@@ -7,7 +7,13 @@ the Tushare API is unavailable, or the response is empty, the call falls back to
 AkShare.
 """
 import logging
+import pickle
+import subprocess
+import sys
+import tempfile
+import types
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 import pandas as pd
@@ -26,6 +32,27 @@ except Exception:  # pragma: no cover - tushare may be absent in minimal tests
 
 
 logger = logging.getLogger(__name__)
+
+
+AKSHARE_SUBPROCESS_SCRIPT = """
+import pickle
+import sys
+
+name, input_path, output_path = sys.argv[1:4]
+with open(input_path, "rb") as input_file:
+    args, kwargs = pickle.load(input_file)
+
+try:
+    import akshare as akshare_module
+
+    result = getattr(akshare_module, name)(*args, **kwargs)
+    payload = ("ok", result)
+except BaseException as exc:
+    payload = ("error", f"{type(exc).__name__}: {exc}")
+
+with open(output_path, "wb") as output_file:
+    pickle.dump(payload, output_file, protocol=pickle.HIGHEST_PROTOCOL)
+"""
 
 
 class TushareFirstDataProvider:
@@ -296,10 +323,50 @@ class TushareFirstDataProvider:
     def _akshare_attr(self, name: str) -> Callable[..., Any]:
         if self.akshare is None:
             raise RuntimeError(f"AkShare fallback is unavailable for {name}")
+        if self._should_isolate_akshare():
+            return lambda *args, **kwargs: self._call_akshare_in_subprocess(name, *args, **kwargs)
         return getattr(self.akshare, name)
 
     def _fallback_only(self, name: str, *args, **kwargs) -> Any:
         return self._akshare_attr(name)(*args, **kwargs)
+
+    def _should_isolate_akshare(self) -> bool:
+        return bool(
+            settings.AKSHARE_SUBPROCESS_FALLBACK
+            and self.akshare is _akshare
+            and isinstance(self.akshare, types.ModuleType)
+        )
+
+    def _call_akshare_in_subprocess(self, name: str, *args, **kwargs) -> Any:
+        timeout = max(1, int(settings.AKSHARE_TIMEOUT or 30))
+        with tempfile.TemporaryDirectory(prefix="stockpro-akshare-") as tmpdir:
+            input_path = Path(tmpdir) / "input.pkl"
+            output_path = Path(tmpdir) / "output.pkl"
+            with input_path.open("wb") as input_file:
+                pickle.dump((args, kwargs), input_file, protocol=pickle.HIGHEST_PROTOCOL)
+
+            try:
+                completed = subprocess.run(
+                    [sys.executable, "-c", AKSHARE_SUBPROCESS_SCRIPT, name, str(input_path), str(output_path)],
+                    capture_output=True,
+                    timeout=timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise TimeoutError(f"AkShare fallback {name} timed out after {timeout}s") from exc
+
+            if not output_path.exists():
+                stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+                if stderr:
+                    stderr = stderr[-1000:]
+                raise RuntimeError(f"AkShare fallback {name} exited with code {completed.returncode}: {stderr}")
+
+            with output_path.open("rb") as output_file:
+                status, payload = pickle.load(output_file)
+
+            if status == "ok":
+                return payload
+            raise RuntimeError(f"AkShare fallback {name} failed: {payload}")
 
     def _pro_api(self):
         if self._pro is None:
