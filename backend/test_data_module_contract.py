@@ -49,7 +49,7 @@ class FakeDataModuleDb:
             {
                 "id": 7,
                 "job_name": "contract-sync",
-                "source": "akshare",
+                "source": "tushare",
                 "start_date": "2026-01-01",
                 "end_date": "2026-01-05",
                 "status": "success",

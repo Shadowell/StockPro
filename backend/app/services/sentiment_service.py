@@ -3,7 +3,7 @@ import math
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 
 from app.db import get_database

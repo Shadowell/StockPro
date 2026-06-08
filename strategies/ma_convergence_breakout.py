@@ -6,7 +6,7 @@
 # 4. 平行的定义：四条均线之间的差值 < 股价的2%
 # 这种股票处于横盘整理阶段，一旦放量突破，往往有较好的上涨空间
 
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 import json
 from datetime import datetime, timedelta

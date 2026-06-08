@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import backtrader as bt
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 
 from app.db import db_instance as default_db

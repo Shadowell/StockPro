@@ -11,7 +11,7 @@ from app.db import db_instance as pg_db
 from datetime import datetime, timedelta
 from app.utils.dashscope_utils import retry_on_dns_error
 import time
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 
 logger = logging.getLogger(__name__)
 

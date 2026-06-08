@@ -2,8 +2,8 @@
 """
 历史概念板块数据回填脚本
 
-由于 AKShare 的 stock_board_concept_name_em() 只能获取当天数据，
-本脚本通过获取每个概念板块的历史K线数据来回填历史涨幅。
+本脚本通过统一行情 provider 获取每个概念板块的历史K线数据来回填历史涨幅。
+provider 会优先使用 TuShare，TuShare 无同形接口时才使用 AKShare 兜底。
 
 使用方法:
     python scripts/backfill_concept_history.py --days 30
@@ -21,17 +21,19 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 
-# 添加项目根目录到路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 添加项目根目录和 backend 目录到路径
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT_DIR)
+sys.path.insert(0, os.path.join(ROOT_DIR, "backend"))
 
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 
 
 def get_db():
     """获取数据库实例"""
-    from backend.app.db.postgres_db import PostgresDatabase
-    return LocalDatabase()
+    from app.db.postgres_db import PostgresDatabase
+    return PostgresDatabase()
 
 
 def get_concept_list() -> pd.DataFrame:

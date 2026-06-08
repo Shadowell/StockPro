@@ -7,7 +7,7 @@ import threading
 import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 from app.db import db_instance as db
 
