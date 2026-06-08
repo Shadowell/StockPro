@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     TUSHARE_REALTIME_SOURCE: str = "dc"
     ENABLE_TUSHARE: bool = True
     AKSHARE_TIMEOUT: int = 30
+    AKSHARE_SUBPROCESS_FALLBACK: bool = True
     RUN_STARTUP_DATA_SYNC: bool = False
     ENABLE_SCHEDULER: bool = True
     ENABLE_REALTIME_SYNC: bool = False

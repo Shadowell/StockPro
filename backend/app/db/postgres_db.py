@@ -113,7 +113,7 @@ class PostgresDatabase:
                     cursor,
                     """
                     INSERT INTO market_indices_realtime
-                    (name, code, price, change_amount, change_percent, updated_at)
+                    (name, code, price, change_amount, change_percent)
                     VALUES %s
                     ON CONFLICT (name) DO UPDATE SET
                         code = EXCLUDED.code,
@@ -159,7 +159,7 @@ class PostgresDatabase:
                     cursor,
                     """
                     INSERT INTO short_line_indices_realtime
-                    (code, name, price, change_percent, change_amount, updated_at)
+                    (code, name, price, change_percent, change_amount)
                     VALUES %s
                     ON CONFLICT (code) DO UPDATE SET
                         name = EXCLUDED.name,
@@ -217,7 +217,7 @@ class PostgresDatabase:
                     INSERT INTO all_stocks_realtime
                     (code, name, price, change_percent, volume, amount, turnover,
                      volume_ratio, pe_dynamic, pb, total_market_cap,
-                     float_market_cap, amplitude, updated_at)
+                     float_market_cap, amplitude)
                     VALUES %s
                     ON CONFLICT (code) DO UPDATE SET
                         name = EXCLUDED.name,
@@ -273,7 +273,7 @@ class PostgresDatabase:
                     cursor,
                     """
                     INSERT INTO hot_concepts_realtime
-                    (rank, name, change_percent, inflow, outflow, net_inflow, updated_at)
+                    (rank, name, change_percent, inflow, outflow, net_inflow)
                     VALUES %s
                     ON CONFLICT (name) DO UPDATE SET
                         rank = EXCLUDED.rank,
@@ -376,7 +376,7 @@ class PostgresDatabase:
                     cursor,
                     """
                     INSERT INTO ths_hot_realtime
-                    (rank, code, name, hot_value, change_percent, price, reason, tags, updated_at)
+                    (rank, code, name, hot_value, change_percent, price, reason, tags)
                     VALUES %s
                     ON CONFLICT (code) DO UPDATE SET
                         rank = EXCLUDED.rank,

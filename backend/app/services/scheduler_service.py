@@ -571,7 +571,7 @@ class SchedulerService:
         关闭调度器
         """
         if self.scheduler.running:
-            self.scheduler.shutdown()
+            self.scheduler.shutdown(wait=False)
             logger.info("Scheduler shutdown")
     
     async def _sync_stock_history(self):
@@ -585,7 +585,7 @@ class SchedulerService:
             date_str = yesterday.strftime('%Y%m%d')
             
             logger.info(f"Starting stock history sync for date {date_str}")
-            result = data_sync_service.sync_stock_history(date_str)
+            result = await asyncio.to_thread(data_sync_service.sync_stock_history, date_str)
             logger.info(f"Stock history sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in stock history sync: {str(e)}")
@@ -611,11 +611,11 @@ class SchedulerService:
             logger.info("Starting market data sync")
             
             # 同步热门概念
-            concept_result = data_sync_service.sync_hot_concepts()
+            concept_result = await asyncio.to_thread(data_sync_service.sync_hot_concepts)
             logger.info(f"Concept sync completed: {concept_result}")
             
             # 同步基本面数据
-            fundamental_result = data_sync_service.sync_fundamentals()
+            fundamental_result = await asyncio.to_thread(data_sync_service.sync_fundamentals)
             logger.info(f"Fundamentals sync completed: {fundamental_result}")
             
         except Exception as e:
@@ -627,7 +627,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting THS hot stocks sync")
-            result = data_sync_service.sync_ths_hot()
+            result = await asyncio.to_thread(data_sync_service.sync_ths_hot)
             logger.info(f"THS hot stocks sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in THS hot stocks sync: {str(e)}")
@@ -640,10 +640,10 @@ class SchedulerService:
             logger.info("Starting factor data sync")
             
             # 初始化因子定义（如果还没有初始化）
-            factor_sync_service.init_factor_definitions()
+            await asyncio.to_thread(factor_sync_service.init_factor_definitions)
             
             # 同步所有因子数据
-            result = factor_sync_service.sync_all_factors()
+            result = await asyncio.to_thread(factor_sync_service.sync_all_factors)
             logger.info(f"Factor data sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in factor data sync: {str(e)}")
@@ -654,7 +654,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting zt pool sync")
-            result = data_sync_service.sync_zt_pool()
+            result = await asyncio.to_thread(data_sync_service.sync_zt_pool)
             logger.info(f"ZT pool sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in zt pool sync: {str(e)}")
@@ -665,7 +665,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting dragon tiger board sync")
-            result = data_sync_service.sync_dragon_tiger()
+            result = await asyncio.to_thread(data_sync_service.sync_dragon_tiger)
             logger.info(f"Dragon tiger sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in dragon tiger sync: {str(e)}")
@@ -676,7 +676,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting northbound flow sync")
-            result = data_sync_service.sync_northbound_flow()
+            result = await asyncio.to_thread(data_sync_service.sync_northbound_flow)
             logger.info(f"Northbound flow sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in northbound flow sync: {str(e)}")
@@ -691,7 +691,7 @@ class SchedulerService:
         
         try:
             logger.info("Starting sector realtime sync")
-            result = data_sync_service.sync_sector_realtime()
+            result = await asyncio.to_thread(data_sync_service.sync_sector_realtime)
             logger.info(f"Sector realtime sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in sector realtime sync: {str(e)}")
@@ -704,7 +704,7 @@ class SchedulerService:
             return
         
         try:
-            result = data_sync_service.sync_realtime_stocks()
+            result = await asyncio.to_thread(data_sync_service.sync_realtime_stocks)
             logger.debug(f"Realtime stocks sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in realtime stocks sync: {str(e)}")
@@ -714,7 +714,7 @@ class SchedulerService:
         同步快讯资讯（分钟级）
         """
         try:
-            result = data_sync_service.sync_news()
+            result = await asyncio.to_thread(data_sync_service.sync_news)
             if result.get('count', 0) > 0:
                 logger.info(f"News sync completed: {result}")
         except Exception as e:
@@ -726,7 +726,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting daily concept sectors sync")
-            result = data_sync_service.sync_daily_concept_sectors()
+            result = await asyncio.to_thread(data_sync_service.sync_daily_concept_sectors)
             logger.info(f"Daily concept sectors sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in daily concept sectors sync: {str(e)}")
@@ -741,21 +741,21 @@ class SchedulerService:
             # 同步股票历史数据
             yesterday = datetime.now() - timedelta(days=1)
             date_str = yesterday.strftime('%Y%m%d')
-            stock_result = data_sync_service.sync_stock_history(date_str)
+            stock_result = await asyncio.to_thread(data_sync_service.sync_stock_history, date_str)
             logger.info(f"Initial stock sync completed: {stock_result}")
             
             # 同步其他数据
-            concept_result = data_sync_service.sync_hot_concepts()
+            concept_result = await asyncio.to_thread(data_sync_service.sync_hot_concepts)
             logger.info(f"Initial concept sync completed: {concept_result}")
             
-            fundamental_result = data_sync_service.sync_fundamentals()
+            fundamental_result = await asyncio.to_thread(data_sync_service.sync_fundamentals)
             logger.info(f"Initial fundamentals sync completed: {fundamental_result}")
             
-            ths_result = data_sync_service.sync_ths_hot()
+            ths_result = await asyncio.to_thread(data_sync_service.sync_ths_hot)
             logger.info(f"Initial THS sync completed: {ths_result}")
             
             # 初始化因子定义
-            factor_sync_service.init_factor_definitions()
+            await asyncio.to_thread(factor_sync_service.init_factor_definitions)
             logger.info("Factor definitions initialized")
             
         except Exception as e:
