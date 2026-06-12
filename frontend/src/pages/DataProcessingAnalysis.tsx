@@ -1,8 +1,5 @@
 import React, { useState } from 'react';
-import { MainLayout } from '@/components/MainLayout';
 import { useStore } from '@/stores/useStore';
-import { clearAdminToken } from '@/api/client';
-import { useNavigate } from 'react-router-dom';
 import {
   Database,
   Workflow,
@@ -13,7 +10,6 @@ import {
   FileCode2,
   Download,
   Package,
-  LogOut,
 } from 'lucide-react';
 import { DataHubDatasetPanel } from '@/components/DataHubDatasetPanel';
 import { DataHubJobsPanel } from '@/components/DataHubJobsPanel';
@@ -30,79 +26,56 @@ type LegacyTab = 'batchimport' | 'datadev' | 'database' | 'sql' | 'repair';
 
 export const DataProcessingAnalysis: React.FC = () => {
   const { language } = useStore();
-  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<DataHubTab>('assets');
   const [legacyTab, setLegacyTab] = useState<LegacyTab>('batchimport');
 
-  const title = language === 'zh' ? '数据中台' : 'Data Hub';
-  const handleLogout = () => {
-    clearAdminToken();
-    navigate('/admin-login', { replace: true });
-  };
-
   return (
     <div className="flex flex-col gap-4 h-full">
-        <div className="flex items-center justify-between gap-3 rounded border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
-          <div>
-            <div className="font-semibold mb-1">Data Hub V1</div>
-            <div className="text-xs text-blue-200/80">
-              当前以“数据资产 -&gt; 生产任务 -&gt; 质量治理 -&gt; 特征服务”为主线。旧版入口保留在“兼容入口”页签。
-            </div>
-          </div>
+        <div className="inline-flex items-center rounded-xl border border-crypto-border bg-crypto-card p-1">
           <button
-            onClick={handleLogout}
-            className="shrink-0 flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:border-red-500/40 hover:text-red-200"
-          >
-            <LogOut size={14} />
-            {language === 'zh' ? '退出' : 'Logout'}
-          </button>
-        </div>
-
-        <div className="flex flex-wrap border-b border-crypto-border bg-crypto-bg">
-          <button
-            className={`px-5 py-3 text-sm font-bold flex items-center gap-2 ${
-              activeTab === 'assets' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300'
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors ${
+              activeTab === 'assets' ? 'bg-blue-500/20 text-blue-300' : 'text-gray-500 hover:text-gray-300'
             }`}
             onClick={() => setActiveTab('assets')}
           >
-            <Database size={16} />
+            <Database size={14} />
             {language === 'zh' ? '数据资产' : 'Data Assets'}
           </button>
           <button
-            className={`px-5 py-3 text-sm font-bold flex items-center gap-2 ${
-              activeTab === 'jobs' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500 hover:text-slate-300'
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors ${
+              activeTab === 'jobs' ? 'bg-blue-500/20 text-blue-300' : 'text-gray-500 hover:text-gray-300'
             }`}
             onClick={() => setActiveTab('jobs')}
           >
-            <Workflow size={16} />
+            <Workflow size={14} />
             {language === 'zh' ? '生产任务' : 'Production Jobs'}
           </button>
           <button
-            className={`px-5 py-3 text-sm font-bold flex items-center gap-2 ${
-              activeTab === 'quality' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-slate-500 hover:text-slate-300'
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors ${
+              activeTab === 'quality' ? 'bg-blue-500/20 text-blue-300' : 'text-gray-500 hover:text-gray-300'
             }`}
             onClick={() => setActiveTab('quality')}
           >
-            <ShieldCheck size={16} />
+            <ShieldCheck size={14} />
             {language === 'zh' ? '质量治理' : 'Quality Governance'}
           </button>
           <button
-            className={`px-5 py-3 text-sm font-bold flex items-center gap-2 ${
-              activeTab === 'features' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-slate-500 hover:text-slate-300'
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors ${
+              activeTab === 'features' ? 'bg-blue-500/20 text-blue-300' : 'text-gray-500 hover:text-gray-300'
             }`}
             onClick={() => setActiveTab('features')}
           >
-            <Sparkles size={16} />
+            <Sparkles size={14} />
             {language === 'zh' ? '特征服务' : 'Feature Services'}
           </button>
           <button
-            className={`px-5 py-3 text-sm font-bold flex items-center gap-2 ${
-              activeTab === 'legacy' ? 'text-slate-300 border-b-2 border-slate-400' : 'text-slate-500 hover:text-slate-300'
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors ${
+              activeTab === 'legacy' ? 'bg-blue-500/20 text-blue-300' : 'text-gray-500 hover:text-gray-300'
             }`}
             onClick={() => setActiveTab('legacy')}
           >
-            <Compass size={16} />
+            <Compass size={14} />
             {language === 'zh' ? '兼容入口' : 'Legacy'}
           </button>
         </div>
@@ -115,64 +88,60 @@ export const DataProcessingAnalysis: React.FC = () => {
 
           {activeTab === 'legacy' && (
             <div className="h-full flex flex-col gap-3">
-              <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                旧版 API/页面处于兼容周期，建议逐步迁移至 Data Hub 统一接口。
-              </div>
-
-              <div className="flex flex-wrap border-b border-crypto-border bg-crypto-bg">
+              <div className="inline-flex items-center rounded-lg border border-crypto-border bg-crypto-card p-0.5">
                 <button
-                  className={`px-4 py-2 text-xs font-bold tracking-wide ${
+                  className={`inline-flex h-8 items-center gap-1 rounded-md px-3 text-xs font-semibold transition-colors ${
                     legacyTab === 'batchimport'
-                      ? 'text-emerald-400 border-b-2 border-emerald-400'
-                      : 'text-slate-500 hover:text-slate-300'
+                      ? 'bg-blue-500/20 text-blue-300'
+                      : 'text-gray-500 hover:text-gray-300'
                   }`}
                   onClick={() => setLegacyTab('batchimport')}
                 >
-                  <Download size={12} className="inline mr-1" />
+                  <Download size={12} />
                   批量导入
                 </button>
                 <button
-                  className={`px-4 py-2 text-xs font-bold tracking-wide ${
+                  className={`inline-flex h-8 items-center gap-1 rounded-md px-3 text-xs font-semibold transition-colors ${
                     legacyTab === 'datadev'
-                      ? 'text-purple-400 border-b-2 border-purple-400'
-                      : 'text-slate-500 hover:text-slate-300'
+                      ? 'bg-blue-500/20 text-blue-300'
+                      : 'text-gray-500 hover:text-gray-300'
                   }`}
                   onClick={() => setLegacyTab('datadev')}
                 >
-                  <Package size={12} className="inline mr-1" />
+                  <Package size={12} />
                   Data Dev
                 </button>
                 <button
-                  className={`px-4 py-2 text-xs font-bold tracking-wide ${
+                  className={`inline-flex h-8 items-center gap-1 rounded-md px-3 text-xs font-semibold transition-colors ${
                     legacyTab === 'database'
-                      ? 'text-blue-400 border-b-2 border-blue-400'
-                      : 'text-slate-500 hover:text-slate-300'
+                      ? 'bg-blue-500/20 text-blue-300'
+                      : 'text-gray-500 hover:text-gray-300'
                   }`}
                   onClick={() => setLegacyTab('database')}
                 >
-                  <Database size={12} className="inline mr-1" />
+                  <Database size={12} />
                   数据库管理
                 </button>
                 <button
-                  className={`px-4 py-2 text-xs font-bold tracking-wide ${
+                  className={`inline-flex h-8 items-center gap-1 rounded-md px-3 text-xs font-semibold transition-colors ${
                     legacyTab === 'sql'
-                      ? 'text-cyan-400 border-b-2 border-cyan-400'
-                      : 'text-slate-500 hover:text-slate-300'
+                      ? 'bg-blue-500/20 text-blue-300'
+                      : 'text-gray-500 hover:text-gray-300'
                   }`}
                   onClick={() => setLegacyTab('sql')}
                 >
-                  <FileCode2 size={12} className="inline mr-1" />
+                  <FileCode2 size={12} />
                   SQL工作台
                 </button>
                 <button
-                  className={`px-4 py-2 text-xs font-bold tracking-wide ${
+                  className={`inline-flex h-8 items-center gap-1 rounded-md px-3 text-xs font-semibold transition-colors ${
                     legacyTab === 'repair'
-                      ? 'text-orange-400 border-b-2 border-orange-400'
-                      : 'text-slate-500 hover:text-slate-300'
+                      ? 'bg-blue-500/20 text-blue-300'
+                      : 'text-gray-500 hover:text-gray-300'
                   }`}
                   onClick={() => setLegacyTab('repair')}
                 >
-                  <Wrench size={12} className="inline mr-1" />
+                  <Wrench size={12} />
                   回补修复
                 </button>
               </div>

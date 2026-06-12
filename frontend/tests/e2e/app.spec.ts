@@ -186,12 +186,12 @@ test('single api shell keeps research, market, strategy and data navigation toge
   await page.goto('/');
 
   await expect(page.getByText('StockPro').first()).toBeVisible();
-  await expect(page.getByText('研究工坊').first()).toBeVisible();
-  await expect(page.getByText('策略工厂').first()).toBeVisible();
+  await expect(page.getByText('研究因子层').first()).toBeVisible();
+  await expect(page.getByText('策略执行层').first()).toBeVisible();
 
   await expect(page.getByRole('link', { name: /行情终端|Market/ }).first()).toBeVisible();
-  await expect(page.getByRole('link', { name: /策略开发|Strategy/ }).first()).toBeVisible();
-  await expect(page.getByRole('link', { name: /数据中心|Data Center/ }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: /策略研发|Strategy R&D/ }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: /数据仓库|Data Warehouse/ }).first()).toBeVisible();
 
   await page.goto('/market');
   await expect(page).toHaveURL(/\/market/);
@@ -201,6 +201,11 @@ test('single api shell keeps research, market, strategy and data navigation toge
 
   await page.goto('/data');
   await expect(page).toHaveURL(/\/data/);
+
+  await page.goto('/data/processing');
+  await expect(page.getByText('Data Hub V1')).toHaveCount(0);
+  await expect(page.getByText(/当前以/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /数据资产|Data Assets/ })).toBeVisible();
 });
 
 test('legacy strategy routes redirect into the new flow', async ({ page }) => {

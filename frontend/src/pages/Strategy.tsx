@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, BarChart3, BookOpen, CalendarDays, Code2, Eye, Layers, Plus, Save, Search, TrendingUp, Zap, X } from 'lucide-react';
+import { Activity, BarChart3, BookOpen, CalendarDays, Code2, Layers, Plus, Save, Search, TrendingUp, Zap, X } from 'lucide-react';
 import clsx from 'clsx';
 import { autoDevelopStrategy, getStrategies, saveStrategy, updateStrategy } from '../api/client';
 import { StrategyDetailPanel } from '../components/BitProDetailPanels';

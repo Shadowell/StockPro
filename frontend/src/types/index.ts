@@ -34,18 +34,6 @@ export interface Sector {
   updated_at?: string;
 }
 
-export interface StockFilterResponse {
-  stocks: Stock[];
-  total_count: number;
-  filter_time: string;
-}
-
-export interface AIAnalysis {
-  stock_code: string;
-  score: number;
-  analysis_text: string;
-}
-
 export interface DailyChartData {
   date: string;
   open: number;
@@ -62,29 +50,6 @@ export interface IntradayChartData {
   amount?: number;
   pre_close?: number;    // 昨收价（只在第一条数据中）
   trade_date?: string;   // 交易日期（只在第一条数据中）
-}
-
-export interface MarketSector {
-  rank: number;
-  name: string;
-  code: string;
-  price: number;
-  change_amount: number;
-  change_percent: number;
-  market_cap: number;
-  turnover_rate: number;
-  leading_stock: string;
-  leading_stock_change: number;
-}
-
-export interface MarketStock {
-  code: string;
-  name: string;
-  price: number;
-  change_percent: number;
-  volume: number;
-  amount: number;
-  turnover: number;
 }
 
 export interface TaskStatus {

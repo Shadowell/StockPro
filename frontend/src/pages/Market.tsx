@@ -309,8 +309,8 @@ export function Market() {
             className={clsx(
               'group flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-all duration-200',
               showPrediction
-                ? 'bg-blue-600/90 text-white shadow-sm shadow-blue-900/30'
-                : 'text-gray-400 hover:bg-white/[0.06] hover:text-white',
+                ? 'bg-blue-500/20 text-blue-300'
+                : 'text-gray-400 hover:bg-gray-800/70 hover:text-gray-300',
             )}
             title="AI 预测"
           >
@@ -322,7 +322,7 @@ export function Market() {
             onClick={load}
             disabled={loading}
             className={clsx(
-              'flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-gray-400 transition-all duration-200 hover:bg-white/[0.06] hover:text-white',
+              'flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-gray-400 transition-all duration-200 hover:bg-gray-800/70 hover:text-gray-300',
               loading && 'cursor-not-allowed opacity-50',
             )}
             title="刷新行情"
@@ -358,7 +358,7 @@ export function Market() {
                       className={clsx(
                         'h-9 px-3 text-xs font-semibold transition-colors',
                         value === 'a-share'
-                          ? 'bg-blue-600 text-white shadow-sm shadow-blue-900/30'
+                          ? 'bg-blue-500/20 text-blue-300'
                           : 'text-gray-500 hover:bg-gray-800/60 hover:text-gray-300',
                       )}
                     >
@@ -386,7 +386,7 @@ export function Market() {
                   </button>
 
                   {isSearchOpen && (
-                    <div className="absolute left-0 top-full z-50 mt-1 w-[320px] max-w-[calc(100vw-7rem)] overflow-hidden rounded-lg border border-crypto-border bg-[#1a1d26] shadow-2xl shadow-black/40">
+                    <div className="absolute left-0 top-full z-50 mt-1 w-[320px] max-w-[calc(100vw-7rem)] overflow-hidden rounded-lg border border-crypto-border bg-crypto-card shadow-lg shadow-black/40">
                       <div className="border-b border-crypto-border p-2">
                         <div className="relative">
                           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
@@ -396,7 +396,7 @@ export function Market() {
                             onChange={(event) => setSearchQuery(event.target.value)}
                             onKeyDown={handleSearchKeyDown}
                             placeholder="搜索股票 / 代码"
-                            className="w-full rounded-md border border-gray-700 bg-gray-800 py-2 pl-8 pr-8 text-sm text-white outline-none transition-colors placeholder:text-gray-600 focus:border-blue-500"
+                            className="w-full rounded-lg border border-crypto-border bg-crypto-bg py-2 pl-8 pr-8 text-sm text-white outline-none transition-colors placeholder:text-gray-600 focus:border-blue-500"
                           />
                           {searchQuery && (
                             <button
@@ -433,7 +433,7 @@ export function Market() {
                                 className={clsx(
                                   'rounded px-2 py-0.5 text-xs transition-colors',
                                   selectedSymbol === item.code
-                                    ? 'bg-blue-600 text-white'
+                                    ? 'bg-blue-500/20 text-blue-300'
                                     : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white',
                                 )}
                               >
@@ -506,7 +506,7 @@ export function Market() {
                       className={clsx(
                         'px-3 py-1.5 text-xs font-medium transition-colors',
                         activeRange === item
-                          ? 'bg-blue-600 text-white'
+                          ? 'bg-blue-500/20 text-blue-300'
                           : 'text-gray-500 hover:bg-gray-800/60 hover:text-gray-300',
                       )}
                     >

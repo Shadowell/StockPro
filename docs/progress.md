@@ -1,5 +1,53 @@
 # Progress Log
 
+## Snapshot (2026-06-12)
+
+- Sprint: `standardize-and-trading-core` adjusted to single-router cleanup
+- Focus: remove unused legacy pages, backup files, and parallel API routers while preserving the active market/research/strategy/backtest/paper workflows
+- Active contract: `docs/contracts/active-standardize-and-trading-core.md`
+- Product direction: one `/api` prefix, no `/api/v1` or `/api/v2`, no standalone V2 business routes
+
+## Latest Completed Work (2026-06-12)
+
+1. Removed unused frontend route surfaces
+- Deleted legacy pages replaced by the new shell or route redirects: `Home`, `StockScreener`, `StrategyDev`, `StrategyExec`, `MarketPulse`, `LiveTrading`.
+- Deleted old one-off components only referenced by those pages: `StockTable`, `AIAnalysisPanel`, `SectorMonitor`, `StrategyLabWorkflow`, `MarketCalendar`, `CalendarView`, `DataOverviewPanel`, `PresetTaskPanel`, and related helper-only files.
+- Kept active pages for dashboard, market, research workbench, AI analysis, factor library, data center, strategy factory, backtest, paper trading, monitor, and trading calendar.
+
+2. Removed redundant backend API surfaces
+- Removed `backend/app/api/v2` source tree.
+- Removed standalone `strategy_v2.py`, `stock_screener.py`, and `trading.py` endpoint routers from the active API registration.
+- Removed tracked `.bak` / `.backup` source files.
+- Preserved underlying Postgres repository methods and migrations so future paper/risk/broker capabilities can be wired into the main product flow instead of a parallel API.
+
+3. Tightened frontend runtime logic
+- Removed unused Zustand state for old stock table, hot sectors, and batch AI analysis.
+- Removed client calls for `/stocks/filter`, `/sectors/hot`, `/ai/analyze`, `/screener/*`, and old Market Pulse-only replay APIs.
+- Updated Data Hub feature service to refresh the current `/data-hub/features/screener` summary instead of navigating to the deleted `/screener` route.
+
+4. Removed visible instruction banners
+- Removed the Data Hub V1 explanatory banner from the data-processing page.
+- Removed the legacy compatibility advisory banner from the data-processing legacy tab.
+- Added E2E coverage to ensure those explanatory strings do not return.
+
+## Verification Evidence (2026-06-12)
+
+- `npm --prefix frontend run build` (pass)
+- `python3 -m compileall backend/app` (pass)
+- `./scripts/check.sh` (pass after allowing local Postgres access; frontend build, frontend lint with warnings only, deploy shell syntax, backend unit tests 15/15, backend compile)
+- `npm --prefix frontend run test:e2e:mock` (pass: 3 active mock tests, 5 real-backend tests skipped by mode)
+- Static scans found no runtime source references to `api_router_v2`, `app.api.v2`, `/api/v2`, `/strategy-v2`, `strategy_v2`, `stock_screener`, `trading.router`, old screener client calls, or deleted page/component names.
+- Backup-file scan found no remaining tracked `*.bak`, `*.backup`, or `*~` files.
+- Static scan found no remaining `Data Hub V1`, `当前以`, or legacy compatibility advisory text in frontend source.
+
+## Remaining Work (standardize-and-trading-core sprint)
+
+- Wire any still-needed portfolio/order/risk/broker capabilities into the active `/paper`, `/strategy`, `/backtest`, or future `/monitor` workflows before exposing them again.
+- Continue PG repository cleanup in `data_hub_service.py` and `strategy_lab_service.py`.
+- Browser E2E against real backend remains useful after the local backend is restarted with production-like environment variables.
+
+---
+
 ## Snapshot (2026-06-03)
 
 - Workspace: `/Users/jie.feng/wlb/StockPro`

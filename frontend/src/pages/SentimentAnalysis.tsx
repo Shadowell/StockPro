@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { MainLayout } from '@/components/MainLayout';
 import { useStore } from '@/stores/useStore';
 import { RefreshCw, Activity, TrendingUp, BarChart3, Flame, Zap, Target, ArrowUpCircle, ArrowDownCircle, MinusCircle, DollarSign, Layers } from 'lucide-react';
 import { getHotConcepts, getThsHot, getLianbanLadder, getShortLineIndices } from '@/api/client';
@@ -84,7 +83,7 @@ const SentimentGauge: React.FC<{ score: number; size?: number }> = ({ score, siz
       <ReactECharts option={option} style={{ height: size, width: size }} />
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/4 text-center">
         <div className="text-4xl font-black" style={{ color: getColor(score) }}>{score}</div>
-        <div className="text-sm font-bold text-slate-400 mt-1">{getLabel(score)}</div>
+        <div className="text-sm font-bold text-gray-400 mt-1">{getLabel(score)}</div>
       </div>
     </div>
   );
@@ -99,12 +98,12 @@ const StatCard: React.FC<{
   color?: string;
 }> = ({ icon, label, value, subValue, color = 'blue' }) => (
   <div className="bg-crypto-card border border-crypto-border rounded-xl p-4">
-    <div className="flex items-center gap-2 text-slate-400 text-xs mb-2">
+    <div className="flex items-center gap-2 text-gray-400 text-xs mb-2">
       {icon}
       <span>{label}</span>
     </div>
     <div className={`text-2xl font-black text-${color}-400`}>{value}</div>
-    {subValue && <div className="text-xs text-slate-500 mt-1">{subValue}</div>}
+    {subValue && <div className="text-xs text-gray-500 mt-1">{subValue}</div>}
   </div>
 );
 
@@ -251,7 +250,7 @@ export const SentimentAnalysisContent: React.FC = () => {
   return (
     <div className="flex flex-col gap-6 h-full overflow-auto custom-scrollbar">
         {/* 顶部状态栏 */}
-        <div className="flex items-center gap-4 text-slate-400">
+        <div className="flex items-center gap-4 text-gray-400">
           <Activity size={18} />
           <span className="text-sm font-medium">
             {marketOverview?.is_open ? (
@@ -261,7 +260,7 @@ export const SentimentAnalysisContent: React.FC = () => {
             )}
           </span>
           {marketOverview?.last_update && (
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-gray-500">
               更新于 {new Date(marketOverview.last_update).toLocaleTimeString()}
             </span>
           )}
@@ -274,12 +273,12 @@ export const SentimentAnalysisContent: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 情绪仪表盘 */}
           <div className="bg-crypto-card border border-crypto-border rounded-xl p-6 flex flex-col items-center justify-center">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
+            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
               市场情绪指数
             </h3>
             <SentimentGauge score={sentimentScore} />
             <div className="mt-4 text-center">
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-gray-500">
                 基于涨跌家数、板块热度、资金流向综合计算
               </p>
             </div>
@@ -330,11 +329,11 @@ export const SentimentAnalysisContent: React.FC = () => {
               color="cyan"
             />
             <StatCard
-              icon={<MinusCircle size={14} className="text-slate-400" />}
+              icon={<MinusCircle size={14} className="text-gray-400" />}
               label="平盘家数"
               value={unchanged}
               subValue="涨跌幅为0"
-              color="slate"
+              color="gray"
             />
             <StatCard
               icon={<Target size={14} className="text-pink-400" />}
@@ -351,7 +350,7 @@ export const SentimentAnalysisContent: React.FC = () => {
           {/* 板块涨幅排行 */}
           <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
                 <TrendingUp size={16} className="text-red-400" />
                 板块涨幅TOP10
               </h3>
@@ -360,7 +359,7 @@ export const SentimentAnalysisContent: React.FC = () => {
               {conceptChartOption ? (
                 <ReactECharts option={conceptChartOption} style={{ height: '100%', width: '100%' }} />
               ) : (
-                <div className="h-full flex items-center justify-center text-slate-600">暂无数据</div>
+                <div className="h-full flex items-center justify-center text-gray-600">暂无数据</div>
               )}
             </div>
           </div>
@@ -368,7 +367,7 @@ export const SentimentAnalysisContent: React.FC = () => {
           {/* 连板梯队 */}
           <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
                 <Zap size={16} className="text-yellow-400" />
                 连板梯队
               </h3>
@@ -382,15 +381,15 @@ export const SentimentAnalysisContent: React.FC = () => {
                       <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs font-bold rounded">
                         {level.today_level}板
                       </span>
-                      <span className="text-xs text-slate-500">{level.today_items?.length || 0}只</span>
+                      <span className="text-xs text-gray-500">{level.today_items?.length || 0}只</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {level.today_items?.slice(0, 10).map(stock => (
                         <div
                           key={stock.code}
-                          className="px-2 py-1 bg-slate-800 rounded text-xs flex items-center gap-1"
+                          className="px-2 py-1 bg-gray-800 rounded text-xs flex items-center gap-1"
                         >
-                          <span className="text-slate-200 font-medium">{stock.name}</span>
+                          <span className="text-gray-200 font-medium">{stock.name}</span>
                           <span className={clsx(
                             "font-mono",
                             stock.change_percent >= 0 ? "text-red-400" : "text-green-400"
@@ -400,7 +399,7 @@ export const SentimentAnalysisContent: React.FC = () => {
                         </div>
                       ))}
                       {(level.today_items?.length || 0) > 10 && (
-                        <span className="text-xs text-slate-500">
+                        <span className="text-xs text-gray-500">
                           +{(level.today_items?.length || 0) - 10}只
                         </span>
                       )}
@@ -408,7 +407,7 @@ export const SentimentAnalysisContent: React.FC = () => {
                   </div>
                 ))}
               {(!lianban?.levels || lianban.levels.every(lv => !lv.today_items?.length)) && (
-                <div className="h-full flex items-center justify-center text-slate-600">
+                <div className="h-full flex items-center justify-center text-gray-600">
                   暂无连板数据
                 </div>
               )}
@@ -419,7 +418,7 @@ export const SentimentAnalysisContent: React.FC = () => {
         {/* 第三行：板块资金流向 */}
         <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
               <DollarSign size={16} className="text-blue-400" />
               板块资金流向
             </h3>
@@ -428,7 +427,7 @@ export const SentimentAnalysisContent: React.FC = () => {
             {flowChartOption ? (
               <ReactECharts option={flowChartOption} style={{ height: '100%', width: '100%' }} />
             ) : (
-              <div className="h-full flex items-center justify-center text-slate-600">暂无资金流向数据</div>
+              <div className="h-full flex items-center justify-center text-gray-600">暂无资金流向数据</div>
             )}
           </div>
         </div>
@@ -436,15 +435,15 @@ export const SentimentAnalysisContent: React.FC = () => {
         {/* 第四行：热门股票排行 */}
         <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
               <Flame size={16} className="text-orange-400" />
               热门股票排行
             </h3>
-            <span className="text-xs text-slate-500">数据来源: 同花顺热榜</span>
+            <span className="text-xs text-gray-500">数据来源: 同花顺热榜</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#0d121f] text-slate-500 uppercase">
+              <thead className="bg-[#0d121f] text-gray-500 uppercase">
                 <tr>
                   <th className="px-4 py-3">排名</th>
                   <th className="px-4 py-3">代码</th>
@@ -455,13 +454,13 @@ export const SentimentAnalysisContent: React.FC = () => {
                   <th className="px-4 py-3">上榜原因</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-crypto-border/50">
                 {thsHot.slice(0, 20).map((stock, idx) => (
-                  <tr key={stock.code} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="px-4 py-3 text-slate-500 font-mono">{idx + 1}</td>
-                    <td className="px-4 py-3 text-slate-400 font-mono">{stock.code}</td>
-                    <td className="px-4 py-3 text-slate-200 font-medium">{stock.name}</td>
-                    <td className="px-4 py-3 text-right text-slate-300 font-mono">
+                  <tr key={stock.code} className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 py-3 text-gray-500 font-mono">{idx + 1}</td>
+                    <td className="px-4 py-3 text-gray-400 font-mono">{stock.code}</td>
+                    <td className="px-4 py-3 text-gray-200 font-medium">{stock.name}</td>
+                    <td className="px-4 py-3 text-right text-gray-300 font-mono">
                       {stock.price?.toFixed(2) || '--'}
                     </td>
                     <td className={clsx(
@@ -473,7 +472,7 @@ export const SentimentAnalysisContent: React.FC = () => {
                     <td className="px-4 py-3 text-right text-orange-400 font-mono">
                       {stock.hot?.toFixed(0) || '--'}
                     </td>
-                    <td className="px-4 py-3 text-slate-500 truncate max-w-[200px]" title={stock.reason}>
+                    <td className="px-4 py-3 text-gray-500 truncate max-w-[200px]" title={stock.reason}>
                       {stock.reason || stock.tags || '--'}
                     </td>
                   </tr>
@@ -481,7 +480,7 @@ export const SentimentAnalysisContent: React.FC = () => {
               </tbody>
             </table>
             {thsHot.length === 0 && (
-              <div className="py-12 text-center text-slate-600">暂无热门股票数据</div>
+              <div className="py-12 text-center text-gray-600">暂无热门股票数据</div>
             )}
           </div>
         </div>
@@ -490,8 +489,6 @@ export const SentimentAnalysisContent: React.FC = () => {
 };
 
 export const SentimentAnalysis: React.FC = () => {
-  const { language } = useStore();
-
   return (
     <SentimentAnalysisContent />
   );

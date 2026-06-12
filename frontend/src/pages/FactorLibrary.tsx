@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { MainLayout } from '@/components/MainLayout';
 import { useStore } from '@/stores/useStore';
 import {
   Database, 
@@ -355,49 +354,49 @@ export const FactorLibrary: React.FC = () => {
   return (
     <div className="flex flex-col gap-6 h-full">
       {/* Tab Selector */}
-        <div className="flex border-b border-slate-800 bg-crypto-bg">
+        <div className="inline-flex items-center rounded-xl border border-crypto-border bg-crypto-card p-1">
           <button
-            className={`px-6 py-3 text-sm font-bold flex items-center gap-2 ${
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors ${
               activeTab === 'overview'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-slate-500 hover:text-slate-300'
+                ? 'bg-blue-500/20 text-blue-300'
+                : 'text-gray-500 hover:text-gray-300'
             }`}
             onClick={() => setActiveTab('overview')}
           >
-            <Database size={16} />
+            <Database size={14} />
             {language === 'zh' ? '概览' : 'Overview'}
           </button>
           <button
-            className={`px-6 py-3 text-sm font-bold flex items-center gap-2 ${
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors ${
               activeTab === 'definitions'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-slate-500 hover:text-slate-300'
+                ? 'bg-blue-500/20 text-blue-300'
+                : 'text-gray-500 hover:text-gray-300'
             }`}
             onClick={() => setActiveTab('definitions')}
           >
-            <Info size={16} />
+            <Info size={14} />
             {language === 'zh' ? '因子定义' : 'Definitions'}
           </button>
           <button
-            className={`px-6 py-3 text-sm font-bold flex items-center gap-2 ${
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors ${
               activeTab === 'ranking'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-slate-500 hover:text-slate-300'
+                ? 'bg-blue-500/20 text-blue-300'
+                : 'text-gray-500 hover:text-gray-300'
             }`}
             onClick={() => setActiveTab('ranking')}
           >
-            <ArrowUpDown size={16} />
+            <ArrowUpDown size={14} />
             {language === 'zh' ? '因子排名' : 'Ranking'}
           </button>
           <button
-            className={`px-6 py-3 text-sm font-bold flex items-center gap-2 ${
+            className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors ${
               activeTab === 'sync'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-slate-500 hover:text-slate-300'
+                ? 'bg-blue-500/20 text-blue-300'
+                : 'text-gray-500 hover:text-gray-300'
             }`}
             onClick={() => setActiveTab('sync')}
           >
-            <RefreshCw size={16} />
+            <RefreshCw size={14} />
             {language === 'zh' ? '数据同步' : 'Sync'}
           </button>
         </div>
@@ -410,7 +409,7 @@ export const FactorLibrary: React.FC = () => {
               {/* Stats Cards */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-crypto-card rounded-lg p-4 border border-crypto-border">
-                  <div className="text-slate-400 text-sm mb-1">
+                  <div className="text-gray-400 text-sm mb-1">
                     {language === 'zh' ? '因子总数' : 'Total Factors'}
                   </div>
                   <div className="text-2xl font-bold text-white">
@@ -418,7 +417,7 @@ export const FactorLibrary: React.FC = () => {
                   </div>
                 </div>
                 <div className="bg-crypto-card rounded-lg p-4 border border-crypto-border">
-                  <div className="text-slate-400 text-sm mb-1">
+                  <div className="text-gray-400 text-sm mb-1">
                     {language === 'zh' ? '数据记录数' : 'Data Records'}
                   </div>
                   <div className="text-2xl font-bold text-white">
@@ -426,7 +425,7 @@ export const FactorLibrary: React.FC = () => {
                   </div>
                 </div>
                 <div className="bg-crypto-card rounded-lg p-4 border border-crypto-border">
-                  <div className="text-slate-400 text-sm mb-1">
+                  <div className="text-gray-400 text-sm mb-1">
                     {language === 'zh' ? '覆盖股票数' : 'Stocks Covered'}
                   </div>
                   <div className="text-2xl font-bold text-white">
@@ -434,7 +433,7 @@ export const FactorLibrary: React.FC = () => {
                   </div>
                 </div>
                 <div className="bg-crypto-card rounded-lg p-4 border border-crypto-border">
-                  <div className="text-slate-400 text-sm mb-1">
+                  <div className="text-gray-400 text-sm mb-1">
                     {language === 'zh' ? '最新数据日期' : 'Latest Date'}
                   </div>
                   <div className="text-2xl font-bold text-white">
@@ -455,10 +454,10 @@ export const FactorLibrary: React.FC = () => {
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                   {stats?.category_stats && Object.entries(stats.category_stats).map(([category, count]) => (
-                    <div key={category} className="bg-slate-900/50 rounded-lg p-3 flex items-center gap-3">
-                      {categoryIcons[category] || <Database size={16} className="text-slate-400" />}
+                    <div key={category} className="bg-gray-900/50 rounded-lg p-3 flex items-center gap-3">
+                      {categoryIcons[category] || <Database size={16} className="text-gray-400" />}
                       <div>
-                        <div className="text-xs text-slate-400">{category}</div>
+                        <div className="text-xs text-gray-400">{category}</div>
                         <div className="text-lg font-bold text-white">{count}</div>
                       </div>
                     </div>
@@ -475,7 +474,7 @@ export const FactorLibrary: React.FC = () => {
                   <button
                     onClick={initFactorDefinitions}
                     disabled={syncStatus.init}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 rounded-lg text-sm font-medium flex items-center gap-2"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-lg text-sm font-medium flex items-center gap-2"
                   >
                     {syncStatus.init ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
                     {language === 'zh' ? '初始化因子定义' : 'Init Definitions'}
@@ -483,7 +482,7 @@ export const FactorLibrary: React.FC = () => {
                   <button
                     onClick={syncSpotFactors}
                     disabled={syncStatus.spot}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 rounded-lg text-sm font-medium flex items-center gap-2"
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-lg text-sm font-medium flex items-center gap-2"
                   >
                     {syncStatus.spot ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                     {language === 'zh' ? '同步实时因子' : 'Sync Spot Factors'}
@@ -491,7 +490,7 @@ export const FactorLibrary: React.FC = () => {
                   <button
                     onClick={syncTechnicalFactors}
                     disabled={syncStatus.technical}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 rounded-lg text-sm font-medium flex items-center gap-2"
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded-lg text-sm font-medium flex items-center gap-2"
                   >
                     {syncStatus.technical ? <Loader2 size={16} className="animate-spin" /> : <BarChart3 size={16} />}
                     {language === 'zh' ? '同步技术因子' : 'Sync Technical Factors'}
@@ -499,7 +498,7 @@ export const FactorLibrary: React.FC = () => {
                   <button
                     onClick={syncAllFactors}
                     disabled={syncStatus.all}
-                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-600 rounded-lg text-sm font-medium flex items-center gap-2"
+                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 rounded-lg text-sm font-medium flex items-center gap-2"
                   >
                     {syncStatus.all ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                     {language === 'zh' ? '同步全部因子' : 'Sync All'}
@@ -509,7 +508,7 @@ export const FactorLibrary: React.FC = () => {
                 {/* 同步结果展示 */}
                 {syncResults.length > 0 && (
                   <div className="mt-4 space-y-2">
-                    <div className="text-xs text-slate-500 mb-2">
+                    <div className="text-xs text-gray-500 mb-2">
                       {language === 'zh' ? '最近操作记录' : 'Recent Operations'}
                     </div>
                     {syncResults.slice(0, 5).map((result, idx) => (
@@ -548,14 +547,14 @@ export const FactorLibrary: React.FC = () => {
                   <div className="space-y-2">
                     {Object.entries(groupedFactors).slice(0, 3).map(([category, factorList]) => (
                       <div key={category} className="border border-crypto-border rounded-lg overflow-hidden">
-                        <div className="bg-slate-900/50 px-4 py-2 flex items-center gap-2">
+                        <div className="bg-gray-900/50 px-4 py-2 flex items-center gap-2">
                           {categoryIcons[category]}
                           <span className="font-medium text-white">{category}</span>
-                          <span className="text-xs text-slate-500">({factorList.length})</span>
+                          <span className="text-xs text-gray-500">({factorList.length})</span>
                         </div>
                         <div className="p-3 grid grid-cols-2 md:grid-cols-4 gap-2">
                           {factorList.slice(0, 8).map(factor => (
-                            <div key={factor.factor_code} className="text-sm text-slate-300 bg-slate-900/30 px-2 py-1 rounded">
+                            <div key={factor.factor_code} className="text-sm text-gray-300 bg-gray-900/30 px-2 py-1 rounded">
                               {factor.factor_name}
                             </div>
                           ))}
@@ -573,13 +572,13 @@ export const FactorLibrary: React.FC = () => {
             <div className="space-y-4">
               {/* Search */}
               <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={language === 'zh' ? '搜索因子...' : 'Search factors...'}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-crypto-border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-crypto-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
@@ -587,18 +586,18 @@ export const FactorLibrary: React.FC = () => {
               {searchQuery ? (
                 // Search Results
                 <div className="bg-crypto-card rounded-lg border border-crypto-border overflow-hidden">
-                  <div className="px-4 py-2 bg-slate-900/50 text-sm text-slate-400">
+                  <div className="px-4 py-2 bg-gray-900/50 text-sm text-gray-400">
                     {language === 'zh' ? `找到 ${filteredFactors.length} 个因子` : `Found ${filteredFactors.length} factors`}
                   </div>
-                  <div className="divide-y divide-slate-700">
+                  <div className="divide-y divide-gray-700">
                     {filteredFactors.map(factor => (
-                      <div key={factor.factor_code} className="p-4 hover:bg-slate-900/30">
+                      <div key={factor.factor_code} className="p-4 hover:bg-gray-900/30">
                         <div className="flex items-center gap-3 mb-2">
                           <span className="font-medium text-white">{factor.factor_name}</span>
-                          <span className="text-xs px-2 py-0.5 bg-slate-700 rounded text-slate-300">{factor.factor_code}</span>
-                          <span className="text-xs text-slate-500">{factor.category}</span>
+                          <span className="text-xs px-2 py-0.5 bg-gray-700 rounded text-gray-300">{factor.factor_code}</span>
+                          <span className="text-xs text-gray-500">{factor.category}</span>
                         </div>
-                        <p className="text-sm text-slate-400 line-clamp-2">{factor.description}</p>
+                        <p className="text-sm text-gray-400 line-clamp-2">{factor.description}</p>
                       </div>
                     ))}
                   </div>
@@ -610,24 +609,24 @@ export const FactorLibrary: React.FC = () => {
                     <div key={category} className="bg-crypto-card rounded-lg border border-crypto-border overflow-hidden">
                       <button
                         onClick={() => toggleCategory(category)}
-                        className="w-full px-4 py-3 flex items-center justify-between bg-slate-900/50 hover:bg-slate-900/70"
+                        className="w-full px-4 py-3 flex items-center justify-between bg-gray-900/50 hover:bg-gray-900/70"
                       >
                         <div className="flex items-center gap-3">
                           {categoryIcons[category]}
                           <span className="font-medium text-white">{category}</span>
-                          <span className="text-xs text-slate-500">({factorList.length})</span>
+                          <span className="text-xs text-gray-500">({factorList.length})</span>
                         </div>
                         {expandedCategories.has(category) ? (
-                          <ChevronDown size={16} className="text-slate-400" />
+                          <ChevronDown size={16} className="text-gray-400" />
                         ) : (
-                          <ChevronRight size={16} className="text-slate-400" />
+                          <ChevronRight size={16} className="text-gray-400" />
                         )}
                       </button>
                       
                       {expandedCategories.has(category) && (
-                        <div className="divide-y divide-slate-700/50">
+                        <div className="divide-y divide-gray-700/50">
                           {factorList.map(factor => (
-                            <div key={factor.factor_code} className="p-4 hover:bg-slate-900/30">
+                            <div key={factor.factor_code} className="p-4 hover:bg-gray-900/30">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-3">
                                   <span className="font-medium text-white">{factor.factor_name}</span>
@@ -635,27 +634,27 @@ export const FactorLibrary: React.FC = () => {
                                     {factor.factor_code}
                                   </span>
                                   {factor.unit && (
-                                    <span className="text-xs text-slate-500">单位: {factor.unit}</span>
+                                    <span className="text-xs text-gray-500">单位: {factor.unit}</span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
                                   <Clock size={12} />
                                   {factor.update_frequency === 'daily' ? '每日更新' : 
                                    factor.update_frequency === 'realtime' ? '实时更新' : factor.update_frequency}
                                 </div>
                               </div>
                               
-                              <p className="text-sm text-slate-400 mb-3">{factor.description}</p>
+                              <p className="text-sm text-gray-400 mb-3">{factor.description}</p>
                               
                               {factor.formula && (
-                                <div className="text-xs bg-slate-900/50 p-2 rounded border border-crypto-border text-slate-300">
-                                  <span className="text-slate-500">公式: </span>
+                                <div className="text-xs bg-gray-900/50 p-2 rounded border border-crypto-border text-gray-300">
+                                  <span className="text-gray-500">公式: </span>
                                   {factor.formula}
                                 </div>
                               )}
                               
                               {factor.data_source && (
-                                <div className="text-xs text-slate-500 mt-2">
+                                <div className="text-xs text-gray-500 mt-2">
                                   数据源: {factor.data_source}
                                 </div>
                               )}
@@ -675,7 +674,7 @@ export const FactorLibrary: React.FC = () => {
             <div className="flex gap-6 h-full">
               {/* Factor Selector */}
               <div className="w-64 flex-shrink-0 bg-crypto-card rounded-lg border border-crypto-border overflow-hidden">
-                <div className="px-4 py-3 bg-slate-900/50 border-b border-crypto-border">
+                <div className="px-4 py-3 bg-gray-900/50 border-b border-crypto-border">
                   <span className="font-medium text-white">
                     {language === 'zh' ? '选择因子' : 'Select Factor'}
                   </span>
@@ -683,17 +682,17 @@ export const FactorLibrary: React.FC = () => {
                 <div className="overflow-auto max-h-[600px]">
                   {Object.entries(groupedFactors).map(([category, factorList]) => (
                     <div key={category}>
-                      <div className="px-3 py-2 text-xs text-slate-500 bg-slate-900/30 sticky top-0">
+                      <div className="px-3 py-2 text-xs text-gray-500 bg-gray-900/30 sticky top-0">
                         {category}
                       </div>
                       {factorList.map(factor => (
                         <button
                           key={factor.factor_code}
                           onClick={() => selectFactorForRanking(factor)}
-                          className={`w-full px-3 py-2 text-left text-sm hover:bg-slate-700/50 ${
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-700/50 ${
                             selectedFactor?.factor_code === factor.factor_code
                               ? 'bg-blue-900/30 text-blue-300 border-l-2 border-blue-400'
-                              : 'text-slate-300'
+                              : 'text-gray-300'
                           }`}
                         >
                           {factor.factor_name}
@@ -708,18 +707,18 @@ export const FactorLibrary: React.FC = () => {
               <div className="flex-1 bg-crypto-card rounded-lg border border-crypto-border overflow-hidden">
                 {selectedFactor ? (
                   <>
-                    <div className="px-4 py-3 bg-slate-900/50 border-b border-crypto-border flex items-center justify-between">
+                    <div className="px-4 py-3 bg-gray-900/50 border-b border-crypto-border flex items-center justify-between">
                       <div>
                         <span className="font-medium text-white">{selectedFactor.factor_name}</span>
-                        <span className="text-xs text-slate-500 ml-2">({selectedFactor.factor_code})</span>
+                        <span className="text-xs text-gray-500 ml-2">({selectedFactor.factor_code})</span>
                         {selectedFactor.unit && (
-                          <span className="text-xs text-slate-400 ml-2">单位: {selectedFactor.unit}</span>
+                          <span className="text-xs text-gray-400 ml-2">单位: {selectedFactor.unit}</span>
                         )}
                       </div>
                       <button
                         onClick={() => loadFactorRanking(selectedFactor.factor_code)}
                         disabled={rankingLoading}
-                        className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded flex items-center gap-1"
+                        className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
                       >
                         <RefreshCw size={12} className={rankingLoading ? 'animate-spin' : ''} />
                         {language === 'zh' ? '刷新' : 'Refresh'}
@@ -733,20 +732,20 @@ export const FactorLibrary: React.FC = () => {
                     ) : factorRanking.length > 0 ? (
                       <div className="overflow-auto max-h-[600px]">
                         <table className="w-full">
-                          <thead className="bg-slate-900/50 sticky top-0">
-                            <tr className="text-xs text-slate-400">
+                          <thead className="bg-gray-900/50 sticky top-0">
+                            <tr className="text-xs text-gray-400">
                               <th className="px-4 py-2 text-left">排名</th>
                               <th className="px-4 py-2 text-left">股票代码</th>
                               <th className="px-4 py-2 text-right">因子值</th>
                               <th className="px-4 py-2 text-left">日期</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-700/50">
+                          <tbody className="divide-y divide-gray-700/50">
                             {factorRanking.map((item, index) => (
-                              <tr key={`${item.symbol}-${index}`} className="hover:bg-slate-700/30">
+                              <tr key={`${item.symbol}-${index}`} className="hover:bg-gray-700/30">
                                 <td className="px-4 py-2">
                                   <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
-                                    index < 3 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-slate-700 text-slate-400'
+                                    index < 3 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-700 text-gray-400'
                                   }`}>
                                     {item.rank || index + 1}
                                   </span>
@@ -760,21 +759,21 @@ export const FactorLibrary: React.FC = () => {
                                     {item.value != null ? item.value.toFixed(2) : '-'}
                                   </span>
                                 </td>
-                                <td className="px-4 py-2 text-slate-500 text-sm">{item.date}</td>
+                                <td className="px-4 py-2 text-gray-500 text-sm">{item.date}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
                     ) : (
-                      <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-500">
                         <AlertCircle size={48} className="mb-3 opacity-50" />
                         <p>{language === 'zh' ? '暂无数据，请先同步因子数据' : 'No data, please sync first'}</p>
                       </div>
                     )}
                   </>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                  <div className="flex flex-col items-center justify-center h-full text-gray-500">
                     <ArrowUpDown size={48} className="mb-3 opacity-50" />
                     <p>{language === 'zh' ? '请从左侧选择一个因子查看排名' : 'Select a factor from left'}</p>
                   </div>
@@ -792,12 +791,12 @@ export const FactorLibrary: React.FC = () => {
                   {language === 'zh' ? '同步操作' : 'Sync Actions'}
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-slate-900/50 rounded-lg p-4 border border-crypto-border">
+                  <div className="bg-gray-900/50 rounded-lg p-4 border border-crypto-border">
                     <h4 className="font-medium text-white mb-2 flex items-center gap-2">
                       <Database size={16} className="text-blue-400" />
                       {language === 'zh' ? '初始化定义' : 'Init Definitions'}
                     </h4>
-                    <p className="text-xs text-slate-400 mb-3">
+                    <p className="text-xs text-gray-400 mb-3">
                       {language === 'zh' 
                         ? '初始化因子定义表，首次使用或需要更新定义时执行'
                         : 'Initialize factor definitions table'}
@@ -805,18 +804,18 @@ export const FactorLibrary: React.FC = () => {
                     <button
                       onClick={initFactorDefinitions}
                       disabled={syncStatus.init}
-                      className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 rounded text-sm flex items-center justify-center gap-2"
+                      className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded text-sm flex items-center justify-center gap-2"
                     >
                       {syncStatus.init ? <><Loader2 size={14} className="animate-spin" /> 执行中...</> : (language === 'zh' ? '执行' : 'Execute')}
                     </button>
                   </div>
                   
-                  <div className="bg-slate-900/50 rounded-lg p-4 border border-crypto-border">
+                  <div className="bg-gray-900/50 rounded-lg p-4 border border-crypto-border">
                     <h4 className="font-medium text-white mb-2 flex items-center gap-2">
                       <Activity size={16} className="text-green-400" />
                       {language === 'zh' ? '实时因子' : 'Spot Factors'}
                     </h4>
-                    <p className="text-xs text-slate-400 mb-3">
+                    <p className="text-xs text-gray-400 mb-3">
                       {language === 'zh' 
                         ? '同步PE/PB/市值/换手率等实时行情因子'
                         : 'Sync PE/PB/MV/Turnover rate factors'}
@@ -824,18 +823,18 @@ export const FactorLibrary: React.FC = () => {
                     <button
                       onClick={syncSpotFactors}
                       disabled={syncStatus.spot}
-                      className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 rounded text-sm flex items-center justify-center gap-2"
+                      className="w-full px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded text-sm flex items-center justify-center gap-2"
                     >
                       {syncStatus.spot ? <><Loader2 size={14} className="animate-spin" /> 同步中...</> : (language === 'zh' ? '同步' : 'Sync')}
                     </button>
                   </div>
                   
-                  <div className="bg-slate-900/50 rounded-lg p-4 border border-crypto-border">
+                  <div className="bg-gray-900/50 rounded-lg p-4 border border-crypto-border">
                     <h4 className="font-medium text-white mb-2 flex items-center gap-2">
                       <BarChart3 size={16} className="text-purple-400" />
                       {language === 'zh' ? '技术因子' : 'Technical Factors'}
                     </h4>
-                    <p className="text-xs text-slate-400 mb-3">
+                    <p className="text-xs text-gray-400 mb-3">
                       {language === 'zh' 
                         ? '同步均线/波动率等技术分析因子（耗时较长）'
                         : 'Sync MA/Volatility factors (takes longer)'}
@@ -843,18 +842,18 @@ export const FactorLibrary: React.FC = () => {
                     <button
                       onClick={syncTechnicalFactors}
                       disabled={syncStatus.technical}
-                      className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 rounded text-sm flex items-center justify-center gap-2"
+                      className="w-full px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded text-sm flex items-center justify-center gap-2"
                     >
                       {syncStatus.technical ? <><Loader2 size={14} className="animate-spin" /> 同步中...</> : (language === 'zh' ? '同步' : 'Sync')}
                     </button>
                   </div>
                   
-                  <div className="bg-slate-900/50 rounded-lg p-4 border border-crypto-border">
+                  <div className="bg-gray-900/50 rounded-lg p-4 border border-crypto-border">
                     <h4 className="font-medium text-white mb-2 flex items-center gap-2">
                       <RefreshCw size={16} className="text-orange-400" />
                       {language === 'zh' ? '全部同步' : 'Sync All'}
                     </h4>
-                    <p className="text-xs text-slate-400 mb-3">
+                    <p className="text-xs text-gray-400 mb-3">
                       {language === 'zh' 
                         ? '一键同步所有因子数据（耗时较长）'
                         : 'Sync all factors at once'}
@@ -862,7 +861,7 @@ export const FactorLibrary: React.FC = () => {
                     <button
                       onClick={syncAllFactors}
                       disabled={syncStatus.all}
-                      className="w-full px-3 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-600 rounded text-sm flex items-center justify-center gap-2"
+                      className="w-full px-3 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 rounded text-sm flex items-center justify-center gap-2"
                     >
                       {syncStatus.all ? <><Loader2 size={14} className="animate-spin" /> 同步中...</> : (language === 'zh' ? '同步' : 'Sync')}
                     </button>
@@ -872,7 +871,7 @@ export const FactorLibrary: React.FC = () => {
                 {/* 同步结果展示 */}
                 {syncResults.length > 0 && (
                   <div className="mt-4 space-y-2">
-                    <div className="text-xs text-slate-500 mb-2">
+                    <div className="text-xs text-gray-500 mb-2">
                       {language === 'zh' ? '操作日志' : 'Operation Logs'}
                     </div>
                     {syncResults.map((result, idx) => (
@@ -900,13 +899,13 @@ export const FactorLibrary: React.FC = () => {
 
               {/* Sync Logs */}
               <div className="bg-crypto-card rounded-lg border border-crypto-border overflow-hidden">
-                <div className="px-4 py-3 bg-slate-900/50 border-b border-crypto-border flex items-center justify-between">
+                <div className="px-4 py-3 bg-gray-900/50 border-b border-crypto-border flex items-center justify-between">
                   <span className="font-medium text-white">
                     {language === 'zh' ? '同步日志' : 'Sync Logs'}
                   </span>
                   <button
                     onClick={loadSyncLogs}
-                    className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded flex items-center gap-1"
+                    className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
                   >
                     <RefreshCw size={12} />
                     {language === 'zh' ? '刷新' : 'Refresh'}
@@ -916,8 +915,8 @@ export const FactorLibrary: React.FC = () => {
                 {syncLogs.length > 0 ? (
                   <div className="overflow-auto max-h-[400px]">
                     <table className="w-full">
-                      <thead className="bg-slate-900/50 sticky top-0">
-                        <tr className="text-xs text-slate-400">
+                      <thead className="bg-gray-900/50 sticky top-0">
+                        <tr className="text-xs text-gray-400">
                           <th className="px-4 py-2 text-left">因子代码</th>
                           <th className="px-4 py-2 text-left">同步日期</th>
                           <th className="px-4 py-2 text-center">状态</th>
@@ -926,11 +925,11 @@ export const FactorLibrary: React.FC = () => {
                           <th className="px-4 py-2 text-left">执行时间</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-700/50">
+                      <tbody className="divide-y divide-gray-700/50">
                         {syncLogs.map((log) => (
-                          <tr key={log.id} className="hover:bg-slate-700/30">
+                          <tr key={log.id} className="hover:bg-gray-700/30">
                             <td className="px-4 py-2 font-mono text-sm text-white">{log.factor_code}</td>
-                            <td className="px-4 py-2 text-slate-400">{log.sync_date}</td>
+                            <td className="px-4 py-2 text-gray-400">{log.sync_date}</td>
                             <td className="px-4 py-2 text-center">
                               {log.status === 'success' ? (
                                 <span className="inline-flex items-center gap-1 text-xs text-green-400">
@@ -944,18 +943,18 @@ export const FactorLibrary: React.FC = () => {
                                 </span>
                               )}
                             </td>
-                            <td className="px-4 py-2 text-right text-slate-300">{log.records_count}</td>
-                            <td className="px-4 py-2 text-right text-slate-500">
+                            <td className="px-4 py-2 text-right text-gray-300">{log.records_count}</td>
+                            <td className="px-4 py-2 text-right text-gray-500">
                               {log.sync_duration_ms ? `${log.sync_duration_ms}ms` : '-'}
                             </td>
-                            <td className="px-4 py-2 text-slate-500 text-sm">{log.created_at}</td>
+                            <td className="px-4 py-2 text-gray-500 text-sm">{log.created_at}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
                     <Clock size={48} className="mb-3 opacity-50" />
                     <p>{language === 'zh' ? '暂无同步日志' : 'No sync logs'}</p>
                   </div>
