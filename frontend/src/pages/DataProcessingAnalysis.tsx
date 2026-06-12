@@ -42,8 +42,7 @@ export const DataProcessingAnalysis: React.FC = () => {
   };
 
   return (
-    <MainLayout title={title}>
-      <div className="flex flex-col gap-4 h-full">
+    <div className="flex flex-col gap-4 h-full">
         <div className="flex items-center justify-between gap-3 rounded border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-300">
           <div>
             <div className="font-semibold mb-1">Data Hub V1</div>
@@ -60,7 +59,7 @@ export const DataProcessingAnalysis: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex flex-wrap border-b border-slate-800 bg-[#0d121f]">
+        <div className="flex flex-wrap border-b border-crypto-border bg-crypto-bg">
           <button
             className={`px-5 py-3 text-sm font-bold flex items-center gap-2 ${
               activeTab === 'assets' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300'
@@ -120,7 +119,7 @@ export const DataProcessingAnalysis: React.FC = () => {
                 旧版 API/页面处于兼容周期，建议逐步迁移至 Data Hub 统一接口。
               </div>
 
-              <div className="flex flex-wrap border-b border-slate-800 bg-[#0d121f]">
+              <div className="flex flex-wrap border-b border-crypto-border bg-crypto-bg">
                 <button
                   className={`px-4 py-2 text-xs font-bold tracking-wide ${
                     legacyTab === 'batchimport'
@@ -188,7 +187,6 @@ export const DataProcessingAnalysis: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
-    </MainLayout>
+        </div>
   );
 };

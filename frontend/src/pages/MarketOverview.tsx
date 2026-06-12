@@ -429,7 +429,7 @@ export const MarketOverviewContent: React.FC = () => {
             onClick={() => setActiveTab('hot_concepts')}
             className={clsx(
               "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all",
-              activeTab === 'hot_concepts' ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" : "bg-[#111827] text-slate-400 hover:bg-slate-800 border border-slate-800"
+              activeTab === 'hot_concepts' ? "bg-blue-600 text-white  shadow-blue-900/20" : "bg-crypto-card text-slate-400 hover:bg-slate-800 border border-crypto-border"
             )}
           >
             <TrendingUp size={16} />
@@ -439,7 +439,7 @@ export const MarketOverviewContent: React.FC = () => {
             onClick={() => setActiveTab('ths_hot')}
             className={clsx(
               "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all",
-              activeTab === 'ths_hot' ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" : "bg-[#111827] text-slate-400 hover:bg-slate-800 border border-slate-800"
+              activeTab === 'ths_hot' ? "bg-blue-600 text-white  shadow-blue-900/20" : "bg-crypto-card text-slate-400 hover:bg-slate-800 border border-crypto-border"
             )}
           >
             <Flame size={16} />
@@ -449,7 +449,7 @@ export const MarketOverviewContent: React.FC = () => {
             onClick={() => setActiveTab('lianban')}
             className={clsx(
               "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all",
-              activeTab === 'lianban' ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" : "bg-[#111827] text-slate-400 hover:bg-slate-800 border border-slate-800"
+              activeTab === 'lianban' ? "bg-blue-600 text-white  shadow-blue-900/20" : "bg-crypto-card text-slate-400 hover:bg-slate-800 border border-crypto-border"
             )}
           >
             <Layers size={16} />
@@ -502,13 +502,13 @@ export const MarketOverviewContent: React.FC = () => {
           )}
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-[#0d121f] px-3 py-2">
+        <div className="rounded-lg border border-crypto-border bg-crypto-bg px-3 py-2">
           <div className="flex items-center justify-between mb-2">
             <div className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Data Hub Freshness</div>
             <button
               onClick={() => { void loadMarketFreshness(); }}
               disabled={freshnessLoading}
-              className="text-[11px] px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700"
+              className="text-[11px] px-2 py-1 rounded bg-slate-800 border border-crypto-border text-slate-300 hover:bg-slate-700"
             >
               {freshnessLoading ? t('common.loading') : t('common.refresh')}
             </button>
@@ -518,7 +518,7 @@ export const MarketOverviewContent: React.FC = () => {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {marketFreshness.map((item) => (
-                <div key={item.id} className="rounded border border-slate-800 bg-slate-900/60 px-2 py-2">
+                <div key={item.id} className="rounded border border-crypto-border bg-slate-900/60 px-2 py-2">
                   <div className="text-[11px] text-slate-400 truncate" title={item.name}>{item.name}</div>
                   <div className="mt-1 flex items-center justify-between gap-2">
                     <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase ${freshnessBadgeClass(item.freshness_status)}`}>
@@ -534,7 +534,7 @@ export const MarketOverviewContent: React.FC = () => {
           )}
         </div>
 
-        <div className="flex-1 overflow-hidden flex flex-col bg-[#111827] rounded-xl border border-slate-800 shadow-2xl min-h-[600px]">
+        <div className="flex-1 overflow-hidden flex flex-col bg-crypto-card rounded-xl border border-crypto-border min-h-[600px]">
           {error && (
             <div className="p-4 text-xs text-red-400 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
@@ -545,7 +545,7 @@ export const MarketOverviewContent: React.FC = () => {
           {activeTab === 'hot_concepts' && (
             <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3 divide-x divide-slate-800">
               <div className="lg:col-span-1 overflow-hidden flex flex-col">
-                <div className="px-6 py-4 bg-[#0d121f] text-[10px] font-bold uppercase text-slate-500 tracking-wider border-b border-slate-800 flex items-center justify-between">
+                <div className="px-6 py-4 bg-crypto-bg text-[10px] font-bold uppercase text-slate-500 tracking-wider border-b border-crypto-border flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span>{t('market.hot_concepts')}</span>
                     <span className="text-slate-600">
@@ -556,14 +556,14 @@ export const MarketOverviewContent: React.FC = () => {
                   <div className="relative">
                     <button
                       onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                      className="flex items-center gap-1 px-2 py-1 text-[10px] bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 transition-colors"
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] bg-slate-800 hover:bg-slate-700 rounded border border-crypto-border transition-colors"
                     >
                       <Filter size={10} />
                       <span>{conceptFilter === 'all' ? (language === 'zh' ? '全部' : 'All') : `>=${conceptFilter}%`}</span>
                       <ChevronDown size={10} />
                     </button>
                     {showFilterDropdown && (
-                      <div className="absolute right-0 mt-1 w-32 bg-[#111827] border border-slate-700 rounded-lg shadow-xl z-20 overflow-hidden">
+                      <div className="absolute right-0 mt-1 w-32 bg-crypto-card border border-crypto-border rounded-lg  z-20 overflow-hidden">
                         {(['all', '1', '2', '3', '5', '8'] as ConceptFilterOption[]).map((opt) => (
                           <button
                             key={opt}
@@ -585,7 +585,7 @@ export const MarketOverviewContent: React.FC = () => {
                 </div>
                 <div className="flex-1 overflow-auto custom-scrollbar">
                   <table className="w-full text-left text-sm text-slate-300">
-                    <thead className="bg-[#0d121f]/50 text-[10px] uppercase text-slate-600 font-bold sticky top-0 backdrop-blur-sm">
+                    <thead className="bg-crypto-bg/50 text-[10px] uppercase text-slate-600 font-bold sticky top-0 backdrop-blur-sm">
                       <tr>
                         <th className="px-4 py-3 min-w-[60px]">{t('market.rank')}</th>
                         <th className="px-4 py-3 min-w-[120px]">{t('market.concept')}</th>
@@ -627,15 +627,15 @@ export const MarketOverviewContent: React.FC = () => {
                 </div>
               </div>
 
-              <div className="lg:col-span-2 overflow-hidden flex flex-col min-h-0 bg-[#0d121f]/30">
-                <div className="px-6 py-4 border-b border-slate-800 bg-[#0d121f] flex flex-wrap items-center justify-between gap-4">
+              <div className="lg:col-span-2 overflow-hidden flex flex-col min-h-0 bg-crypto-bg/30">
+                <div className="px-6 py-4 border-b border-crypto-border bg-crypto-bg flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 shadow-lg shadow-blue-500/50"></div>
+                    <div className="w-2 h-2 rounded-full bg-blue-500  shadow-blue-500/50"></div>
                     <div className="text-sm font-black text-slate-100 uppercase tracking-tight">
                       {selectedConcept ? selectedConcept : t('market.select_concept')}
                     </div>
                   </div>
-                  <div className="flex items-center bg-[#111827] p-1 rounded-lg border border-slate-800">
+                  <div className="flex items-center bg-crypto-card p-1 rounded-lg border border-crypto-border">
                     {conceptTabOrder.map((k) => (
                       <button
                         key={k}
@@ -687,7 +687,7 @@ export const MarketOverviewContent: React.FC = () => {
 
                 <div className="flex-1 overflow-hidden relative">
                   {isLoadingConcept && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-[#0d121f]/60 backdrop-blur-sm z-20 transition-all">
+                    <div className="absolute inset-0 flex items-center justify-center bg-crypto-bg/60 backdrop-blur-sm z-20 transition-all">
                       <div className="flex flex-col items-center gap-3">
                         <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
                         <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 animate-pulse">{t('market.loading_data')}</span>
@@ -697,7 +697,7 @@ export const MarketOverviewContent: React.FC = () => {
 
                   {conceptTab === 'intraday' && (
                     <div className="h-full p-6">
-                      <div className="bg-[#111827] border border-slate-800 rounded-xl h-full overflow-hidden shadow-inner">
+                      <div className="bg-crypto-card border border-crypto-border rounded-xl h-full overflow-hidden shadow-inner">
                         {conceptIntradayOption ? (
                           <ReactECharts option={conceptIntradayOption} style={{ height: '100%', width: '100%' }} theme="dark" />
                         ) : (
@@ -709,8 +709,8 @@ export const MarketOverviewContent: React.FC = () => {
 
                   {conceptTab === 'leaders' && (
                     <div className="h-full flex flex-col p-6 overflow-auto custom-scrollbar gap-6">
-                      <div className="bg-[#111827] border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-                        <div className="px-6 py-3 text-[10px] font-black uppercase text-slate-500 tracking-widest border-b border-slate-800 bg-[#0d121f]/50">
+                      <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden ">
+                        <div className="px-6 py-3 text-[10px] font-black uppercase text-slate-500 tracking-widest border-b border-crypto-border bg-crypto-bg/50">
                           {t('market.constituents')}
                         </div>
                         <div className="overflow-x-auto">
@@ -720,7 +720,7 @@ export const MarketOverviewContent: React.FC = () => {
                             </div>
                           ) : (
                           <table className="w-full text-left text-xs text-slate-300">
-                            <thead className="bg-[#0d121f] text-[9px] uppercase text-slate-600 font-bold border-b border-slate-800">
+                            <thead className="bg-crypto-bg text-[9px] uppercase text-slate-600 font-bold border-b border-crypto-border">
                               <tr>
                                 <th className="px-4 py-3 min-w-[70px]">{t('market.code')}</th>
                                 <th className="px-4 py-3 min-w-[100px]">{t('market.security')}</th>
@@ -778,13 +778,13 @@ export const MarketOverviewContent: React.FC = () => {
                                     </tr>
                                     
                                     {isExpanded && (
-                                      <tr className="bg-[#0d121f]">
-                                        <td colSpan={6} className="px-4 py-4 border-t border-slate-800 shadow-inner">
+                                      <tr className="bg-crypto-bg">
+                                        <td colSpan={6} className="px-4 py-4 border-t border-crypto-border shadow-inner">
                                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[280px]">
-                                            <div className="bg-[#111827] rounded-lg border border-slate-800 p-3 shadow-lg">
+                                            <div className="bg-crypto-card rounded-lg border border-crypto-border p-3 ">
                                               <ChartPanel mode="intraday" />
                                             </div>
-                                            <div className="bg-[#111827] rounded-lg border border-slate-800 p-3 shadow-lg">
+                                            <div className="bg-crypto-card rounded-lg border border-crypto-border p-3 ">
                                               <ChartPanel mode="daily" />
                                             </div>
                                           </div>
@@ -809,12 +809,12 @@ export const MarketOverviewContent: React.FC = () => {
           {activeTab === 'ths_hot' && (
             <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3 divide-x divide-slate-800">
               <div className="lg:col-span-1 overflow-hidden flex flex-col">
-                <div className="px-6 py-4 bg-[#0d121f] text-[10px] font-bold uppercase text-slate-500 tracking-wider border-b border-slate-800">
+                <div className="px-6 py-4 bg-crypto-bg text-[10px] font-bold uppercase text-slate-500 tracking-wider border-b border-crypto-border">
                   {t('market.ths_hot')}
                 </div>
                 <div className="flex-1 overflow-auto custom-scrollbar">
                   <table className="w-full text-left text-sm text-slate-300">
-                    <thead className="bg-[#0d121f]/50 text-[10px] uppercase text-slate-600 sticky top-0 backdrop-blur-sm">
+                    <thead className="bg-crypto-bg/50 text-[10px] uppercase text-slate-600 sticky top-0 backdrop-blur-sm">
                       <tr>
                         <th className="px-4 py-3 min-w-[60px]">{t('market.rank')}</th>
                         <th className="px-4 py-3 min-w-[120px]">{t('market.security')}</th>
@@ -861,10 +861,10 @@ export const MarketOverviewContent: React.FC = () => {
                 </div>
               </div>
 
-              <div className="lg:col-span-2 overflow-hidden flex flex-col bg-[#0d121f]/30">
-                <div className="px-6 py-4 border-b border-slate-800 bg-[#0d121f] flex flex-col gap-1">
+              <div className="lg:col-span-2 overflow-hidden flex flex-col bg-crypto-bg/30">
+                <div className="px-6 py-4 border-b border-crypto-border bg-crypto-bg flex flex-col gap-1">
                   <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-orange-500 shadow-lg shadow-orange-500/50"></div>
+                    <div className="w-2 h-2 rounded-full bg-orange-500  shadow-orange-500/50"></div>
                     <div className="text-sm font-black text-slate-100 uppercase tracking-tight">
                       {selectedStock ? `${selectedStock.name} (${selectedStock.code})` : t('chart.select_stock_hint')}
                     </div>
@@ -876,7 +876,7 @@ export const MarketOverviewContent: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex-1 p-6 overflow-hidden">
-                  <div className="bg-[#111827] border border-slate-800 rounded-xl h-full overflow-hidden shadow-2xl p-4">
+                  <div className="bg-crypto-card border border-crypto-border rounded-xl h-full overflow-hidden p-4">
                     <ChartPanel />
                   </div>
                 </div>
@@ -885,13 +885,13 @@ export const MarketOverviewContent: React.FC = () => {
           )}
 
           {activeTab === 'lianban' && (
-            <div className="flex-1 overflow-auto p-4 sm:p-6 custom-scrollbar bg-[#0d121f]/20">
+            <div className="flex-1 overflow-auto p-4 sm:p-6 custom-scrollbar bg-crypto-bg/20">
               {/* 晋级模式横向布局 */}
               <div className="flex gap-4 overflow-x-auto pb-4">
                 {ladder?.levels?.filter(lv => lv.today_items.length > 0).sort((a, b) => a.today_level - b.today_level).map((lv) => (
-                  <div key={`level-${lv.today_level}`} className="flex-shrink-0 w-72 bg-[#111827] rounded-xl border border-slate-800 shadow-lg overflow-hidden">
+                  <div key={`level-${lv.today_level}`} className="flex-shrink-0 w-72 bg-crypto-card rounded-xl border border-crypto-border  overflow-hidden">
                     {/* 板级头部 */}
-                    <div className="px-4 py-3 bg-gradient-to-r from-red-900/30 to-slate-900 border-b border-slate-700">
+                    <div className="px-4 py-3 bg-gradient-to-r from-red-900/30 to-slate-900 border-b border-crypto-border">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-500/20 border border-red-500/40">
@@ -919,7 +919,7 @@ export const MarketOverviewContent: React.FC = () => {
                         {lv.today_items.map((it, idx) => (
                           <div 
                             key={`t-${lv.today_level}-${it.code}`}
-                            className="flex items-center justify-between p-2.5 bg-[#0d121f]/50 rounded-lg border border-slate-800 hover:bg-slate-800/50 hover:border-red-500/30 transition-all cursor-pointer"
+                            className="flex items-center justify-between p-2.5 bg-crypto-bg/50 rounded-lg border border-crypto-border hover:bg-slate-800/50 hover:border-red-500/30 transition-all cursor-pointer"
                             onClick={() => {
                               selectStock({
                                 code: it.code,
@@ -974,8 +974,4 @@ export const MarketOverviewContent: React.FC = () => {
   );
 };
 
-export const MarketOverview: React.FC = () => (
-  <MainLayout title="市场概览与分析">
-    <MarketOverviewContent />
-  </MainLayout>
-);
+export const MarketOverview = MarketOverviewContent;

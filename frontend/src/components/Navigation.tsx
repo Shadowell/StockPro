@@ -109,15 +109,7 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
               : 'flex min-w-max items-center gap-2 rounded-lg border border-crypto-border bg-crypto-bg/70 px-3 py-2',
           )}
         >
-          <div
-            className={clsx(
-              'flex items-center gap-2 font-bold uppercase tracking-widest text-gray-500',
-              vertical ? 'px-3 text-[10px]' : 'mr-1 text-[10px]',
-            )}
-          >
-            <span>{isZh ? group.titleZh : group.titleEn}</span>
-            {vertical && <span className="h-px min-w-0 flex-1 bg-crypto-border/70" />}
-          </div>
+
           <div className={clsx(vertical ? 'space-y-1' : 'flex items-center gap-1')}>
             {group.items.map((item) => (
               <NavLink

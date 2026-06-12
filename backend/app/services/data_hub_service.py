@@ -136,19 +136,6 @@ class DataHubService:
         except Exception:
             return default
 
-    def _table_exists(self, conn, table_name: str) -> bool:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT COUNT(*)
-            FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_name = %s
-            """,
-            (table_name,),
-        )
-        row = cursor.fetchone()
-        return bool(row and row[0] > 0)
-
     def _freshness_level(self, latest_snapshot: Optional[str], frequency: str) -> str:
         if not latest_snapshot:
             return "red"
@@ -173,25 +160,6 @@ class DataHubService:
             return "red"
         except Exception:
             return "yellow"
-
-    def _dataset_row_count(self, conn, table: str) -> int:
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT COUNT(*) FROM {table}")
-        row = cursor.fetchone()
-        return int(row[0]) if row else 0
-
-    def _table_fields(self, conn, table_name: str) -> List[str]:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = %s
-            ORDER BY ordinal_position
-            """,
-            (table_name,),
-        )
-        return [str(row[0]) for row in cursor.fetchall()]
 
     def _parse_datetime_text(self, value: Optional[str]) -> Optional[datetime]:
         if not value:
@@ -232,31 +200,7 @@ class DataHubService:
         level: str = "info",
         payload: Optional[Dict[str, Any]] = None,
     ) -> None:
-        conn = db_instance.get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT logs_json FROM data_hub_jobs WHERE job_key = %s", (job_key,))
-            row = cursor.fetchone()
-            if not row:
-                return
-            logs = self._deserialize_logs(row[0], limit=None)
-            logs.append(
-                {
-                    "timestamp": datetime.now().isoformat(),
-                    "level": level,
-                    "message": message,
-                    "payload": payload or {},
-                }
-            )
-            if len(logs) > 300:
-                logs = logs[-300:]
-            cursor.execute(
-                "UPDATE data_hub_jobs SET logs_json = %s WHERE job_key = %s",
-                (self._serialize(logs), job_key),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        db_instance.append_job_log(job_key=job_key, message=message, level=level, payload=payload)
 
     def _get_dataset_job_query(self, dataset_id: str) -> Dict[str, Any]:
         if dataset_id == "stock_fundamentals":
@@ -297,43 +241,50 @@ class DataHubService:
             }
         return {"where": "WHERE scope = %s", "params": [dataset_id]}
 
+    _LATEST_COLUMNS = {
+        "stock_history": "date",
+        "stock_fundamentals": "updated_at",
+        "daily_concept_sectors": "date",
+        "lianban_ladder_history": "date",
+        "stock_ma_data": "date",
+        "factor_data": "date",
+        "market_indices_realtime": "updated_at",
+        "all_stocks_realtime": "updated_at",
+        "short_line_indices_realtime": "updated_at",
+    }
+
     def list_datasets(self) -> List[Dict[str, Any]]:
-        conn = db_instance.get_connection()
-        try:
-            result: List[Dict[str, Any]] = []
-            cursor = conn.cursor()
-            for ds in self.DATASET_REGISTRY:
-                table_name = ds["table"]
-                exists = self._table_exists(conn, table_name)
-                latest_snapshot: Optional[str] = None
-                row_count = 0
-                fields: List[str] = []
+        result: List[Dict[str, Any]] = []
+        for ds in self.DATASET_REGISTRY:
+            table_name = ds["table"]
+            exists = db_instance.table_exists(table_name)
+            latest_snapshot: Optional[str] = None
+            row_count = 0
+            fields: List[str] = []
 
-                if exists:
-                    row_count = self._dataset_row_count(conn, table_name)
-                    cursor.execute(ds["latest_sql"])
-                    latest_row = cursor.fetchone()
-                    latest_snapshot = str(latest_row[0]) if latest_row and latest_row[0] else None
-                    fields = self._table_fields(conn, table_name)
+            if exists:
+                row_count = db_instance.table_row_count(table_name)
+                column = self._LATEST_COLUMNS.get(ds["id"])
+                if column:
+                    latest_snapshot = db_instance.table_column_max(table_name, column)
+                fields = db_instance.table_fields(table_name)
 
-                result.append(
-                    {
-                        "id": ds["id"],
-                        "name": ds["name"],
-                        "table": table_name,
-                        "exists": exists,
-                        "row_count": row_count,
-                        "fields": fields,
-                        "primary_keys": ds["primary_keys"],
-                        "refresh_frequency": ds["refresh_frequency"],
-                        "dependencies": ds["dependencies"],
-                        "latest_snapshot": latest_snapshot,
-                        "freshness_status": self._freshness_level(latest_snapshot, ds["refresh_frequency"]),
-                    }
-                )
-            return result
-        finally:
-            conn.close()
+            result.append(
+                {
+                    "id": ds["id"],
+                    "name": ds["name"],
+                    "table": table_name,
+                    "exists": exists,
+                    "row_count": row_count,
+                    "fields": fields,
+                    "primary_keys": ds["primary_keys"],
+                    "refresh_frequency": ds["refresh_frequency"],
+                    "dependencies": ds["dependencies"],
+                    "latest_snapshot": latest_snapshot,
+                    "freshness_status": self._freshness_level(latest_snapshot, ds["refresh_frequency"]),
+                }
+            )
+        return result
 
     def get_dataset_freshness(self, dataset_id: str) -> Dict[str, Any]:
         datasets = self.list_datasets()
@@ -341,107 +292,61 @@ class DataHubService:
         if not selected:
             raise ValueError(f"Unknown dataset id: {dataset_id}")
 
-        conn = db_instance.get_connection()
-        try:
-            cursor = conn.cursor()
-            query_spec = self._get_dataset_job_query(dataset_id)
-            cursor.execute(
-                f"""
-                SELECT job_key, action, status, progress, message, error_message, created_at, finished_at, logs_json
-                FROM data_hub_jobs
-                {query_spec["where"]}
-                ORDER BY id DESC
-                LIMIT 10
-                """,
-                query_spec["params"],
-            )
-            rows = cursor.fetchall()
-            recent_jobs = [
-                {
-                    "job_key": r[0],
-                    "action": r[1],
-                    "status": r[2],
-                    "progress": float(r[3] or 0),
-                    "message": r[4],
-                    "error_message": r[5],
-                    "created_at": r[6],
-                    "finished_at": r[7],
-                    "logs": self._deserialize_logs(r[8], limit=6),
-                }
-                for r in rows
-            ]
-            return {"dataset": selected, "recent_jobs": recent_jobs}
-        finally:
-            conn.close()
+        rows = db_instance.list_data_hub_jobs_by_scope(dataset_id, limit=10)
+        recent_jobs = [
+            {
+                "job_key": r["job_key"],
+                "action": r["action"],
+                "status": r["status"],
+                "progress": float(r.get("progress", 0) or 0),
+                "message": r.get("message"),
+                "error_message": r.get("error_message"),
+                "created_at": r.get("created_at"),
+                "finished_at": r.get("finished_at"),
+                "logs": self._deserialize_logs(r.get("logs_json"), limit=6),
+            }
+            for r in rows
+        ]
+        return {"dataset": selected, "recent_jobs": recent_jobs}
 
     def _insert_job(self, action: str, scope: str, params: Dict[str, Any], parent_job_key: Optional[str]) -> str:
         job_key = f"dh_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
-        conn = db_instance.get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO data_hub_jobs
-                (job_key, action, scope, params_json, logs_json, status, progress, current, total, message, parent_job_key)
-                VALUES (%s, %s, %s, %s, %s, 'queued', 0, 0, 0, 'Queued', %s)
-                """,
-                (job_key, action, scope, self._serialize(params), self._serialize([]), parent_job_key),
-            )
-            conn.commit()
-            return job_key
-        finally:
-            conn.close()
+        db_instance.create_data_hub_job(
+            job_key=job_key,
+            action=action,
+            scope=scope,
+            params_json=self._serialize(params),
+            parent_job_key=parent_job_key,
+        )
+        return job_key
 
     def _update_job(self, job_key: str, **fields: Any) -> None:
         if not fields:
             return
-        conn = db_instance.get_connection()
-        try:
-            cursor = conn.cursor()
-            assignments = ", ".join([f"{k} = %s" for k in fields.keys()])
-            values = list(fields.values()) + [job_key]
-            cursor.execute(f"UPDATE data_hub_jobs SET {assignments} WHERE job_key = %s", values)
-            conn.commit()
-        finally:
-            conn.close()
+        db_instance.update_data_hub_job(job_key=job_key, **fields)
 
     def _fetch_job_raw(self, job_key: str) -> Optional[Dict[str, Any]]:
-        conn = db_instance.get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT
-                    job_key, action, scope, params_json, status, progress, current, total, message,
-                    error_message, result_json, logs_json, parent_job_key, created_at, started_at, finished_at
-                FROM data_hub_jobs
-                WHERE job_key = %s
-                """,
-                (job_key,),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return {
-                "job_key": row[0],
-                "action": row[1],
-                "scope": row[2],
-                "params_json": row[3],
-                "status": row[4],
-                "progress": float(row[5] or 0),
-                "current": int(row[6] or 0),
-                "total": int(row[7] or 0),
-                "message": row[8],
-                "error_message": row[9],
-                "result_json": row[10],
-                "logs_json": row[11],
-                "parent_job_key": row[12],
-                "created_at": row[13],
-                "started_at": row[14],
-                "finished_at": row[15],
-            }
-        finally:
-            conn.close()
+        row = db_instance.get_data_hub_job(job_key)
+        if not row:
+            return None
+        return {
+            "job_key": row["job_key"],
+            "action": row["action"],
+            "scope": row["scope"],
+            "params_json": row["params_json"],
+            "status": row["status"],
+            "progress": float(row["progress"] or 0),
+            "current": int(row["current"] or 0),
+            "total": int(row["total"] or 0),
+            "message": row["message"],
+            "error_message": row["error_message"],
+            "result_json": row["result_json"],
+            "logs_json": row["logs_json"],
+            "parent_job_key": row["parent_job_key"],
+            "created_at": row["created_at"],
+            "started_at": row["started_at"],
+            "finished_at": row["finished_at"],
+        }
 
     def get_job(self, job_key: str) -> Optional[Dict[str, Any]]:
         raw = self._fetch_job_raw(job_key)
@@ -474,58 +379,36 @@ class DataHubService:
         parent_job_key: Optional[str] = None,
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
-        conn = db_instance.get_connection()
-        try:
-            query = """
-                SELECT
-                    job_key, action, scope, params_json, status, progress, current, total, message,
-                    error_message, result_json, logs_json, parent_job_key, created_at, started_at, finished_at
-                FROM data_hub_jobs
-                WHERE 1=1
-            """
-            params: List[Any] = []
-            if action:
-                query += " AND action = %s"
-                params.append(action)
-            if status:
-                query += " AND status = %s"
-                params.append(status)
-            if scope:
-                query += " AND scope = %s"
-                params.append(scope)
-            if parent_job_key:
-                query += " AND parent_job_key = %s"
-                params.append(parent_job_key)
-            query += " ORDER BY id DESC LIMIT %s"
-            params.append(max(1, min(limit, 500)))
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-            jobs: List[Dict[str, Any]] = []
-            for row in rows:
-                jobs.append(
-                    {
-                        "job_key": row[0],
-                        "action": row[1],
-                        "scope": row[2],
-                        "params": self._deserialize(row[3], {}),
-                        "status": row[4],
-                        "progress": float(row[5] or 0),
-                        "current": int(row[6] or 0),
-                        "total": int(row[7] or 0),
-                        "message": row[8],
-                        "error_message": row[9],
-                        "result": self._deserialize(row[10], None),
-                        "logs": self._deserialize_logs(row[11], limit=8),
-                        "parent_job_key": row[12],
-                        "created_at": row[13],
-                        "started_at": row[14],
-                        "finished_at": row[15],
-                    }
-                )
-            return jobs
-        finally:
-            conn.close()
+        rows = db_instance.list_data_hub_jobs(
+            action=action,
+            status=status,
+            scope=scope,
+            parent_job_key=parent_job_key,
+            limit=limit,
+        )
+        jobs: List[Dict[str, Any]] = []
+        for row in rows:
+            jobs.append(
+                {
+                    "job_key": row["job_key"],
+                    "action": row["action"],
+                    "scope": row["scope"],
+                    "params": self._deserialize(row["params_json"], {}),
+                    "status": row["status"],
+                    "progress": float(row["progress"] or 0),
+                    "current": int(row["current"] or 0),
+                    "total": int(row["total"] or 0),
+                    "message": row["message"],
+                    "error_message": row["error_message"],
+                    "result": self._deserialize(row["result_json"], None),
+                    "logs": self._deserialize_logs(row.get("logs_json"), limit=8),
+                    "parent_job_key": row["parent_job_key"],
+                    "created_at": row["created_at"],
+                    "started_at": row["started_at"],
+                    "finished_at": row["finished_at"],
+                }
+            )
+        return jobs
 
     def create_job(self, action: str, params: Optional[Dict[str, Any]] = None, scope: Optional[str] = None, parent_job_key: Optional[str] = None) -> Dict[str, Any]:
         if action not in self.ALLOWED_JOB_ACTIONS:
@@ -850,306 +733,205 @@ class DataHubService:
             "created_at": datetime.now().isoformat(),
         }
 
-        conn = db_instance.get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO data_hub_quality_reports
-                (report_key, scope, status, summary_json, checks_json)
-                VALUES (%s, %s, %s, %s, %s)
-                """,
-                (
-                    payload["report_key"],
-                    self._serialize(payload["scope"]),
-                    payload["status"],
-                    self._serialize(payload["summary"]),
-                    self._serialize(payload["checks"]),
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        db_instance.save_data_hub_quality_report(
+            report_key=payload["report_key"],
+            scope=self._serialize(payload["scope"]),
+            status=payload["status"],
+            summary_json=self._serialize(payload["summary"]),
+            checks_json=self._serialize(payload["checks"]),
+        )
         return payload
 
     def get_latest_quality_report(self) -> Optional[Dict[str, Any]]:
-        conn = db_instance.get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT report_key, scope, status, summary_json, checks_json, created_at
-                FROM data_hub_quality_reports
-                ORDER BY id DESC
-                LIMIT 1
-                """
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return {
-                "report_key": row[0],
-                "scope": self._deserialize(row[1], []),
-                "status": row[2],
-                "summary": self._deserialize(row[3], {}),
-                "checks": self._deserialize(row[4], []),
-                "created_at": row[5],
-                "rule_templates": self.QUALITY_RULE_TEMPLATES,
-            }
-        finally:
-            conn.close()
+        row = db_instance.get_latest_quality_report()
+        if not row:
+            return None
+        return {
+            "report_key": row["report_key"],
+            "scope": self._deserialize(row["scope"], []),
+            "status": row["status"],
+            "summary": self._deserialize(row["summary_json"], {}),
+            "checks": self._deserialize(row["checks_json"], []),
+            "created_at": row["created_at"],
+            "rule_templates": self.QUALITY_RULE_TEMPLATES,
+        }
 
     def _check_stock_history_quality(self) -> Dict[str, Any]:
-        conn = db_instance.get_connection()
-        try:
-            if not self._table_exists(conn, "stock_history"):
-                return {
-                    "dataset_id": "stock_history",
-                    "status": "red",
-                    "title": "A股日线行情质量",
-                    "detail": "表不存在",
-                    "metrics": {},
-                }
-
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM stock_history")
-            total = int(cursor.fetchone()[0] or 0)
-            cursor.execute("SELECT COUNT(*) - COUNT(DISTINCT symbol || '|' || date) FROM stock_history")
-            duplicates = int(cursor.fetchone()[0] or 0)
-            cursor.execute(
-                """
-                SELECT SUM(
-                    CASE
-                        WHEN open IS NULL OR high IS NULL OR low IS NULL OR close IS NULL
-                        THEN 1 ELSE 0
-                    END
-                ) FROM stock_history
-                """
-            )
-            null_ohlc = int(cursor.fetchone()[0] or 0)
-            cursor.execute(
-                """
-                SELECT SUM(
-                    CASE
-                        WHEN high < low OR high < open OR high < close OR low > open OR low > close
-                        THEN 1 ELSE 0
-                    END
-                ) FROM stock_history
-                """
-            )
-            invalid_ohlc = int(cursor.fetchone()[0] or 0)
-            cursor.execute("SELECT SUM(CASE WHEN close IS NULL OR close <= 0 THEN 1 ELSE 0 END) FROM stock_history")
-            invalid_close = int(cursor.fetchone()[0] or 0)
-            cursor.execute("SELECT MAX(date) FROM stock_history")
-            latest_date = cursor.fetchone()[0]
-            cursor.execute(
-                """
-                SELECT date
-                FROM stock_history
-                GROUP BY date
-                ORDER BY date DESC
-                LIMIT 40
-                """
-            )
-            date_rows = [str(r[0]) for r in cursor.fetchall() if r and r[0]]
-
-            max_gap_days = 0
-            if len(date_rows) >= 2:
-                parsed = [self._parse_datetime_text(d) for d in date_rows]
-                parsed = [d for d in parsed if d is not None]
-                for idx in range(1, len(parsed)):
-                    gap = abs((parsed[idx - 1] - parsed[idx]).days)
-                    if gap > max_gap_days:
-                        max_gap_days = gap
-
-            null_ratio = (null_ohlc / total) if total > 0 else 1.0
-            invalid_ratio = ((invalid_ohlc + invalid_close) / total) if total > 0 else 1.0
-            freshness_hours = self._age_hours(str(latest_date) if latest_date else None)
-            freshness_days = round((freshness_hours or 0) / 24, 2) if freshness_hours is not None else None
-
-            status = "green"
-            if total == 0 or duplicates > 0:
-                status = "red"
-            elif freshness_hours is not None and freshness_hours > 24 * 7:
-                status = "red"
-            elif (
-                null_ratio > 0.05
-                or invalid_ratio > 0.02
-                or max_gap_days > 7
-                or (freshness_hours is not None and freshness_hours > 24 * 3)
-            ):
-                status = "yellow"
-
+        qc = db_instance.check_stock_history_quality()
+        if not qc["exists"]:
             return {
                 "dataset_id": "stock_history",
-                "status": status,
+                "status": "red",
                 "title": "A股日线行情质量",
-                "detail": (
-                    f"最新日期 {latest_date or '-'}，重复主键 {duplicates}，"
-                    f"空值率 {(null_ratio * 100):.2f}%，价格异常率 {(invalid_ratio * 100):.2f}%，"
-                    f"日期最大间隔 {max_gap_days} 天"
-                ),
-                "metrics": {
-                    "rows": total,
-                    "duplicates": duplicates,
-                    "null_ohlc": null_ohlc,
-                    "null_ratio_pct": round(null_ratio * 100, 2),
-                    "invalid_ohlc": invalid_ohlc,
-                    "invalid_close": invalid_close,
-                    "invalid_ratio_pct": round(invalid_ratio * 100, 2),
-                    "latest_date": latest_date,
-                    "freshness_days": freshness_days,
-                    "max_gap_days": max_gap_days,
-                },
+                "detail": "表不存在",
+                "metrics": {},
             }
-        finally:
-            conn.close()
+        m = qc["metrics"]
+        total = m["total"]
+        duplicates = m["duplicates"]
+        null_ohlc = m["null_ohlc"]
+        invalid_ohlc = m["invalid_ohlc"]
+        invalid_close = m["invalid_close"]
+        latest_date = m["latest_date"]
+        date_rows = m["date_rows"]
+
+        max_gap_days = 0
+        if len(date_rows) >= 2:
+            parsed = [self._parse_datetime_text(d) for d in date_rows]
+            parsed = [d for d in parsed if d is not None]
+            for idx in range(1, len(parsed)):
+                gap = abs((parsed[idx - 1] - parsed[idx]).days)
+                if gap > max_gap_days:
+                    max_gap_days = gap
+
+        null_ratio = (null_ohlc / total) if total > 0 else 1.0
+        invalid_ratio = ((invalid_ohlc + invalid_close) / total) if total > 0 else 1.0
+        freshness_hours = self._age_hours(str(latest_date) if latest_date else None)
+        freshness_days = round((freshness_hours or 0) / 24, 2) if freshness_hours is not None else None
+
+        status = "green"
+        if total == 0 or duplicates > 0:
+            status = "red"
+        elif freshness_hours is not None and freshness_hours > 24 * 7:
+            status = "red"
+        elif (
+            null_ratio > 0.05
+            or invalid_ratio > 0.02
+            or max_gap_days > 7
+            or (freshness_hours is not None and freshness_hours > 24 * 3)
+        ):
+            status = "yellow"
+
+        return {
+            "dataset_id": "stock_history",
+            "status": status,
+            "title": "A股日线行情质量",
+            "detail": (
+                f"最新日期 {latest_date or '-'}，重复主键 {duplicates}，"
+                f"空值率 {(null_ratio * 100):.2f}%，价格异常率 {(invalid_ratio * 100):.2f}%，"
+                f"日期最大间隔 {max_gap_days} 天"
+            ),
+            "metrics": {
+                "rows": total,
+                "duplicates": duplicates,
+                "null_ohlc": null_ohlc,
+                "null_ratio_pct": round(null_ratio * 100, 2),
+                "invalid_ohlc": invalid_ohlc,
+                "invalid_close": invalid_close,
+                "invalid_ratio_pct": round(invalid_ratio * 100, 2),
+                "latest_date": latest_date,
+                "freshness_days": freshness_days,
+                "max_gap_days": max_gap_days,
+            },
+        }
 
     def _check_fundamental_quality(self) -> Dict[str, Any]:
-        conn = db_instance.get_connection()
-        try:
-            if not self._table_exists(conn, "stock_fundamentals"):
-                return {
-                    "dataset_id": "stock_fundamentals",
-                    "status": "red",
-                    "title": "基本面快照质量",
-                    "detail": "表不存在",
-                    "metrics": {},
-                }
-
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM stock_fundamentals")
-            total = int(cursor.fetchone()[0] or 0)
-            cursor.execute("SELECT COUNT(*) - COUNT(DISTINCT symbol) FROM stock_fundamentals")
-            duplicates = int(cursor.fetchone()[0] or 0)
-            cursor.execute(
-                """
-                SELECT SUM(
-                    CASE
-                        WHEN current_price IS NULL OR pe_dynamic IS NULL OR pb IS NULL OR total_market_cap IS NULL
-                        THEN 1 ELSE 0
-                    END
-                ) FROM stock_fundamentals
-                """
-            )
-            null_core = int(cursor.fetchone()[0] or 0)
-            cursor.execute(
-                "SELECT SUM(CASE WHEN current_price IS NULL OR current_price <= 0 THEN 1 ELSE 0 END) FROM stock_fundamentals"
-            )
-            invalid_price = int(cursor.fetchone()[0] or 0)
-            cursor.execute("SELECT MAX(updated_at) FROM stock_fundamentals")
-            latest = cursor.fetchone()[0]
-            invalid_ratio = (invalid_price / total) if total > 0 else 1.0
-            null_ratio = (null_core / total) if total > 0 else 1.0
-            freshness_hours = self._age_hours(str(latest) if latest else None)
-            freshness_days = round((freshness_hours or 0) / 24, 2) if freshness_hours is not None else None
-
-            status = "green"
-            if total == 0 or duplicates > 0:
-                status = "red"
-            elif freshness_hours is not None and freshness_hours > 24 * 7:
-                status = "red"
-            elif invalid_ratio > 0.05 or null_ratio > 0.1 or (freshness_hours is not None and freshness_hours > 24 * 3):
-                status = "yellow"
-
+        qc = db_instance.check_fundamental_quality()
+        if not qc["exists"]:
             return {
                 "dataset_id": "stock_fundamentals",
-                "status": status,
+                "status": "red",
                 "title": "基本面快照质量",
-                "detail": (
-                    f"最新更新时间 {latest or '-'}，重复主键 {duplicates}，"
-                    f"空值率 {(null_ratio * 100):.2f}%，无效价格占比 {(invalid_ratio * 100):.2f}%"
-                ),
-                "metrics": {
-                    "rows": total,
-                    "duplicates": duplicates,
-                    "null_core": null_core,
-                    "null_ratio_pct": round(null_ratio * 100, 2),
-                    "invalid_price": invalid_price,
-                    "invalid_ratio_pct": round(invalid_ratio * 100, 2),
-                    "latest_updated_at": latest,
-                    "freshness_days": freshness_days,
-                },
+                "detail": "表不存在",
+                "metrics": {},
             }
-        finally:
-            conn.close()
+        m = qc["metrics"]
+        total = m["total"]
+        duplicates = m["duplicates"]
+        null_core = m["null_core"]
+        invalid_price = m["invalid_price"]
+        latest = m["latest"]
+
+        invalid_ratio = (invalid_price / total) if total > 0 else 1.0
+        null_ratio = (null_core / total) if total > 0 else 1.0
+        freshness_hours = self._age_hours(str(latest) if latest else None)
+        freshness_days = round((freshness_hours or 0) / 24, 2) if freshness_hours is not None else None
+
+        status = "green"
+        if total == 0 or duplicates > 0:
+            status = "red"
+        elif freshness_hours is not None and freshness_hours > 24 * 7:
+            status = "red"
+        elif invalid_ratio > 0.05 or null_ratio > 0.1 or (freshness_hours is not None and freshness_hours > 24 * 3):
+            status = "yellow"
+
+        return {
+            "dataset_id": "stock_fundamentals",
+            "status": status,
+            "title": "基本面快照质量",
+            "detail": (
+                f"最新更新时间 {latest or '-'}，重复主键 {duplicates}，"
+                f"空值率 {(null_ratio * 100):.2f}%，无效价格占比 {(invalid_ratio * 100):.2f}%"
+            ),
+            "metrics": {
+                "rows": total,
+                "duplicates": duplicates,
+                "null_core": null_core,
+                "null_ratio_pct": round(null_ratio * 100, 2),
+                "invalid_price": invalid_price,
+                "invalid_ratio_pct": round(invalid_ratio * 100, 2),
+                "latest_updated_at": latest,
+                "freshness_days": freshness_days,
+            },
+        }
 
     def _check_concept_quality(self) -> Dict[str, Any]:
-        conn = db_instance.get_connection()
-        try:
-            if not self._table_exists(conn, "daily_concept_sectors"):
-                return {
-                    "dataset_id": "daily_concept_sectors",
-                    "status": "red",
-                    "title": "板块日频数据质量",
-                    "detail": "表不存在（未回补）",
-                    "metrics": {},
-                }
-
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM daily_concept_sectors")
-            total = int(cursor.fetchone()[0] or 0)
-            cursor.execute("SELECT COUNT(*) - COUNT(DISTINCT date || '|' || sector_name) FROM daily_concept_sectors")
-            duplicates = int(cursor.fetchone()[0] or 0)
-            cursor.execute(
-                "SELECT SUM(CASE WHEN sector_name IS NULL OR TRIM(sector_name) = '' OR change_percent IS NULL THEN 1 ELSE 0 END) FROM daily_concept_sectors"
-            )
-            null_core = int(cursor.fetchone()[0] or 0)
-            cursor.execute("SELECT MAX(date) FROM daily_concept_sectors")
-            latest = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT date) FROM daily_concept_sectors")
-            days = int(cursor.fetchone()[0] or 0)
-            cursor.execute(
-                """
-                SELECT date
-                FROM daily_concept_sectors
-                GROUP BY date
-                ORDER BY date DESC
-                LIMIT 40
-                """
-            )
-            date_rows = [str(r[0]) for r in cursor.fetchall() if r and r[0]]
-            max_gap_days = 0
-            if len(date_rows) >= 2:
-                parsed = [self._parse_datetime_text(d) for d in date_rows]
-                parsed = [d for d in parsed if d is not None]
-                for idx in range(1, len(parsed)):
-                    gap = abs((parsed[idx - 1] - parsed[idx]).days)
-                    if gap > max_gap_days:
-                        max_gap_days = gap
-
-            null_ratio = (null_core / total) if total > 0 else 1.0
-            freshness_hours = self._age_hours(str(latest) if latest else None)
-            freshness_days = round((freshness_hours or 0) / 24, 2) if freshness_hours is not None else None
-
-            status = "green"
-            if total == 0 or duplicates > 0:
-                status = "red"
-            elif freshness_hours is not None and freshness_hours > 24 * 10:
-                status = "red"
-            elif null_ratio > 0.1 or max_gap_days > 10 or (freshness_hours is not None and freshness_hours > 24 * 5):
-                status = "yellow"
+        qc = db_instance.check_concept_quality()
+        if not qc["exists"]:
             return {
                 "dataset_id": "daily_concept_sectors",
-                "status": status,
+                "status": "red",
                 "title": "板块日频数据质量",
-                "detail": (
-                    f"最新日期 {latest or '-'}，覆盖 {days} 个交易日，重复主键 {duplicates}，"
-                    f"空值率 {(null_ratio * 100):.2f}%，日期最大间隔 {max_gap_days} 天"
-                ),
-                "metrics": {
-                    "rows": total,
-                    "days": days,
-                    "latest_date": latest,
-                    "duplicates": duplicates,
-                    "null_core": null_core,
-                    "null_ratio_pct": round(null_ratio * 100, 2),
-                    "freshness_days": freshness_days,
-                    "max_gap_days": max_gap_days,
-                },
+                "detail": "表不存在（未回补）",
+                "metrics": {},
             }
-        finally:
-            conn.close()
+        m = qc["metrics"]
+        total = m["total"]
+        duplicates = m["duplicates"]
+        null_core = m["null_core"]
+        latest = m["latest_date"]
+        days = m["days"]
+        date_rows = m["date_rows"]
+
+        max_gap_days = 0
+        if len(date_rows) >= 2:
+            parsed = [self._parse_datetime_text(d) for d in date_rows]
+            parsed = [d for d in parsed if d is not None]
+            for idx in range(1, len(parsed)):
+                gap = abs((parsed[idx - 1] - parsed[idx]).days)
+                if gap > max_gap_days:
+                    max_gap_days = gap
+
+        null_ratio = (null_core / total) if total > 0 else 1.0
+        freshness_hours = self._age_hours(str(latest) if latest else None)
+        freshness_days = round((freshness_hours or 0) / 24, 2) if freshness_hours is not None else None
+
+        status = "green"
+        if total == 0 or duplicates > 0:
+            status = "red"
+        elif freshness_hours is not None and freshness_hours > 24 * 10:
+            status = "red"
+        elif null_ratio > 0.1 or max_gap_days > 10 or (freshness_hours is not None and freshness_hours > 24 * 5):
+            status = "yellow"
+        return {
+            "dataset_id": "daily_concept_sectors",
+            "status": status,
+            "title": "板块日频数据质量",
+            "detail": (
+                f"最新日期 {latest or '-'}，覆盖 {days} 个交易日，重复主键 {duplicates}，"
+                f"空值率 {(null_ratio * 100):.2f}%，日期最大间隔 {max_gap_days} 天"
+            ),
+            "metrics": {
+                "rows": total,
+                "days": days,
+                "latest_date": latest,
+                "duplicates": duplicates,
+                "null_core": null_core,
+                "null_ratio_pct": round(null_ratio * 100, 2),
+                "freshness_days": freshness_days,
+                "max_gap_days": max_gap_days,
+            },
+        }
 
     def get_screener_features(self, params: Dict[str, Any]) -> Dict[str, Any]:
         days = max(5, min(int(params.get("days", 15)), 30))

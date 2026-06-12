@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 from datetime import datetime
@@ -251,7 +252,7 @@ class SentimentService:
             return 0, "no data"
 
         try:
-            # 使用本地数据库
+            db = get_database()
             chunk_size = 500
             written = 0
             for i in range(0, len(results), chunk_size):
@@ -267,8 +268,7 @@ class SentimentService:
                     }
                     for r in chunk
                 ]
-                # db.insert_stock_sentiment_batch(payload)
-                pass
+                db.insert_sentiment_batch(payload)
                 written += len(payload)
             return written, None
         except Exception as e:
@@ -280,10 +280,19 @@ class SentimentService:
         try:
             limit = max(1, min(int(limit), 1000))
             date_str = _to_date_str_ymd(date)
-            # 使用本地数据库
-            # res = db.get_stock_sentiment_for_date(date_str, limit, order)
-            res = type('obj', (object,), {'data': []})()  # 模拟空结果
-            data = res.data or []
+            db = get_database()
+            rows = db.get_sentiment_for_date(date_str, limit, order)
+            data = []
+            for row in rows:
+                item = {
+                    "code": row["code"],
+                    "name": row.get("name"),
+                    "date": str(row["date"]) if row.get("date") else date_str,
+                    "score": row["score"],
+                    "level": row["level"],
+                    "components": json.loads(row["components"]) if isinstance(row.get("components"), str) else (row.get("components") or {}),
+                }
+                data.append(item)
             for idx, item in enumerate(data, start=1):
                 item["rank"] = idx
             return data

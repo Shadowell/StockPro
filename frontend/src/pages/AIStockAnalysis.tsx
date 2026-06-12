@@ -86,7 +86,7 @@ const AnalysisDimension: React.FC<{
   points: string[];
   color: string;
 }> = ({ icon, title, score, points, color }) => (
-  <div className="bg-[#0d121f] border border-slate-800 rounded-xl p-4">
+  <div className="bg-crypto-bg border border-crypto-border rounded-xl p-4">
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
         <span className={`text-${color}-400`}>{icon}</span>
@@ -443,10 +443,9 @@ export const AIStockAnalysis: React.FC = () => {
   }, [intradayData]);
 
   return (
-    <MainLayout title={t('ai.title')}>
-      <div className="flex flex-col gap-4 h-full">
-        {/* 搜索栏 */}
-        <div className="bg-[#111827] border border-slate-800 rounded-xl p-4">
+    <div className="flex flex-col gap-4 h-full">
+      {/* 搜索栏 */}
+        <div className="bg-crypto-card border border-crypto-border rounded-xl p-4">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex-1 min-w-[300px] relative">
               <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-500">
@@ -459,16 +458,16 @@ export const AIStockAnalysis: React.FC = () => {
                 onBlur={() => window.setTimeout(() => setShowCandidates(false), 150)}
                 onKeyDown={(e) => { if (e.key === 'Enter') onAnalyze(); }}
                 placeholder="输入股票代码或名称，如：贵州茅台、600519"
-                className="w-full pl-10 pr-4 py-3 bg-[#0d121f] border border-slate-700 rounded-lg text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full pl-10 pr-4 py-3 bg-crypto-bg border border-crypto-border rounded-lg text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
               />
               {showCandidates && candidates.length > 0 && (
-                <div className="absolute z-30 mt-1 w-full bg-[#111827] border border-slate-700 rounded-lg shadow-2xl overflow-hidden">
+                <div className="absolute z-30 mt-1 w-full bg-crypto-card border border-crypto-border rounded-lg overflow-hidden">
                   <div className="max-h-[280px] overflow-auto custom-scrollbar">
                     {candidates.map((c) => (
                       <button
                         key={c.code}
                         type="button"
-                        className="w-full text-left px-4 py-3 hover:bg-slate-800 flex items-center justify-between border-b border-slate-800/50 last:border-0 transition-colors"
+                        className="w-full text-left px-4 py-3 hover:bg-slate-800 flex items-center justify-between border-b border-crypto-border/50 last:border-0 transition-colors"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => { setSymbol(c.code); setShowCandidates(false); }}
                       >
@@ -487,7 +486,7 @@ export const AIStockAnalysis: React.FC = () => {
                 "flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-bold transition-all",
                 (loading || !symbol.trim())
                   ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                  : "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/25"
+                  : "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white"
               )}
             >
               {loading ? <RefreshCw size={18} className="animate-spin" /> : <Sparkles size={18} />}
@@ -508,7 +507,7 @@ export const AIStockAnalysis: React.FC = () => {
             {/* 左侧：核心分析 */}
             <div className="lg:col-span-1 flex flex-col gap-4">
               {/* 股票概况 */}
-              <div className="bg-[#111827] border border-slate-800 rounded-xl p-5">
+              <div className="bg-crypto-card border border-crypto-border rounded-xl p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <h2 className="text-xl font-bold text-white">{analysis.stockName}</h2>
@@ -518,7 +517,7 @@ export const AIStockAnalysis: React.FC = () => {
                 </div>
 
                 {/* 评分仪表盘 */}
-                <div className="flex items-center justify-around py-4 border-y border-slate-800">
+                <div className="flex items-center justify-around py-4 border-y border-crypto-border">
                   <ScoreDashboard score={scores.total} label="综合评分" />
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-2">
@@ -561,7 +560,7 @@ export const AIStockAnalysis: React.FC = () => {
               </div>
 
               {/* 核心观点 */}
-              <div className="bg-[#111827] border border-slate-800 rounded-xl p-5 flex-1">
+              <div className="bg-crypto-card border border-crypto-border rounded-xl p-5 flex-1">
                 <h3 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
                   <Zap size={16} className="text-yellow-400" />
                   AI核心观点
@@ -612,8 +611,8 @@ export const AIStockAnalysis: React.FC = () => {
 
             {/* 中间：图表 */}
             <div className="lg:col-span-1 flex flex-col gap-4">
-              <div className="flex-1 bg-[#111827] border border-slate-800 rounded-xl overflow-hidden flex flex-col min-h-[300px]">
-                <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex-1 bg-crypto-card border border-crypto-border rounded-xl overflow-hidden flex flex-col min-h-[300px]">
+                <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
                     <BarChart3 size={16} className="text-blue-400" />
                     日K线图
@@ -622,7 +621,7 @@ export const AIStockAnalysis: React.FC = () => {
                 </div>
                 <div className="flex-1 p-2 relative min-h-[200px]">
                   {chartsLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-[#0d121f]/80 z-10">
+                    <div className="absolute inset-0 flex items-center justify-center bg-crypto-bg/80 z-10">
                       <RefreshCw className="animate-spin text-blue-400" size={24} />
                     </div>
                   )}
@@ -636,8 +635,8 @@ export const AIStockAnalysis: React.FC = () => {
                 </div>
               </div>
 
-              <div className="h-[180px] bg-[#111827] border border-slate-800 rounded-xl overflow-hidden flex flex-col">
-                <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+              <div className="h-[180px] bg-crypto-card border border-crypto-border rounded-xl overflow-hidden flex flex-col">
+                <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
                     <Activity size={16} className="text-purple-400" />
                     分时走势
@@ -694,7 +693,7 @@ export const AIStockAnalysis: React.FC = () => {
 
               {/* 基本面数据 */}
               {fundamentals && (
-                <div className="bg-[#0d121f] border border-slate-800 rounded-xl p-4">
+                <div className="bg-crypto-bg border border-crypto-border rounded-xl p-4">
                   <h4 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
                     <Star size={16} className="text-orange-400" />
                     基本面指标
@@ -756,6 +755,5 @@ export const AIStockAnalysis: React.FC = () => {
           </div>
         )}
       </div>
-    </MainLayout>
   );
 };
