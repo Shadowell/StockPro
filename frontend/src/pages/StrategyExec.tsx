@@ -69,6 +69,19 @@ export const StrategyExec: React.FC = () => {
     fetchPaperAccounts();
   }, [fetchPaperAccounts]);
 
+  const fetchPaperAccounts = useCallback(async () => {
+    try {
+      const data = await listPaperAccounts();
+      setPaperAccounts(data.accounts);
+    } catch (e) {
+      console.error('Failed to fetch paper accounts:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPaperAccounts();
+  }, [fetchPaperAccounts]);
+
   // 更新槽位
   const updateSlot = useCallback((slotId: number, updates: Partial<StrategySlot>) => {
     setSlots(prev => prev.map(slot => 
