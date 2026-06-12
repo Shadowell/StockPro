@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { Stock, Sector, StockFilterResponse, AIAnalysis, DailyChartData, IntradayChartData, MarketSector, MarketStock, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult } from '../types';
+import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -233,13 +233,38 @@ export interface DataHubScreenerSnapshot {
   version: string;
 }
 
+export interface ScreenerFeatureStock {
+  symbol: string;
+  name: string;
+  price: number;
+  date: string;
+  ma5: number;
+  ma10: number;
+  ma20: number;
+  ma30: number;
+  ma_range: number;
+  ma_range_pct: number;
+  avg_range_pct: number;
+  avg_std_pct: number;
+  convergence_days: number;
+}
+
+export interface ScreenerFeatureParams {
+  days?: number;
+  max_range_pct?: number;
+  main_board_only?: boolean;
+  min_price?: number;
+  max_price?: number;
+  limit?: number;
+}
+
 export interface DataHubScreenerResponse {
   status: string;
   snapshot: DataHubScreenerSnapshot;
-  data: MAConvergenceStock[];
+  data: ScreenerFeatureStock[];
   count: number;
   total_found: number;
-  params: MAConvergenceParams;
+  params: ScreenerFeatureParams;
 }
 
 export interface DataHubFactorFeaturesResponse {
@@ -349,21 +374,6 @@ export const getShortLineIndices = async (): Promise<ShortLineIndex[]> => {
   return response.data;
 };
 
-export const getFilteredStocks = async (): Promise<StockFilterResponse> => {
-  const response = await apiClient.get<StockFilterResponse>('/stocks/filter');
-  return response.data;
-};
-
-export const getHotSectors = async (): Promise<Sector[]> => {
-  const response = await apiClient.get<Sector[]>('/sectors/hot');
-  return response.data;
-};
-
-export const analyzeStocks = async (stocks: Stock[]): Promise<AIAnalysis[]> => {
-  const response = await apiClient.post<AIAnalysis[]>('/ai/analyze', { stocks });
-  return response.data;
-};
-
 export const getDailyChart = async (symbol: string): Promise<DailyChartData[]> => {
   const response = await apiClient.get<DailyChartData[]>(`/charts/daily/${symbol}`);
   return response.data;
@@ -376,16 +386,6 @@ export const getIntradayChart = async (symbol: string): Promise<IntradayChartDat
 
 export const getStockFundamentals = async (symbol: string): Promise<StockFundamentals> => {
   const response = await apiClient.get<StockFundamentals>(`/market/fundamentals/${symbol}`);
-  return response.data;
-};
-
-export const getMarketSectors = async (): Promise<MarketSector[]> => {
-  const response = await apiClient.get<MarketSector[]>('/market/sectors');
-  return response.data;
-};
-
-export const getMarketStocks = async (): Promise<MarketStock[]> => {
-  const response = await apiClient.get<MarketStock[]>('/market/stocks');
   return response.data;
 };
 
@@ -624,7 +624,7 @@ export const getDataHubQualityReport = async (): Promise<DataHubQualityReport | 
 };
 
 export const getDataHubScreenerFeatures = async (
-  params?: MAConvergenceParams
+  params?: ScreenerFeatureParams
 ): Promise<DataHubScreenerResponse> => {
   const response = await apiClient.get<DataHubScreenerResponse>('/data-hub/features/screener', { params });
   return response.data;
@@ -714,105 +714,6 @@ export const getRunningStrategies = async (): Promise<Strategy[]> => {
   return response.data;
 };
 
-// ========== 选股器 API ==========
-
-export interface MAConvergenceStock {
-  symbol: string;
-  name: string;
-  price: number;
-  date: string;
-  ma5: number;
-  ma10: number;
-  ma20: number;
-  ma30: number;
-  ma_range: number;
-  ma_range_pct: number;
-  avg_range_pct: number;
-  avg_std_pct: number;
-  convergence_days: number;
-}
-
-export interface MAConvergenceParams {
-  days?: number;
-  max_range_pct?: number;
-  main_board_only?: boolean;
-  min_price?: number;
-  max_price?: number;
-  limit?: number;
-}
-
-export interface MAConvergenceResponse {
-  status: string;
-  data: MAConvergenceStock[];
-  count: number;
-  total_found: number;
-  params: MAConvergenceParams;
-  description: string;
-}
-
-export const scanMAConvergenceStocks = async (params?: MAConvergenceParams): Promise<MAConvergenceResponse> => {
-  const response = await apiClient.get<MAConvergenceResponse>('/screener/ma-convergence', { params });
-  return response.data;
-};
-
-export const getStockMADetail = async (symbol: string, days?: number): Promise<Record<string, unknown>> => {
-  const response = await apiClient.get<Record<string, unknown>>(`/screener/ma-convergence/${symbol}`, { params: { days } });
-  return response.data;
-};
-
-export const checkStockMAConvergence = async (symbol: string, days?: number, max_range_pct?: number): Promise<Record<string, unknown>> => {
-  const response = await apiClient.get<Record<string, unknown>>(`/screener/ma-convergence/check/${symbol}`, { params: { days, max_range_pct } });
-  return response.data;
-};
-
-// ============ 复盘中心 API ============
-
-export interface LianbanHistoryStock {
-  code: string;
-  name: string;
-  level: number;
-  change_percent: number;
-  price: number;
-  duration_days?: number;
-  reason?: string;
-}
-
-export interface LianbanHistoryDay {
-  date: string;
-  stocks: LianbanHistoryStock[];
-}
-
-export interface SectorStatItem {
-  name: string;
-  code?: string;
-  change_percent: number;
-  leader_stock?: string;
-  rank?: number;
-}
-
-export interface DailySectorStats {
-  date: string;
-  sectors: SectorStatItem[];
-}
-
-export const getLianbanHistory = async (days: number = 30, minLevel: number = 2): Promise<LianbanHistoryDay[]> => {
-  const response = await apiClient.get<LianbanHistoryDay[]>('/market/pulse/lianban-history', { 
-    params: { days, min_level: minLevel } 
-  });
-  return response.data;
-};
-
-export const getDailySectorStats = async (
-  days: number = 30, 
-  minChangePct: number = 3.0,
-  topN: number = 15
-): Promise<DailySectorStats[]> => {
-  const response = await apiClient.get<DailySectorStats[]>('/market/pulse/daily-stats', { 
-    params: { days, min_change_pct: minChangePct, top_n: topN } 
-  });
-  return response.data;
-};
-
 export const syncTodayConceptSectors = async (): Promise<{status: string; count: number; date?: string}> => {
   const response = await apiClient.post('/market/pulse/sync-today');
   return response.data;
@@ -833,35 +734,6 @@ export const backfillConceptHistory = async (days: number = 30): Promise<Backfil
     timeout: 600000,
   });
   return response.data;
-};
-
-export interface ReplayNote {
-  note_date: string;
-  view_mode: 'sector' | 'lianban' | string;
-  template_id?: string | null;
-  headline?: string | null;
-  main_line?: string | null;
-  core_targets?: string | null;
-  risk_alert?: string | null;
-  action_plan?: string | null;
-  extra?: Record<string, unknown>;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export const listReplayNotes = async (limit: number = 60): Promise<ReplayNote[]> => {
-  const response = await apiClient.get<{ status: string; data: ReplayNote[] }>('/market/pulse/replay-notes', { params: { limit } });
-  return response.data.data || [];
-};
-
-export const getReplayNote = async (noteDate: string): Promise<ReplayNote | null> => {
-  const response = await apiClient.get<{ status: string; data: ReplayNote | null }>(`/market/pulse/replay-notes/${noteDate}`);
-  return response.data.data;
-};
-
-export const saveReplayNote = async (payload: Partial<ReplayNote> & { note_date: string }): Promise<ReplayNote> => {
-  const response = await apiClient.post<{ status: string; data: ReplayNote }>('/market/pulse/replay-notes', payload);
-  return response.data.data;
 };
 
 export const autoDevelopStrategy = async (
@@ -918,8 +790,8 @@ export const stopPaperAccount = async (accountId: number): Promise<PaperRunResul
   return response.data;
 };
 
-export const getDataStatus = async (): Promise<any> => {
-  const response = await apiClient.get<any>('/data/status');
+export const getDataStatus = async <T = unknown>(): Promise<T> => {
+  const response = await apiClient.get<T>('/data/status');
   return response.data;
 };
 
@@ -929,8 +801,8 @@ export const triggerDataSync = async (request?: {
   start_date?: string;
   end_date?: string;
   job_name?: string;
-}): Promise<any> => {
-  const response = await apiClient.post<any>('/data/sync', request || {});
+}): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>('/data/sync', request || {});
   return response.data;
 };
 
@@ -1000,8 +872,8 @@ export const startDataSync = async (request?: {
   endDate?: string;
   historyDays?: number;
   jobName?: string;
-}): Promise<any> => {
-  const response = await apiClient.post<any>('/data/start', request || {});
+}): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>('/data/start', request || {});
   return response.data;
 };
 

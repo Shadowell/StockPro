@@ -18,11 +18,8 @@ from app.api.endpoints import (
     paper,
     preset_tasks,
     sectors,
-    stock_screener,
     stocks,
     strategy,
-    strategy_v2,
-    trading,
 )
 from app.core.admin_auth import require_admin
 
@@ -50,9 +47,6 @@ def create_api_router() -> APIRouter:
     protected.include_router(backtest.router, prefix="/backtest", tags=["backtest"])
     protected.include_router(paper.router, prefix="/paper", tags=["paper"])
     protected.include_router(factors.router, prefix="/factors", tags=["factors"])
-    protected.include_router(stock_screener.router, prefix="/screener", tags=["screener"])
-    protected.include_router(strategy_v2.router, prefix="/strategy-v2", tags=["strategy-v2"])
-    protected.include_router(trading.router, prefix="/trading", tags=["trading"])
 
     router.include_router(protected)
     return router

@@ -15,7 +15,6 @@ import { Flame, TrendingUp, Layers, RotateCcw, Filter, ChevronDown } from 'lucid
 import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
 import { useStore } from '../stores/useStore';
-import { MainLayout } from '../components/MainLayout';
 import { getTranslation, TranslationKey } from '../lib/i18n';
 
 // Filter options for concept list
@@ -424,35 +423,35 @@ export const MarketOverviewContent: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-6 h-full">
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="inline-flex items-center rounded-xl border border-crypto-border bg-crypto-card p-1">
           <button
             onClick={() => setActiveTab('hot_concepts')}
             className={clsx(
-              "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all",
-              activeTab === 'hot_concepts' ? "bg-blue-600 text-white  shadow-blue-900/20" : "bg-crypto-card text-slate-400 hover:bg-slate-800 border border-crypto-border"
+              "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors",
+              activeTab === 'hot_concepts' ? "bg-blue-500/20 text-blue-300" : "text-gray-500 hover:text-gray-300"
             )}
           >
-            <TrendingUp size={16} />
+            <TrendingUp size={14} />
             {t('market.hot_concepts')}
           </button>
           <button
             onClick={() => setActiveTab('ths_hot')}
             className={clsx(
-              "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all",
-              activeTab === 'ths_hot' ? "bg-blue-600 text-white  shadow-blue-900/20" : "bg-crypto-card text-slate-400 hover:bg-slate-800 border border-crypto-border"
+              "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors",
+              activeTab === 'ths_hot' ? "bg-blue-500/20 text-blue-300" : "text-gray-500 hover:text-gray-300"
             )}
           >
-            <Flame size={16} />
+            <Flame size={14} />
             {t('market.ths_hot')}
           </button>
           <button
             onClick={() => setActiveTab('lianban')}
             className={clsx(
-              "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all",
-              activeTab === 'lianban' ? "bg-blue-600 text-white  shadow-blue-900/20" : "bg-crypto-card text-slate-400 hover:bg-slate-800 border border-crypto-border"
+              "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors",
+              activeTab === 'lianban' ? "bg-blue-500/20 text-blue-300" : "text-gray-500 hover:text-gray-300"
             )}
           >
-            <Layers size={16} />
+            <Layers size={14} />
             {t('market.lianban')}
           </button>
 
@@ -480,7 +479,7 @@ export const MarketOverviewContent: React.FC = () => {
                   setDateValue(today);
                   setDateText(today);
                 }}
-                className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-blue-400 hover:text-blue-300 bg-blue-600/10 hover:bg-blue-600/20 rounded-lg border border-blue-500/30 transition-colors"
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 text-xs font-semibold text-blue-300 transition-colors hover:bg-blue-500/20"
                 title={t('market.realtime')}
               >
                 <RotateCcw size={14} />
@@ -496,7 +495,7 @@ export const MarketOverviewContent: React.FC = () => {
           )}
 
           {activeTab === 'lianban' && ladderMeta && (
-            <span className="text-[10px] text-slate-500 font-mono ml-4 uppercase tracking-tighter">
+            <span className="text-[10px] text-gray-500 font-mono ml-4 uppercase tracking-tighter">
               {ladderMeta}
             </span>
           )}
@@ -504,27 +503,27 @@ export const MarketOverviewContent: React.FC = () => {
 
         <div className="rounded-lg border border-crypto-border bg-crypto-bg px-3 py-2">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Data Hub Freshness</div>
+            <div className="text-[11px] uppercase tracking-wider text-gray-500 font-bold">Data Hub Freshness</div>
             <button
               onClick={() => { void loadMarketFreshness(); }}
               disabled={freshnessLoading}
-              className="text-[11px] px-2 py-1 rounded bg-slate-800 border border-crypto-border text-slate-300 hover:bg-slate-700"
+              className="text-[11px] px-2 py-1 rounded bg-gray-800 border border-crypto-border text-gray-300 hover:bg-gray-700"
             >
               {freshnessLoading ? t('common.loading') : t('common.refresh')}
             </button>
           </div>
           {marketFreshness.length === 0 ? (
-            <div className="text-xs text-slate-500">暂无可用 freshness 数据</div>
+            <div className="text-xs text-gray-500">暂无可用 freshness 数据</div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {marketFreshness.map((item) => (
-                <div key={item.id} className="rounded border border-crypto-border bg-slate-900/60 px-2 py-2">
-                  <div className="text-[11px] text-slate-400 truncate" title={item.name}>{item.name}</div>
+                <div key={item.id} className="rounded border border-crypto-border bg-gray-900/60 px-2 py-2">
+                  <div className="text-[11px] text-gray-400 truncate" title={item.name}>{item.name}</div>
                   <div className="mt-1 flex items-center justify-between gap-2">
                     <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase ${freshnessBadgeClass(item.freshness_status)}`}>
                       {item.freshness_status}
                     </span>
-                    <span className="text-[10px] text-slate-500 truncate" title={item.latest_snapshot || '-'}>
+                    <span className="text-[10px] text-gray-500 truncate" title={item.latest_snapshot || '-'}>
                       {item.latest_snapshot || '-'}
                     </span>
                   </div>
@@ -543,12 +542,12 @@ export const MarketOverviewContent: React.FC = () => {
           )}
 
           {activeTab === 'hot_concepts' && (
-            <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3 divide-x divide-slate-800">
+            <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3 divide-x divide-crypto-border">
               <div className="lg:col-span-1 overflow-hidden flex flex-col">
-                <div className="px-6 py-4 bg-crypto-bg text-[10px] font-bold uppercase text-slate-500 tracking-wider border-b border-crypto-border flex items-center justify-between">
+                <div className="px-6 py-4 bg-crypto-bg text-[10px] font-bold uppercase text-gray-500 tracking-wider border-b border-crypto-border flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span>{t('market.hot_concepts')}</span>
-                    <span className="text-slate-600">
+                    <span className="text-gray-600">
                       ({hotConcepts.filter(c => conceptFilter === 'all' || c.change_percent >= Number(conceptFilter)).length}/{hotConcepts.length})
                     </span>
                   </div>
@@ -556,7 +555,7 @@ export const MarketOverviewContent: React.FC = () => {
                   <div className="relative">
                     <button
                       onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-                      className="flex items-center gap-1 px-2 py-1 text-[10px] bg-slate-800 hover:bg-slate-700 rounded border border-crypto-border transition-colors"
+                      className="flex items-center gap-1 px-2 py-1 text-[10px] bg-gray-800 hover:bg-gray-700 rounded border border-crypto-border transition-colors"
                     >
                       <Filter size={10} />
                       <span>{conceptFilter === 'all' ? (language === 'zh' ? '全部' : 'All') : `>=${conceptFilter}%`}</span>
@@ -572,8 +571,8 @@ export const MarketOverviewContent: React.FC = () => {
                               setShowFilterDropdown(false);
                             }}
                             className={clsx(
-                              "w-full px-3 py-2 text-left text-xs hover:bg-slate-800 transition-colors",
-                              conceptFilter === opt ? "bg-blue-600/20 text-blue-400" : "text-slate-300"
+                              "w-full px-3 py-2 text-left text-xs hover:bg-gray-800 transition-colors",
+                              conceptFilter === opt ? "bg-blue-600/20 text-blue-400" : "text-gray-300"
                             )}
                           >
                             {opt === 'all' ? (language === 'zh' ? '显示全部' : 'Show All') : `>= ${opt}%`}
@@ -584,8 +583,8 @@ export const MarketOverviewContent: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex-1 overflow-auto custom-scrollbar">
-                  <table className="w-full text-left text-sm text-slate-300">
-                    <thead className="bg-crypto-bg/50 text-[10px] uppercase text-slate-600 font-bold sticky top-0 backdrop-blur-sm">
+                  <table className="w-full text-left text-sm text-gray-300">
+                    <thead className="bg-crypto-bg/50 text-[10px] uppercase text-gray-600 font-bold sticky top-0 backdrop-blur-sm">
                       <tr>
                         <th className="px-4 py-3 min-w-[60px]">{t('market.rank')}</th>
                         <th className="px-4 py-3 min-w-[120px]">{t('market.concept')}</th>
@@ -593,7 +592,7 @@ export const MarketOverviewContent: React.FC = () => {
                         <th className="px-4 py-3 text-right min-w-[80px]">{t('market.flow')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/30">
+                    <tbody className="divide-y divide-crypto-border/30">
                       {hotConcepts.filter(c => conceptFilter === 'all' || c.change_percent >= Number(conceptFilter)).map((c) => {
                         const isSelected = selectedConcept === c.name;
                         return (
@@ -611,8 +610,8 @@ export const MarketOverviewContent: React.FC = () => {
                               fetchConceptDetail(nm, true);
                             }}
                           >
-                            <td className="px-4 py-3 text-slate-500 font-mono text-xs min-w-[60px]">{c.rank}</td>
-                            <td className="px-4 py-3 font-bold text-slate-100 group-hover:text-blue-400 transition-colors min-w-[120px]">{c.name}</td>
+                            <td className="px-4 py-3 text-gray-500 font-mono text-xs min-w-[60px]">{c.rank}</td>
+                            <td className="px-4 py-3 font-bold text-gray-100 group-hover:text-blue-400 transition-colors min-w-[120px]">{c.name}</td>
                             <td className={clsx("px-4 py-3 text-right font-mono font-black min-w-[80px]", c.change_percent >= 0 ? "text-[#ef4444]" : "text-[#10b981]")}>
                               {c.change_percent > 0 ? '+' : ''}{c.change_percent.toFixed(2)}%
                             </td>
@@ -631,11 +630,11 @@ export const MarketOverviewContent: React.FC = () => {
                 <div className="px-6 py-4 border-b border-crypto-border bg-crypto-bg flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-blue-500  shadow-blue-500/50"></div>
-                    <div className="text-sm font-black text-slate-100 uppercase tracking-tight">
+                    <div className="text-sm font-black text-gray-100 uppercase tracking-tight">
                       {selectedConcept ? selectedConcept : t('market.select_concept')}
                     </div>
                   </div>
-                  <div className="flex items-center bg-crypto-card p-1 rounded-lg border border-crypto-border">
+                  <div className="inline-flex items-center rounded-lg border border-crypto-border bg-crypto-bg p-0.5">
                     {conceptTabOrder.map((k) => (
                       <button
                         key={k}
@@ -667,8 +666,8 @@ export const MarketOverviewContent: React.FC = () => {
                         }}
                         onClick={() => setConceptTab(k)}
                         className={clsx(
-                          "px-4 py-1.5 rounded-md text-[10px] font-black uppercase tracking-widest transition-all",
-                          conceptTab === k ? "bg-slate-800 text-blue-400 shadow-sm" : "text-slate-500 hover:text-slate-300",
+                          "inline-flex h-7 items-center rounded px-3 text-[10px] font-semibold uppercase tracking-wider transition-colors",
+                          conceptTab === k ? "bg-blue-500/20 text-blue-300" : "text-gray-500 hover:text-gray-300",
                           draggingConceptTab === k && 'opacity-60',
                           dragOverConceptTab === k && draggingConceptTab && draggingConceptTab !== k && 'bg-blue-600/20'
                         )}
@@ -701,7 +700,7 @@ export const MarketOverviewContent: React.FC = () => {
                         {conceptIntradayOption ? (
                           <ReactECharts option={conceptIntradayOption} style={{ height: '100%', width: '100%' }} theme="dark" />
                         ) : (
-                          <div className="h-full flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-slate-600">{t('market.no_data')}</div>
+                          <div className="h-full flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-gray-600">{t('market.no_data')}</div>
                         )}
                       </div>
                     </div>
@@ -710,17 +709,17 @@ export const MarketOverviewContent: React.FC = () => {
                   {conceptTab === 'leaders' && (
                     <div className="h-full flex flex-col p-6 overflow-auto custom-scrollbar gap-6">
                       <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden ">
-                        <div className="px-6 py-3 text-[10px] font-black uppercase text-slate-500 tracking-widest border-b border-crypto-border bg-crypto-bg/50">
+                        <div className="px-6 py-3 text-[10px] font-black uppercase text-gray-500 tracking-widest border-b border-crypto-border bg-crypto-bg/50">
                           {t('market.constituents')}
                         </div>
                         <div className="overflow-x-auto">
                           {conceptLeaders.length === 0 ? (
-                            <div className="flex items-center justify-center py-12 text-slate-500 text-sm">
+                            <div className="flex items-center justify-center py-12 text-gray-500 text-sm">
                               {isLoadingConcept ? t('market.loading_data') : (selectedConcept ? t('market.no_data') : t('market.select_concept'))}
                             </div>
                           ) : (
-                          <table className="w-full text-left text-xs text-slate-300">
-                            <thead className="bg-crypto-bg text-[9px] uppercase text-slate-600 font-bold border-b border-crypto-border">
+                          <table className="w-full text-left text-xs text-gray-300">
+                            <thead className="bg-crypto-bg text-[9px] uppercase text-gray-600 font-bold border-b border-crypto-border">
                               <tr>
                                 <th className="px-4 py-3 min-w-[70px]">{t('market.code')}</th>
                                 <th className="px-4 py-3 min-w-[100px]">{t('market.security')}</th>
@@ -730,7 +729,7 @@ export const MarketOverviewContent: React.FC = () => {
                                 <th className="px-4 py-3 text-right font-mono min-w-[70px]">{t('market.turnover')}</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-800/30 font-mono">
+                            <tbody className="divide-y divide-crypto-border/30 font-mono">
                               {conceptLeaders.map((s) => {
                                 const isSelected = selectedStock?.code === s.code;
                                 const character = thsCharacterByCode[String(s.code || '').replace(/\D/g, '').slice(-6)] || '';
@@ -758,23 +757,23 @@ export const MarketOverviewContent: React.FC = () => {
                                         });
                                       }}
                                     >
-                                      <td className="px-4 py-3 text-slate-500 min-w-[70px]">{s.code}</td>
+                                      <td className="px-4 py-3 text-gray-500 min-w-[70px]">{s.code}</td>
                                       <td className="px-4 py-3 font-sans min-w-[100px]">
                                         <div className="flex items-center gap-2">
-                                          <span className="font-black text-slate-100">{s.name}</span>
+                                          <span className="font-black text-gray-100">{s.name}</span>
                                           {character && (
-                                            <span className="text-[10px] font-medium text-slate-500 truncate max-w-[150px]" title={character}>
+                                            <span className="text-[10px] font-medium text-gray-500 truncate max-w-[150px]" title={character}>
                                               · {character}
                                             </span>
                                           )}
                                         </div>
                                       </td>
-                                      <td className="px-4 py-3 text-right font-bold text-slate-200 min-w-[70px]">{Number(s.price || 0).toFixed(2)}</td>
+                                      <td className="px-4 py-3 text-right font-bold text-gray-200 min-w-[70px]">{Number(s.price || 0).toFixed(2)}</td>
                                       <td className={clsx("px-4 py-3 text-right font-black min-w-[70px]", Number(s.change_percent || 0) >= 0 ? "text-[#ef4444]" : "text-[#10b981]")}>
                                         {Number(s.change_percent || 0) > 0 ? '+' : ''}{Number(s.change_percent || 0).toFixed(2)}%
                                       </td>
-                                      <td className="px-4 py-3 text-right text-slate-400 min-w-[80px]">{formatFlowYi(Number(s.amount || 0) / 100000000)}</td>
-                                      <td className="px-4 py-3 text-right text-slate-400 min-w-[70px]">{Number(s.turnover || 0).toFixed(2)}%</td>
+                                      <td className="px-4 py-3 text-right text-gray-400 min-w-[80px]">{formatFlowYi(Number(s.amount || 0) / 100000000)}</td>
+                                      <td className="px-4 py-3 text-right text-gray-400 min-w-[70px]">{Number(s.turnover || 0).toFixed(2)}%</td>
                                     </tr>
                                     
                                     {isExpanded && (
@@ -807,14 +806,14 @@ export const MarketOverviewContent: React.FC = () => {
           )}
 
           {activeTab === 'ths_hot' && (
-            <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3 divide-x divide-slate-800">
+            <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-3 divide-x divide-crypto-border">
               <div className="lg:col-span-1 overflow-hidden flex flex-col">
-                <div className="px-6 py-4 bg-crypto-bg text-[10px] font-bold uppercase text-slate-500 tracking-wider border-b border-crypto-border">
+                <div className="px-6 py-4 bg-crypto-bg text-[10px] font-bold uppercase text-gray-500 tracking-wider border-b border-crypto-border">
                   {t('market.ths_hot')}
                 </div>
                 <div className="flex-1 overflow-auto custom-scrollbar">
-                  <table className="w-full text-left text-sm text-slate-300">
-                    <thead className="bg-crypto-bg/50 text-[10px] uppercase text-slate-600 sticky top-0 backdrop-blur-sm">
+                  <table className="w-full text-left text-sm text-gray-300">
+                    <thead className="bg-crypto-bg/50 text-[10px] uppercase text-gray-600 sticky top-0 backdrop-blur-sm">
                       <tr>
                         <th className="px-4 py-3 min-w-[60px]">{t('market.rank')}</th>
                         <th className="px-4 py-3 min-w-[120px]">{t('market.security')}</th>
@@ -822,7 +821,7 @@ export const MarketOverviewContent: React.FC = () => {
                         <th className="px-4 py-3 text-right min-w-[80px]">{t('market.change')}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/30">
+                    <tbody className="divide-y divide-crypto-border/30">
                       {thsHot.map((s) => {
                         const code = String(s.code || '').replace(/\D/g, '').slice(-6);
                         const isSelected = selectedStock?.code === code;
@@ -847,8 +846,8 @@ export const MarketOverviewContent: React.FC = () => {
                               });
                             }}
                           >
-                            <td className="px-4 py-3 text-slate-500 font-mono text-xs min-w-[60px]">{s.rank}</td>
-                            <td className="px-4 py-3 font-bold text-slate-100 group-hover:text-blue-400 transition-colors min-w-[120px]">{s.name}</td>
+                            <td className="px-4 py-3 text-gray-500 font-mono text-xs min-w-[60px]">{s.rank}</td>
+                            <td className="px-4 py-3 font-bold text-gray-100 group-hover:text-blue-400 transition-colors min-w-[120px]">{s.name}</td>
                             <td className="px-4 py-3 text-right font-mono text-xs text-orange-400 min-w-[60px]">{Number(s.hot || 0).toFixed(0)}</td>
                             <td className={clsx("px-4 py-3 text-right font-mono font-black min-w-[80px]", Number(s.change_percent || 0) >= 0 ? "text-[#ef4444]" : "text-[#10b981]")}>
                               {Number(s.change_percent || 0) > 0 ? '+' : ''}{Number(s.change_percent || 0).toFixed(2)}%
@@ -865,11 +864,11 @@ export const MarketOverviewContent: React.FC = () => {
                 <div className="px-6 py-4 border-b border-crypto-border bg-crypto-bg flex flex-col gap-1">
                   <div className="flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-orange-500  shadow-orange-500/50"></div>
-                    <div className="text-sm font-black text-slate-100 uppercase tracking-tight">
+                    <div className="text-sm font-black text-gray-100 uppercase tracking-tight">
                       {selectedStock ? `${selectedStock.name} (${selectedStock.code})` : t('chart.select_stock_hint')}
                     </div>
                   </div>
-                  <div className="text-[10px] text-slate-500 font-medium italic mt-1 pl-5">
+                  <div className="text-[10px] text-gray-500 font-medium italic mt-1 pl-5">
                     {thsHot.find((it) => String(it.code || '').replace(/\D/g, '').slice(-6) === selectedStock?.code)?.reason ||
                       thsHot.find((it) => String(it.code || '').replace(/\D/g, '').slice(-6) === selectedStock?.code)?.tags ||
                       t('market.no_analysis')}
@@ -891,7 +890,7 @@ export const MarketOverviewContent: React.FC = () => {
                 {ladder?.levels?.filter(lv => lv.today_items.length > 0).sort((a, b) => a.today_level - b.today_level).map((lv) => (
                   <div key={`level-${lv.today_level}`} className="flex-shrink-0 w-72 bg-crypto-card rounded-xl border border-crypto-border  overflow-hidden">
                     {/* 板级头部 */}
-                    <div className="px-4 py-3 bg-gradient-to-r from-red-900/30 to-slate-900 border-b border-crypto-border">
+                    <div className="px-4 py-3 bg-gradient-to-r from-red-900/30 to-gray-900 border-b border-crypto-border">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-500/20 border border-red-500/40">
@@ -901,12 +900,12 @@ export const MarketOverviewContent: React.FC = () => {
                             <h3 className="font-black text-white text-sm">
                               {lv.today_level === 1 ? '今日首板' : `今日${lv.today_level}板`}
                             </h3>
-                            <p className="text-[10px] text-slate-400">{lv.today_count} 只股票</p>
+                            <p className="text-[10px] text-gray-400">{lv.today_count} 只股票</p>
                           </div>
                         </div>
                         {lv.prev_count > 0 && (
                           <div className="text-right">
-                            <div className="text-[10px] text-slate-500">昨日{lv.prev_level}板</div>
+                            <div className="text-[10px] text-gray-500">昨日{lv.prev_level}板</div>
                             <div className="text-xs font-bold text-green-400">{lv.prev_count}→{lv.today_count}</div>
                           </div>
                         )}
@@ -919,7 +918,7 @@ export const MarketOverviewContent: React.FC = () => {
                         {lv.today_items.map((it, idx) => (
                           <div 
                             key={`t-${lv.today_level}-${it.code}`}
-                            className="flex items-center justify-between p-2.5 bg-crypto-bg/50 rounded-lg border border-crypto-border hover:bg-slate-800/50 hover:border-red-500/30 transition-all cursor-pointer"
+                            className="flex items-center justify-between p-2.5 bg-crypto-bg/50 rounded-lg border border-crypto-border hover:bg-gray-800/50 hover:border-red-500/30 transition-all cursor-pointer"
                             onClick={() => {
                               selectStock({
                                 code: it.code,
@@ -933,12 +932,12 @@ export const MarketOverviewContent: React.FC = () => {
                             }}
                           >
                             <div className="flex items-center gap-2">
-                              <div className="flex items-center justify-center w-5 h-5 rounded bg-slate-700/50">
-                                <span className="text-[10px] font-bold text-slate-300">{idx + 1}</span>
+                              <div className="flex items-center justify-center w-5 h-5 rounded bg-gray-700/50">
+                                <span className="text-[10px] font-bold text-gray-300">{idx + 1}</span>
                               </div>
                               <div>
                                 <div className="font-bold text-white text-sm">{it.name}</div>
-                                <div className="text-[10px] text-slate-500">{it.code}</div>
+                                <div className="text-[10px] text-gray-500">{it.code}</div>
                               </div>
                             </div>
                             <div className="text-right">
@@ -948,7 +947,7 @@ export const MarketOverviewContent: React.FC = () => {
                               )}>
                                 {it.change_percent > 0 ? '+' : ''}{it.change_percent.toFixed(2)}%
                               </div>
-                              <div className="text-[10px] text-slate-400">¥{it.price?.toFixed(2)}</div>
+                              <div className="text-[10px] text-gray-400">¥{it.price?.toFixed(2)}</div>
                             </div>
                           </div>
                         ))}
@@ -959,11 +958,11 @@ export const MarketOverviewContent: React.FC = () => {
                 
                 {(!ladder || ladder.levels.length === 0 || ladder.levels.every(lv => lv.today_items.length === 0)) && (
                   <div className="flex-1 flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-4">
-                      <Layers className="w-8 h-8 text-slate-600" />
+                    <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mb-4">
+                      <Layers className="w-8 h-8 text-gray-600" />
                     </div>
-                    <h3 className="text-lg font-bold text-slate-400 mb-2">暂无连板股票</h3>
-                    <p className="text-slate-600 max-w-md">当前没有连续涨停的股票</p>
+                    <h3 className="text-lg font-bold text-gray-400 mb-2">暂无连板股票</h3>
+                    <p className="text-gray-600 max-w-md">当前没有连续涨停的股票</p>
                   </div>
                 )}
               </div>

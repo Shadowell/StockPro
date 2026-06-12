@@ -294,9 +294,9 @@ export function Dashboard() {
         {activeModule === 'news' && (
           <div className="flex min-h-[720px] flex-col">
             <h2 className="mb-3 text-base font-bold text-white">消息流</h2>
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-800 bg-[#111827]">
-              <div className="border-b border-slate-800 bg-[#0d121f] px-6 py-4">
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-100">7x24 实时快讯</h3>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-crypto-border bg-crypto-card">
+              <div className="border-b border-crypto-border bg-crypto-bg px-6 py-4">
+                <h3 className="text-sm font-black uppercase tracking-widest text-gray-100">7x24 实时快讯</h3>
               </div>
               <div className="min-h-0 flex-1 overflow-hidden">
                 <NewsFeed />

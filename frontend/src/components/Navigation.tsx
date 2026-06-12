@@ -99,18 +99,24 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
   const vertical = orientation === 'vertical';
 
   return (
-    <nav className={clsx(vertical ? 'space-y-4' : 'flex gap-2 overflow-x-auto pb-2')}>
+    <nav className={clsx(vertical ? 'space-y-3' : 'flex gap-2 overflow-x-auto pb-2')}>
       {NAV_GROUPS.map((group) => (
         <section
           key={group.id}
           className={clsx(
             vertical
-              ? 'space-y-1.5'
-              : 'flex min-w-max items-center gap-2 rounded-lg border border-crypto-border bg-crypto-bg/70 px-3 py-2',
+              ? 'overflow-hidden rounded-lg border border-crypto-border bg-crypto-card'
+              : 'flex min-w-max items-center gap-1 rounded-lg border border-crypto-border bg-crypto-card p-1',
           )}
         >
+          {vertical ? (
+            <div className="flex items-center justify-between gap-2 border-b border-crypto-border bg-crypto-bg/35 px-3 py-2">
+              <span className="truncate text-[11px] font-black text-gray-400">{isZh ? group.titleZh : group.titleEn}</span>
+              <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-gray-600">{isZh ? group.titleEn : group.titleZh}</span>
+            </div>
+          ) : null}
 
-          <div className={clsx(vertical ? 'space-y-1' : 'flex items-center gap-1')}>
+          <div className={clsx(vertical ? 'space-y-1 p-1.5' : 'flex items-center gap-1')}>
             {group.items.map((item) => (
               <NavLink
                 key={item.id}
@@ -118,17 +124,26 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
                 end={item.end}
                 className={({ isActive }) =>
                   clsx(
-                    'group flex items-center gap-2 rounded-md text-sm font-semibold transition-colors',
-                    vertical ? 'px-3 py-2' : 'px-3 py-2',
+                    'group flex min-w-0 items-center gap-2 rounded-md border text-sm font-semibold transition-colors',
+                    vertical ? 'h-10 px-2' : 'h-10 px-2.5',
                     isActive
-                      ? 'border border-blue-500/25 bg-blue-500/10 text-blue-200 shadow-[inset_3px_0_0_rgba(59,130,246,0.75)]'
-                      : 'border border-transparent text-gray-400 hover:border-crypto-border hover:bg-gray-800/70 hover:text-gray-100',
+                      ? 'border-blue-500/30 bg-blue-500/10 text-blue-100'
+                      : 'border-transparent text-gray-400 hover:border-crypto-border hover:bg-crypto-bg hover:text-gray-100',
                   )
                 }
               >
                 {({ isActive }) => (
                   <>
-                    <item.Icon className={clsx('h-4 w-4 shrink-0 transition-colors group-hover:text-gray-200', isActive ? 'text-blue-300' : 'text-gray-500')} />
+                    <span
+                      className={clsx(
+                        'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors',
+                        isActive
+                          ? 'border-blue-500/30 bg-blue-500/10 text-blue-200'
+                          : 'border-crypto-border bg-crypto-bg text-gray-500 group-hover:border-blue-500/20 group-hover:bg-blue-500/5 group-hover:text-blue-200',
+                      )}
+                    >
+                      <item.Icon className="h-3.5 w-3.5" />
+                    </span>
                     <span className="truncate">{isZh ? item.labelZh : item.labelEn}</span>
                   </>
                 )}

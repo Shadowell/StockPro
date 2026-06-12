@@ -6,7 +6,7 @@
 
 ## Goal
 
-Standardize all raw SQL scattered across service files into proper `postgres_db.py` repository methods, implement sentiment persistence, and build out the V2 strategy-workbench trading infrastructure (portfolios, orders, positions, risk checks, broker adapters).
+Standardize all raw SQL scattered across service files into proper `postgres_db.py` repository methods, implement sentiment persistence, and build out the single-router strategy workbench plus paper-trading infrastructure (portfolios, orders, positions, risk checks, broker adapters).
 
 ## In Scope
 
@@ -17,12 +17,13 @@ Standardize all raw SQL scattered across service files into proper `postgres_db.
 - Update `data_hub_service.py` to use postgres_db methods instead of raw SQL
 - Update `scheduler_service.py` to use postgres_db methods for data_dev tables
 - Implement sentiment persistence (DB migration + postgres_db methods + wire up service)
-- Implement V2 workbench tables: strategy_versions, strategy_parameters, strategy_signals
-- Implement V2 workbench tables: backtest_runs, backtest_trades
+- Implement workbench tables: strategy_versions, strategy_parameters, strategy_signals
+- Implement workbench tables: backtest_runs, backtest_trades
 - Implement trading infrastructure: portfolios, positions, orders, trades, cash_ledger
 - Implement risk management: risk_rules, risk_events integration
 - Implement broker adapter: broker_connections CRUD
-- Add API endpoints for new V2 domain features
+- Add API endpoints only through the single `/api` router and the product domains already in use (`/strategy`, `/backtest`, `/paper`, `/monitor`)
+- Remove standalone V2 or unused business routers instead of keeping parallel flows
 
 ## Out of Scope
 
@@ -40,7 +41,7 @@ Standardize all raw SQL scattered across service files into proper `postgres_db.
 - Updated `data_hub_service.py` using repository methods
 - Updated `scheduler_service.py` using repository methods
 - Updated `sentiment_service.py` with persistence
-- New API endpoints for strategy versions, signals, portfolios, orders, risk, broker
+- New single-router API endpoints for strategy versions, signals, portfolios, orders, risk, broker when they have a product workflow
 - Updated `docs/progress.md`
 
 ## Done Means
@@ -48,7 +49,7 @@ Standardize all raw SQL scattered across service files into proper `postgres_db.
 - All service files use `postgres_db.py` repository methods (no raw SQL in services)
 - Sentiment scores are computed and persisted to DB
 - Paper trading uses repository methods for all DB operations
-- V2 strategy versions, signals, and backtest tracking are implemented
+- Strategy versions, signals, and backtest tracking are implemented in the current strategy/backtest/paper flow
 - Portfolio, order, position, and trading infrastructure is functional
 - Risk rules are checked on order placement
 - Broker connections can be created and managed in dry-run mode
@@ -65,14 +66,14 @@ Manual or QA checks:
 - Verify paper account creation/listing/stop works via API
 - Verify backtest results save and list via API
 - Verify sentiment endpoint returns persisted data
-- Verify strategy version creation and retrieval
-- Verify portfolio/order CRUD through API
+- Verify strategy version creation and retrieval through the current strategy flow
+- Verify portfolio/order CRUD only after it is wired into the paper-trading workflow
 
 ## Risks / Notes
 
 - postgres_db.py is ~3000 lines; new methods should be organized clearly by domain
 - Strategy_lab_service.py has complex backtrader integration; changes must not break backtest/paper flows
-- V2 tables already exist from migrations; we're wiring code to them
+- Workbench/trading tables already exist from migrations; wire them into product workflows before exposing public API routes
 
 ## Handoff
 

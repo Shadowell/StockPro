@@ -206,7 +206,7 @@ export function DataCenter() {
     setLoading(true);
     try {
       const [nextStatus, nextConfig, nextSchedule, nextTableStats] = await Promise.all([
-        getDataStatus(),
+        getDataStatus<DataStatus>(),
         getDataConfig().catch(() => null),
         getDataSchedule().catch(() => null),
         getDataTableStats().catch(() => null),
@@ -524,15 +524,15 @@ export function DataCenter() {
             <Clock className="h-3.5 w-3.5" />
             定时同步
           </button>
-          <button onClick={() => void runSync({ start_date: dateOffset(-7), end_date: dateOffset(0), job_name: `kline-incremental-${Date.now()}` })} disabled={syncing} className="flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => void runSync({ start_date: dateOffset(-7), end_date: dateOffset(0), job_name: `kline-incremental-${Date.now()}` })} disabled={syncing} className="flex h-9 items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 text-sm font-semibold text-blue-300 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50">
             {syncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             增量更新
           </button>
-          <button onClick={() => setShowSyncDialog(true)} disabled={syncing} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-400/30 bg-purple-600/80 px-4 text-sm font-medium text-white shadow-sm shadow-purple-500/10 transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => setShowSyncDialog(true)} disabled={syncing} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-400/30 bg-purple-500/10 px-4 text-sm font-semibold text-purple-300 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50">
             <Calendar className="h-3.5 w-3.5" />
             自定义同步
           </button>
-          <button onClick={() => void runSync({ start_date: dateOffset(-365), end_date: dateOffset(0), job_name: `kline-full-${Date.now()}` })} disabled={syncing} className="flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => void runSync({ start_date: dateOffset(-365), end_date: dateOffset(0), job_name: `kline-full-${Date.now()}` })} disabled={syncing} className="flex h-9 items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">
             <Play className="h-3.5 w-3.5" />
             全量同步
           </button>
@@ -777,7 +777,7 @@ export function DataCenter() {
           <div className="flex items-center gap-1 rounded-lg border border-crypto-border bg-crypto-card p-1">
             <button
               onClick={() => setFilterTf('')}
-              className={clsx('rounded-md px-3 py-1 text-xs font-medium transition', !filterTf ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white')}
+              className={clsx('rounded-md px-3 py-1 text-xs font-medium transition', !filterTf ? 'bg-blue-500/20 text-blue-300' : 'text-gray-400 hover:text-white')}
             >
               全部
             </button>
@@ -787,7 +787,7 @@ export function DataCenter() {
                 onClick={() => setFilterTf(filterTf === timeframe ? '' : timeframe)}
                 className={clsx(
                   'rounded-md px-3 py-1 text-xs font-medium transition',
-                  filterTf === timeframe ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white',
+                  filterTf === timeframe ? 'bg-blue-500/20 text-blue-300' : 'text-gray-400 hover:text-white',
                   !syncedTimeframes.includes(timeframe) && 'opacity-55',
                 )}
               >
@@ -962,7 +962,7 @@ export function DataCenter() {
 
       {showScheduleDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <section className="w-full max-w-xl overflow-hidden rounded-2xl border border-emerald-500/30 bg-[#0f1624] shadow-2xl shadow-black/50">
+          <section className="w-full max-w-xl overflow-hidden rounded-2xl border border-emerald-500/30 bg-crypto-card shadow-2xl shadow-black/50">
             <div className="flex items-center justify-between border-b border-emerald-500/20 px-6 py-4">
               <div>
                 <h2 className="text-base font-semibold text-white">定时同步设置</h2>
@@ -1023,7 +1023,7 @@ export function DataCenter() {
 
       {showAddSymbolDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-emerald-500/30 bg-[#0f1624] shadow-2xl shadow-black/50">
+          <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-emerald-500/30 bg-crypto-card shadow-2xl shadow-black/50">
             <div className="flex items-center justify-between border-b border-emerald-500/20 px-6 py-4">
               <div>
                 <h2 className="text-base font-semibold text-white">增加股票</h2>
@@ -1092,7 +1092,7 @@ export function DataCenter() {
 
       {showRemoveSymbolDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-red-500/30 bg-[#0f1624] shadow-2xl shadow-black/50">
+          <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-red-500/30 bg-crypto-card shadow-2xl shadow-black/50">
             <div className="flex items-center justify-between border-b border-red-500/20 px-6 py-4">
               <div>
                 <h2 className="text-base font-semibold text-white">删除股票</h2>
@@ -1140,7 +1140,7 @@ export function DataCenter() {
 
       {showDeleteDataDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-orange-500/30 bg-[#0f1624] shadow-2xl shadow-black/50">
+          <section className="w-full max-w-2xl overflow-hidden rounded-2xl border border-orange-500/30 bg-crypto-card shadow-2xl shadow-black/50">
             <div className="flex items-center justify-between border-b border-orange-500/20 px-6 py-4">
               <div>
                 <h2 className="text-base font-semibold text-white">删除历史数据</h2>
@@ -1191,7 +1191,7 @@ export function DataCenter() {
 
       {showSyncDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <section className="w-full max-w-3xl overflow-hidden rounded-2xl border border-purple-500/35 bg-[#0f1624] shadow-2xl shadow-black/50">
+          <section className="w-full max-w-3xl overflow-hidden rounded-2xl border border-purple-500/35 bg-crypto-card shadow-2xl shadow-black/50">
             <div className="flex items-center justify-between border-b border-purple-500/25 px-6 py-4">
               <div>
                 <div className="text-base font-semibold text-white">同步配置 · 自定义同步</div>
