@@ -98,7 +98,7 @@ const StatCard: React.FC<{
   subValue?: string;
   color?: string;
 }> = ({ icon, label, value, subValue, color = 'blue' }) => (
-  <div className="bg-[#111827] border border-slate-800 rounded-xl p-4">
+  <div className="bg-crypto-card border border-crypto-border rounded-xl p-4">
     <div className="flex items-center gap-2 text-slate-400 text-xs mb-2">
       {icon}
       <span>{label}</span>
@@ -273,7 +273,7 @@ export const SentimentAnalysisContent: React.FC = () => {
         {/* 第一行：情绪仪表盘 + 核心指标 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* 情绪仪表盘 */}
-          <div className="bg-[#111827] border border-slate-800 rounded-xl p-6 flex flex-col items-center justify-center">
+          <div className="bg-crypto-card border border-crypto-border rounded-xl p-6 flex flex-col items-center justify-center">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
               市场情绪指数
             </h3>
@@ -349,8 +349,8 @@ export const SentimentAnalysisContent: React.FC = () => {
         {/* 第二行：板块涨幅排行 + 资金流向 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 板块涨幅排行 */}
-          <div className="bg-[#111827] border border-slate-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+          <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
                 <TrendingUp size={16} className="text-red-400" />
                 板块涨幅TOP10
@@ -366,8 +366,8 @@ export const SentimentAnalysisContent: React.FC = () => {
           </div>
 
           {/* 连板梯队 */}
-          <div className="bg-[#111827] border border-slate-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+          <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
                 <Zap size={16} className="text-yellow-400" />
                 连板梯队
@@ -417,8 +417,8 @@ export const SentimentAnalysisContent: React.FC = () => {
         </div>
 
         {/* 第三行：板块资金流向 */}
-        <div className="bg-[#111827] border border-slate-800 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+        <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
               <DollarSign size={16} className="text-blue-400" />
               板块资金流向
@@ -434,8 +434,8 @@ export const SentimentAnalysisContent: React.FC = () => {
         </div>
 
         {/* 第四行：热门股票排行 */}
-        <div className="bg-[#111827] border border-slate-800 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+        <div className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-crypto-border flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-300 flex items-center gap-2">
               <Flame size={16} className="text-orange-400" />
               热门股票排行
@@ -493,8 +493,6 @@ export const SentimentAnalysis: React.FC = () => {
   const { language } = useStore();
 
   return (
-    <MainLayout title={language === 'zh' ? '市场情绪分析' : 'Market Sentiment'}>
-      <SentimentAnalysisContent />
-    </MainLayout>
+    <SentimentAnalysisContent />
   );
 };

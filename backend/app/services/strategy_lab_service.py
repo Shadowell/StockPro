@@ -485,165 +485,91 @@ class StrategyLabService:
         return self.get_paper_account(account_id)
 
     def stop_paper_account(self, account_id: int) -> Dict[str, Any]:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"UPDATE paper_accounts SET status = {ph}, updated_at = {self._now_expr()} WHERE id = {ph}",
-            ("stopped", account_id),
-        )
-        conn.commit()
-        conn.close()
+        self.db.stop_paper_account(account_id)
         self._insert_paper_event(account_id, "warning", "模拟盘已停止")
         return self.get_paper_account(account_id)
 
     def list_paper_accounts(self) -> List[Dict[str, Any]]:
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT pa.id, pa.strategy_id, ss.name, pa.name, pa.initial_capital,
-                   pa.cash, pa.equity, pa.status, pa.created_at, pa.updated_at
-            FROM paper_accounts pa
-            LEFT JOIN strategy_scripts ss ON ss.id = pa.strategy_id
-            ORDER BY pa.updated_at DESC
-            LIMIT 50
-            """
-        )
-        rows = cursor.fetchall()
-        conn.close()
+        rows = self.db.list_paper_accounts()
         return [
             {
-                "account_id": row[0],
-                "strategy_id": row[1],
-                "strategy_name": row[2],
-                "name": row[3],
-                "initial_capital": row[4],
-                "cash": row[5],
-                "equity": row[6],
-                "status": row[7],
-                "created_at": str(row[8]) if row[8] is not None else None,
-                "updated_at": str(row[9]) if row[9] is not None else None,
+                "account_id": row["id"],
+                "strategy_id": row["strategy_id"],
+                "strategy_name": row.get("strategy_name") or "未命名策略",
+                "name": row["name"],
+                "initial_capital": row["initial_capital"],
+                "cash": row["cash"],
+                "equity": row["equity"],
+                "status": row["status"],
+                "created_at": self._date_str(row.get("created_at"), include_time=True),
+                "updated_at": self._date_str(row.get("updated_at"), include_time=True),
             }
             for row in rows
         ]
 
     def get_paper_account(self, account_id: int) -> Dict[str, Any]:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT pa.id, pa.strategy_id, ss.name, pa.name, pa.initial_capital,
-                   pa.cash, pa.equity, pa.status, pa.created_at, pa.updated_at
-            FROM paper_accounts pa
-            LEFT JOIN strategy_scripts ss ON ss.id = pa.strategy_id
-            WHERE pa.id = {ph}
-            """,
-            (account_id,),
-        )
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
+        account = self.db.get_paper_account(account_id)
+        if not account:
             raise ValueError(f"Paper account {account_id} not found")
 
-        cursor.execute(
-            f"""
-            SELECT symbol, name, side, price, quantity, amount, fee, status,
-                   reason, created_at
-            FROM paper_orders
-            WHERE account_id = {ph}
-            ORDER BY created_at DESC, id DESC
-            """,
-            (account_id,),
-        )
         orders = [
             {
-                "symbol": r[0],
-                "name": r[1],
-                "side": r[2],
-                "price": r[3],
-                "quantity": r[4],
-                "amount": r[5],
-                "fee": r[6],
-                "status": r[7],
-                "reason": r[8],
-                "created_at": str(r[9]) if r[9] is not None else None,
+                "symbol": r["symbol"],
+                "name": r.get("name"),
+                "side": r["side"],
+                "price": r["price"],
+                "quantity": r["quantity"],
+                "amount": r["amount"],
+                "fee": r["fee"],
+                "status": r["status"],
+                "reason": r.get("reason"),
+                "created_at": self._date_str(r.get("created_at"), include_time=True),
             }
-            for r in cursor.fetchall()
+            for r in self.db.get_paper_orders(account_id)
         ]
-        cursor.execute(
-            f"""
-            SELECT symbol, name, quantity, avg_price, last_price, market_value,
-                   pnl, pnl_pct, updated_at
-            FROM paper_positions
-            WHERE account_id = {ph}
-            ORDER BY market_value DESC
-            """,
-            (account_id,),
-        )
         positions = [
             {
-                "symbol": r[0],
-                "name": r[1],
-                "quantity": r[2],
-                "avg_price": r[3],
-                "last_price": r[4],
-                "market_value": r[5],
-                "pnl": r[6],
-                "pnl_pct": r[7],
-                "updated_at": str(r[8]) if r[8] is not None else None,
+                "symbol": r["symbol"],
+                "name": r.get("name"),
+                "quantity": r["quantity"],
+                "avg_price": r["avg_price"],
+                "last_price": r["last_price"],
+                "market_value": r["market_value"],
+                "pnl": r["pnl"],
+                "pnl_pct": r["pnl_pct"],
+                "updated_at": self._date_str(r.get("updated_at"), include_time=True),
             }
-            for r in cursor.fetchall()
+            for r in self.db.get_paper_positions(account_id)
         ]
-        cursor.execute(
-            f"""
-            SELECT equity, cash, created_at
-            FROM paper_equity_curve
-            WHERE account_id = {ph}
-            ORDER BY created_at ASC, id ASC
-            """,
-            (account_id,),
-        )
         equity_curve = [
             {
-                "time": str(r[2]) if r[2] is not None else None,
-                "equity": r[0],
-                "cash": r[1],
+                "time": self._date_str(r.get("created_at"), include_time=True),
+                "equity": r["equity"],
+                "cash": r["cash"],
             }
-            for r in cursor.fetchall()
+            for r in self.db.get_paper_equity_curve(account_id)
         ]
-        cursor.execute(
-            f"""
-            SELECT level, message, payload, created_at
-            FROM paper_events
-            WHERE account_id = {ph}
-            ORDER BY created_at ASC, id ASC
-            """,
-            (account_id,),
-        )
         events = [
             {
-                "level": r[0],
-                "message": r[1],
-                "payload": json.loads(r[2]) if r[2] else None,
-                "created_at": str(r[3]) if r[3] is not None else None,
+                "level": r["level"],
+                "message": r["message"],
+                "payload": json.loads(r["payload"]) if r.get("payload") else None,
+                "created_at": self._date_str(r.get("created_at"), include_time=True),
             }
-            for r in cursor.fetchall()
+            for r in self.db.get_paper_events(account_id)
         ]
-        conn.close()
 
         return {
-            "status": row[7],
-            "account_id": row[0],
-            "strategy_id": row[1],
-            "strategy_name": row[2],
-            "name": row[3],
-            "initial_capital": row[4],
-            "cash": row[5],
-            "equity": row[6],
-            "created_at": str(row[8]) if row[8] is not None else None,
-            "updated_at": str(row[9]) if row[9] is not None else None,
+            "status": account["status"],
+            "account_id": account["id"],
+            "strategy_id": account["strategy_id"],
+            "strategy_name": account.get("strategy_name") or "未命名策略",
+            "name": account["name"],
+            "initial_capital": account["initial_capital"],
+            "cash": account["cash"],
+            "equity": account["equity"],
+            "created_at": self._date_str(account.get("created_at"), include_time=True),
+            "updated_at": self._date_str(account.get("updated_at"), include_time=True),
             "orders": orders,
             "positions": positions,
             "equity_curve": equity_curve,
@@ -724,20 +650,8 @@ class StrategyLabService:
             except Exception:
                 pass
 
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT symbol FROM kline_history
-            WHERE timeframe = '1d'
-            GROUP BY symbol
-            ORDER BY COUNT(*) DESC, symbol ASC
-            LIMIT 1
-            """
-        )
-        row = cursor.fetchone()
-        conn.close()
-        return [row[0]] if row else []
+        symbol = self.db.get_most_frequent_kline_symbol()
+        return [symbol] if symbol else []
 
     def _extract_symbols_from_script(self, script_content: str) -> List[str]:
         symbols: List[str] = []
@@ -884,45 +798,24 @@ class GeneratedAshareStrategy(bt.Strategy):
         return rows[-1] if rows else None
 
     def _save_backtest_result(self, result: Dict[str, Any]) -> int:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            INSERT INTO strategy_backtest_results
-            (strategy_id, symbols, start_date, end_date, initial_capital,
-             final_capital, total_return, max_drawdown, win_rate, total_trades,
-             equity_curve, trades, status)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            RETURNING id
-            """,
-            self._backtest_insert_params(result),
+        return self.db.save_backtest_result(
+            strategy_id=result["strategy_id"],
+            symbols=json.dumps(result["symbols"], ensure_ascii=False),
+            start_date=result["start_date"],
+            end_date=result["end_date"],
+            initial_capital=result["initial_capital"],
+            final_capital=result["final_capital"],
+            total_return=result["total_return"],
+            max_drawdown=result["max_drawdown"],
+            win_rate=result["win_rate"],
+            total_trades=result["total_trades"],
+            equity_curve=json.dumps(result["equity_curve"], ensure_ascii=False),
+            trades=json.dumps(result["trades"], ensure_ascii=False),
+            status=result["status"],
         )
-        backtest_id = cursor.fetchone()[0]
-        conn.commit()
-        conn.close()
-        return backtest_id
 
     def list_backtest_results(self, limit: int = 20) -> List[Dict[str, Any]]:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT b.id, b.strategy_id, COALESCE(s.name, '未命名策略') AS strategy_name,
-                   b.symbols, b.start_date, b.end_date, b.initial_capital,
-                   b.final_capital, b.total_return, b.max_drawdown, b.win_rate,
-                   b.total_trades, b.equity_curve, b.trades, b.status, b.created_at
-            FROM strategy_backtest_results b
-            LEFT JOIN strategy_scripts s ON s.id = b.strategy_id
-            ORDER BY b.created_at DESC, b.id DESC
-            LIMIT {ph}
-            """,
-            (limit,),
-        )
-        columns = [column[0] for column in cursor.description]
-        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        conn.close()
+        rows = self.db.list_backtest_results(limit)
         return [self._backtest_result_row(row) for row in rows]
 
     def _backtest_result_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
@@ -1000,134 +893,50 @@ class GeneratedAshareStrategy(bt.Strategy):
         )
 
     def _create_paper_account(self, strategy_id: int, name: str, initial_capital: float) -> int:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            INSERT INTO paper_accounts
-            (strategy_id, name, initial_capital, cash, equity, status)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 'running')
-            RETURNING id
-            """,
-            (strategy_id, name, initial_capital, initial_capital, initial_capital),
-        )
-        account_id = cursor.fetchone()[0]
-        conn.commit()
-        conn.close()
-        return account_id
+        return self.db.create_paper_account(strategy_id, name, initial_capital)
 
     def _update_paper_account(self, account_id: int, cash: float, equity: float) -> None:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            UPDATE paper_accounts
-            SET cash = {ph}, equity = {ph}, updated_at = {self._now_expr()}
-            WHERE id = {ph}
-            """,
-            (round(cash, 2), round(equity, 2), account_id),
-        )
-        conn.commit()
-        conn.close()
+        self.db.update_paper_account(account_id, cash, equity)
 
     def _insert_paper_order(self, order: Dict[str, Any]) -> int:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        params = (
-            order["account_id"],
-            order["strategy_id"],
-            order["symbol"],
-            order.get("name"),
-            order["side"],
-            order["price"],
-            order["quantity"],
-            order["amount"],
-            order["fee"],
-            order["status"],
-            order.get("reason"),
+        return self.db.insert_paper_order(
+            account_id=order["account_id"],
+            strategy_id=order["strategy_id"],
+            symbol=order["symbol"],
+            side=order["side"],
+            price=order["price"],
+            quantity=order["quantity"],
+            amount=order["amount"],
+            fee=order["fee"],
+            status=order["status"],
+            name=order.get("name"),
+            reason=order.get("reason"),
         )
-        cursor.execute(
-            f"""
-            INSERT INTO paper_orders
-            (account_id, strategy_id, symbol, name, side, price, quantity,
-             amount, fee, status, reason)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            RETURNING id
-            """,
-            params,
-        )
-        order_id = cursor.fetchone()[0]
-        conn.commit()
-        conn.close()
-        return order_id
 
     def _upsert_paper_position(self, position: Dict[str, Any]) -> None:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        params = (
-            position["account_id"],
-            position["strategy_id"],
-            position["symbol"],
-            position.get("name"),
-            position["quantity"],
-            position["avg_price"],
-            position["last_price"],
-            position["market_value"],
-            position["pnl"],
-            position["pnl_pct"],
+        self.db.upsert_paper_position(
+            account_id=position["account_id"],
+            strategy_id=position["strategy_id"],
+            symbol=position["symbol"],
+            quantity=position["quantity"],
+            avg_price=position["avg_price"],
+            last_price=position["last_price"],
+            market_value=position["market_value"],
+            pnl=position["pnl"],
+            pnl_pct=position["pnl_pct"],
+            name=position.get("name"),
         )
-        cursor.execute(
-            f"""
-            INSERT INTO paper_positions
-            (account_id, strategy_id, symbol, name, quantity, avg_price,
-             last_price, market_value, pnl, pnl_pct, updated_at)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP)
-            ON CONFLICT (account_id, symbol) DO UPDATE SET
-                name = EXCLUDED.name,
-                quantity = EXCLUDED.quantity,
-                avg_price = EXCLUDED.avg_price,
-                last_price = EXCLUDED.last_price,
-                market_value = EXCLUDED.market_value,
-                pnl = EXCLUDED.pnl,
-                pnl_pct = EXCLUDED.pnl_pct,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            params,
-        )
-        conn.commit()
-        conn.close()
 
     def _insert_equity_point(self, account_id: int, cash: float, equity: float) -> None:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            INSERT INTO paper_equity_curve (account_id, equity, cash)
-            VALUES ({ph}, {ph}, {ph})
-            """,
-            (account_id, round(equity, 2), round(cash, 2)),
-        )
-        conn.commit()
-        conn.close()
+        self.db.insert_paper_equity_point(account_id, equity, cash)
 
     def _insert_paper_event(self, account_id: int, level: str, message: str, payload: Optional[Dict[str, Any]] = None) -> None:
-        ph = self._placeholder()
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            INSERT INTO paper_events (account_id, level, message, payload)
-            VALUES ({ph}, {ph}, {ph}, {ph})
-            """,
-            (account_id, level, message, json.dumps(payload, ensure_ascii=False) if payload else None),
+        self.db.insert_paper_event(
+            account_id,
+            level,
+            message,
+            json.dumps(payload, ensure_ascii=False) if payload else None,
         )
-        conn.commit()
-        conn.close()
 
     def _merge_trade_pnl(self, orders: List[Dict[str, Any]], closed_trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         pnl_by_symbol: Dict[str, List[float]] = {}
@@ -1174,44 +983,11 @@ class GeneratedAshareStrategy(bt.Strategy):
             return {}
 
         names: Dict[str, str] = {}
-        table_queries = [
-            ("all_stocks_realtime", "code", True),
-            ("stock_fundamentals", "symbol", False),
-            ("stock_history", "symbol", False),
-            ("kline_history", "symbol", False),
-        ]
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-        try:
-            for table, symbol_column, include_digits in table_queries:
-                missing = [symbol for symbol in normalized_symbols if not names.get(symbol)]
-                if not missing:
-                    break
-                candidates: List[str] = []
-                for symbol in missing:
-                    candidates.append(symbol)
-                    digits = "".join(ch for ch in symbol if ch.isdigit())
-                    if include_digits and digits:
-                        candidates.append(digits)
-                candidates = list(dict.fromkeys(candidates))
-                placeholders = ", ".join([self._placeholder()] * len(candidates))
-                cursor.execute(
-                    f"""
-                    SELECT {symbol_column}, name
-                    FROM {table}
-                    WHERE {symbol_column} IN ({placeholders})
-                      AND COALESCE(name, '') <> ''
-                    """,
-                    tuple(candidates),
-                )
-                for raw_symbol, name in cursor.fetchall():
-                    normalized = self._normalize_symbol(raw_symbol)
-                    if normalized in normalized_symbols and self._is_valid_symbol_name(normalized, name) and not names.get(normalized):
-                        names[normalized] = str(name).strip()
-        except Exception:
-            pass
-        finally:
-            conn.close()
+        raw = self.db.lookup_symbol_names(normalized_symbols)
+        for symbol in normalized_symbols:
+            name = raw.get(symbol)
+            if name and self._is_valid_symbol_name(symbol, name) and symbol not in names:
+                names[symbol] = name
         return names
 
     def _is_valid_symbol_name(self, symbol: str, name: Any) -> bool:

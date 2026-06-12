@@ -1,0 +1,1 @@
+/Users/jie.feng/Dev/Github/Private/StockPro/docs/contracts/active-standardize-and-trading-core.md

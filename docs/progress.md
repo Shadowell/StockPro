@@ -53,17 +53,53 @@
 - Remote storage health: `curl http://47.79.36.92:4444/api/health/storage` (pass: Postgres migrations reported)
 - Remote service state: `stockpro-backend` active, `postgresql` active, no local database files remain under `/opt/stockpro`
 
-## Known Gaps (2026-06-03)
+## Snapshot (2026-06-10)
+
+- Sprint: `standardize-and-trading-core` active
+- Latest work: Added V2 trading infrastructure repository methods in `postgres_db.py`
+
+## Latest Completed Work (2026-06-10)
+
+1. V2 trading infrastructure repository methods added to `postgres_db.py`
+- Portfolios: `create_portfolio`, `get_portfolio`, `list_portfolios`, `update_portfolio`
+- Positions: `upsert_position`, `get_positions`, `get_position`
+- Orders: `create_order`, `get_order`, `list_orders`, `update_order`
+- Trades: `insert_trade`, `list_trades`
+- Cash Ledger: `insert_cash_ledger_entry`, `list_cash_ledger`
+- Risk Rules: `create_risk_rule`, `get_risk_rule`, `list_risk_rules`, `update_risk_rule`
+- Risk Events: `insert_risk_event`, `list_risk_events`
+- Broker Connections: `create_broker_connection`, `get_broker_connection`, `list_broker_connections`, `update_broker_connection`
+- Added `get_backtest_run` method
+
+2. V2 API endpoints created and registered
+- `strategy_v2.py`: strategy versions CRUD, signals CRUD, backtest runs CRUD + trades list
+- `trading.py`: portfolios CRUD, positions list, orders CRUD, trades list, cash ledger, risk rules CRUD, risk events, broker connections CRUD
+- Both registered in `api.py` under `/strategy-v2` and `/trading` prefixes
+- Added `get_backtest_run` method to `postgres_db.py`
+
+3. Verification
+- `postgres_db.py` compiles clean
+- All new endpoint routes load successfully (35 routes total)
+- `./scripts/check.sh`: frontend build OK, deploy syntax OK, backend compile OK
+- Backend unit tests: 8/10 pass (2 pre-existing failures due to missing `dashscope`)
+
+## Remaining Work (standardize-and-trading-core sprint)
+
+- Wire V2 service layer to use new postgres_db methods and API endpoints
+
+## Known Gaps (2026-06-10)
 
 1. Current fusion needs continued real-data validation across research, market, strategy, backtest, and paper trading flows.
 2. PG-only production should keep all new work on shared Postgres repositories.
 3. IP-only HTTP remains the production entry for now; HTTPS/domain should be added before real broker integration.
+4. V2 trading API endpoints implemented but no frontend integration yet.
 
-## Recommended Next Steps (2026-06-03)
+## Recommended Next Steps (2026-06-10)
 
-1. Continue hardening research/strategy modules on Postgres repositories.
-2. Add PG-backed APIs for strategy versions, backtest runs, signals, portfolios, and paper orders.
-3. Add HTTPS/domain before broker integration.
+1. Wire frontend to new V2 trading API endpoints
+2. Continue `data_hub_service.py` raw SQL refactoring
+3. Clean remaining raw SQL in `strategy_lab_service.py`
+4. Add HTTPS/domain before broker integration
 
 ---
 

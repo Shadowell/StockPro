@@ -1949,6 +1949,2073 @@ class PostgresDatabase:
             interval_seconds=60,
         )
 
+    # ================================================================
+    # Strategy Backtest Results
+    # ================================================================
+
+    def save_backtest_result(
+        self,
+        strategy_id: int,
+        symbols: str,
+        start_date: str,
+        end_date: str,
+        initial_capital: float,
+        final_capital: float,
+        total_return: float,
+        max_drawdown: float,
+        win_rate: float,
+        total_trades: int,
+        equity_curve: str,
+        trades: str,
+        status: str = "completed",
+    ) -> int:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO strategy_backtest_results
+                    (strategy_id, symbols, start_date, end_date, initial_capital,
+                     final_capital, total_return, max_drawdown, win_rate, total_trades,
+                     equity_curve, trades, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        strategy_id, symbols, start_date, end_date,
+                        initial_capital, final_capital, total_return,
+                        max_drawdown, win_rate, total_trades,
+                        equity_curve, trades, status,
+                    ),
+                )
+                return cursor.fetchone()[0]
+
+    def list_backtest_results(self, limit: int = 20) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT b.id, b.strategy_id, COALESCE(s.name, '未命名策略') AS strategy_name,
+                           b.symbols, b.start_date, b.end_date, b.initial_capital,
+                           b.final_capital, b.total_return, b.max_drawdown, b.win_rate,
+                           b.total_trades, b.equity_curve, b.trades, b.status, b.created_at
+                    FROM strategy_backtest_results b
+                    LEFT JOIN strategy_scripts s ON s.id = b.strategy_id
+                    ORDER BY b.created_at DESC, b.id DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # Paper Trading - Accounts
+    # ================================================================
+
+    def create_paper_account(
+        self,
+        strategy_id: int,
+        name: str,
+        initial_capital: float,
+    ) -> int:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO paper_accounts
+                    (strategy_id, name, initial_capital, cash, equity, status)
+                    VALUES (%s, %s, %s, %s, %s, 'running')
+                    RETURNING id
+                    """,
+                    (strategy_id, name, initial_capital, initial_capital, initial_capital),
+                )
+                return cursor.fetchone()[0]
+
+    def update_paper_account(
+        self,
+        account_id: int,
+        cash: float,
+        equity: float,
+    ) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE paper_accounts
+                    SET cash = %s, equity = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (round(cash, 2), round(equity, 2), account_id),
+                )
+
+    def get_paper_account(self, account_id: int) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT pa.id, pa.strategy_id, pa.name, pa.initial_capital,
+                           pa.cash, pa.equity, pa.status, pa.created_at, pa.updated_at,
+                           COALESCE(s.name, '未命名策略') AS strategy_name
+                    FROM paper_accounts pa
+                    LEFT JOIN strategy_scripts s ON s.id = pa.strategy_id
+                    WHERE pa.id = %s
+                    """,
+                    (account_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def list_paper_accounts(self) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT pa.id, pa.strategy_id, pa.name, pa.initial_capital,
+                           pa.cash, pa.equity, pa.status, pa.created_at, pa.updated_at,
+                           COALESCE(s.name, '未命名策略') AS strategy_name
+                    FROM paper_accounts pa
+                    LEFT JOIN strategy_scripts s ON s.id = pa.strategy_id
+                    ORDER BY pa.created_at DESC, pa.id DESC
+                    """
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def stop_paper_account(self, account_id: int) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE paper_accounts
+                    SET status = 'stopped', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (account_id,),
+                )
+
+    # ================================================================
+    # Paper Trading - Orders
+    # ================================================================
+
+    def insert_paper_order(
+        self,
+        account_id: int,
+        strategy_id: int,
+        symbol: str,
+        side: str,
+        price: float,
+        quantity: int,
+        amount: float,
+        fee: float,
+        status: str = "filled",
+        name: str = None,
+        reason: str = None,
+    ) -> int:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO paper_orders
+                    (account_id, strategy_id, symbol, name, side, price, quantity,
+                     amount, fee, status, reason)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (account_id, strategy_id, symbol, name, side, price,
+                     quantity, amount, fee, status, reason),
+                )
+                return cursor.fetchone()[0]
+
+    def get_paper_orders(self, account_id: int) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, account_id, strategy_id, symbol, name, side, price,
+                           quantity, amount, fee, status, reason, created_at
+                    FROM paper_orders
+                    WHERE account_id = %s
+                    ORDER BY created_at DESC, id DESC
+                    """,
+                    (account_id,),
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # Paper Trading - Positions
+    # ================================================================
+
+    def upsert_paper_position(
+        self,
+        account_id: int,
+        strategy_id: int,
+        symbol: str,
+        quantity: int,
+        avg_price: float,
+        last_price: float,
+        market_value: float,
+        pnl: float,
+        pnl_pct: float,
+        name: str = None,
+    ) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO paper_positions
+                    (account_id, strategy_id, symbol, name, quantity, avg_price,
+                     last_price, market_value, pnl, pnl_pct, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (account_id, symbol) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        quantity = EXCLUDED.quantity,
+                        avg_price = EXCLUDED.avg_price,
+                        last_price = EXCLUDED.last_price,
+                        market_value = EXCLUDED.market_value,
+                        pnl = EXCLUDED.pnl,
+                        pnl_pct = EXCLUDED.pnl_pct,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (account_id, strategy_id, symbol, name, quantity,
+                     avg_price, last_price, market_value, pnl, pnl_pct),
+                )
+
+    def get_paper_positions(self, account_id: int) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, account_id, strategy_id, symbol, name, quantity,
+                           avg_price, last_price, market_value, pnl, pnl_pct, updated_at
+                    FROM paper_positions
+                    WHERE account_id = %s
+                    ORDER BY symbol ASC
+                    """,
+                    (account_id,),
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # Paper Trading - Equity Curve
+    # ================================================================
+
+    def insert_paper_equity_point(
+        self,
+        account_id: int,
+        equity: float,
+        cash: float,
+    ) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO paper_equity_curve (account_id, equity, cash)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (account_id, round(equity, 2), round(cash, 2)),
+                )
+
+    def get_paper_equity_curve(self, account_id: int) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, account_id, equity, cash, created_at
+                    FROM paper_equity_curve
+                    WHERE account_id = %s
+                    ORDER BY created_at ASC, id ASC
+                    """,
+                    (account_id,),
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # Paper Trading - Events
+    # ================================================================
+
+    def insert_paper_event(
+        self,
+        account_id: int,
+        level: str,
+        message: str,
+        payload: str = None,
+    ) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO paper_events (account_id, level, message, payload)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (account_id, level, message, payload),
+                )
+
+    def get_paper_events(self, account_id: int) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, account_id, level, message, payload, created_at
+                    FROM paper_events
+                    WHERE account_id = %s
+                    ORDER BY created_at DESC, id DESC
+                    """,
+                    (account_id,),
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # Data Hub - Jobs
+    # ================================================================
+
+    def create_data_hub_job(
+        self,
+        job_key: str,
+        action: str,
+        scope: str = None,
+        params_json: str = None,
+        parent_job_key: str = None,
+    ) -> str:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO data_hub_jobs
+                    (job_key, action, scope, params_json, parent_job_key, status)
+                    VALUES (%s, %s, %s, %s, %s, 'queued')
+                    ON CONFLICT (job_key) DO NOTHING
+                    RETURNING job_key
+                    """,
+                    (job_key, action, scope, params_json, parent_job_key),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return row[0]
+                return job_key
+
+    def get_data_hub_job(self, job_key: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT job_key, action, scope, params_json, status, progress,
+                           current, total, message, error_message, result_json,
+                           logs_json, parent_job_key, created_at, started_at, finished_at
+                    FROM data_hub_jobs
+                    WHERE job_key = %s
+                    """,
+                    (job_key,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def list_data_hub_jobs(
+        self,
+        action: str = None,
+        status: str = None,
+        scope: str = None,
+        parent_job_key: str = None,
+        limit: int = 50,
+    ) -> List[Dict]:
+        query = """
+            SELECT job_key, action, scope, params_json, status, progress,
+                   current, total, message, error_message, result_json,
+                   logs_json, parent_job_key, created_at, started_at, finished_at
+            FROM data_hub_jobs
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if action:
+            query += " AND action = %s"
+            params.append(action)
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+        if scope:
+            query += " AND scope = %s"
+            params.append(scope)
+        if parent_job_key:
+            query += " AND parent_job_key = %s"
+            params.append(parent_job_key)
+        query += " ORDER BY id DESC LIMIT %s"
+        params.append(max(1, min(limit, 500)))
+
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def update_data_hub_job(
+        self,
+        job_key: str,
+        status: str = None,
+        progress: float = None,
+        current: int = None,
+        total: int = None,
+        message: str = None,
+        error_message: str = None,
+        result_json: str = None,
+        logs_json: str = None,
+        started_at: str = None,
+        finished_at: str = None,
+    ) -> None:
+        updates: List[str] = []
+        values: List[Any] = []
+        if status is not None:
+            updates.append("status = %s")
+            values.append(status)
+        if progress is not None:
+            updates.append("progress = %s")
+            values.append(progress)
+        if current is not None:
+            updates.append("current = %s")
+            values.append(current)
+        if total is not None:
+            updates.append("total = %s")
+            values.append(total)
+        if message is not None:
+            updates.append("message = %s")
+            values.append(message)
+        if error_message is not None:
+            updates.append("error_message = %s")
+            values.append(error_message)
+        if result_json is not None:
+            updates.append("result_json = %s")
+            values.append(result_json)
+        if logs_json is not None:
+            updates.append("logs_json = %s")
+            values.append(logs_json)
+        if started_at is not None:
+            updates.append("started_at = %s")
+            values.append(started_at)
+        if finished_at is not None:
+            updates.append("finished_at = %s")
+            values.append(finished_at)
+        if not updates:
+            return
+        values.append(job_key)
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE data_hub_jobs SET {', '.join(updates)} WHERE job_key = %s",
+                    values,
+                )
+
+    # ================================================================
+    # Data Hub - Quality Reports
+    # ================================================================
+
+    def save_data_hub_quality_report(
+        self,
+        report_key: str,
+        scope: str,
+        status: str,
+        summary_json: str,
+        checks_json: str,
+    ) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO data_hub_quality_reports
+                    (report_key, scope, status, summary_json, checks_json)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (report_key, scope, status, summary_json, checks_json),
+                )
+
+    def get_latest_quality_report(self) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT report_key, scope, status, summary_json, checks_json, created_at
+                    FROM data_hub_quality_reports
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    # ================================================================
+    # Data Dev - Tasks
+    # ================================================================
+
+    def list_data_dev_tasks(self) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        t.id,
+                        t.name,
+                        t.description,
+                        t.sql_content,
+                        t.cron_expression,
+                        t.enabled,
+                        t.created_at,
+                        t.updated_at,
+                        l.status AS last_status,
+                        l.execution_start AS last_run,
+                        l.error_message AS last_error
+                    FROM data_dev_tasks t
+                    LEFT JOIN data_dev_logs l
+                        ON l.id = (
+                            SELECT id
+                            FROM data_dev_logs
+                            WHERE task_id = t.id
+                            ORDER BY execution_start DESC, id DESC
+                            LIMIT 1
+                        )
+                    ORDER BY t.updated_at DESC, t.id DESC
+                    """
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def create_data_dev_task(
+        self,
+        name: str,
+        description: str,
+        sql_content: str,
+        cron_expression: str,
+        enabled: bool = True,
+    ) -> int:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO data_dev_tasks
+                    (name, description, sql_content, cron_expression, enabled, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    RETURNING id
+                    """,
+                    (name, description, sql_content, cron_expression, enabled),
+                )
+                return cursor.fetchone()[0]
+
+    def get_data_dev_task(self, task_id: int) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, name, description, sql_content, cron_expression,
+                           enabled, created_at, updated_at
+                    FROM data_dev_tasks
+                    WHERE id = %s
+                    """,
+                    (task_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def update_data_dev_task_fields(
+        self,
+        task_id: int,
+        name: str = None,
+        description: str = None,
+        sql_content: str = None,
+        cron_expression: str = None,
+        enabled: bool = None,
+    ) -> Optional[Dict]:
+        updates: List[str] = []
+        values: List[Any] = []
+        if name is not None:
+            updates.append("name = %s")
+            values.append(name)
+        if description is not None:
+            updates.append("description = %s")
+            values.append(description)
+        if sql_content is not None:
+            updates.append("sql_content = %s")
+            values.append(sql_content)
+        if cron_expression is not None:
+            updates.append("cron_expression = %s")
+            values.append(cron_expression)
+        if enabled is not None:
+            updates.append("enabled = %s")
+            values.append(enabled)
+        if not updates:
+            return None
+        updates.append("updated_at = CURRENT_TIMESTAMP")
+        values.append(task_id)
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    f"UPDATE data_dev_tasks SET {', '.join(updates)} WHERE id = %s",
+                    values,
+                )
+                cursor.execute(
+                    """
+                    SELECT id, name, description, sql_content, cron_expression,
+                           enabled, created_at, updated_at
+                    FROM data_dev_tasks
+                    WHERE id = %s
+                    """,
+                    (task_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def delete_data_dev_task_and_logs(self, task_id: int) -> bool:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("DELETE FROM data_dev_logs WHERE task_id = %s", (task_id,))
+                cursor.execute("DELETE FROM data_dev_tasks WHERE id = %s", (task_id,))
+                return cursor.rowcount > 0
+
+    # ================================================================
+    # Data Dev - Logs
+    # ================================================================
+
+    def create_data_dev_log(self, task_id: int, status: str = "running") -> int:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO data_dev_logs (task_id, execution_start, status)
+                    VALUES (%s, CURRENT_TIMESTAMP, %s)
+                    RETURNING id
+                    """,
+                    (task_id, status),
+                )
+                return cursor.fetchone()[0]
+
+    def complete_data_dev_log(
+        self,
+        log_id: int,
+        status: str,
+        affected_rows: int = 0,
+        error_message: str = None,
+    ) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE data_dev_logs
+                    SET execution_end = CURRENT_TIMESTAMP,
+                        status = %s,
+                        affected_rows = %s,
+                        error_message = %s
+                    WHERE id = %s
+                    """,
+                    (status, affected_rows, error_message, log_id),
+                )
+
+    def get_data_dev_task_logs(self, task_id: int, limit: int = 50) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, execution_start, execution_end, status,
+                           error_message, affected_rows
+                    FROM data_dev_logs
+                    WHERE task_id = %s
+                    ORDER BY execution_start DESC, id DESC
+                    LIMIT %s
+                    """,
+                    (task_id, max(1, min(int(limit), 500))),
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # Stock Sentiment
+    # ================================================================
+
+    def insert_sentiment_batch(self, records: List[Dict]) -> int:
+        if not records:
+            return 0
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                written = 0
+                for record in records:
+                    cursor.execute(
+                        """
+                        INSERT INTO stock_sentiment (code, name, date, score, level, components)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (code, date) DO UPDATE SET
+                            name = EXCLUDED.name,
+                            score = EXCLUDED.score,
+                            level = EXCLUDED.level,
+                            components = EXCLUDED.components,
+                            created_at = CURRENT_TIMESTAMP
+                        """,
+                        (
+                            record["code"],
+                            record.get("name"),
+                            record["date"],
+                            record["score"],
+                            record["level"],
+                            json.dumps(record.get("components", {}), ensure_ascii=False),
+                        ),
+                    )
+                    written += 1
+        return written
+
+    def get_sentiment_for_date(
+        self,
+        date: str,
+        limit: int = 200,
+        order: str = "desc",
+    ) -> List[Dict]:
+        direction = "DESC" if order == "desc" else "ASC"
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT code, name, date, score, level, components, created_at
+                    FROM stock_sentiment
+                    WHERE date = %s
+                    ORDER BY score {direction}
+                    LIMIT %s
+                    """,
+                    (date, limit),
+                )
+                rows = cursor.fetchall()
+        return [self._dict_row(row) for row in rows]
+
+    def get_sentiment_stats(self) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS total_records,
+                        COUNT(DISTINCT code) AS total_stocks,
+                        COUNT(DISTINCT date) AS total_dates,
+                        MAX(date) AS latest_date
+                    FROM stock_sentiment
+                    """
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else {}
+
+    # ================================================================
+    # V2 Strategy Workbench - Strategy Versions
+    # ================================================================
+
+    def create_strategy_version(
+        self,
+        name: str,
+        script_content: str,
+        legacy_strategy_id: int = None,
+        description: str = "",
+        parameter_schema: Dict = None,
+        data_dependencies: List = None,
+        output_contract: Dict = None,
+        status: str = "draft",
+    ) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute("SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM strategy_versions WHERE name = %s", (name,))
+                next_version = cursor.fetchone()["next_version"]
+                cursor.execute(
+                    """
+                    INSERT INTO strategy_versions
+                    (legacy_strategy_id, name, version, description, script_content,
+                     parameter_schema, data_dependencies, output_contract, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, name, version, description, script_content,
+                              parameter_schema, data_dependencies, output_contract,
+                              status, created_at, updated_at
+                    """,
+                    (
+                        legacy_strategy_id, name, next_version, description,
+                        script_content,
+                        json.dumps(parameter_schema or {}, ensure_ascii=False),
+                        json.dumps(data_dependencies or [], ensure_ascii=False),
+                        json.dumps(output_contract or {}, ensure_ascii=False),
+                        status,
+                    ),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def get_strategy_version(self, version_id: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, legacy_strategy_id, name, version, description,
+                           script_content, parameter_schema, data_dependencies,
+                           output_contract, status, created_at, updated_at
+                    FROM strategy_versions
+                    WHERE id = %s
+                    """,
+                    (version_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def list_strategy_versions(self, name: str = None, status: str = None) -> List[Dict]:
+        query = """
+            SELECT id, legacy_strategy_id, name, version, description,
+                   script_content, parameter_schema, data_dependencies,
+                   output_contract, status, created_at, updated_at
+            FROM strategy_versions
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if name:
+            query += " AND name = %s"
+            params.append(name)
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+        query += " ORDER BY name ASC, version DESC"
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def update_strategy_version_status(self, version_id: str, status: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    UPDATE strategy_versions
+                    SET status = %s, updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING id, name, version, status, updated_at
+                    """,
+                    (status, version_id),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    # ================================================================
+    # V2 Strategy Workbench - Strategy Parameters
+    # ================================================================
+
+    def save_strategy_parameters(self, version_id: str, params: Dict[str, Any]) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                for name, value in params.items():
+                    cursor.execute(
+                        """
+                        INSERT INTO strategy_parameters (strategy_version_id, name, value)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (strategy_version_id, name) DO UPDATE SET
+                            value = EXCLUDED.value
+                        """,
+                        (version_id, name, json.dumps(value, ensure_ascii=False)),
+                    )
+
+    def get_strategy_parameters(self, version_id: str) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, strategy_version_id, name, value, created_at
+                    FROM strategy_parameters
+                    WHERE strategy_version_id = %s
+                    ORDER BY name ASC
+                    """,
+                    (version_id,),
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # V2 Strategy Workbench - Strategy Signals
+    # ================================================================
+
+    def insert_strategy_signal(
+        self,
+        strategy_version_id: str = None,
+        legacy_strategy_id: int = None,
+        symbol: str = None,
+        name: str = None,
+        signal_type: str = "candidate",
+        status: str = "new",
+        price: float = None,
+        strength: float = None,
+        reason: str = None,
+        payload: Dict = None,
+    ) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO strategy_signals
+                    (strategy_version_id, legacy_strategy_id, symbol, name,
+                     signal_type, status, price, strength, reason, payload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, strategy_version_id, legacy_strategy_id, symbol, name,
+                              signal_type, status, signal_time, price, strength, reason,
+                              payload, created_at, updated_at
+                    """,
+                    (
+                        strategy_version_id, legacy_strategy_id, symbol, name,
+                        signal_type, status, price, strength, reason,
+                        json.dumps(payload or {}, ensure_ascii=False),
+                    ),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def list_strategy_signals(
+        self,
+        strategy_version_id: str = None,
+        legacy_strategy_id: int = None,
+        status: str = None,
+        signal_type: str = None,
+        limit: int = 100,
+    ) -> List[Dict]:
+        query = """
+            SELECT id, strategy_version_id, legacy_strategy_id, symbol, name,
+                   signal_type, status, signal_time, price, strength, reason,
+                   payload, created_at, updated_at
+            FROM strategy_signals
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if strategy_version_id:
+            query += " AND strategy_version_id = %s"
+            params.append(strategy_version_id)
+        if legacy_strategy_id:
+            query += " AND legacy_strategy_id = %s"
+            params.append(legacy_strategy_id)
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+        if signal_type:
+            query += " AND signal_type = %s"
+            params.append(signal_type)
+        query += " ORDER BY signal_time DESC LIMIT %s"
+        params.append(max(1, min(limit, 500)))
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def update_signal_status(self, signal_id: str, status: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    UPDATE strategy_signals
+                    SET status = %s, updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING id, status, updated_at
+                    """,
+                    (status, signal_id),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    # ================================================================
+    # V2 Strategy Workbench - Backtest Runs
+    # ================================================================
+
+    def create_backtest_run(
+        self,
+        strategy_version_id: str = None,
+        name: str = "",
+        universe: Dict = None,
+        parameters: Dict = None,
+        start_date: str = None,
+        end_date: str = None,
+        status: str = "queued",
+    ) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO backtest_runs
+                    (strategy_version_id, name, universe, parameters,
+                     start_date, end_date, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, strategy_version_id, name, universe, parameters,
+                              start_date, end_date, status, metrics, error_message,
+                              created_at, started_at, finished_at
+                    """,
+                    (
+                        strategy_version_id, name,
+                        json.dumps(universe or {}, ensure_ascii=False),
+                        json.dumps(parameters or {}, ensure_ascii=False),
+                        start_date, end_date, status,
+                    ),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def update_backtest_run(
+        self,
+        run_id: str,
+        status: str = None,
+        metrics: Dict = None,
+        error_message: str = None,
+        started_at: str = None,
+        finished_at: str = None,
+    ) -> Optional[Dict]:
+        updates: List[str] = []
+        values: List[Any] = []
+        if status is not None:
+            updates.append("status = %s")
+            values.append(status)
+        if metrics is not None:
+            updates.append("metrics = %s")
+            values.append(json.dumps(metrics, ensure_ascii=False))
+        if error_message is not None:
+            updates.append("error_message = %s")
+            values.append(error_message)
+        if started_at is not None:
+            updates.append("started_at = %s")
+            values.append(started_at)
+        if finished_at is not None:
+            updates.append("finished_at = %s")
+            values.append(finished_at)
+        if not updates:
+            return None
+        values.append(run_id)
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    f"UPDATE backtest_runs SET {', '.join(updates)} WHERE id = %s",
+                    values,
+                )
+                cursor.execute(
+                    """
+                    SELECT id, strategy_version_id, name, universe, parameters,
+                           start_date, end_date, status, metrics, error_message,
+                           created_at, started_at, finished_at
+                    FROM backtest_runs WHERE id = %s
+                    """,
+                    (run_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def list_backtest_runs(self, strategy_version_id: str = None, limit: int = 20) -> List[Dict]:
+        query = """
+            SELECT id, strategy_version_id, name, universe, parameters,
+                   start_date, end_date, status, metrics, error_message,
+                   created_at, started_at, finished_at
+            FROM backtest_runs
+        """
+        params: List[Any] = []
+        if strategy_version_id:
+            query += " WHERE strategy_version_id = %s"
+            params.append(strategy_version_id)
+        query += " ORDER BY created_at DESC LIMIT %s"
+        params.append(max(1, min(limit, 100)))
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def get_backtest_run(self, run_id: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, strategy_version_id, name, universe, parameters,
+                           start_date, end_date, status, metrics, error_message,
+                           created_at, started_at, finished_at
+                    FROM backtest_runs
+                    WHERE id = %s
+                    """,
+                    (run_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    # ================================================================
+    # V2 Strategy Workbench - Backtest Trades
+    # ================================================================
+
+    def insert_backtest_trades(self, run_id: str, trades: List[Dict]) -> int:
+        written = 0
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                for trade in trades:
+                    cursor.execute(
+                        """
+                        INSERT INTO backtest_trades
+                        (backtest_run_id, trade_date, symbol, name, side, price,
+                         quantity, amount, commission, reason)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            run_id,
+                            trade.get("date"),
+                            trade["symbol"],
+                            trade.get("name"),
+                            trade.get("side"),
+                            float(trade.get("price", 0)),
+                            int(trade.get("quantity", 0)),
+                            float(trade.get("amount", 0)),
+                            float(trade.get("commission", 0)),
+                            trade.get("reason"),
+                        ),
+                    )
+                    written += 1
+        return written
+
+    def list_backtest_trades(self, run_id: str) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, backtest_run_id, trade_date, symbol, name, side,
+                           price, quantity, amount, commission, reason, created_at
+                    FROM backtest_trades
+                    WHERE backtest_run_id = %s
+                    ORDER BY trade_date ASC, id ASC
+                    """,
+                    (run_id,),
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # V2 Trading Infrastructure - Portfolios
+    # ================================================================
+
+    def create_portfolio(
+        self,
+        name: str,
+        mode: str = "paper",
+        base_currency: str = "CNY",
+        initial_cash: float = 1000000.0,
+        cash_balance: float = None,
+        status: str = "active",
+    ) -> Dict:
+        if cash_balance is None:
+            cash_balance = initial_cash
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO portfolios
+                    (name, mode, base_currency, initial_cash, cash_balance, status)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id, name, mode, base_currency, initial_cash,
+                              cash_balance, status, created_at, updated_at
+                    """,
+                    (name, mode, base_currency, initial_cash, cash_balance, status),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def get_portfolio(self, portfolio_id: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, name, mode, base_currency, initial_cash,
+                           cash_balance, status, created_at, updated_at
+                    FROM portfolios
+                    WHERE id = %s
+                    """,
+                    (portfolio_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def list_portfolios(self, mode: str = None, status: str = None) -> List[Dict]:
+        query = """
+            SELECT id, name, mode, base_currency, initial_cash,
+                   cash_balance, status, created_at, updated_at
+            FROM portfolios
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if mode:
+            query += " AND mode = %s"
+            params.append(mode)
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+        query += " ORDER BY created_at DESC"
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def update_portfolio(self, portfolio_id: str, **kwargs) -> Optional[Dict]:
+        allowed = {"name", "mode", "cash_balance", "status"}
+        updates: List[str] = []
+        values: List[Any] = []
+        for key, val in kwargs.items():
+            if key in allowed:
+                updates.append(f"{key} = %s")
+                values.append(val)
+        if not updates:
+            return None
+        updates.append("updated_at = NOW()")
+        values.append(portfolio_id)
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    f"UPDATE portfolios SET {', '.join(updates)} WHERE id = %s",
+                    values,
+                )
+                cursor.execute(
+                    "SELECT id, name, mode, base_currency, initial_cash, "
+                    "cash_balance, status, created_at, updated_at "
+                    "FROM portfolios WHERE id = %s",
+                    (portfolio_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    # ================================================================
+    # V2 Trading Infrastructure - Positions
+    # ================================================================
+
+    def upsert_position(
+        self,
+        portfolio_id: str,
+        symbol: str,
+        name: str = None,
+        quantity: int = 0,
+        available_quantity: int = None,
+        avg_cost: float = 0,
+        last_price: float = None,
+        market_value: float = None,
+    ) -> Dict:
+        if available_quantity is None:
+            available_quantity = quantity
+        if market_value is None:
+            market_value = quantity * (last_price or avg_cost)
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO positions
+                    (portfolio_id, symbol, name, quantity, available_quantity,
+                     avg_cost, last_price, market_value)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (portfolio_id, symbol) DO UPDATE SET
+                        quantity = EXCLUDED.quantity,
+                        available_quantity = EXCLUDED.available_quantity,
+                        avg_cost = EXCLUDED.avg_cost,
+                        last_price = EXCLUDED.last_price,
+                        market_value = EXCLUDED.market_value,
+                        updated_at = NOW()
+                    RETURNING id, portfolio_id, symbol, name, quantity,
+                              available_quantity, avg_cost, last_price,
+                              market_value, updated_at
+                    """,
+                    (portfolio_id, symbol, name, quantity, available_quantity,
+                     avg_cost, last_price, market_value),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def get_positions(self, portfolio_id: str) -> List[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, portfolio_id, symbol, name, quantity,
+                           available_quantity, avg_cost, last_price,
+                           market_value, updated_at
+                    FROM positions
+                    WHERE portfolio_id = %s
+                    ORDER BY market_value DESC
+                    """,
+                    (portfolio_id,),
+                )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def get_position(self, portfolio_id: str, symbol: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, portfolio_id, symbol, name, quantity,
+                           available_quantity, avg_cost, last_price,
+                           market_value, updated_at
+                    FROM positions
+                    WHERE portfolio_id = %s AND symbol = %s
+                    """,
+                    (portfolio_id, symbol),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    # ================================================================
+    # V2 Trading Infrastructure - Orders
+    # ================================================================
+
+    def create_order(
+        self,
+        portfolio_id: str,
+        symbol: str,
+        side: str,
+        order_type: str = "limit",
+        price: float = None,
+        quantity: int = None,
+        name: str = None,
+        signal_id: str = None,
+        status: str = "pending",
+        message: str = None,
+    ) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO orders
+                    (portfolio_id, signal_id, symbol, name, side, order_type,
+                     price, quantity, status, message)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, portfolio_id, signal_id, broker_order_id,
+                              symbol, name, side, order_type, price, quantity,
+                              filled_quantity, status, message, created_at, updated_at
+                    """,
+                    (portfolio_id, signal_id, symbol, name, side, order_type,
+                     price, quantity, status, message),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def get_order(self, order_id: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, portfolio_id, signal_id, broker_order_id,
+                           symbol, name, side, order_type, price, quantity,
+                           filled_quantity, status, message, created_at, updated_at
+                    FROM orders
+                    WHERE id = %s
+                    """,
+                    (order_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def list_orders(
+        self,
+        portfolio_id: str = None,
+        status: str = None,
+        symbol: str = None,
+        side: str = None,
+        limit: int = 50,
+    ) -> List[Dict]:
+        query = """
+            SELECT id, portfolio_id, signal_id, broker_order_id,
+                   symbol, name, side, order_type, price, quantity,
+                   filled_quantity, status, message, created_at, updated_at
+            FROM orders
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if portfolio_id:
+            query += " AND portfolio_id = %s"
+            params.append(portfolio_id)
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+        if symbol:
+            query += " AND symbol = %s"
+            params.append(symbol)
+        if side:
+            query += " AND side = %s"
+            params.append(side)
+        query += " ORDER BY created_at DESC LIMIT %s"
+        params.append(max(1, min(limit, 500)))
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def update_order(
+        self,
+        order_id: str,
+        status: str = None,
+        filled_quantity: int = None,
+        broker_order_id: str = None,
+        message: str = None,
+    ) -> Optional[Dict]:
+        updates: List[str] = []
+        values: List[Any] = []
+        if status is not None:
+            updates.append("status = %s")
+            values.append(status)
+        if filled_quantity is not None:
+            updates.append("filled_quantity = %s")
+            values.append(filled_quantity)
+        if broker_order_id is not None:
+            updates.append("broker_order_id = %s")
+            values.append(broker_order_id)
+        if message is not None:
+            updates.append("message = %s")
+            values.append(message)
+        if not updates:
+            return None
+        updates.append("updated_at = NOW()")
+        values.append(order_id)
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    f"UPDATE orders SET {', '.join(updates)} WHERE id = %s",
+                    values,
+                )
+                cursor.execute(
+                    "SELECT id, portfolio_id, signal_id, broker_order_id, "
+                    "symbol, name, side, order_type, price, quantity, "
+                    "filled_quantity, status, message, created_at, updated_at "
+                    "FROM orders WHERE id = %s",
+                    (order_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    # ================================================================
+    # V2 Trading Infrastructure - Trades
+    # ================================================================
+
+    def insert_trade(
+        self,
+        portfolio_id: str,
+        symbol: str,
+        side: str,
+        price: float,
+        quantity: int,
+        amount: float,
+        name: str = None,
+        order_id: str = None,
+        broker_trade_id: str = None,
+        commission: float = 0,
+    ) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO trades
+                    (portfolio_id, order_id, broker_trade_id, symbol, name,
+                     side, price, quantity, amount, commission)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, portfolio_id, order_id, broker_trade_id,
+                              symbol, name, side, price, quantity, amount,
+                              commission, traded_at
+                    """,
+                    (portfolio_id, order_id, broker_trade_id, symbol, name,
+                     side, price, quantity, amount, commission),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def list_trades(
+        self,
+        portfolio_id: str = None,
+        symbol: str = None,
+        side: str = None,
+        limit: int = 100,
+    ) -> List[Dict]:
+        query = """
+            SELECT id, portfolio_id, order_id, broker_trade_id,
+                   symbol, name, side, price, quantity, amount,
+                   commission, traded_at
+            FROM trades
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if portfolio_id:
+            query += " AND portfolio_id = %s"
+            params.append(portfolio_id)
+        if symbol:
+            query += " AND symbol = %s"
+            params.append(symbol)
+        if side:
+            query += " AND side = %s"
+            params.append(side)
+        query += " ORDER BY traded_at DESC LIMIT %s"
+        params.append(max(1, min(limit, 500)))
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # V2 Trading Infrastructure - Cash Ledger
+    # ================================================================
+
+    def insert_cash_ledger_entry(
+        self,
+        portfolio_id: str,
+        event_type: str,
+        amount: float,
+        balance_after: float,
+        ref_type: str = None,
+        ref_id: str = None,
+        note: str = None,
+    ) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO cash_ledger
+                    (portfolio_id, event_type, amount, balance_after,
+                     ref_type, ref_id, note)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, portfolio_id, event_type, amount,
+                              balance_after, ref_type, ref_id, note, created_at
+                    """,
+                    (portfolio_id, event_type, amount, balance_after,
+                     ref_type, ref_id, note),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def list_cash_ledger(
+        self,
+        portfolio_id: str,
+        event_type: str = None,
+        limit: int = 100,
+    ) -> List[Dict]:
+        query = """
+            SELECT id, portfolio_id, event_type, amount, balance_after,
+                   ref_type, ref_id, note, created_at
+            FROM cash_ledger
+            WHERE portfolio_id = %s
+        """
+        params: List[Any] = [portfolio_id]
+        if event_type:
+            query += " AND event_type = %s"
+            params.append(event_type)
+        query += " ORDER BY created_at DESC LIMIT %s"
+        params.append(max(1, min(limit, 500)))
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # V2 Trading Infrastructure - Risk Rules
+    # ================================================================
+
+    def create_risk_rule(
+        self,
+        name: str,
+        rule_type: str,
+        severity: str = "block",
+        enabled: bool = True,
+        config: Dict = None,
+    ) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO risk_rules (name, rule_type, severity, enabled, config)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id, name, rule_type, severity, enabled,
+                              config, created_at, updated_at
+                    """,
+                    (name, rule_type, severity, enabled,
+                     json.dumps(config or {}, ensure_ascii=False)),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def get_risk_rule(self, rule_id: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    "SELECT id, name, rule_type, severity, enabled, "
+                    "config, created_at, updated_at FROM risk_rules WHERE id = %s",
+                    (rule_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def list_risk_rules(self, enabled: bool = None) -> List[Dict]:
+        query = """
+            SELECT id, name, rule_type, severity, enabled,
+                   config, created_at, updated_at
+            FROM risk_rules
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if enabled is not None:
+            query += " AND enabled = %s"
+            params.append(enabled)
+        query += " ORDER BY name ASC"
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def update_risk_rule(
+        self,
+        rule_id: str,
+        enabled: bool = None,
+        severity: str = None,
+        config: Dict = None,
+    ) -> Optional[Dict]:
+        updates: List[str] = []
+        values: List[Any] = []
+        if enabled is not None:
+            updates.append("enabled = %s")
+            values.append(enabled)
+        if severity is not None:
+            updates.append("severity = %s")
+            values.append(severity)
+        if config is not None:
+            updates.append("config = %s")
+            values.append(json.dumps(config, ensure_ascii=False))
+        if not updates:
+            return None
+        updates.append("updated_at = NOW()")
+        values.append(rule_id)
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    f"UPDATE risk_rules SET {', '.join(updates)} WHERE id = %s",
+                    values,
+                )
+                cursor.execute(
+                    "SELECT id, name, rule_type, severity, enabled, "
+                    "config, created_at, updated_at FROM risk_rules WHERE id = %s",
+                    (rule_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    # ================================================================
+    # V2 Trading Infrastructure - Risk Events
+    # ================================================================
+
+    def insert_risk_event(
+        self,
+        severity: str,
+        message: str,
+        portfolio_id: str = None,
+        order_id: str = None,
+        signal_id: str = None,
+        rule_id: str = None,
+        payload: Dict = None,
+    ) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO risk_events
+                    (portfolio_id, order_id, signal_id, rule_id,
+                     severity, message, payload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, portfolio_id, order_id, signal_id,
+                              rule_id, severity, message, payload, created_at
+                    """,
+                    (portfolio_id, order_id, signal_id, rule_id,
+                     severity, message,
+                     json.dumps(payload or {}, ensure_ascii=False)),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def list_risk_events(
+        self,
+        portfolio_id: str = None,
+        severity: str = None,
+        limit: int = 100,
+    ) -> List[Dict]:
+        query = """
+            SELECT id, portfolio_id, order_id, signal_id, rule_id,
+                   severity, message, payload, created_at
+            FROM risk_events
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if portfolio_id:
+            query += " AND portfolio_id = %s"
+            params.append(portfolio_id)
+        if severity:
+            query += " AND severity = %s"
+            params.append(severity)
+        query += " ORDER BY created_at DESC LIMIT %s"
+        params.append(max(1, min(limit, 500)))
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # V2 Trading Infrastructure - Broker Connections
+    # ================================================================
+
+    def create_broker_connection(
+        self,
+        name: str,
+        adapter_type: str,
+        enabled: bool = False,
+        config: Dict = None,
+    ) -> Dict:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO broker_connections (name, adapter_type, enabled, config)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id, name, adapter_type, enabled, config,
+                              last_status, last_checked_at, created_at, updated_at
+                    """,
+                    (name, adapter_type, enabled,
+                     json.dumps(config or {}, ensure_ascii=False)),
+                )
+                return self._dict_row(cursor.fetchone())
+
+    def get_broker_connection(self, connection_id: str) -> Optional[Dict]:
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    "SELECT id, name, adapter_type, enabled, config, "
+                    "last_status, last_checked_at, created_at, updated_at "
+                    "FROM broker_connections WHERE id = %s",
+                    (connection_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def list_broker_connections(self, adapter_type: str = None) -> List[Dict]:
+        query = """
+            SELECT id, name, adapter_type, enabled, config,
+                   last_status, last_checked_at, created_at, updated_at
+            FROM broker_connections
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if adapter_type:
+            query += " AND adapter_type = %s"
+            params.append(adapter_type)
+        query += " ORDER BY name ASC"
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    def update_broker_connection(
+        self,
+        connection_id: str,
+        enabled: bool = None,
+        config: Dict = None,
+        last_status: str = None,
+        last_checked_at: str = None,
+    ) -> Optional[Dict]:
+        updates: List[str] = []
+        values: List[Any] = []
+        if enabled is not None:
+            updates.append("enabled = %s")
+            values.append(enabled)
+        if config is not None:
+            updates.append("config = %s")
+            values.append(json.dumps(config, ensure_ascii=False))
+        if last_status is not None:
+            updates.append("last_status = %s")
+            values.append(last_status)
+        if last_checked_at is not None:
+            updates.append("last_checked_at = %s")
+            values.append(last_checked_at)
+        if not updates:
+            return None
+        updates.append("updated_at = NOW()")
+        values.append(connection_id)
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    f"UPDATE broker_connections SET {', '.join(updates)} WHERE id = %s",
+                    values,
+                )
+                cursor.execute(
+                    "SELECT id, name, adapter_type, enabled, config, "
+                    "last_status, last_checked_at, created_at, updated_at "
+                    "FROM broker_connections WHERE id = %s",
+                    (connection_id,),
+                )
+                row = cursor.fetchone()
+        return self._dict_row(row) if row else None
+
+    def get_most_frequent_kline_symbol(self) -> Optional[str]:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT symbol FROM kline_history
+                    WHERE timeframe = '1d'
+                    GROUP BY symbol
+                    ORDER BY COUNT(*) DESC, symbol ASC
+                    LIMIT 1
+                    """
+                )
+                row = cursor.fetchone()
+        return str(row[0]) if row else None
+
+    def lookup_symbol_names(self, symbols: List[str]) -> Dict[str, str]:
+        normalized_symbols = sorted(set(symbols))
+        if not normalized_symbols:
+            return {}
+        names: Dict[str, str] = {}
+        table_queries = [
+            ("all_stocks_realtime", "code", True),
+            ("stock_fundamentals", "symbol", False),
+            ("stock_history", "symbol", False),
+            ("kline_history", "symbol", False),
+        ]
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                for table, symbol_column, include_digits in table_queries:
+                    missing = [s for s in normalized_symbols if s not in names]
+                    if not missing:
+                        break
+                    candidates: List[str] = []
+                    for symbol in missing:
+                        candidates.append(symbol)
+                        digits = "".join(ch for ch in symbol if ch.isdigit())
+                        if include_digits and digits:
+                            candidates.append(digits)
+                    candidates = sorted(set(candidates))
+                    placeholders = ", ".join(["%s"] * len(candidates))
+                    try:
+                        cursor.execute(
+                            f"""
+                            SELECT {symbol_column}, name
+                            FROM {table}
+                            WHERE {symbol_column} IN ({placeholders})
+                              AND COALESCE(name, '') <> ''
+                            """,
+                            tuple(candidates),
+                        )
+                        for raw_symbol, name in cursor.fetchall():
+                            name_str = str(name).strip()
+                            if name_str:
+                                names[raw_symbol] = name_str
+                    except Exception:
+                        pass
+        return names
+
+    # ================================================================
+    # Data Hub Utilities
+    # ================================================================
+
+    def table_exists(self, table_name: str) -> bool:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = %s
+                    """,
+                    (table_name,),
+                )
+                row = cursor.fetchone()
+        return bool(row and row[0] > 0)
+
+    def table_row_count(self, table_name: str) -> int:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                row = cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    def table_fields(self, table_name: str) -> List[str]:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = %s
+                    ORDER BY ordinal_position
+                    """,
+                    (table_name,),
+                )
+                return [str(row[0]) for row in cursor.fetchall()]
+
+    def table_column_max(self, table_name: str, column: str) -> Optional[str]:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT MAX({column}) FROM {table_name}")
+                row = cursor.fetchone()
+        return str(row[0]) if row and row[0] else None
+
+    def append_job_log(
+        self,
+        job_key: str,
+        message: str,
+        level: str = "info",
+        payload: Dict = None,
+    ) -> None:
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT logs_json FROM data_hub_jobs WHERE job_key = %s", (job_key,))
+                row = cursor.fetchone()
+                if not row:
+                    return
+                logs = json.loads(row[0]) if row[0] else []
+                if not isinstance(logs, list):
+                    logs = []
+                logs.append(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "level": level,
+                        "message": message,
+                        "payload": payload or {},
+                    }
+                )
+                if len(logs) > 300:
+                    logs = logs[-300:]
+                cursor.execute(
+                    "UPDATE data_hub_jobs SET logs_json = %s WHERE job_key = %s",
+                    (json.dumps(logs, ensure_ascii=False), job_key),
+                )
+
+    def list_data_hub_jobs_by_scope(self, scope: str, limit: int = 10) -> List[Dict]:
+        query = """
+            SELECT job_key, action, status, progress, message, error_message,
+                   created_at, finished_at, logs_json
+            FROM data_hub_jobs
+            WHERE scope = %s
+               OR (
+                   action = 'import_daily_data'
+                   AND (
+                       params_json LIKE %s
+                       OR params_json LIKE %s
+                   )
+               )
+            ORDER BY id DESC
+            LIMIT %s
+        """
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                if scope in ("stock_fundamentals", "stock_history"):
+                    cursor.execute(
+                        query,
+                        (
+                            scope,
+                            '%"task_type": "' + scope.replace("stock_", "") + '"%',
+                            '%"task_type": "all"%',
+                            max(1, min(limit, 100)),
+                        ),
+                    )
+                elif scope == "daily_concept_sectors":
+                    cursor.execute(
+                        """
+                        SELECT job_key, action, status, progress, message, error_message,
+                               created_at, finished_at, logs_json
+                        FROM data_hub_jobs
+                        WHERE scope = %s
+                           OR action IN ('backfill_concept_history', 'sync_today_concepts')
+                        ORDER BY id DESC
+                        LIMIT %s
+                        """,
+                        (scope, max(1, min(limit, 100))),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT job_key, action, status, progress, message, error_message,
+                               created_at, finished_at, logs_json
+                        FROM data_hub_jobs
+                        WHERE scope = %s
+                        ORDER BY id DESC
+                        LIMIT %s
+                        """,
+                        (scope, max(1, min(limit, 100))),
+                    )
+                return [self._dict_row(row) for row in cursor.fetchall()]
+
+    # ================================================================
+    # Quality Check Utilities
+    # ================================================================
+
+    def check_stock_history_quality(self) -> Dict:
+        result: Dict[str, Any] = {"exists": False, "metrics": {}}
+        if not self.table_exists("stock_history"):
+            result["table"] = "stock_history"
+            return result
+        result["exists"] = True
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM stock_history")
+                total = int(cursor.fetchone()[0] or 0)
+                cursor.execute("SELECT COUNT(*) - COUNT(DISTINCT symbol || '|' || date) FROM stock_history")
+                duplicates = int(cursor.fetchone()[0] or 0)
+                cursor.execute(
+                    "SELECT SUM(CASE WHEN open IS NULL OR high IS NULL OR low IS NULL OR close IS NULL THEN 1 ELSE 0 END) FROM stock_history"
+                )
+                null_ohlc = int(cursor.fetchone()[0] or 0)
+                cursor.execute(
+                    "SELECT SUM(CASE WHEN high < low OR high < open OR high < close OR low > open OR low > close THEN 1 ELSE 0 END) FROM stock_history"
+                )
+                invalid_ohlc = int(cursor.fetchone()[0] or 0)
+                cursor.execute("SELECT SUM(CASE WHEN close IS NULL OR close <= 0 THEN 1 ELSE 0 END) FROM stock_history")
+                invalid_close = int(cursor.fetchone()[0] or 0)
+                cursor.execute("SELECT MAX(date) FROM stock_history")
+                latest_date = cursor.fetchone()[0]
+                cursor.execute(
+                    "SELECT date FROM stock_history GROUP BY date ORDER BY date DESC LIMIT 40"
+                )
+                date_rows = [str(r[0]) for r in cursor.fetchall() if r and r[0]]
+        result["metrics"] = {
+            "table": "stock_history",
+            "total": total,
+            "duplicates": duplicates,
+            "null_ohlc": null_ohlc,
+            "invalid_ohlc": invalid_ohlc,
+            "invalid_close": invalid_close,
+            "latest_date": latest_date,
+            "date_rows": date_rows,
+        }
+        return result
+
+    def check_fundamental_quality(self) -> Dict:
+        result: Dict[str, Any] = {"exists": False, "metrics": {}}
+        if not self.table_exists("stock_fundamentals"):
+            result["table"] = "stock_fundamentals"
+            return result
+        result["exists"] = True
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM stock_fundamentals")
+                total = int(cursor.fetchone()[0] or 0)
+                cursor.execute("SELECT COUNT(*) - COUNT(DISTINCT symbol) FROM stock_fundamentals")
+                duplicates = int(cursor.fetchone()[0] or 0)
+                cursor.execute(
+                    "SELECT SUM(CASE WHEN current_price IS NULL OR pe_dynamic IS NULL OR pb IS NULL OR total_market_cap IS NULL THEN 1 ELSE 0 END) FROM stock_fundamentals"
+                )
+                null_core = int(cursor.fetchone()[0] or 0)
+                cursor.execute(
+                    "SELECT SUM(CASE WHEN current_price IS NULL OR current_price <= 0 THEN 1 ELSE 0 END) FROM stock_fundamentals"
+                )
+                invalid_price = int(cursor.fetchone()[0] or 0)
+                cursor.execute("SELECT MAX(updated_at) FROM stock_fundamentals")
+                latest = cursor.fetchone()[0]
+        result["metrics"] = {
+            "table": "stock_fundamentals",
+            "total": total,
+            "duplicates": duplicates,
+            "null_core": null_core,
+            "invalid_price": invalid_price,
+            "latest": latest,
+        }
+        return result
+
+    def check_concept_quality(self) -> Dict:
+        result: Dict[str, Any] = {"exists": False, "metrics": {}}
+        if not self.table_exists("daily_concept_sectors"):
+            result["table"] = "daily_concept_sectors"
+            return result
+        result["exists"] = True
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM daily_concept_sectors")
+                total = int(cursor.fetchone()[0] or 0)
+                cursor.execute("SELECT COUNT(*) - COUNT(DISTINCT date || '|' || sector_name) FROM daily_concept_sectors")
+                duplicates = int(cursor.fetchone()[0] or 0)
+                cursor.execute(
+                    "SELECT SUM(CASE WHEN sector_name IS NULL OR TRIM(sector_name) = '' OR change_percent IS NULL THEN 1 ELSE 0 END) FROM daily_concept_sectors"
+                )
+                null_core = int(cursor.fetchone()[0] or 0)
+                cursor.execute("SELECT MAX(date) FROM daily_concept_sectors")
+                latest = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(DISTINCT date) FROM daily_concept_sectors")
+                days = int(cursor.fetchone()[0] or 0)
+                cursor.execute(
+                    "SELECT date FROM daily_concept_sectors GROUP BY date ORDER BY date DESC LIMIT 40"
+                )
+                date_rows = [str(r[0]) for r in cursor.fetchall() if r and r[0]]
+        result["metrics"] = {
+            "table": "daily_concept_sectors",
+            "total": total,
+            "duplicates": duplicates,
+            "null_core": null_core,
+            "latest_date": latest,
+            "days": days,
+            "date_rows": date_rows,
+        }
+        return result
+
     def table_counts(self) -> List[Dict]:
         table_names = [
             "kline_history",
