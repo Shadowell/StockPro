@@ -1,5 +1,5 @@
 # 热门股票TOP20
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import json
 
 try:

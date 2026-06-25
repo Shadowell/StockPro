@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:4445/api/v1/health/health}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:4445/api/health/health}"
 DO_PING="${1:-}"
 
 if [ ! -d "$BACKEND_DIR" ]; then
@@ -26,6 +26,7 @@ required = [
     "fastapi",
     "uvicorn",
     "apscheduler",
+    "tushare",
     "akshare",
     "pandas",
 ]
@@ -49,7 +50,9 @@ echo "[backend-health] compiling critical backend files..."
   cd "$BACKEND_DIR"
   "$PYTHON_BIN" -m py_compile \
     app/main.py \
-    app/db/local_db.py \
+    app/db/postgres_db.py \
+    app/db/postgres_migrations.py \
+    app/services/tushare_provider.py \
     app/services/scheduler_service.py \
     app/services/batch_import_service.py \
     app/api/endpoints/data_dev.py \

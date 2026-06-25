@@ -1,123 +1,146 @@
-import React, { useMemo } from 'react';
+import type { ComponentType } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  BarChart2,
-  BrainCircuit,
-  Newspaper,
   Activity,
+  BarChart3,
+  Bot,
   CalendarDays,
-  Code,
-  Zap,
-  FlaskConical,
-  Wallet,
+  Code2,
+  Grid2X2,
+  LineChart,
+  Newspaper,
+  NotebookPen,
+  Shield,
   ShieldCheck,
-  Microscope,
+  Sparkles,
+  TestTube2,
+  WalletCards,
 } from 'lucide-react';
-import { useStore } from '../stores/useStore';
 import clsx from 'clsx';
+import { useStore } from '../stores/useStore';
 
 interface NavigationProps {
   orientation?: 'horizontal' | 'vertical';
 }
 
+type IconType = ComponentType<{ className?: string; size?: number | string }>;
+
 type NavItem = {
   id: string;
   to: string;
-  label: string;
-  Icon: React.ComponentType<{ size?: string | number; className?: string }>;
+  labelZh: string;
+  labelEn: string;
+  Icon: IconType;
+  end?: boolean;
 };
 
 type NavGroup = {
   id: string;
-  title: string;
+  titleZh: string;
+  titleEn: string;
   items: NavItem[];
 };
 
-export const Navigation: React.FC<NavigationProps> = ({ orientation = 'horizontal' }) => {
-  const { language } = useStore();
-
-  const groups: NavGroup[] = useMemo(
-    () => [
-      {
-        id: 'data-hub',
-        title: language === 'zh' ? '数据中台' : 'Data Hub',
-        items: [
-          { id: 'dashboard', to: '/', label: language === 'zh' ? '总览看板' : 'Dashboard', Icon: LayoutDashboard },
-          { id: 'admin-data', to: '/data', label: language === 'zh' ? '管理后台' : 'Admin', Icon: ShieldCheck },
-        ],
-      },
-      {
-        id: 'research-lab',
-        title: language === 'zh' ? '研究工坊' : 'Research Lab',
-        items: [
-          { id: 'market-overview', to: '/market', label: language === 'zh' ? '市场概览' : 'Market', Icon: BarChart2 },
-          { id: 'sentiment-analysis', to: '/sentiment', label: language === 'zh' ? '市场情绪' : 'Sentiment', Icon: Activity },
-          { id: 'news-feed', to: '/news', label: language === 'zh' ? '消息中心' : 'News', Icon: Newspaper },
-          { id: 'ai-analysis', to: '/ai', label: language === 'zh' ? '智能选股' : 'AI Screener', Icon: BrainCircuit },
-          { id: 'factor-library', to: '/factors', label: language === 'zh' ? '因子研究' : 'Factor Lab', Icon: FlaskConical },
-          { id: 'trading-calendar', to: '/calendar', label: language === 'zh' ? '交易日历' : 'Calendar', Icon: CalendarDays },
-        ],
-      },
-      {
-        id: 'strategy-factory',
-        title: language === 'zh' ? '策略工厂' : 'Strategy Factory',
-        items: [
-          { id: 'strategy-dev', to: '/strategy-dev', label: language === 'zh' ? '策略开发' : 'Strategy Dev', Icon: Code },
-          { id: 'strategy-exec', to: '/strategy-exec', label: language === 'zh' ? '策略执行' : 'Strategy Exec', Icon: Zap },
-          { id: 'market-pulse', to: '/pulse', label: language === 'zh' ? '复盘中心' : 'Review Center', Icon: Microscope },
-        ],
-      },
-      {
-        id: 'execution-risk',
-        title: language === 'zh' ? '执行风控' : 'Execution & Risk',
-        items: [{ id: 'live-trading', to: '/trading', label: language === 'zh' ? '模拟/实盘交易' : 'Sim/Live Trading', Icon: Wallet }],
-      },
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    id: 'research-workshop',
+    titleZh: '研究工坊',
+    titleEn: 'Research Studio',
+    items: [
+      { id: 'dashboard', to: '/', labelZh: '总览看板', labelEn: 'Overview', Icon: Grid2X2, end: true },
+      { id: 'research-overview', to: '/research/overview', labelZh: '市场概览', labelEn: 'Market Overview', Icon: BarChart3 },
+      { id: 'sentiment', to: '/sentiment', labelZh: '市场情绪', labelEn: 'Market Sentiment', Icon: Activity },
+      { id: 'news', to: '/news', labelZh: '消息中心', labelEn: 'News Center', Icon: Newspaper },
+      { id: 'ai', to: '/ai', labelZh: '智能选股', labelEn: 'AI Screener', Icon: Bot },
+      { id: 'factors', to: '/factors', labelZh: '因子研究', labelEn: 'Factor Lab', Icon: TestTube2 },
+      { id: 'calendar', to: '/calendar', labelZh: '交易日历', labelEn: 'Calendar', Icon: CalendarDays },
     ],
-    [language]
-  );
+  },
+  {
+    id: 'strategy-factory',
+    titleZh: '策略工厂',
+    titleEn: 'Strategy Factory',
+    items: [
+      { id: 'strategy', to: '/strategy', labelZh: '策略开发', labelEn: 'Strategy Dev', Icon: Code2 },
+      { id: 'execution', to: '/paper?tab=execution', labelZh: '策略执行', labelEn: 'Execution', Icon: Sparkles },
+      { id: 'backtest', to: '/backtest', labelZh: '回测中心', labelEn: 'Backtest Center', Icon: LineChart },
+      { id: 'review', to: '/review', labelZh: '复盘中心', labelEn: 'Review Center', Icon: NotebookPen },
+    ],
+  },
+  {
+    id: 'risk-control',
+    titleZh: '执行风控',
+    titleEn: 'Risk Control',
+    items: [
+      { id: 'paper', to: '/paper', labelZh: '模拟/实盘交易', labelEn: 'Paper / Live', Icon: WalletCards },
+      { id: 'monitor', to: '/monitor', labelZh: '运行风控', labelEn: 'Runtime Risk', Icon: Shield },
+    ],
+  },
+  {
+    id: 'system-admin',
+    titleZh: '系统管理',
+    titleEn: 'System Admin',
+    items: [
+      { id: 'admin', to: '/data', labelZh: '管理后台', labelEn: 'Admin Console', Icon: ShieldCheck },
+    ],
+  },
+];
 
-  const isVertical = orientation === 'vertical';
+export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
+  const { language } = useStore();
+  const isZh = language === 'zh';
+  const vertical = orientation === 'vertical';
 
   return (
-    <nav className={clsx('flex gap-3', isVertical ? 'flex-col' : 'flex-row')}>
-      {groups.map((group) => (
-        <div
+    <nav className={clsx(vertical ? 'space-y-3' : 'flex gap-2 overflow-x-auto pb-2')}>
+      {NAV_GROUPS.map((group) => (
+        <section
           key={group.id}
           className={clsx(
-            'min-w-0',
-            isVertical ? 'rounded-lg border border-slate-800 bg-slate-900/30' : 'flex items-center gap-2'
+            vertical
+              ? 'overflow-hidden rounded-[10px] border border-crypto-border bg-crypto-card'
+              : 'flex min-w-max items-center gap-1 rounded-[10px] border border-crypto-border bg-crypto-card p-1',
           )}
         >
-          <div
-            className={clsx(
-              'text-[11px] uppercase tracking-wider font-bold text-slate-500',
-              isVertical ? 'px-3 py-2 border-b border-slate-800 flex items-center gap-1' : 'px-2'
-            )}
-          >
-            {group.id === 'execution-risk' && <ShieldCheck size={11} />}
-            {group.title}
-          </div>
-          <div className={clsx('flex', isVertical ? 'flex-col p-2 gap-1' : 'flex-row gap-2')}>
+          {vertical ? (
+            <div className="border-b border-crypto-border px-3 py-2.5">
+              <span className="block truncate text-[12px] font-bold text-slate-500">{isZh ? group.titleZh : group.titleEn}</span>
+            </div>
+          ) : null}
+
+          <div className={clsx(vertical ? 'space-y-1 p-2' : 'flex items-center gap-1')}>
             {group.items.map((item) => (
               <NavLink
                 key={item.id}
                 to={item.to}
+                end={item.end}
                 className={({ isActive }) =>
                   clsx(
-                    'flex items-center gap-2 px-3 py-2 rounded-md transition-colors text-sm',
+                    'group flex min-w-0 items-center gap-2 rounded-[7px] border text-sm font-semibold transition-colors',
+                    vertical ? 'h-10 px-2.5' : 'h-10 px-3',
                     isActive
-                      ? 'bg-blue-600/15 text-blue-300 border border-blue-500/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                      ? 'border-blue-500/55 bg-blue-600/18 text-blue-200 shadow-[inset_0_0_0_1px_rgba(96,165,250,0.08)]'
+                      : 'border-transparent text-slate-400 hover:border-crypto-border hover:bg-slate-800/65 hover:text-slate-100',
                   )
                 }
               >
-                <item.Icon size={16} />
-                <span>{item.label}</span>
+                {({ isActive }) => (
+                  <>
+                    <span
+                      className={clsx(
+                        'flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors',
+                        isActive ? 'text-blue-200' : 'text-slate-500 group-hover:text-slate-300',
+                      )}
+                    >
+                      <item.Icon className="h-4 w-4" />
+                    </span>
+                    <span className="truncate">{isZh ? item.labelZh : item.labelEn}</span>
+                  </>
+                )}
               </NavLink>
             ))}
           </div>
-        </div>
+        </section>
       ))}
     </nav>
   );

@@ -7,11 +7,11 @@ from app.models.schemas import AIAnalysisResponse, StockBase
 import pandas as pd
 from app.services.chart_service import ChartService
 from app.db import get_database
-from app.db.local_db import db_instance as local_db
+from app.db import db_instance as pg_db
 from datetime import datetime, timedelta
 from app.utils.dashscope_utils import retry_on_dns_error
 import time
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 
 logger = logging.getLogger(__name__)
 
@@ -276,7 +276,7 @@ class AIService:
         
         # 5. 从本地数据库获取基本面数据
         try:
-            fundamentals = local_db.get_stock_fundamentals(code)
+            fundamentals = pg_db.get_stock_fundamentals(code)
             if fundamentals:
                 data["fundamentals"] = fundamentals
         except Exception as e:

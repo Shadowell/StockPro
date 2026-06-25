@@ -1,5 +1,5 @@
 # 连板股监控 - 监控多板股票
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import json
 from datetime import datetime
 

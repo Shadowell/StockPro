@@ -6,6 +6,9 @@
 set -e  # 遇到错误立即退出
 
 cd "$(dirname "$0")"
+ROOT_DIR="$(pwd)"
+BACKEND_SESSION="stockpro-backend"
+FRONTEND_SESSION="stockpro-frontend"
 
 echo "================================"
 echo "🔄 开始重启应用服务..."
@@ -17,8 +20,31 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+stop_tmux_session() {
+    local session_name="$1"
+    if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$session_name" >/dev/null 2>&1; then
+        tmux kill-session -t "$session_name" >/dev/null 2>&1 || true
+    fi
+}
+
+wait_for_url() {
+    local name="$1"
+    local url="$2"
+    local attempts="${3:-30}"
+    for i in $(seq 1 "$attempts"); do
+        if curl -fsS "$url" >/dev/null 2>&1; then
+            echo -e "  ${GREEN}✓ ${name}运行正常 (${url})${NC}"
+            return 0
+        fi
+        sleep 1
+    done
+    echo -e "  ${RED}✗ ${name}启动失败 (${url})${NC}"
+    return 1
+}
+
 # 1. 停止后端服务
 echo -e "\n${YELLOW}📦 停止后端服务...${NC}"
+stop_tmux_session "$BACKEND_SESSION"
 if lsof -t -i :4445 > /dev/null 2>&1; then
     echo "  发现端口 4445 正在使用，正在关闭..."
     lsof -t -i :4445 | xargs kill -9 2>/dev/null || true
@@ -32,6 +58,7 @@ sleep 1
 
 # 2. 停止前端服务
 echo -e "\n${YELLOW}🎨 停止前端服务...${NC}"
+stop_tmux_session "$FRONTEND_SESSION"
 if lsof -t -i :4444 > /dev/null 2>&1; then
     echo "  发现端口 4444 正在使用，正在关闭..."
     lsof -t -i :4444 | xargs kill -9 2>/dev/null || true
@@ -57,31 +84,51 @@ echo -e "\n${YELLOW}📁 准备日志目录...${NC}"
 mkdir -p logs
 echo -e "  ${GREEN}✓ 日志目录就绪${NC}"
 
-# 5. 启动后端服务
+# 5. 启动 PostgreSQL
+echo -e "\n${YELLOW}🐘 启动 PostgreSQL...${NC}"
+if docker compose version >/dev/null 2>&1; then
+    docker compose up -d postgres
+else
+    docker-compose up -d postgres
+fi
+echo -e "  ${GREEN}✓ PostgreSQL 已就绪 (127.0.0.1:55432)${NC}"
+
+# 6. 启动后端服务
 echo -e "\n${YELLOW}🚀 启动后端服务...${NC}"
 cd backend
+if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+    cp .env.example .env
+fi
 
 # 检查虚拟环境
 if [ ! -d "venv" ]; then
     echo "  创建虚拟环境..."
     python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-else
-    source venv/bin/activate
 fi
+PYTHON_BIN="$(pwd)/venv/bin/python"
+"$PYTHON_BIN" -m pip install -r requirements.txt
 
 # 启动 FastAPI
 echo "  启动 FastAPI (端口 4445)..."
-nohup uvicorn app.main:app --reload --port 4445 > ../logs/backend.log 2>&1 &
-BACKEND_PID=$!
+: > ../logs/backend.log
+if command -v tmux >/dev/null 2>&1; then
+    tmux new-session -d -s "$BACKEND_SESSION" "cd '$ROOT_DIR/backend' && exec '$PYTHON_BIN' -m uvicorn app.main:app --host 127.0.0.1 --port 4445 >> '$ROOT_DIR/logs/backend.log' 2>&1"
+    BACKEND_PID=$(tmux display-message -p -t "$BACKEND_SESSION" '#{pane_pid}')
+    echo "$BACKEND_SESSION" > ../logs/backend.session
+else
+    nohup "$PYTHON_BIN" -m uvicorn app.main:app --host 127.0.0.1 --port 4445 > ../logs/backend.log 2>&1 &
+    BACKEND_PID=$!
+fi
 echo -e "  ${GREEN}✓ 后端服务已启动 (PID: $BACKEND_PID)${NC}"
 
 cd ..
 
-# 6. 启动前端服务
+# 7. 启动前端服务
 echo -e "\n${YELLOW}🚀 启动前端服务...${NC}"
 cd frontend
+if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+    cp .env.example .env
+fi
 
 # 检查依赖
 if [ ! -d "node_modules" ]; then
@@ -91,36 +138,36 @@ fi
 
 # 启动 Vite (固定端口 4444)
 echo "  启动 Vite (端口 4444)..."
-nohup npm run dev > ../logs/frontend.log 2>&1 &
-FRONTEND_PID=$!
+: > ../logs/frontend.log
+if command -v tmux >/dev/null 2>&1; then
+    tmux new-session -d -s "$FRONTEND_SESSION" "cd '$ROOT_DIR/frontend' && exec env VITE_DEV_SERVER_PORT=4444 VITE_DEV_API_PROXY_TARGET=http://127.0.0.1:4445 npm run dev -- --host 127.0.0.1 --port 4444 >> '$ROOT_DIR/logs/frontend.log' 2>&1"
+    FRONTEND_PID=$(tmux display-message -p -t "$FRONTEND_SESSION" '#{pane_pid}')
+    echo "$FRONTEND_SESSION" > ../logs/frontend.session
+else
+    nohup env VITE_DEV_SERVER_PORT=4444 VITE_DEV_API_PROXY_TARGET=http://127.0.0.1:4445 npm run dev -- --host 127.0.0.1 --port 4444 > ../logs/frontend.log 2>&1 &
+    FRONTEND_PID=$!
+fi
 echo -e "  ${GREEN}✓ 前端服务已启动 (PID: $FRONTEND_PID)${NC}"
 
 cd ..
 
-# 7. 等待服务启动
+# 8. 等待服务启动
 echo -e "\n${YELLOW}⏳ 等待服务启动...${NC}"
 sleep 3
 
-# 8. 检查服务状态
+# 9. 检查服务状态
 echo -e "\n${YELLOW}🔍 检查服务状态...${NC}"
 
-# 检查后端
-if lsof -t -i :4445 > /dev/null 2>&1; then
-    echo -e "  ${GREEN}✓ 后端服务运行正常 (http://localhost:4445)${NC}"
-else
-    echo -e "  ${RED}✗ 后端服务启动失败${NC}"
+wait_for_url "后端服务" "http://127.0.0.1:4445/api/health/health" 30 || {
     echo "  请查看日志: tail -f logs/backend.log"
-fi
-
-# 检查前端
-if lsof -t -i :4444 > /dev/null 2>&1; then
-    echo -e "  ${GREEN}✓ 前端服务运行正常 (http://localhost:4444)${NC}"
-else
-    echo -e "  ${RED}✗ 前端服务启动失败${NC}"
+    exit 1
+}
+wait_for_url "前端服务" "http://127.0.0.1:4444/" 30 || {
     echo "  请查看日志: tail -f logs/frontend.log"
-fi
+    exit 1
+}
 
-# 9. 保存进程ID到文件
+# 10. 保存进程ID到文件
 echo "$BACKEND_PID" > logs/backend.pid
 echo "$FRONTEND_PID" > logs/frontend.pid
 

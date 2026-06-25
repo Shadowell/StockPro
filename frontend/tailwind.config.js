@@ -7,16 +7,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#1e3a8a', // Deep blue
-        secondary: '#f59e0b', // Gold
-        up: '#ef4444', // Red for Up in China
-        down: '#10b981', // Green for Down in China
-        // Wait, standard international is Green Up, Red Down.
-        // Chinese market is Red Up, Green Down.
-        // The user didn't specify, but "akshare" implies Chinese market.
-        // "涨跌幅用红绿色显示" -> usually implies standard Red/Green.
-        // In China: Red = Up, Green = Down.
-        // Let's stick to Chinese convention for A-share app.
+        primary: '#2563eb',
+        secondary: '#f59e0b',
+        up: '#ff4d57',
+        down: '#10b981',
+        'crypto-green': '#10b981',
+        'crypto-red': '#ff4d57',
+        'crypto-bg': '#0b1220',
+        'crypto-card': '#111827',
+        'crypto-panel': '#0d1524',
+        'crypto-border': '#223047',
+        'crypto-muted': '#94a3b8',
       }
     },
   },

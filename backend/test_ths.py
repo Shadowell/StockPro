@@ -1,4 +1,4 @@
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 
 try:
@@ -8,7 +8,7 @@ try:
     print(f"Found {len(industries)} industries.")
     print(industries.head())
 
-    # Note: akshare doesn't provide a single function to get "all industry real-time changes" for THS efficiently 
+    # Note: the fallback provider doesn't expose a single function to get "all industry real-time changes" for THS efficiently
     # without iterating URLs usually. 
     # Let's check if there is a summary function.
     # Usually stock_board_industry_summary_ths doesn't exist. 

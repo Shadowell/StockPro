@@ -1,14 +1,14 @@
 """
-因子同步服务：从AkShare获取因子数据并写入数据库
+因子同步服务：从统一行情 provider 获取因子数据并写入数据库
 """
 import logging
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 import numpy as np
-from app.db.local_db import db_instance
+from app.db import db_instance
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class FactorSyncService:
     """
     因子数据同步服务
-    负责从AkShare获取各类因子数据并写入数据库
+    负责从 TuShare-first provider 获取各类因子数据并写入数据库
     """
     
     def __init__(self):
@@ -54,8 +54,8 @@ class FactorSyncService:
                 logger.error(f"[FactorSync] {msg}")
                 return {"status": "error", "message": msg}
             
-            logger.info(f"[FactorSync] Got {len(df)} stocks from AkShare")
-            print(f"[FactorSync] Got {len(df)} stocks from AkShare")
+            logger.info(f"[FactorSync] Got {len(df)} stocks from market data provider")
+            print(f"[FactorSync] Got {len(df)} stocks from market data provider")
             
             # 只处理A股数据
             df = df[df['代码'].str.startswith(('00', '60', '30', '68'))].copy()

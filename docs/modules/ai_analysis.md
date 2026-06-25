@@ -5,7 +5,7 @@
 - 目标：输入单只股票代码，调用千问（qwen-plus）输出结构化行情分析。
 
 ## 接口
-- `POST /api/v1/ai/analyze-stock`
+- `POST /api/ai/analyze-stock`
   - 请求：`{ "symbol": "600519", "date": "YYYYMMDD(可选)" }`
   - 响应：`{ "symbol", "name", "model", "result", "raw_text" }`
 

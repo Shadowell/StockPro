@@ -41,6 +41,21 @@ A sprint is done only when:
 - known gaps are documented
 - the repository is left in a coherent state for the next session
 
+## Frontend Dev Server
+
+After any frontend file modification, the Vite dev server auto-reloads. If the backend is modified, restart it manually:
+
+```bash
+kill $(lsof -ti:4445) 2>/dev/null; sleep 1
+source backend/venv/bin/activate
+nohup uvicorn app.main:app --reload --port 4445 > /tmp/backend.log 2>&1 &
+```
+
+Both services:
+- Frontend: http://localhost:4444
+- Backend: http://localhost:4445
+- Admin login: `admin` / `stockpro123`
+
 ## Verification
 
 Preferred entrypoint:

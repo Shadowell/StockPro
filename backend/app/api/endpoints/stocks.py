@@ -1,10 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query
 from app.services.database_data_service import database_data_service
 from app.models.schemas import StockFilterResponse
-from datetime import datetime
 import asyncio
 from app.db import get_database
-from app.core.config import settings
 from typing import Any, Dict, List
 
 router = APIRouter()
@@ -31,27 +29,31 @@ async def search_stocks(q: str = Query("", min_length=0), limit: int = Query(20,
         text = str(q or "").strip()
         if not text:
             return []
-        
+
         db = get_database()
-        if settings.DB_MODE == "local":
-            return db.search_stocks(text, limit)
-        
         pattern = f"%{text}%"
         try:
-            res = (
-                db.table("stock_history")
-                .select("code,name,date")
-                .or_(f"code.ilike.{pattern},name.ilike.{pattern}")
-                .order("date", desc=True)
-                .limit(1000)
-                .execute()
-            )
-            rows = res.data or []
+            with db.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT code, name
+                        FROM all_stocks_realtime
+                        WHERE code ILIKE %s OR name ILIKE %s
+                        UNION
+                        SELECT symbol AS code, name
+                        FROM stock_history
+                        WHERE symbol ILIKE %s OR name ILIKE %s
+                        LIMIT %s
+                        """,
+                        (pattern, pattern, pattern, pattern, max(limit * 5, limit)),
+                    )
+                    rows = cursor.fetchall()
             seen: set[str] = set()
             out: List[Dict[str, Any]] = []
             for row in rows:
-                code = str(row.get("code") or "").strip()
-                name = str(row.get("name") or "").strip()
+                code = str(row[0] or "").strip()
+                name = str(row[1] or "").strip()
                 if not code or code in seen:
                     continue
                 seen.add(code)
