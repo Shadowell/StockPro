@@ -7,15 +7,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#1e3a8a',
+        primary: '#2563eb',
         secondary: '#f59e0b',
-        up: '#ef4444',
+        up: '#ff4d57',
         down: '#10b981',
-        'crypto-green': '#00C853',
-        'crypto-red': '#FF1744',
-        'crypto-bg': '#0D1117',
-        'crypto-card': '#161B22',
-        'crypto-border': '#30363D',
+        'crypto-green': '#10b981',
+        'crypto-red': '#ff4d57',
+        'crypto-bg': '#0b1220',
+        'crypto-card': '#111827',
+        'crypto-panel': '#0d1524',
+        'crypto-border': '#223047',
+        'crypto-muted': '#94a3b8',
       }
     },
   },

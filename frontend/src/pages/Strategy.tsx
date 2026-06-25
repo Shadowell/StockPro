@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Activity, BarChart3, BookOpen, CalendarDays, Code2, Layers, Plus, Save, Search, TrendingUp, Zap, X } from 'lucide-react';
 import clsx from 'clsx';
 import { autoDevelopStrategy, getStrategies, saveStrategy, updateStrategy } from '../api/client';
+import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
 import { StrategyDetailPanel } from '../components/BitProDetailPanels';
 import type { Strategy as StrategyType } from '../types';
 
@@ -245,6 +246,15 @@ export function Strategy() {
       </div>
 
       <div className="mb-6 space-y-3">
+        <AshareGuardrailStrip
+          title="A股策略约束"
+          description="策略进入回测或模拟前，必须把 A 股交易制度写入信号生成和下单尺寸。"
+          items={[
+            { label: '100股整数手', detail: '买入数量按一手取整，避免生成不可成交委托。' },
+            { label: 'T+1持仓规则', detail: '当日买入默认不可当日卖出，回测和模拟保持一致。' },
+            { label: '涨跌停 / 停牌过滤', detail: '信号池需剔除不可交易和接近涨跌停的标的。' },
+          ]}
+        />
         <div className="inline-flex w-fit items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card p-1">
           <button
             type="button"

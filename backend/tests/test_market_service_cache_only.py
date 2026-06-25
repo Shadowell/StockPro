@@ -1,5 +1,7 @@
+import unittest
 from unittest.mock import Mock, patch
 
+from app.core.config import settings
 from app.services.market_service import MarketService
 
 
@@ -68,3 +70,43 @@ def test_news_page_path_returns_db_rows_without_triggering_sync():
 
     assert len(result) == 1
     assert result[0]["title"] == "市场快讯"
+
+
+class HotConceptFallbackTests(unittest.TestCase):
+    def tearDown(self):
+        MarketService._get_cached_hot_concepts.clear_cache()
+
+    def test_hot_concepts_fetches_and_persists_external_rows_when_pg_cache_is_empty(self):
+        fake_db = Mock()
+        fake_db.get_hot_concepts_realtime.return_value = []
+        fake_db.get_hot_concepts_history.return_value = []
+        external_rows = [
+            {"rank": 1, "name": "存储芯片", "change_percent": 3.12, "inflow": 10.0, "outflow": 3.0, "net_inflow": 7.0},
+            {"rank": 2, "name": "中芯国际概念", "change_percent": 2.8, "inflow": 8.0, "outflow": 9.0, "net_inflow": -1.0},
+        ]
+
+        with (
+            patch("app.services.market_service.db", fake_db),
+            patch.object(settings, "ENABLE_EXTERNAL_MARKET_FETCH", True),
+            patch.object(MarketService, "_get_cached_hot_concepts", return_value=external_rows) as external_fetch,
+        ):
+            result = MarketService.get_hot_concepts(limit=1)
+
+        self.assertEqual(external_rows[:1], result)
+        external_fetch.assert_called_once()
+        fake_db.update_hot_concepts_realtime.assert_called_once_with(external_rows)
+        fake_db.insert_hot_concepts_history.assert_called_once()
+
+    def test_hot_concepts_returns_empty_when_pg_cache_is_empty_and_external_fetch_is_disabled(self):
+        fake_db = Mock()
+        fake_db.get_hot_concepts_realtime.return_value = []
+        fake_db.get_hot_concepts_history.return_value = []
+
+        with (
+            patch("app.services.market_service.db", fake_db),
+            patch.object(settings, "ENABLE_EXTERNAL_MARKET_FETCH", False),
+            patch.object(MarketService, "_get_cached_hot_concepts", side_effect=AssertionError("external fetch")),
+        ):
+            result = MarketService.get_hot_concepts(limit=10)
+
+        self.assertEqual([], result)

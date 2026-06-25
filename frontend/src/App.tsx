@@ -10,6 +10,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard").then((module) => ({ def
 const Market = lazy(() => import("./pages/Market").then((module) => ({ default: module.Market })));
 const Strategy = lazy(() => import("./pages/Strategy").then((module) => ({ default: module.Strategy })));
 const Backtest = lazy(() => import("./pages/Backtest").then((module) => ({ default: module.Backtest })));
+const DailyReview = lazy(() => import("./pages/DailyReview").then((module) => ({ default: module.DailyReview })));
 const Paper = lazy(() => import("./pages/Paper").then((module) => ({ default: module.Paper })));
 const Monitor = lazy(() => import("./pages/Monitor").then((module) => ({ default: module.Monitor })));
 const DataCenter = lazy(() => import("./pages/DataCenter").then((module) => ({ default: module.DataCenter })));
@@ -53,6 +54,7 @@ export default function App() {
                 <Route path="/market" element={<Market />} />
                 <Route path="/strategy" element={<Strategy />} />
                 <Route path="/backtest" element={<Backtest />} />
+                <Route path="/review" element={<DailyReview />} />
                 <Route path="/paper" element={<Paper />} />
                 <Route path="/monitor" element={<Monitor />} />
                 <Route path="/data" element={<DataCenter />} />
@@ -67,7 +69,7 @@ export default function App() {
 
                 <Route path="/strategy-dev" element={<Navigate to="/strategy?tab=code" replace />} />
                 <Route path="/strategy-exec" element={<Navigate to="/paper?tab=execution" replace />} />
-                <Route path="/pulse" element={<Navigate to="/backtest?tab=review" replace />} />
+                <Route path="/pulse" element={<Navigate to="/review" replace />} />
                 <Route path="/trading" element={<Navigate to="/paper?tab=trading" replace />} />
                 <Route path="/strategy-backtest" element={<Navigate to="/backtest" replace />} />
                 <Route path="/strategy-paper" element={<Navigate to="/paper" replace />} />

@@ -300,7 +300,10 @@ export function Market() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <TrendingUp className="h-6 w-6 text-blue-400" />
-          <h1 className="text-2xl font-bold text-white">行情</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-white">行情终端</h1>
+            <p className="mt-1 text-xs text-slate-500">个股分析 · 板块龙头 · K线图表</p>
+          </div>
         </div>
         <div className="market-action-strip flex flex-wrap items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card/80 p-1 shadow-sm shadow-black/10">
           <button
@@ -563,6 +566,7 @@ export function Market() {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <h2 className="sr-only">K线图表</h2>
               <div className="h-[610px] min-h-[460px] min-w-0">
                 {daily.length >= MIN_KLINES_TO_RENDER ? (
                   <ReactECharts option={chartOption} style={{ height: '100%', width: '100%' }} />

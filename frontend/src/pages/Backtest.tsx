@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { getStrategies, listBacktestResults, runStrategyBacktest } from '../api/client';
+import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
 import { BacktestDetailPanel } from '../components/BitProDetailPanels';
 import { formatSymbolLabels } from '../utils/symbolDisplay';
 import type { Strategy, StrategyBacktestResult } from '../types';
@@ -284,6 +285,18 @@ export function Backtest() {
           <Plus className="h-6 w-6" />
           创建回测实例
         </button>
+      </div>
+
+      <div className="mb-6">
+        <AshareGuardrailStrip
+          title="A股回测约束"
+          description="回测实例默认按 A 股日频交易规则解释信号，保证收益、回撤和成交明细可复盘。"
+          items={[
+            { label: '涨跌停 / 停牌', detail: '不可成交日期不应产生虚假买卖点。' },
+            { label: '100股整数手', detail: '成交数量按一手取整，现金余量保留。' },
+            { label: '佣金 / 印花税 / 滑点', detail: '成本项在创建向导中显式配置并写入实例。' },
+          ]}
+        />
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-crypto-border bg-crypto-card">

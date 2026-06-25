@@ -23,6 +23,7 @@ import {
   runPaperTrading,
   stopPaperAccount,
 } from '../api/client';
+import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
 import { PaperInstanceDetailPanel } from '../components/BitProDetailPanels';
 import { formatSymbolLabel, normalizeSymbolCode } from '../utils/symbolDisplay';
 import type { PaperAccount, Strategy } from '../types';
@@ -365,6 +366,16 @@ export function Paper() {
             {message}
           </div>
         )}
+
+        <AshareGuardrailStrip
+          title="实盘前置约束"
+          description="模拟盘是实盘前的最后验收层，所有成交和风控都按 A 股制度做预检查。"
+          items={[
+            { label: 'T+1 / 100股', detail: '卖出、买入数量和持仓可用量必须先过交易制度校验。' },
+            { label: '涨跌停风险', detail: '接近涨跌停、停牌和异常波动标的进入高风险提示。' },
+            { label: 'PaperBroker隔离', detail: '当前只写模拟账户，不触碰真实资金或券商接口。' },
+          ]}
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex h-11 items-center rounded-xl border border-crypto-border bg-crypto-card p-1">

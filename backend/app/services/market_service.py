@@ -929,6 +929,19 @@ class MarketService:
         except Exception as e:
             logger.warning(f"Failed to fetch today's hot concepts history from DB: {e}")
 
+        if MarketService._external_fetch_enabled():
+            try:
+                external_results = MarketService._get_cached_hot_concepts()
+                if external_results:
+                    try:
+                        db.update_hot_concepts_realtime(external_results)
+                        db.insert_hot_concepts_history(today, external_results)
+                    except Exception as e:
+                        logger.warning(f"Failed to persist external hot concepts fallback: {e}")
+                    return external_results[:limit]
+            except Exception as e:
+                logger.warning(f"Failed to fetch external hot concepts fallback: {e}")
+
         elapsed_time = time.time() - start_time
         logger.info(f"No cached hot concepts available; returned empty list in {elapsed_time:.2f} seconds")
         return []
