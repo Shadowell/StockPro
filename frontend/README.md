@@ -21,4 +21,4 @@ npm run check
 - `/ai`：AI Analysis
 - `/news-calendar`：News & Calendar
 
-后端 API 默认前缀为 `/api/v1`（详见根目录 `README.md` 与 `docs/api.md`）。
+后端 API 默认前缀为 `/api`（详见根目录 `README.md` 与 `docs/api.md`）。

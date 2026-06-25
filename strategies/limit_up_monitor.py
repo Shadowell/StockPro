@@ -1,5 +1,5 @@
 # 涨停板监控
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import json
 
 df = ak.stock_zh_a_spot_em()

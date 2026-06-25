@@ -1,4 +1,4 @@
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 from datetime import datetime, timedelta
 from app.models.schemas import StockBase

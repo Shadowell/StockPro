@@ -1,5 +1,5 @@
 # 放量突破策略 - 参考strategy_template_1.py
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import json
 import pandas as pd
 from datetime import datetime, timedelta

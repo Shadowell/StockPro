@@ -7,7 +7,7 @@
 # 5. 开盘价 < 当前价（低开高走，突破）
 # 适合做首板突破
 
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import json
 import pandas as pd
 from datetime import datetime

@@ -1,5 +1,5 @@
 """
-将 strategies/ 目录中的策略文件导入到本地 SQLite 数据库。
+将 strategies/ 目录中的策略文件导入到 Postgres。
 
 用法:
     cd StockPro
@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
-from app.db.local_db import LocalDatabase
+from app.db.postgres_db import PostgresDatabase
 
 
 STRATEGIES_DIR = os.path.join(os.path.dirname(__file__), "..", "strategies")
@@ -27,13 +27,13 @@ def load_manifest():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="导入策略文件到本地数据库")
+    parser = argparse.ArgumentParser(description="导入策略文件到 Postgres")
     parser.add_argument("--force", action="store_true", help="覆盖已有同名策略")
     args = parser.parse_args()
 
     manifest = load_manifest()
-    db_path = os.environ.get("LOCAL_DB_PATH")
-    db = LocalDatabase(db_path) if db_path else LocalDatabase()
+    db = PostgresDatabase()
+    db.init_db()
 
     existing = {s["name"] for s in db.get_strategies()}
     imported, skipped = 0, 0

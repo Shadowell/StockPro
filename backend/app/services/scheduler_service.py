@@ -10,12 +10,14 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from app.core.config import settings
 from app.services.data_sync_service import data_sync_service
 from app.services.factor_sync_service import factor_sync_service
-from app.db.local_db import db_instance as db
+from app.db import db_instance as db
 
 
 logger = logging.getLogger(__name__)
@@ -104,54 +106,23 @@ class SchedulerService:
             logger.error("Failed to reload data-dev jobs: %s", e)
 
     def get_data_dev_tasks(self) -> List[Dict[str, Any]]:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                """
-                SELECT
-                    t.id,
-                    t.name,
-                    t.description,
-                    t.sql_content,
-                    t.cron_expression,
-                    t.enabled,
-                    t.created_at,
-                    t.updated_at,
-                    l.status AS last_status,
-                    l.execution_start AS last_run,
-                    l.error_message AS last_error
-                FROM data_dev_tasks t
-                LEFT JOIN data_dev_logs l
-                    ON l.id = (
-                        SELECT id
-                        FROM data_dev_logs
-                        WHERE task_id = t.id
-                        ORDER BY execution_start DESC, id DESC
-                        LIMIT 1
-                    )
-                ORDER BY t.updated_at DESC, t.id DESC
-                """
-            )
-            rows = cursor.fetchall()
-            return [
-                {
-                    "id": row[0],
-                    "name": row[1],
-                    "description": row[2],
-                    "sql_content": row[3],
-                    "cron_expression": row[4],
-                    "enabled": bool(row[5]),
-                    "created_at": row[6],
-                    "updated_at": row[7],
-                    "last_status": row[8],
-                    "last_run": row[9],
-                    "last_error": row[10],
-                }
-                for row in rows
-            ]
-        finally:
-            conn.close()
+        rows = db.list_data_dev_tasks()
+        return [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "description": row["description"],
+                "sql_content": row["sql_content"],
+                "cron_expression": row["cron_expression"],
+                "enabled": bool(row["enabled"]),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "last_status": row["last_status"],
+                "last_run": row["last_run"],
+                "last_error": row["last_error"],
+            }
+            for row in rows
+        ]
 
     def add_data_dev_task(
         self,
@@ -161,20 +132,7 @@ class SchedulerService:
         cron_expression: str,
         enabled: bool = True,
     ) -> int:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                """
-                INSERT INTO data_dev_tasks (name, description, sql_content, cron_expression, enabled, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-                """,
-                (name, description, sql_content, cron_expression, 1 if enabled else 0),
-            )
-            task_id = cursor.lastrowid
-            conn.commit()
-        finally:
-            conn.close()
+        task_id = db.create_data_dev_task(name, description, sql_content, cron_expression, enabled)
 
         if enabled:
             self._schedule_data_dev_task(task_id, cron_expression)
@@ -192,53 +150,15 @@ class SchedulerService:
         cron_expression: Optional[str] = None,
         enabled: Optional[bool] = None,
     ) -> None:
-        updates: List[str] = []
-        values: List[Any] = []
-        if name is not None:
-            updates.append("name = ?")
-            values.append(name)
-        if description is not None:
-            updates.append("description = ?")
-            values.append(description)
-        if sql_content is not None:
-            updates.append("sql_content = ?")
-            values.append(sql_content)
-        if cron_expression is not None:
-            updates.append("cron_expression = ?")
-            values.append(cron_expression)
-        if enabled is not None:
-            updates.append("enabled = ?")
-            values.append(1 if enabled else 0)
-
-        if not updates:
-            return
-
-        updates.append("updated_at = datetime('now')")
-        values.append(task_id)
-
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                f"UPDATE data_dev_tasks SET {', '.join(updates)} WHERE id = ?",
-                values,
-            )
-            if cursor.rowcount == 0:
-                raise ValueError("Task not found")
-            conn.commit()
-
-            cursor.execute(
-                "SELECT cron_expression, enabled FROM data_dev_tasks WHERE id = ?",
-                (task_id,),
-            )
-            row = cursor.fetchone()
-        finally:
-            conn.close()
-
-        if not row:
+        task = db.update_data_dev_task_fields(
+            task_id, name=name, description=description,
+            sql_content=sql_content, cron_expression=cron_expression, enabled=enabled,
+        )
+        if not task:
             raise ValueError("Task not found")
 
-        next_cron, next_enabled = row[0], bool(row[1])
+        next_cron = task["cron_expression"]
+        next_enabled = bool(task["enabled"])
         if next_enabled:
             self._schedule_data_dev_task(task_id, next_cron)
         else:
@@ -246,124 +166,59 @@ class SchedulerService:
 
     def delete_data_dev_task(self, task_id: int) -> None:
         self._unschedule_data_dev_task(task_id)
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute("DELETE FROM data_dev_logs WHERE task_id = ?", (task_id,))
-            cursor.execute("DELETE FROM data_dev_tasks WHERE id = ?", (task_id,))
-            if cursor.rowcount == 0:
-                raise ValueError("Task not found")
-            conn.commit()
-        finally:
-            conn.close()
+        if not db.delete_data_dev_task_and_logs(task_id):
+            raise ValueError("Task not found")
 
     def get_task_logs(self, task_id: int, limit: int = 50) -> List[Dict[str, Any]]:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                """
-                SELECT id, execution_start, execution_end, status, error_message, affected_rows
-                FROM data_dev_logs
-                WHERE task_id = ?
-                ORDER BY execution_start DESC, id DESC
-                LIMIT ?
-                """,
-                (task_id, max(1, min(int(limit), 500))),
-            )
-            rows = cursor.fetchall()
-            return [
-                {
-                    "id": row[0],
-                    "execution_start": row[1],
-                    "execution_end": row[2],
-                    "status": row[3],
-                    "error_message": row[4],
-                    "affected_rows": row[5],
-                }
-                for row in rows
-            ]
-        finally:
-            conn.close()
+        rows = db.get_data_dev_task_logs(task_id, limit)
+        return [
+            {
+                "id": row["id"],
+                "execution_start": row["execution_start"],
+                "execution_end": row["execution_end"],
+                "status": row["status"],
+                "error_message": row["error_message"],
+                "affected_rows": row["affected_rows"],
+            }
+            for row in rows
+        ]
 
     async def _execute_data_dev_task_job(self, task_id: int) -> None:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "SELECT name, sql_content, enabled FROM data_dev_tasks WHERE id = ?",
-                (task_id,),
-            )
-            row = cursor.fetchone()
-        finally:
-            conn.close()
-
-        if not row:
+        task = db.get_data_dev_task(task_id)
+        if not task:
             logger.warning("Data-dev task not found: %s", task_id)
             self._unschedule_data_dev_task(task_id)
             return
 
-        if not bool(row[2]):
+        if not bool(task["enabled"]):
             return
 
-        await self.execute_data_dev_task(task_id=task_id, sql_content=row[1], task_name=row[0])
+        await self.execute_data_dev_task(task_id=task_id, sql_content=task["sql_content"], task_name=task["name"])
 
     def _execute_data_dev_task_sync(self, task_id: int, sql_content: str, task_name: str) -> Dict[str, Any]:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        log_id: Optional[int] = None
+        log_id = db.create_data_dev_log(task_id, status="running")
         affected_rows = 0
         try:
-            cursor.execute(
-                """
-                INSERT INTO data_dev_logs (task_id, execution_start, status)
-                VALUES (?, datetime('now'), 'running')
-                """,
-                (task_id,),
-            )
-            log_id = cursor.lastrowid
-            conn.commit()
-
             statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
-            for stmt in statements:
-                cursor.execute(stmt)
-                if cursor.rowcount and cursor.rowcount > 0:
-                    affected_rows += int(cursor.rowcount)
+            with db.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    for stmt in statements:
+                        cursor.execute(stmt)
+                        if cursor.rowcount and cursor.rowcount > 0:
+                            affected_rows += int(cursor.rowcount)
+                conn.commit()
 
-            cursor.execute(
-                """
-                UPDATE data_dev_logs
-                SET execution_end = datetime('now'), status = 'success', affected_rows = ?, error_message = NULL
-                WHERE id = ?
-                """,
-                (affected_rows, log_id),
-            )
-            cursor.execute(
-                "UPDATE data_dev_tasks SET updated_at = datetime('now') WHERE id = ?",
-                (task_id,),
-            )
-            conn.commit()
+            db.complete_data_dev_log(log_id, status="success", affected_rows=affected_rows)
+            db.update_data_dev_task_fields(task_id)
             logger.info("Data-dev task executed successfully: %s(%s), affected_rows=%s", task_name, task_id, affected_rows)
             return {"status": "success", "affected_rows": affected_rows}
         except Exception as e:
-            conn.rollback()
-            if log_id is not None:
-                try:
-                    cursor.execute(
-                        """
-                        UPDATE data_dev_logs
-                        SET execution_end = datetime('now'), status = 'failed', error_message = ?
-                        WHERE id = ?
-                        """,
-                        (str(e), log_id),
-                    )
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
+            try:
+                db.complete_data_dev_log(log_id, status="failed", error_message=str(e))
+            except Exception:
+                pass
             logger.error("Data-dev task failed: %s(%s), error=%s", task_name, task_id, e)
             raise
-        finally:
-            conn.close()
 
     async def execute_data_dev_task(self, task_id: int, sql_content: str, task_name: str) -> Dict[str, Any]:
         return await asyncio.to_thread(self._execute_data_dev_task_sync, task_id, sql_content, task_name)
@@ -420,6 +275,15 @@ class SchedulerService:
             trigger=CronTrigger(hour=16, minute=0, day_of_week='mon-fri'),
             id='daily_stock_history',
             name='同步股票历史数据',
+            replace_existing=True
+        )
+
+        # 每天收盘后同步全量 A 股日 K，任务进度写入 v2 数据模块的同步任务表
+        self.scheduler.add_job(
+            func=self._sync_all_ashare_klines,
+            trigger=CronTrigger(hour=18, minute=10, timezone=ZoneInfo("Asia/Shanghai")),
+            id='sync_all_ashare_klines',
+            name='每日同步全量A股K线',
             replace_existing=True
         )
         
@@ -498,7 +362,7 @@ class SchedulerService:
         )
         
         # ========== 分钟级任务 ==========
-        
+
         # 全市场行情 - 交易时间每5分钟
         self.scheduler.add_job(
             func=self._sync_realtime_stocks,
@@ -507,6 +371,17 @@ class SchedulerService:
             name='同步实时行情',
             replace_existing=True
         )
+
+        if settings.RUN_STARTUP_DATA_SYNC:
+            self.scheduler.add_job(
+                func=self._initial_sync,
+                trigger='date',
+                run_date=datetime.now(),
+                id='initial_sync',
+                name='初始数据同步'
+            )
+        else:
+            logger.info("Startup data sync skipped; scheduled/manual sync remains available")
         
         # 快讯资讯 - 每分钟
         self.scheduler.add_job(
@@ -547,7 +422,7 @@ class SchedulerService:
         关闭调度器
         """
         if self.scheduler.running:
-            self.scheduler.shutdown()
+            self.scheduler.shutdown(wait=False)
             logger.info("Scheduler shutdown")
     
     async def _sync_stock_history(self):
@@ -561,10 +436,23 @@ class SchedulerService:
             date_str = yesterday.strftime('%Y%m%d')
             
             logger.info(f"Starting stock history sync for date {date_str}")
-            result = data_sync_service.sync_stock_history(date_str)
+            result = await asyncio.to_thread(data_sync_service.sync_stock_history, date_str)
             logger.info(f"Stock history sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in stock history sync: {str(e)}")
+
+    async def _sync_all_ashare_klines(self):
+        """
+        每日同步全量 A 股日 K 数据
+        """
+        try:
+            logger.info("Starting daily all A-share kline sync")
+            from app.api.endpoints import data as data_module
+
+            result = await data_module.run_scheduled_all_ashare_sync()
+            logger.info(f"Daily all A-share kline sync completed: {result}")
+        except Exception as e:
+            logger.error(f"Error in daily all A-share kline sync: {str(e)}")
     
     async def _sync_market_data(self):
         """
@@ -574,11 +462,11 @@ class SchedulerService:
             logger.info("Starting market data sync")
             
             # 同步热门概念
-            concept_result = data_sync_service.sync_hot_concepts()
+            concept_result = await asyncio.to_thread(data_sync_service.sync_hot_concepts)
             logger.info(f"Concept sync completed: {concept_result}")
             
             # 同步基本面数据
-            fundamental_result = data_sync_service.sync_fundamentals()
+            fundamental_result = await asyncio.to_thread(data_sync_service.sync_fundamentals)
             logger.info(f"Fundamentals sync completed: {fundamental_result}")
             
         except Exception as e:
@@ -590,7 +478,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting THS hot stocks sync")
-            result = data_sync_service.sync_ths_hot()
+            result = await asyncio.to_thread(data_sync_service.sync_ths_hot)
             logger.info(f"THS hot stocks sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in THS hot stocks sync: {str(e)}")
@@ -603,10 +491,10 @@ class SchedulerService:
             logger.info("Starting factor data sync")
             
             # 初始化因子定义（如果还没有初始化）
-            factor_sync_service.init_factor_definitions()
+            await asyncio.to_thread(factor_sync_service.init_factor_definitions)
             
             # 同步所有因子数据
-            result = factor_sync_service.sync_all_factors()
+            result = await asyncio.to_thread(factor_sync_service.sync_all_factors)
             logger.info(f"Factor data sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in factor data sync: {str(e)}")
@@ -617,7 +505,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting zt pool sync")
-            result = data_sync_service.sync_zt_pool()
+            result = await asyncio.to_thread(data_sync_service.sync_zt_pool)
             logger.info(f"ZT pool sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in zt pool sync: {str(e)}")
@@ -628,7 +516,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting dragon tiger board sync")
-            result = data_sync_service.sync_dragon_tiger()
+            result = await asyncio.to_thread(data_sync_service.sync_dragon_tiger)
             logger.info(f"Dragon tiger sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in dragon tiger sync: {str(e)}")
@@ -639,7 +527,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting northbound flow sync")
-            result = data_sync_service.sync_northbound_flow()
+            result = await asyncio.to_thread(data_sync_service.sync_northbound_flow)
             logger.info(f"Northbound flow sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in northbound flow sync: {str(e)}")
@@ -654,7 +542,7 @@ class SchedulerService:
         
         try:
             logger.info("Starting sector realtime sync")
-            result = data_sync_service.sync_sector_realtime()
+            result = await asyncio.to_thread(data_sync_service.sync_sector_realtime)
             logger.info(f"Sector realtime sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in sector realtime sync: {str(e)}")
@@ -667,7 +555,7 @@ class SchedulerService:
             return
         
         try:
-            result = data_sync_service.sync_realtime_stocks()
+            result = await asyncio.to_thread(data_sync_service.sync_realtime_stocks)
             logger.debug(f"Realtime stocks sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in realtime stocks sync: {str(e)}")
@@ -677,7 +565,7 @@ class SchedulerService:
         同步快讯资讯（分钟级）
         """
         try:
-            result = data_sync_service.sync_news()
+            result = await asyncio.to_thread(data_sync_service.sync_news)
             if result.get('count', 0) > 0:
                 logger.info(f"News sync completed: {result}")
         except Exception as e:
@@ -689,7 +577,7 @@ class SchedulerService:
         """
         try:
             logger.info("Starting daily concept sectors sync")
-            result = data_sync_service.sync_daily_concept_sectors()
+            result = await asyncio.to_thread(data_sync_service.sync_daily_concept_sectors)
             logger.info(f"Daily concept sectors sync completed: {result}")
         except Exception as e:
             logger.error(f"Error in daily concept sectors sync: {str(e)}")
@@ -704,21 +592,21 @@ class SchedulerService:
             # 同步股票历史数据
             yesterday = datetime.now() - timedelta(days=1)
             date_str = yesterday.strftime('%Y%m%d')
-            stock_result = data_sync_service.sync_stock_history(date_str)
+            stock_result = await asyncio.to_thread(data_sync_service.sync_stock_history, date_str)
             logger.info(f"Initial stock sync completed: {stock_result}")
             
             # 同步其他数据
-            concept_result = data_sync_service.sync_hot_concepts()
+            concept_result = await asyncio.to_thread(data_sync_service.sync_hot_concepts)
             logger.info(f"Initial concept sync completed: {concept_result}")
             
-            fundamental_result = data_sync_service.sync_fundamentals()
+            fundamental_result = await asyncio.to_thread(data_sync_service.sync_fundamentals)
             logger.info(f"Initial fundamentals sync completed: {fundamental_result}")
             
-            ths_result = data_sync_service.sync_ths_hot()
+            ths_result = await asyncio.to_thread(data_sync_service.sync_ths_hot)
             logger.info(f"Initial THS sync completed: {ths_result}")
             
             # 初始化因子定义
-            factor_sync_service.init_factor_definitions()
+            await asyncio.to_thread(factor_sync_service.init_factor_definitions)
             logger.info("Factor definitions initialized")
             
         except Exception as e:

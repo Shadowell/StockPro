@@ -34,18 +34,6 @@ export interface Sector {
   updated_at?: string;
 }
 
-export interface StockFilterResponse {
-  stocks: Stock[];
-  total_count: number;
-  filter_time: string;
-}
-
-export interface AIAnalysis {
-  stock_code: string;
-  score: number;
-  analysis_text: string;
-}
-
 export interface DailyChartData {
   date: string;
   open: number;
@@ -62,29 +50,6 @@ export interface IntradayChartData {
   amount?: number;
   pre_close?: number;    // 昨收价（只在第一条数据中）
   trade_date?: string;   // 交易日期（只在第一条数据中）
-}
-
-export interface MarketSector {
-  rank: number;
-  name: string;
-  code: string;
-  price: number;
-  change_amount: number;
-  change_percent: number;
-  market_cap: number;
-  turnover_rate: number;
-  leading_stock: string;
-  leading_stock_change: number;
-}
-
-export interface MarketStock {
-  code: string;
-  name: string;
-  price: number;
-  change_percent: number;
-  volume: number;
-  amount: number;
-  turnover: number;
 }
 
 export interface TaskStatus {
@@ -256,6 +221,7 @@ export interface CalendarRefreshResponse {
 
 export interface MarketIndex {
   name: string;
+  code?: string;
   price: number;
   change_amount: number;
   change_percent: number;
@@ -263,14 +229,14 @@ export interface MarketIndex {
 
 export interface MarketOverview {
   indices: MarketIndex[];
-  sentiment: {
+  sentiment?: {
     score: number;
     status: string;
     advancing: number;
     declining: number;
     unchanged: number;
   };
-  volume: {
+  volume?: {
     amount: number;
     unit: string;
     ratio: number;
@@ -278,8 +244,15 @@ export interface MarketOverview {
     sz_amount?: number;  // 深交所成交额
     bj_amount?: number;  // 北交所成交额
   };
+  hot_sectors?: Sector[];
+  market_breadth?: {
+    up: number;
+    down: number;
+    flat: number;
+  };
   is_open: boolean;
-  last_update: string;
+  last_update?: string;
+  updated_at?: string;
 }
 
 // ============ 策略相关类型 ============
@@ -331,4 +304,126 @@ export interface SaveStrategyRequest {
 
 export interface StartStrategyRequest {
   interval_seconds?: number;
+}
+
+export interface AutoDevelopStrategyRequest {
+  objective?: string;
+  symbols?: string[];
+  risk_level?: 'conservative' | 'balanced' | 'aggressive';
+}
+
+export interface AutoDevelopStrategyResult {
+  success: boolean;
+  id: number;
+  strategy: Strategy;
+  symbols: string[];
+  generated_plan: string;
+}
+
+export interface StrategyBacktestRequest {
+  symbols?: string[];
+  start_date?: string;
+  end_date?: string;
+  initial_capital?: number;
+  position_pct?: number;
+  commission?: number;
+  stamp_duty?: number;
+  slippage?: number;
+  min_commission?: number;
+}
+
+export interface StrategyBacktestTrade {
+  date: string;
+  symbol: string;
+  name?: string;
+  side: 'buy' | 'sell';
+  price: number;
+  quantity: number;
+  amount: number;
+  fee: number;
+  pnl: number;
+  reason?: string;
+}
+
+export interface StrategyBacktestResult {
+  engine?: string;
+  status: string;
+  backtest_id?: number;
+  strategy_id: number;
+  strategy_name: string;
+  symbols: string[];
+  symbol_names?: Record<string, string>;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+  final_capital: number;
+  total_return: number;
+  annual_return?: number;
+  max_drawdown: number;
+  sharpe?: number;
+  profit_factor?: number;
+  win_rate: number;
+  total_trades: number;
+  equity_curve: Array<{ date: string; equity: number }>;
+  trades: StrategyBacktestTrade[];
+  created_at: string;
+}
+
+export interface PaperRunRequest {
+  symbols?: string[];
+  initial_capital?: number;
+  position_pct?: number;
+  commission?: number;
+  slippage?: number;
+}
+
+export interface PaperOrder {
+  account_id?: number;
+  strategy_id?: number;
+  symbol: string;
+  name?: string;
+  side: 'buy' | 'sell';
+  price: number;
+  quantity: number;
+  amount: number;
+  fee: number;
+  status: string;
+  reason?: string;
+  created_at?: string;
+}
+
+export interface PaperPosition {
+  account_id?: number;
+  strategy_id?: number;
+  symbol: string;
+  name?: string;
+  quantity: number;
+  avg_price: number;
+  last_price: number;
+  market_value: number;
+  pnl: number;
+  pnl_pct: number;
+  updated_at?: string;
+}
+
+export interface PaperAccount {
+  account_id: number;
+  strategy_id: number;
+  strategy_name?: string;
+  name: string;
+  initial_capital: number;
+  cash: number;
+  equity: number;
+  status: string;
+  created_at: string;
+  updated_at?: string;
+  orders?: PaperOrder[];
+  positions?: PaperPosition[];
+  equity_curve?: Array<{ time?: string; equity: number; cash?: number }>;
+  events?: Array<{ level: string; message: string; payload?: unknown; created_at?: string }>;
+}
+
+export interface PaperRunResult extends PaperAccount {
+  orders: PaperOrder[];
+  positions: PaperPosition[];
 }

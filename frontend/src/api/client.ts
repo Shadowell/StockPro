@@ -1,7 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { Stock, Sector, StockFilterResponse, AIAnalysis, DailyChartData, IntradayChartData, MarketSector, MarketStock, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest } from '../types';
+import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
 export const ADMIN_AUTH_CHANGED_EVENT = 'stockpro_admin_auth_changed';
 
@@ -233,13 +233,38 @@ export interface DataHubScreenerSnapshot {
   version: string;
 }
 
+export interface ScreenerFeatureStock {
+  symbol: string;
+  name: string;
+  price: number;
+  date: string;
+  ma5: number;
+  ma10: number;
+  ma20: number;
+  ma30: number;
+  ma_range: number;
+  ma_range_pct: number;
+  avg_range_pct: number;
+  avg_std_pct: number;
+  convergence_days: number;
+}
+
+export interface ScreenerFeatureParams {
+  days?: number;
+  max_range_pct?: number;
+  main_board_only?: boolean;
+  min_price?: number;
+  max_price?: number;
+  limit?: number;
+}
+
 export interface DataHubScreenerResponse {
   status: string;
   snapshot: DataHubScreenerSnapshot;
-  data: MAConvergenceStock[];
+  data: ScreenerFeatureStock[];
   count: number;
   total_found: number;
-  params: MAConvergenceParams;
+  params: ScreenerFeatureParams;
 }
 
 export interface DataHubFactorFeaturesResponse {
@@ -349,21 +374,6 @@ export const getShortLineIndices = async (): Promise<ShortLineIndex[]> => {
   return response.data;
 };
 
-export const getFilteredStocks = async (): Promise<StockFilterResponse> => {
-  const response = await apiClient.get<StockFilterResponse>('/stocks/filter');
-  return response.data;
-};
-
-export const getHotSectors = async (): Promise<Sector[]> => {
-  const response = await apiClient.get<Sector[]>('/sectors/hot');
-  return response.data;
-};
-
-export const analyzeStocks = async (stocks: Stock[]): Promise<AIAnalysis[]> => {
-  const response = await apiClient.post<AIAnalysis[]>('/ai/analyze', { stocks });
-  return response.data;
-};
-
 export const getDailyChart = async (symbol: string): Promise<DailyChartData[]> => {
   const response = await apiClient.get<DailyChartData[]>(`/charts/daily/${symbol}`);
   return response.data;
@@ -376,16 +386,6 @@ export const getIntradayChart = async (symbol: string): Promise<IntradayChartDat
 
 export const getStockFundamentals = async (symbol: string): Promise<StockFundamentals> => {
   const response = await apiClient.get<StockFundamentals>(`/market/fundamentals/${symbol}`);
-  return response.data;
-};
-
-export const getMarketSectors = async (): Promise<MarketSector[]> => {
-  const response = await apiClient.get<MarketSector[]>('/market/sectors');
-  return response.data;
-};
-
-export const getMarketStocks = async (): Promise<MarketStock[]> => {
-  const response = await apiClient.get<MarketStock[]>('/market/stocks');
   return response.data;
 };
 
@@ -624,7 +624,7 @@ export const getDataHubQualityReport = async (): Promise<DataHubQualityReport | 
 };
 
 export const getDataHubScreenerFeatures = async (
-  params?: MAConvergenceParams
+  params?: ScreenerFeatureParams
 ): Promise<DataHubScreenerResponse> => {
   const response = await apiClient.get<DataHubScreenerResponse>('/data-hub/features/screener', { params });
   return response.data;
@@ -674,6 +674,11 @@ export const saveStrategy = async (data: SaveStrategyRequest): Promise<{ success
   return response.data;
 };
 
+export const updateStrategy = async (strategyId: number, data: SaveStrategyRequest): Promise<Strategy> => {
+  const response = await apiClient.put<Strategy>(`/strategy/${strategyId}`, data);
+  return response.data;
+};
+
 export const deleteStrategy = async (strategyId: number): Promise<{ success: boolean; message?: string; error?: string }> => {
   const response = await apiClient.delete<{ success: boolean; message?: string; error?: string }>(`/strategy/${strategyId}`);
   return response.data;
@@ -709,108 +714,72 @@ export const getRunningStrategies = async (): Promise<Strategy[]> => {
   return response.data;
 };
 
-// ========== 选股器 API ==========
-
-export interface MAConvergenceStock {
-  symbol: string;
-  name: string;
-  price: number;
-  date: string;
-  ma5: number;
-  ma10: number;
-  ma20: number;
-  ma30: number;
-  ma_range: number;
-  ma_range_pct: number;
-  avg_range_pct: number;
-  avg_std_pct: number;
-  convergence_days: number;
-}
-
-export interface MAConvergenceParams {
-  days?: number;
-  max_range_pct?: number;
-  main_board_only?: boolean;
-  min_price?: number;
-  max_price?: number;
-  limit?: number;
-}
-
-export interface MAConvergenceResponse {
-  status: string;
-  data: MAConvergenceStock[];
-  count: number;
-  total_found: number;
-  params: MAConvergenceParams;
-  description: string;
-}
-
-export const scanMAConvergenceStocks = async (params?: MAConvergenceParams): Promise<MAConvergenceResponse> => {
-  const response = await apiClient.get<MAConvergenceResponse>('/screener/ma-convergence', { params });
-  return response.data;
-};
-
-export const getStockMADetail = async (symbol: string, days?: number): Promise<Record<string, unknown>> => {
-  const response = await apiClient.get<Record<string, unknown>>(`/screener/ma-convergence/${symbol}`, { params: { days } });
-  return response.data;
-};
-
-export const checkStockMAConvergence = async (symbol: string, days?: number, max_range_pct?: number): Promise<Record<string, unknown>> => {
-  const response = await apiClient.get<Record<string, unknown>>(`/screener/ma-convergence/check/${symbol}`, { params: { days, max_range_pct } });
-  return response.data;
-};
-
-// ============ 复盘中心 API ============
-
-export interface LianbanHistoryStock {
-  code: string;
-  name: string;
-  level: number;
-  change_percent: number;
-  price: number;
-  duration_days?: number;
-  reason?: string;
-}
-
-export interface LianbanHistoryDay {
-  date: string;
-  stocks: LianbanHistoryStock[];
-}
-
-export interface SectorStatItem {
-  name: string;
-  code?: string;
-  change_percent: number;
-  leader_stock?: string;
-  rank?: number;
-}
-
-export interface DailySectorStats {
-  date: string;
-  sectors: SectorStatItem[];
-}
-
-export const getLianbanHistory = async (days: number = 30, minLevel: number = 2): Promise<LianbanHistoryDay[]> => {
-  const response = await apiClient.get<LianbanHistoryDay[]>('/market/pulse/lianban-history', { 
-    params: { days, min_level: minLevel } 
-  });
-  return response.data;
-};
-
-export const getDailySectorStats = async (
-  days: number = 30, 
-  minChangePct: number = 3.0,
-  topN: number = 15
-): Promise<DailySectorStats[]> => {
-  const response = await apiClient.get<DailySectorStats[]>('/market/pulse/daily-stats', { 
-    params: { days, min_change_pct: minChangePct, top_n: topN } 
-  });
-  return response.data;
-};
-
 export const syncTodayConceptSectors = async (): Promise<{status: string; count: number; date?: string}> => {
   const response = await apiClient.post('/market/pulse/sync-today');
   return response.data;
+};
+
+export interface PulseDailySectorItem {
+  date: string;
+  name: string;
+  change_percent: number;
+  rank?: number | null;
+  inflow?: number | null;
+  outflow?: number | null;
+  net_inflow?: number | null;
+}
+
+export interface PulseLianbanHistoryItem {
+  date: string;
+  stocks?: Array<{
+    code: string;
+    name: string;
+    level?: number;
+    today_level?: number;
+    change_percent?: number | null;
+    price?: number | null;
+    reason?: string | null;
+  }>;
+  [key: string]: unknown;
+}
+
+export interface ReplayNote {
+  note_date: string;
+  title: string;
+  content: string;
+  payload_json?: Record<string, unknown> | null;
+  updated_at?: string | null;
+}
+
+export interface ReplayNotePayload {
+  note_date: string;
+  title: string;
+  content: string;
+  payload_json?: Record<string, unknown>;
+}
+
+export const getPulseDailyStats = async (
+  params: { days?: number; min_change_pct?: number; top_n?: number } = {},
+): Promise<PulseDailySectorItem[]> => {
+  const response = await apiClient.get<PulseDailySectorItem[]>('/market/pulse/daily-stats', { params });
+  return response.data;
+};
+
+export const getPulseLianbanHistory = async (
+  params: { days?: number; min_level?: number } = {},
+): Promise<PulseLianbanHistoryItem[]> => {
+  const response = await apiClient.get<PulseLianbanHistoryItem[]>('/market/pulse/lianban-history', { params });
+  return response.data;
+};
+
+export const listReplayNotes = async (limit = 30): Promise<ReplayNote[]> => {
+  const response = await apiClient.get<{ status: string; data: ReplayNote[] }>('/market/pulse/replay-notes', { params: { limit } });
+  return response.data.data || [];
+};
+
+export const saveReplayNote = async (payload: ReplayNotePayload): Promise<ReplayNote> => {
+  const response = await apiClient.post<{ status: string; data: ReplayNote }>('/market/pulse/replay-notes', payload);
+  return response.data.data;
 };
 
 export interface BackfillResult {
@@ -825,36 +794,163 @@ export interface BackfillResult {
 export const backfillConceptHistory = async (days: number = 30): Promise<BackfillResult> => {
   const response = await apiClient.post('/market/pulse/backfill-history', null, {
     params: { days },
-    timeout: 600000  // 10分钟超时
+    timeout: 600000,
   });
   return response.data;
 };
 
-export interface ReplayNote {
-  note_date: string;
-  view_mode: 'sector' | 'lianban' | string;
-  template_id?: string | null;
-  headline?: string | null;
-  main_line?: string | null;
-  core_targets?: string | null;
-  risk_alert?: string | null;
-  action_plan?: string | null;
-  extra?: Record<string, unknown>;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export const listReplayNotes = async (limit: number = 60): Promise<ReplayNote[]> => {
-  const response = await apiClient.get<{ status: string; data: ReplayNote[] }>('/market/pulse/replay-notes', { params: { limit } });
-  return response.data.data || [];
+export const autoDevelopStrategy = async (
+  request: AutoDevelopStrategyRequest
+): Promise<AutoDevelopStrategyResult> => {
+  const response = await apiClient.post<AutoDevelopStrategyResult>('/strategy/auto-develop', request);
+  return response.data;
 };
 
-export const getReplayNote = async (noteDate: string): Promise<ReplayNote | null> => {
-  const response = await apiClient.get<{ status: string; data: ReplayNote | null }>(`/market/pulse/replay-notes/${noteDate}`);
-  return response.data.data;
+export const runStrategyBacktest = async (
+  strategyId: number,
+  request: StrategyBacktestRequest
+): Promise<StrategyBacktestResult> => {
+  const response = await apiClient.post<StrategyBacktestResult>('/backtest/run', {
+    strategy_id: strategyId,
+    ...request,
+  });
+  return response.data;
 };
 
-export const saveReplayNote = async (payload: Partial<ReplayNote> & { note_date: string }): Promise<ReplayNote> => {
-  const response = await apiClient.post<{ status: string; data: ReplayNote }>('/market/pulse/replay-notes', payload);
-  return response.data.data;
+export const listBacktestResults = async (limit = 20): Promise<{ items: StrategyBacktestResult[]; total: number }> => {
+  const response = await apiClient.get<{ items: StrategyBacktestResult[]; total: number }>('/backtest/results', { params: { limit } });
+  return response.data;
+};
+
+export const runPaperTrading = async (
+  strategyId: number,
+  request: PaperRunRequest
+): Promise<PaperRunResult> => {
+  const response = await apiClient.post<PaperRunResult>('/paper/run', {
+    strategy_id: strategyId,
+    ...request,
+  });
+  return response.data;
+};
+
+export const listPaperAccounts = async (): Promise<{ accounts: PaperAccount[]; total: number }> => {
+  const response = await apiClient.get<{ accounts: PaperAccount[]; total: number }>('/paper/accounts');
+  return response.data;
+};
+
+export const getPaperAccount = async (accountId: number): Promise<PaperAccount> => {
+  const response = await apiClient.get<PaperAccount>(`/paper/${accountId}`);
+  return response.data;
+};
+
+export const refreshPaperAccount = async (accountId: number): Promise<PaperRunResult> => {
+  const response = await apiClient.post<PaperRunResult>(`/paper/${accountId}/refresh`);
+  return response.data;
+};
+
+export const stopPaperAccount = async (accountId: number): Promise<PaperRunResult> => {
+  const response = await apiClient.post<PaperRunResult>(`/paper/${accountId}/stop`);
+  return response.data;
+};
+
+export const getDataStatus = async <T = unknown>(): Promise<T> => {
+  const response = await apiClient.get<T>('/data/status');
+  return response.data;
+};
+
+export const triggerDataSync = async (request?: {
+  symbols?: string[];
+  timeframes?: string[];
+  start_date?: string;
+  end_date?: string;
+  job_name?: string;
+}): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>('/data/sync', request || {});
+  return response.data;
+};
+
+export type DataSyncConfigResponse = {
+  defaultSymbols: string[];
+  defaultTimeframes: string[];
+  defaultHistoryDays: number;
+};
+
+export type DataSyncScheduleConfig = {
+  enabled: boolean;
+  mode?: string;
+  syncAllAshare?: boolean;
+  runHour?: number;
+  runMinute?: number;
+  intervalMinutes: number;
+  historyDays: number;
+  symbols: string[];
+  timeframes: string[];
+  lastRunAt?: string | null;
+  lastStartedAt?: string | null;
+  lastFinishedAt?: string | null;
+  nextRunAt?: string | null;
+  lastJobId?: string | null;
+  lastError?: string | null;
+};
+
+export type DataTableStatsResponse = {
+  totalRecords: number;
+  totalPairs: number;
+  marketStats?: Record<string, { totalRecords: number; totalPairs: number; totalSymbols: number }>;
+  tables: Array<{
+    tableName: string;
+    exchange?: string;
+    symbol?: string;
+    timeframe?: string;
+    recordCount: number;
+    firstTimestamp?: number | null;
+    lastTimestamp?: number | null;
+  }>;
+};
+
+export const getDataConfig = async (): Promise<DataSyncConfigResponse> => {
+  const response = await apiClient.get<DataSyncConfigResponse>('/data/config');
+  return response.data;
+};
+
+export const getDataTableStats = async (): Promise<DataTableStatsResponse> => {
+  const response = await apiClient.get<DataTableStatsResponse>('/data/table-stats');
+  return response.data;
+};
+
+export const getDataSchedule = async (): Promise<DataSyncScheduleConfig> => {
+  const response = await apiClient.get<DataSyncScheduleConfig>('/data/schedule');
+  return response.data;
+};
+
+export const updateDataSchedule = async (request: Partial<DataSyncScheduleConfig>): Promise<DataSyncScheduleConfig> => {
+  const response = await apiClient.put<DataSyncScheduleConfig>('/data/schedule', request);
+  return response.data;
+};
+
+export const startDataSync = async (request?: {
+  symbols?: string[];
+  timeframes?: string[];
+  startDate?: string;
+  endDate?: string;
+  historyDays?: number;
+  jobName?: string;
+}): Promise<GenericApiResponse> => {
+  const response = await apiClient.post<GenericApiResponse>('/data/start', request || {});
+  return response.data;
+};
+
+export const addDataSymbol = async (symbol: string): Promise<{ symbol: string; added: boolean; defaultSymbols: string[] }> => {
+  const response = await apiClient.post<{ symbol: string; added: boolean; defaultSymbols: string[] }>('/data/symbols', { symbol });
+  return response.data;
+};
+
+export const removeDataSymbol = async (symbol: string): Promise<{ symbol: string; removed: boolean; defaultSymbols: string[] }> => {
+  const response = await apiClient.delete<{ symbol: string; removed: boolean; defaultSymbols: string[] }>('/data/symbols', { data: { symbol } });
+  return response.data;
+};
+
+export const deleteDataKlines = async (request: { symbol: string; timeframe?: string }): Promise<{ message: string; deleted: number }> => {
+  const response = await apiClient.post<{ message: string; deleted: number }>('/data/delete-data', request);
+  return response.data;
 };

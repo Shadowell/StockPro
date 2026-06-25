@@ -1,6 +1,5 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const { execSync } = require('child_process');
 
 // 启动Python后端服务
 let pythonServerProcess = null;
@@ -19,7 +18,8 @@ function createWindow() {
 
   // 在开发环境中加载Vite服务器，在生产环境中加载构建后的文件
   if (process.env.NODE_ENV === 'development') {
-    win.loadURL('http://localhost:5173'); // Vite默认端口
+    const devServerPort = process.env.VITE_DEV_SERVER_PORT || '4444';
+    win.loadURL(`http://localhost:${devServerPort}`);
   } else {
     win.loadFile(path.join(__dirname, 'dist', 'index.html'));
   }
@@ -35,10 +35,16 @@ function startPythonBackend() {
   try {
     // 这里启动您的FastAPI后端
     const backendDir = path.join(__dirname, '..', 'backend');
-    pythonServerProcess = require('child_process').spawn('uvicorn', [
+    const pythonBin = process.platform === 'win32'
+      ? path.join(backendDir, 'venv', 'Scripts', 'python.exe')
+      : path.join(backendDir, 'venv', 'bin', 'python');
+
+    pythonServerProcess = require('child_process').spawn(pythonBin, [
+      '-m',
+      'uvicorn',
       'app.main:app',
       '--host', '127.0.0.1',
-      '--port', '8000',
+      '--port', '4445',
       '--reload'
     ], {
       cwd: backendDir,
@@ -54,7 +60,7 @@ function startPythonBackend() {
       console.log(`Python server exited with code ${code}`);
     });
 
-    console.log('Python backend started on http://127.0.0.1:8000');
+    console.log('Python backend started on http://127.0.0.1:4445');
   } catch (error) {
     console.error('Failed to start Python backend:', error);
   }

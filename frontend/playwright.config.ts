@@ -12,7 +12,7 @@ export default defineConfig({
     ['json', { outputFile: 'test-results/e2e-results.json' }],
   ],
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 4444',
+    command: 'npm run dev -- --host 127.0.0.1 --port 4444 --strictPort',
     url: process.env.E2E_BASE_URL || 'http://127.0.0.1:4444',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

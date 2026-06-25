@@ -6,7 +6,7 @@ from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 
-from app.db.local_db import db_instance
+from app.db import db_instance
 from app.services.factor_sync_service import factor_sync_service
 
 router = APIRouter()

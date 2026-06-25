@@ -19,7 +19,8 @@
 - **策略实时盯盘** — 三槽位并行执行策略，命中信号自动推送，联动 K 线验证
 - **因子研究平台** — 因子定义、计算、排名全流程管理，支持自定义量化因子
 - **7×24 消息聚合** — 财联社/雪球/东财等多源快讯，按标签分类实时推送
-- **复盘工具** — 概念板块轮动热力追踪，颜色编码连续出现的强势板块
+- **回测中心** — 策略回测实例、收益回撤、胜率、成交明细与参数归档
+- **复盘中心** — 当日盘面强弱、板块轮动、连板梯队、风险提示与次日计划
 - **模拟交易** — 账户概览、限价/市价委托、持仓与成交记录管理
 - **跨设备策略同步** — 策略以独立 Python 文件存储于 Git，克隆即用
 
@@ -81,13 +82,17 @@
 
 ![策略执行](docs/screenshots/09-strategy-exec.png)
 
-### 10. 复盘中心
+### 10. 回测中心
 
-每日热门概念板块轮动复盘工具。以颜色标识相同板块的连续轮动，支持按最低涨幅、每日展示数量、历史天数进行筛选，可回填历史数据并导出。
+策略回测工作台。支持创建回测实例，设置标的、区间、初始资金、手续费、印花税、滑点等参数，并查看收益、回撤、胜率、交易次数和成交明细。
+
+### 11. 复盘中心
+
+每日盘面复盘工具。聚合大盘情绪、涨跌家数、成交额、热门板块、连板梯队和短线强度，支持同步今日板块数据、生成系统结论、保存复盘日志和沉淀次日计划。
 
 ![复盘中心](docs/screenshots/10-market-pulse.png)
 
-### 11. 模拟/实盘交易
+### 12. 模拟/实盘交易
 
 模拟与实盘交易下单界面，包含账户概览（总资产、可用资金、持仓市值、盈亏）、买入/卖出下单、限价/市价委托切换，以及持仓、委托、成交三大记录面板。
 
@@ -107,7 +112,7 @@
                              │ Vite /api proxy → :4445
 ┌────────────────────────────▼────────────────────────────────┐
 │                  Backend · FastAPI 0.104+                     │
-│  Python 3.11 · Pydantic 2 · AkShare · DashScope              │
+│  Python 3.11 · Pydantic 2 · TuShare-first · DashScope        │
 │  APScheduler · Backtrader · SQLAlchemy 2 · httpx              │
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
@@ -123,8 +128,8 @@
                              │
             ┌────────────────┼────────────────┐
             ▼                ▼                ▼
-        AkShare          千问大模型        Broker Adapter
-       (行情数据)        (AI 分析)       (后续实盘适配)
+   TuShare / AKShare     千问大模型        Broker Adapter
+  (行情主源/兜底)        (AI 分析)       (后续实盘适配)
 ```
 
 ### 后端服务拓扑
@@ -142,11 +147,11 @@
 
 | 数据类型 | 同步间隔 | 来源 |
 |---------|---------|------|
-| 大盘指数（上证/深证/创业板等） | 10 秒 | AkShare |
-| 全市场股票实时行情快照 | 30 秒 | AkShare |
-| 热门概念板块涨幅排名 | 2 分钟 | AkShare |
-| 概念龙头股明细 | 5 分钟缓存 | AkShare |
-| 连板股票梯队分布 | 2 分钟 | AkShare |
+| 大盘指数（上证/深证/创业板等） | 10 秒 | TuShare 优先，AKShare 兜底 |
+| 全市场股票实时行情快照 | 30 秒 | TuShare 优先，AKShare 兜底 |
+| 热门概念板块涨幅排名 | 2 分钟 | AKShare 兜底 |
+| 概念龙头股明细 | 5 分钟缓存 | AKShare 兜底 |
+| 连板股票梯队分布 | 2 分钟 | TuShare 优先，AKShare 兜底 |
 | 市场情绪指标 | 2 分钟 | 计算聚合 |
 
 ---
@@ -203,18 +208,21 @@ pip install -r requirements.txt
 
 # 创建环境变量文件（按需填写，仅 QWEN_API_KEY 为必须项）
 cat > .env << 'EOF'
+API_PREFIX=/api
 QWEN_API_KEY=your-qwen-api-key
 QWEN_STOCK_MODEL=qwen-plus
 AKSHARE_TIMEOUT=30
-DB_MODE=postgres
-DATABASE_URL=postgresql://stockpro_app:<password>@127.0.0.1:5432/stockpro_prod
+DATABASE_URL=postgresql://stockpro:stockpro@127.0.0.1:55432/stockpro
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change-this-password
+ADMIN_TOKEN_SECRET=change-this-random-secret
 ENABLE_SCHEDULER=false
 ENABLE_REALTIME_SYNC=false
 ENABLE_STRATEGY_EXECUTION=false
-ENABLE_LEGACY_SQLITE_MODULES=false
 BACKEND_CORS_ORIGINS=["http://localhost:4444"]
 EOF
 
+# 启动服务
 uvicorn app.main:app --reload --port 4445
 ```
 
@@ -240,27 +248,29 @@ npm run dev
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
+| `API_PREFIX` | 否 | `/api` | 唯一后端 API 前缀 |
 | `QWEN_API_KEY` | 是（AI 功能） | `""` | 通义千问 API Key |
 | `QWEN_STOCK_MODEL` | 否 | `qwen-plus` | AI 分析使用的模型 |
-| `AKSHARE_TIMEOUT` | 否 | `30` | AkShare 请求超时（秒） |
+| `TUSHARE_TOKEN` | 是（行情主源） | `""` | TuShare token；为空时自动走 AKShare 兜底 |
+| `TUSHARE_REALTIME_SOURCE` | 否 | `dc` | TuShare 实时行情源 |
+| `ENABLE_TUSHARE` | 否 | `true` | 是否启用 TuShare 优先数据源 |
+| `AKSHARE_TIMEOUT` | 否 | `30` | AKShare 兜底请求超时（秒） |
 | `BACKEND_CORS_ORIGINS` | 否 | `["http://localhost:4444"]` | 允许的跨域来源，JSON 数组或逗号分隔 |
-| `DATABASE_URL` | 生产必填 | `""` | Postgres 连接串，云端 B/S 生产使用 |
-| `SUPABASE_URL` | 否 | `""` | Supabase 项目 URL（legacy 可选） |
-| `SUPABASE_KEY` | 否 | `""` | Supabase anon key（legacy 可选） |
-| `SUPABASE_SERVICE_KEY` | 否 | `""` | Supabase service role key（legacy 可选） |
-| `ENABLE_SCHEDULER` | 否 | `false` | legacy 调度服务开关，生产 PG-only 默认关闭 |
-| `ENABLE_REALTIME_SYNC` | 否 | `false` | legacy 实时同步服务开关，生产 PG-only 默认关闭 |
-| `ENABLE_STRATEGY_EXECUTION` | 否 | `false` | legacy 策略执行服务开关，生产 PG-only 默认关闭 |
+| `DATABASE_URL` | 是 | `postgresql://stockpro:stockpro@127.0.0.1:55432/stockpro` | Postgres 连接串，所有运行路径统一使用 |
+| `ADMIN_USERNAME` | 是 | `admin` | 管理员登录用户名 |
+| `ADMIN_PASSWORD` | 是 | `""` | 管理员登录密码 |
+| `ADMIN_TOKEN_SECRET` | 是 | `""` | 管理员 token 签名密钥 |
+| `ENABLE_SCHEDULER` | 否 | `true` | 调度服务开关 |
+| `ENABLE_REALTIME_SYNC` | 否 | `false` | 实时同步服务开关 |
+| `ENABLE_STRATEGY_EXECUTION` | 否 | `true` | 策略执行服务开关 |
 | `ENABLE_EXTERNAL_MARKET_FETCH` | 否 | `true` | 启用外部行情数据拉取 |
-| `ENABLE_LEGACY_SQLITE_MODULES` | 否 | `false` | 是否挂载旧 SQLite API/后台模块，生产必须保持关闭 |
 | `ENFORCE_OPERATION_ALLOWLIST` | 否 | `false` | 启用 API 操作白名单（生产环境安全限制） |
-| `DB_MODE` | 否 | `postgres` | 数据库模式；云端 B/S 生产只支持 `postgres` |
 
 ### 前端 (`frontend/.env`)
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `VITE_API_URL` | `/api/v1` | 后端 API 基础路径 |
+| `VITE_API_URL` | `/api` | 后端 API 基础路径 |
 | `VITE_DEV_API_PROXY_TARGET` | `http://127.0.0.1:4445` | Vite 开发代理目标地址 |
 
 ---
@@ -275,11 +285,14 @@ StockPro/
 │   │   ├── core/config.py                # Pydantic Settings 配置
 │   │   ├── api/
 │   │   │   ├── api.py                    # 路由注册中心
-│   │   │   └── endpoints/                # 16 个 API 路由模块
+│   │   │   └── endpoints/                # 单一 /api 下的领域路由模块
 │   │   │       ├── market.py             #   大盘/板块/连板/情绪
 │   │   │       ├── charts.py             #   K 线/分时图
 │   │   │       ├── ai.py                 #   AI 分析
 │   │   │       ├── strategy.py           #   策略 CRUD & 执行
+│   │   │       ├── backtest.py           #   回测
+│   │   │       ├── paper.py              #   模拟盘
+│   │   │       ├── data.py               #   本地行情数据同步
 │   │   │       ├── factors.py            #   因子管理
 │   │   │       ├── stock_screener.py     #   均线粘合选股
 │   │   │       ├── sectors.py            #   板块数据
@@ -292,7 +305,7 @@ StockPro/
 │   │   │       ├── preset_tasks.py       #   预置任务
 │   │   │       ├── admin.py              #   管理接口
 │   │   │       └── health.py             #   健康检查
-│   │   ├── services/                     # 18 个业务服务
+│   │   ├── services/                     # 业务服务
 │   │   │   ├── realtime_sync_service.py  #   实时数据同步
 │   │   │   ├── scheduler_service.py      #   定时任务调度
 │   │   │   ├── strategy_execution_service.py  #  策略执行引擎
@@ -303,8 +316,8 @@ StockPro/
 │   │   │   ├── ma_convergence_service.py #   均线粘合算法
 │   │   │   ├── sentiment_service.py      #   市场情绪计算
 │   │   │   └── ...                       #   其余 9 个服务
-│   │   ├── db/postgres_migrations.py    # Postgres migration runner
-│   │   └── db/local_db.py               # legacy SQLite，仅显式开启时使用
+│   │   ├── db/postgres_db.py            # Postgres adapter / repository
+│   │   └── db/postgres_migrations.py    # Postgres migration runner
 │   └── requirements.txt
 │
 ├── frontend/
@@ -362,14 +375,15 @@ StockPro/
 | FastAPI | 0.104+ | Web 框架 |
 | Uvicorn | 0.24+ | ASGI 服务器 |
 | Pydantic | 2.5+ | 数据验证与配置管理 |
-| AkShare | 1.12+ | A 股实时/历史行情数据 |
+| TuShare | 1.4+ | A 股实时/历史行情主数据源 |
+| AKShare | 1.12+ | TuShare 无同形接口时的兜底数据源 |
 | DashScope | 1.14+ | 通义千问大模型 SDK |
 | APScheduler | 3.10+ | 定时任务调度 |
 | Backtrader | 1.9+ | 回测引擎 |
 | SQLAlchemy | 2.0+ | ORM 与数据库访问 |
 | pandas | 2.1+ | 数据处理 |
 | httpx | 0.25+ | 异步 HTTP 客户端 |
-| Supabase | 2.0+ | 云端存储（可选） |
+| Postgres / psycopg | 3.1+ | 统一数据库运行路径 |
 
 ---
 
@@ -381,23 +395,25 @@ StockPro/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/api/v1/market/overview` | 大盘指数概览 |
-| `GET` | `/api/v1/market/short-line-indices` | 短线指标（连板/强度） |
-| `GET` | `/api/v1/market/hot-concepts` | 热门概念板块排名 |
-| `GET` | `/api/v1/market/hot-concept/leaders` | 概念龙头股明细 |
-| `GET` | `/api/v1/market/limit-up-ladder` | 连板天梯 |
-| `GET` | `/api/v1/market/sentiment` | 市场情绪指标 |
-| `GET` | `/api/v1/charts/daily/{symbol}` | 日 K 线数据 |
-| `GET` | `/api/v1/charts/realtime/{symbol}` | 分时数据 |
-| `POST` | `/api/v1/ai/analyze-stock` | AI 个股深度分析 |
-| `GET` | `/api/v1/strategy/list` | 获取策略列表 |
-| `POST` | `/api/v1/strategy/save` | 保存策略 |
-| `POST` | `/api/v1/strategy/execute` | 执行策略 |
-| `GET` | `/api/v1/factors/overview` | 因子概览 |
-| `POST` | `/api/v1/factors/sync` | 同步因子数据 |
-| `GET` | `/api/v1/stock-screener/ma-convergence` | 均线粘合选股 |
-| `GET` | `/api/v1/sectors/hot` | 热门板块 |
-| `GET` | `/api/v1/health` | 健康检查 |
+| `GET` | `/api/market/overview` | 大盘指数概览 |
+| `GET` | `/api/market/short-line-indices` | 短线指标（连板/强度） |
+| `GET` | `/api/market/hot-concepts` | 热门概念板块排名 |
+| `GET` | `/api/market/hot-concept/leaders` | 概念龙头股明细 |
+| `GET` | `/api/market/lianban-ladder` | 连板天梯 |
+| `GET` | `/api/market/message-stream` | 消息中心 |
+| `GET` | `/api/charts/daily/{symbol}` | 日 K 线数据 |
+| `GET` | `/api/charts/intraday/{symbol}` | 分时数据 |
+| `POST` | `/api/ai/analyze-stock` | AI 个股深度分析 |
+| `GET` | `/api/strategy/list` | 获取策略列表 |
+| `POST` | `/api/strategy/save` | 保存策略 |
+| `POST` | `/api/backtest/run` | 执行回测 |
+| `GET` | `/api/paper/accounts` | 模拟盘账户 |
+| `GET` | `/api/data/status` | 行情数据同步状态 |
+| `GET` | `/api/factors/overview` | 因子概览 |
+| `POST` | `/api/factors/sync` | 同步因子数据 |
+| `GET` | `/api/stock-screener/ma-convergence` | 均线粘合选股 |
+| `GET` | `/api/sectors/hot` | 热门板块 |
+| `GET` | `/api/health/health` | 健康检查 |
 
 ---
 
@@ -455,13 +471,13 @@ npm run test:e2e:report   # 查看测试报告
 确保后端服务已启动且处于 A 股交易时段（9:30-15:00）。非交易时段会展示上一交易日缓存数据。
 
 **Q: 概念龙头股加载慢？**
-当前 legacy 模块首次查询会从 AkShare 远程拉取并缓存；云端平台方向是逐步迁移到 Postgres 数据集。
+首次查询会从统一行情 provider 远程拉取并写入 Postgres 缓存；TuShare 无同形接口时使用 AKShare 兜底，后续优先读取缓存数据。
 
 **Q: AI 分析功能不可用？**
 检查 `backend/.env` 中的 `QWEN_API_KEY` 是否正确配置。需要在[阿里云百炼](https://bailian.console.aliyun.com/)申请 API Key。
 
 **Q: 云端生产如何配置数据库？**
-在 `backend/.env` 中设置 `DB_MODE=postgres` 和 `DATABASE_URL=postgresql://stockpro_app:<password>@127.0.0.1:5432/stockpro_prod`。
+在 `backend/.env` 中设置 `DATABASE_URL=postgresql://stockpro_app:<password>@127.0.0.1:5432/stockpro_prod`，所有业务数据都会走 Postgres。
 
 **Q: 策略在新设备上看不到？**
 克隆项目后重启后端即可自动导入，或手动运行 `python scripts/init_strategies.py`。

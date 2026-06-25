@@ -1,10 +1,10 @@
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
 import asyncio
 from typing import List, Dict, Optional
-from app.db.local_db import db_instance
+from app.db import db_instance
 from app.services.market_service import MarketService
 
 logger = logging.getLogger(__name__)

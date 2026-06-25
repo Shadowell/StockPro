@@ -37,30 +37,6 @@ echo ">>> 编译后端源码..."
 python -m compileall app >/dev/null
 
 echo ">>> 检查数据库配置并运行迁移..."
-DB_MODE_VALUE=$(python - <<'PY'
-from dotenv import dotenv_values
-cfg = dotenv_values("/opt/stockpro/backend/.env")
-print(cfg.get("DB_MODE", "postgres"))
-PY
-)
-
-if [ "$DB_MODE_VALUE" != "postgres" ]; then
-    echo "❌ 云端 B/S 生产部署已切为 PG-only，请设置 DB_MODE=postgres"
-    exit 1
-fi
-
-LEGACY_SQLITE_VALUE=$(python - <<'PY'
-from dotenv import dotenv_values
-cfg = dotenv_values("/opt/stockpro/backend/.env")
-print(str(cfg.get("ENABLE_LEGACY_SQLITE_MODULES", "false")).lower())
-PY
-)
-
-if [ "$LEGACY_SQLITE_VALUE" = "true" ]; then
-    echo "❌ 生产环境不允许启用 ENABLE_LEGACY_SQLITE_MODULES=true"
-    exit 1
-fi
-
 DATABASE_URL_VALUE=$(python - <<'PY'
 from dotenv import dotenv_values
 cfg = dotenv_values("/opt/stockpro/backend/.env")
@@ -69,7 +45,7 @@ PY
 )
 
 if [ -z "$DATABASE_URL_VALUE" ]; then
-    echo "❌ DB_MODE=postgres 需要配置 DATABASE_URL"
+    echo "❌ PG-only 部署需要配置 DATABASE_URL"
     exit 1
 fi
 
@@ -99,7 +75,7 @@ echo -n ">>> 等待后端就绪"
 for i in $(seq 1 30); do
     sleep 1
     echo -n "."
-    if curl -sf "http://127.0.0.1:${BACKEND_PORT}/api/v1/health/health" > /dev/null 2>&1; then
+    if curl -sf "http://127.0.0.1:${BACKEND_PORT}/api/health/health" > /dev/null 2>&1; then
         echo ""
         echo "✅ 后端就绪"
         break

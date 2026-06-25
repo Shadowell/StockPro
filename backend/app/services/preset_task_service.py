@@ -1,10 +1,10 @@
 import logging
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 from datetime import datetime, timedelta
 import asyncio
 from typing import List, Dict, Optional
-from app.db.local_db import db_instance
+from app.db import db_instance
 from app.services.market_service import MarketService
 from app.services.chart_service import ChartService
 
@@ -108,7 +108,7 @@ class PresetTaskService:
                     cursor.execute("""
                         SELECT date, close 
                         FROM stock_history 
-                        WHERE symbol = ? 
+                        WHERE symbol = %s
                         ORDER BY date DESC 
                         LIMIT 30
                     """, (symbol,))
@@ -130,15 +130,21 @@ class PresetTaskService:
                     df['ma20'] = df['close_price'].rolling(window=20).mean()
                     df['ma30'] = df['close_price'].rolling(window=30).mean()
                     
-                    # Insert or update the moving averages in the stock_ma_indicators table
                     for _, row in df.iterrows():
                         if pd.notna(row['ma5']) or pd.notna(row['ma10']) or pd.notna(row['ma20']) or pd.notna(row['ma30']):
                             cursor.execute("""
-                                INSERT OR REPLACE INTO stock_ma_indicators 
-                                (code, date, ma5, ma10, ma20, ma30, price) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                INSERT INTO stock_ma_data
+                                (symbol, date, ma5, ma10, ma20, ma30, close)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (symbol, date) DO UPDATE SET
+                                    ma5 = EXCLUDED.ma5,
+                                    ma10 = EXCLUDED.ma10,
+                                    ma20 = EXCLUDED.ma20,
+                                    ma30 = EXCLUDED.ma30,
+                                    close = EXCLUDED.close,
+                                    updated_at = CURRENT_TIMESTAMP
                             """, (
-                                symbol,  # Use symbol instead of code
+                                symbol,
                                 row['date'],
                                 row['ma5'] if pd.notna(row['ma5']) else None,
                                 row['ma10'] if pd.notna(row['ma10']) else None,

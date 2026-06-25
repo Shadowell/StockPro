@@ -9,7 +9,7 @@ from app.services.data_hub_service import data_hub_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-DEPRECATION_NOTICE = "Deprecated: please migrate to /api/v1/data-hub/jobs"
+DEPRECATION_NOTICE = "Deprecated: please migrate to /api/data-hub/jobs"
 
 # Global variable to track import status
 import_status = {

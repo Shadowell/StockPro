@@ -27,7 +27,7 @@
 注意：如果没有配置正确的app_id和app_secret，程序仍会正常运行，只是不会发送图片到飞书。
 """
 
-import akshare as ak
+from app.services.tushare_provider import market_data_provider as ak
 import requests
 import pandas as pd
 from datetime import datetime, timedelta

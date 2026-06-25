@@ -79,11 +79,12 @@ export const DataHubFeaturePanel: React.FC = () => {
             <div className="text-xs text-slate-500 mt-2">当前命中候选</div>
             <div className="text-lg font-bold text-cyan-400">{screener?.count ?? 0}</div>
             <button
-              onClick={() => navigate('/screener')}
-              className="mt-4 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs text-white flex items-center gap-1"
+              onClick={() => void loadSummary()}
+              disabled={loading}
+              className="mt-4 px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 text-xs text-white flex items-center gap-1"
             >
-              打开智能选股
-              <ArrowRight size={12} />
+              刷新候选池
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
 
