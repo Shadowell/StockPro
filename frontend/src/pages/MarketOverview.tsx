@@ -6,12 +6,13 @@ import {
   getHotConceptLeaders,
   getHotConcepts,
   getLianbanLadder,
+  getMarketOverview,
   getThsHot,
 } from '../api/client';
-import { ConceptIntradayKlineItem, ConceptLeaderStock, HotConceptItem, LianbanLadderResponse, ThsHotItem } from '../types';
+import { ConceptIntradayKlineItem, ConceptLeaderStock, HotConceptItem, LianbanLadderResponse, MarketOverview as MarketOverviewData, ThsHotItem } from '../types';
 import { ChartPanel } from '../components/ChartPanel';
 import { DateField } from '../components/DateField';
-import { Flame, TrendingUp, Layers, RotateCcw, Filter, ChevronDown } from 'lucide-react';
+import { Flame, TrendingUp, Layers, RotateCcw, Filter, ChevronDown, Languages } from 'lucide-react';
 import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
 import { useStore } from '../stores/useStore';
@@ -23,6 +24,17 @@ type ConceptCacheData = {
   intraday: ConceptIntradayKlineItem[];
   leaders: ConceptLeaderStock[];
 };
+
+type MarketOverviewContentProps = {
+  embedded?: boolean;
+};
+
+const MARKET_FRESHNESS_SLOTS = [
+  { id: 'daily_concept_sectors', label: '板块日频数据' },
+  { id: 'market_indices_realtime', label: '市场指数实时快照' },
+  { id: 'all_stocks_realtime', label: '全市场实时快照' },
+  { id: 'short_line_indices_realtime', label: '短线指标实时快照' },
+];
 
 // Helper to get cache TTL based on market phase
 const getCacheTTL = (): number => {
@@ -56,8 +68,8 @@ const getCacheTTL = (): number => {
   return 5 * 60 * 1000;
 };
 
-export const MarketOverviewContent: React.FC = () => {
-  const { selectStock, selectedStock, language } = useStore();
+export const MarketOverviewContent: React.FC<MarketOverviewContentProps> = ({ embedded = false }) => {
+  const { selectStock, selectedStock, language, setLanguage } = useStore();
   const t = useCallback((key: TranslationKey) => getTranslation(language, key), [language]);
 
   const today = useMemo(() => {
@@ -77,6 +89,8 @@ export const MarketOverviewContent: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [freshnessLoading, setFreshnessLoading] = useState(false);
   const [marketFreshness, setMarketFreshness] = useState<DataHubDataset[]>([]);
+  const [marketSnapshot, setMarketSnapshot] = useState<MarketOverviewData | null>(null);
+  const [marketSnapshotLoading, setMarketSnapshotLoading] = useState(false);
   const [thsCharacterByCode, setThsCharacterByCode] = useState<Record<string, string>>({});
 
   // New states for UX improvements
@@ -139,7 +153,9 @@ export const MarketOverviewContent: React.FC = () => {
   const [conceptError, setConceptError] = useState<string | null>(null);
 
   const formatFlowYi = useCallback((value: number) => {
-    return `${Number(value || 0).toFixed(2)}${t('common.billion')}`;
+    const raw = Number(value || 0);
+    const normalized = Math.abs(raw) >= 10000 ? raw / 100000000 : raw;
+    return `${normalized.toFixed(2)}${t('common.billion')}`;
   }, [t]);
 
   const fetchActive = useCallback(async () => {
@@ -178,6 +194,18 @@ export const MarketOverviewContent: React.FC = () => {
       setMarketFreshness([]);
     } finally {
       setFreshnessLoading(false);
+    }
+  }, []);
+
+  const loadMarketSnapshot = useCallback(async () => {
+    setMarketSnapshotLoading(true);
+    try {
+      const data = await getMarketOverview();
+      setMarketSnapshot(data);
+    } catch {
+      setMarketSnapshot(null);
+    } finally {
+      setMarketSnapshotLoading(false);
     }
   }, []);
 
@@ -220,6 +248,14 @@ export const MarketOverviewContent: React.FC = () => {
     }, 60 * 1000);
     return () => window.clearInterval(timer);
   }, [loadMarketFreshness]);
+
+  useEffect(() => {
+    void loadMarketSnapshot();
+    const timer = window.setInterval(() => {
+      void loadMarketSnapshot();
+    }, 30 * 1000);
+    return () => window.clearInterval(timer);
+  }, [loadMarketSnapshot]);
 
   // Auto-select first concept only if user hasn't interacted
   useEffect(() => {
@@ -421,14 +457,71 @@ export const MarketOverviewContent: React.FC = () => {
     return 'bg-red-500/20 text-red-300 border-red-500/30';
   }, []);
 
+  const freshnessCards = useMemo(() => (
+    MARKET_FRESHNESS_SLOTS.map((slot) => ({
+      ...slot,
+      dataset: marketFreshness.find((item) => item.id === slot.id),
+    }))
+  ), [marketFreshness]);
+
+  const headlineIndices = useMemo(() => marketSnapshot?.indices?.slice(0, 4) ?? [], [marketSnapshot]);
+
   return (
-    <div className="flex flex-col gap-6 h-full">
-        <div className="inline-flex items-center rounded-xl border border-crypto-border bg-crypto-card p-1">
+    <div className={clsx('flex h-full flex-col', embedded ? 'gap-6' : 'min-h-full bg-crypto-bg')}>
+      {!embedded && (
+        <header className="border-b border-crypto-border bg-crypto-card/70 px-4 py-3 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h1 className="text-xl font-black text-white">市场概览与分析</h1>
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-7 gap-y-2">
+              {headlineIndices.map((item) => (
+                <div key={item.name} className="min-w-[120px]">
+                  <div className="text-xs font-semibold text-gray-600">{item.name}</div>
+                  <div className={clsx('mt-0.5 text-sm font-black tabular-nums', item.change_percent >= 0 ? 'text-up' : 'text-down')}>
+                    {Number(item.price || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                    <span className="ml-1">
+                      ({item.change_percent >= 0 ? '+' : ''}{Number(item.change_percent || 0).toFixed(2)}%)
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {headlineIndices.length === 0 && (
+                <div className="text-xs font-semibold text-gray-600">
+                  {marketSnapshotLoading ? '指数同步中...' : '暂无指数快照'}
+                </div>
+              )}
+              <span className={clsx(
+                'inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-black',
+                marketSnapshot?.is_open
+                  ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+                  : 'border-crypto-border bg-gray-800/70 text-gray-400',
+              )}>
+                <span className={clsx('h-2 w-2 rounded-full', marketSnapshot?.is_open ? 'bg-emerald-400' : 'bg-gray-500')} />
+                {marketSnapshot?.is_open ? '开市中' : '休市'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-crypto-border bg-gray-800/80 px-3 text-xs font-black text-gray-300 transition-colors hover:border-blue-500/50 hover:text-blue-200"
+                aria-label="切换语言"
+              >
+                <Languages className="h-3.5 w-3.5" />
+                {language === 'zh' ? 'EN' : '中'}
+              </button>
+            </div>
+          </div>
+        </header>
+      )}
+
+      <div className={clsx('flex min-h-0 flex-col gap-6', embedded ? 'h-full' : 'flex-1 p-4 sm:p-6')}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-2 rounded-xl">
           <button
             onClick={() => setActiveTab('hot_concepts')}
             className={clsx(
-              "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors",
-              activeTab === 'hot_concepts' ? "bg-blue-500/20 text-blue-300" : "text-gray-500 hover:text-gray-300"
+              "inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-sm font-bold transition-colors",
+              activeTab === 'hot_concepts'
+                ? "border-blue-500 bg-blue-600 text-white shadow-sm shadow-blue-900/30"
+                : "border-crypto-border bg-crypto-card text-gray-500 hover:border-gray-600 hover:text-gray-300"
             )}
           >
             <TrendingUp size={14} />
@@ -437,8 +530,10 @@ export const MarketOverviewContent: React.FC = () => {
           <button
             onClick={() => setActiveTab('ths_hot')}
             className={clsx(
-              "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors",
-              activeTab === 'ths_hot' ? "bg-blue-500/20 text-blue-300" : "text-gray-500 hover:text-gray-300"
+              "inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-sm font-bold transition-colors",
+              activeTab === 'ths_hot'
+                ? "border-blue-500 bg-blue-600 text-white shadow-sm shadow-blue-900/30"
+                : "border-crypto-border bg-crypto-card text-gray-500 hover:border-gray-600 hover:text-gray-300"
             )}
           >
             <Flame size={14} />
@@ -447,15 +542,18 @@ export const MarketOverviewContent: React.FC = () => {
           <button
             onClick={() => setActiveTab('lianban')}
             className={clsx(
-              "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold transition-colors",
-              activeTab === 'lianban' ? "bg-blue-500/20 text-blue-300" : "text-gray-500 hover:text-gray-300"
+              "inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-sm font-bold transition-colors",
+              activeTab === 'lianban'
+                ? "border-blue-500 bg-blue-600 text-white shadow-sm shadow-blue-900/30"
+                : "border-crypto-border bg-crypto-card text-gray-500 hover:border-gray-600 hover:text-gray-300"
             )}
           >
             <Layers size={14} />
             {t('market.lianban')}
           </button>
+          </div>
 
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2">
             <div className="flex flex-col">
               <DateField
                 value={dateValue}
@@ -469,7 +567,7 @@ export const MarketOverviewContent: React.FC = () => {
                   setDateText(val);
                 }}
                 placeholder={t('market.select_date')}
-                className="!mt-0 w-40"
+                className="!mt-0 w-48"
               />
             </div>
             {/* Back to Today button - only visible when viewing historical date */}
@@ -486,19 +584,19 @@ export const MarketOverviewContent: React.FC = () => {
                 {language === 'zh' ? '今天' : 'Today'}
               </button>
             )}
+
+            {isLoading && (
+              <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest animate-pulse">
+                {t('common.loading')}
+              </span>
+            )}
+
+            {activeTab === 'lianban' && ladderMeta && (
+              <span className="text-[10px] text-gray-500 font-mono uppercase tracking-tighter">
+                {ladderMeta}
+              </span>
+            )}
           </div>
-
-          {isLoading && (
-            <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest animate-pulse">
-              {t('common.loading')}
-            </span>
-          )}
-
-          {activeTab === 'lianban' && ladderMeta && (
-            <span className="text-[10px] text-gray-500 font-mono ml-4 uppercase tracking-tighter">
-              {ladderMeta}
-            </span>
-          )}
         </div>
 
         <div className="rounded-lg border border-crypto-border bg-crypto-bg px-3 py-2">
@@ -512,25 +610,24 @@ export const MarketOverviewContent: React.FC = () => {
               {freshnessLoading ? t('common.loading') : t('common.refresh')}
             </button>
           </div>
-          {marketFreshness.length === 0 ? (
-            <div className="text-xs text-gray-500">暂无可用 freshness 数据</div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {marketFreshness.map((item) => (
-                <div key={item.id} className="rounded border border-crypto-border bg-gray-900/60 px-2 py-2">
-                  <div className="text-[11px] text-gray-400 truncate" title={item.name}>{item.name}</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+              {freshnessCards.map(({ id, label, dataset }) => {
+                const status = dataset?.freshness_status ?? 'red';
+                return (
+                <div key={id} className="rounded border border-crypto-border bg-gray-900/60 px-2 py-2">
+                  <div className="text-[11px] text-gray-400 truncate" title={dataset?.name || label}>{dataset?.name || label}</div>
                   <div className="mt-1 flex items-center justify-between gap-2">
-                    <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase ${freshnessBadgeClass(item.freshness_status)}`}>
-                      {item.freshness_status}
+                    <span className={`px-1.5 py-0.5 rounded border text-[10px] uppercase ${freshnessBadgeClass(status)}`}>
+                      {status.toUpperCase()}
                     </span>
-                    <span className="text-[10px] text-gray-500 truncate" title={item.latest_snapshot || '-'}>
-                      {item.latest_snapshot || '-'}
+                    <span className="text-[10px] text-gray-500 truncate" title={dataset?.latest_snapshot || '-'}>
+                      {dataset?.latest_snapshot || '-'}
                     </span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
-          )}
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col bg-crypto-card rounded-xl border border-crypto-border min-h-[600px]">
@@ -969,6 +1066,7 @@ export const MarketOverviewContent: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
     </div>
   );
 };

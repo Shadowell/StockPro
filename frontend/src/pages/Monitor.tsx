@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { Activity, Bell, Eye, RefreshCw, Search, ShieldCheck, Wallet } from 'lucide-react';
 import { listPaperAccounts } from '../api/client';
+import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
 import { PaperInstanceDetailPanel } from '../components/BitProDetailPanels';
 import type { PaperAccount } from '../types';
 
@@ -83,6 +84,18 @@ export function Monitor() {
           <RefreshCw className={clsx('h-4 w-4', loading && 'animate-spin')} />
           刷新
         </button>
+      </div>
+
+      <div className="mb-6">
+        <AshareGuardrailStrip
+          title="运行风控检查"
+          description="监控页不仅看收益，还要持续观察 A 股交易限制、异常价格和实例状态。"
+          items={[
+            { label: '涨跌停风险', detail: '关注接近涨跌停、停牌和异常波动导致的不可成交。' },
+            { label: '账户权益回撤', detail: '权益跌破阈值时进入预警，优先检查策略和仓位。' },
+            { label: '成交/信号延迟', detail: '信号生成、模拟成交和账户刷新需要保持可追踪。' },
+          ]}
+        />
       </div>
 
       <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">

@@ -16,9 +16,10 @@ The production target is `root@47.79.36.92`, served at `http://47.79.36.92:4444`
 1. Review A-share market structure, concepts, limit-up ladders, money flow, news catalysts, and market sentiment.
 2. Define or edit a Python strategy with parameters, versioning, declared data dependencies, and a standard output contract.
 3. Run a backtest on Postgres-backed historical data and review return, drawdown, win rate, turnover, trades, and signal quality.
-4. Publish a strategy to live monitoring and inspect normalized signals with chart and research context.
-5. Convert a signal into a paper order, pass risk checks, and track orders, trades, positions, and cash ledger.
-6. Prepare broker adapter configuration in dry-run mode before any real trading integration is enabled.
+4. Review the current trading day after close, including index breadth, hot sectors, limit-up ladders, risk notes, and next-day plan.
+5. Publish a strategy to live monitoring and inspect normalized signals with chart and research context.
+6. Convert a signal into a paper order, pass risk checks, and track orders, trades, positions, and cash ledger.
+7. Prepare broker adapter configuration in dry-run mode before any real trading integration is enabled.
 
 ## Product Priorities
 
@@ -27,6 +28,7 @@ The production target is `root@47.79.36.92`, served at `http://47.79.36.92:4444`
 3. Auditable strategy lifecycle from development to backtest to signal to order.
 4. Production deployment that follows the BitPro-style single-server main-branch flow.
 5. Explicit safety gates before any live trading path.
+6. StockPro AI console visual system: fixed dark sidebar, grouped operator navigation, compact bordered cards, and a top market ticker/status bar consistent with the production server reference.
 
 ## Technical Shape
 
@@ -58,6 +60,10 @@ The runtime is Postgres-only. New and migrated modules must use Postgres migrati
 ## Acceptance Direction
 
 The primary acceptance flow is: update the cloud contract, run Postgres migrations, deploy React/FastAPI through Nginx/systemd, verify health endpoints, then incrementally migrate research, strategy, backtest, signal, paper trading, and risk modules to Postgres.
+
+## Page Professionalism Acceptance
+
+Every primary page must expose its role in the A-share workflow, show data readiness for data-driven panels, and either enforce or clearly mark A-share constraints: T+1, 100-share lots, limit-up/down, suspension, ST/universe filtering, cost model, trading sessions, and broker isolation.
 
 ## Open Questions
 

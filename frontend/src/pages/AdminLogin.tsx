@@ -47,7 +47,7 @@ export const AdminLogin: React.FC = () => {
 
   const copy = {
     title: language === 'zh' ? '管理员登录' : 'Admin Sign In',
-    subtitle: language === 'zh' ? 'StockPro 控制台' : 'StockPro Console',
+    subtitle: language === 'zh' ? 'StockPro AI 控制台' : 'StockPro AI Console',
     username: language === 'zh' ? '账号' : 'Username',
     password: language === 'zh' ? '密码' : 'Password',
     submit: language === 'zh' ? '登录' : 'Sign in',
@@ -77,7 +77,7 @@ export const AdminLogin: React.FC = () => {
 
   if (isCheckingSession) {
     return (
-      <div className="min-h-screen bg-[#0b0f19] text-gray-200 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-crypto-bg text-slate-200">
         <div className="flex items-center gap-2 text-sm text-gray-300">
           <Loader2 size={16} className="animate-spin text-emerald-400" />
           {copy.checking}
@@ -87,17 +87,17 @@ export const AdminLogin: React.FC = () => {
   }
 
   return (
-    <main className="min-h-screen bg-crypto-bg text-gray-200 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(59,130,246,0.12),transparent_28%),radial-gradient(circle_at_80%_15%,rgba(59,130,246,0.08),transparent_28%)]" />
-      <section className="relative w-full max-w-md rounded-xl border border-crypto-border bg-crypto-card shadow-2xl shadow-black/30">
+    <main className="flex min-h-screen items-center justify-center bg-crypto-bg px-4 text-slate-200">
+      <section className="relative w-full max-w-md rounded-[12px] border border-crypto-border bg-crypto-card shadow-2xl shadow-black/30">
         <div className="border-b border-crypto-border px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-2 text-blue-300">
+            <div className="rounded-[9px] bg-blue-600 p-2 text-white shadow-[0_10px_28px_rgba(37,99,235,0.32)]">
               <ShieldCheck size={22} />
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-blue-300">{copy.subtitle}</p>
-              <h1 className="mt-1 text-2xl font-bold text-white">{copy.title}</h1>
+              <h1 className="mt-1 text-2xl font-black text-white">StockPro <span className="text-slate-400">AI</span></h1>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{copy.title}</p>
             </div>
           </div>
         </div>

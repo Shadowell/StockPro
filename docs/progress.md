@@ -1,5 +1,97 @@
 # Progress Log
 
+## Snapshot (2026-06-26)
+
+- Sprint: `ashare-research-professionalization`
+- Focus: audit every primary page, verify usability, and define the route from current console pages to a professional A-share research workstation.
+- Active contract: `docs/contracts/active-ashare-research-professionalization.md`
+- Product direction: every page should have a clear A-share research/execution purpose, visible data readiness, and explicit trading constraints where decisions move toward orders.
+
+## Latest Completed Work (2026-06-26)
+
+1. Added cross-page usability coverage
+- Added mocked E2E coverage that opens every primary protected route and verifies page title, core workflow anchors, and absence of React page errors.
+- Expanded mocked market fixtures for daily K-line, intraday, fundamentals, and stock search so `/market` is tested as a real page instead of crashing on fixture shape.
+
+2. Strengthened A-share professional anchors
+- Added a shared `AshareGuardrailStrip` component.
+- Added visible A-share guardrails to strategy, backtest, paper trading, and monitor pages: T+1, 100-share lots, limit-up/down, suspension, cost model, and broker isolation.
+- Renamed the hidden `/market` surface header to `行情终端` and exposed `个股分析`, `板块龙头`, and `K线图表`.
+- Made the data page's `A股数据维护面板` label visible instead of aria-only.
+
+3. Documented audit and roadmap
+- Added `docs/qa/2026-06-26-ashare-page-audit.md` with a page-by-page usability and A-share professionalism matrix.
+- Added `docs/ashare-research-roadmap.md` with the full path from data foundation to research, candidate pools, strategy lifecycle, backtesting, paper trading, risk, and broker dry-run.
+- Added `docs/superpowers/plans/2026-06-26-ashare-research-workstation.md` as the step-by-step development plan.
+- Added `docs/contracts/active-ashare-research-professionalization.md` as the next sprint contract.
+- Updated `docs/spec.md` with page professionalism acceptance rules.
+
+## Verification Evidence (2026-06-26)
+
+- `npm run check` from `frontend/` (pass).
+- `npm run lint` from `frontend/` (pass with 7 existing warnings, 0 errors).
+- `npm run test:e2e:mock -- --grep "primary pages expose"` from `frontend/` (pass).
+- `npm run test:e2e:mock` from `frontend/` (pass: 9 passed, 5 real-backend tests skipped by mock mode).
+- `./scripts/check.sh` (pass: frontend build, frontend lint with warnings only, deploy shell syntax, backend unit tests 17/17, backend compile).
+
+---
+
+## Snapshot (2026-06-25)
+
+- Sprint: `stockpro-ai-console-style`
+- Focus: align the local frontend with the production server StockPro AI dark console style.
+- Active contract: `docs/contracts/active-stockpro-ai-console-style.md`
+- Product direction: fixed grouped sidebar, compact dark cards, top A-share ticker/status bar, and dashboard-first market cards.
+
+## Latest Completed Work (2026-06-25)
+
+1. Rebuilt the application shell around the server reference style
+- Added the `StockPro AI` brand block with a fixed 264px desktop sidebar.
+- Reorganized navigation into `研究工坊`, `策略工厂`, `执行风控`, and `系统管理`.
+- Moved `总览看板` into the `研究工坊` group and removed the empty `数据中台` group.
+- Moved `管理后台` from the top business navigation area into a lower `系统管理` section.
+- Renamed the backtest workspace navigation/title from `复盘中心` to `回测中心`.
+- Added a separate `/review` `复盘中心` for daily market review.
+- Added a compact desktop top bar with route title, four A-share indices, `已休市` status, language toggle, settings, and logout actions.
+
+2. Aligned global visual tokens
+- Updated the dark palette, borders, card surfaces, hover states, radius scale, and primary accent toward the production server screenshot.
+- Added compatibility overrides so older purple accents read as the current blue console accent.
+- Updated the admin login page to use the same StockPro AI console tone.
+
+3. Tightened the dashboard first viewport
+- Removed the old `量化交易中枢` module chain from the top of the dashboard.
+- Made the first content block start directly with `市场指数`, followed by `短线指标` and `热门板块`.
+- Locked the index order to `上证指数`, `深证成指`, `创业板指`, `科创50` in both the top ticker and dashboard cards.
+- Added a hot-concept fallback so `热门板块` uses existing external market data when PG cache is empty, and displays TOP5 when no board is above 5%.
+
+4. Added regression coverage
+- Added E2E coverage for the StockPro AI shell, navigation groups, top ticker order, dashboard index order, and removal of the old module-chain header.
+- Updated the dashboard realtime cockpit test so the dashboard defaults directly to the market cockpit instead of requiring a module button.
+- Added backend fallback tests and frontend E2E coverage for the `热门板块` non-empty TOP5 path.
+- Added E2E coverage that `/backtest` is `回测中心`, `/review` is the new `复盘中心`, and legacy `/pulse` redirects to `/review`.
+
+5. Added daily review workflow
+- Added `DailyReview.tsx` to summarize market temperature, breadth, turnover, hot sectors, limit-up ladders, risk notes, and next-day plans.
+- Wired replay-note list/save API client helpers so the page can persist daily review logs through existing `/market/pulse/replay-notes` endpoints.
+
+## Verification Evidence (2026-06-25)
+
+- `npm run check` from `frontend/` (pass).
+- `npm run lint` from `frontend/` (pass with 7 existing warnings, 0 errors).
+- `npm run test:e2e:mock -- --grep "desktop shell matches|single api shell"` from `frontend/` (pass; covers `总览看板` under `研究工坊` and removal of `数据中台`).
+- `npm run test:e2e:mock` from `frontend/` (pass: 8 passed, 5 real-backend tests skipped by mock mode).
+- `npm run test:e2e:mock -- --grep "backtest center is separated"` from `frontend/` (pass).
+- `python -m unittest tests.test_market_service_cache_only.HotConceptFallbackTests` from `backend/` (pass).
+- `npm run test:e2e:mock -- --grep "hot concepts|realtime market cockpit"` from `frontend/` (pass: 2 passed).
+- `./scripts/check.sh` (pass: frontend build, frontend lint with warnings only, deploy shell syntax, backend unit tests 17/17, backend compile).
+- Real local API check: `/api/market/hot-concepts?limit=10` returned 10 rows after login.
+- Local Playwright visual QA screenshot: `.codex-artifacts/stockpro-daily-review-center.png`.
+- Local Playwright visual QA screenshot: `.codex-artifacts/stockpro-hot-concepts-fixed.png`.
+- Local Playwright visual QA screenshot: `.codex-artifacts/stockpro-ai-style.png`.
+
+---
+
 ## Snapshot (2026-06-12)
 
 - Sprint: `standardize-and-trading-core` adjusted to single-router cleanup

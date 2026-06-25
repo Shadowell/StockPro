@@ -758,6 +758,7 @@ export function DataCenter() {
       <section className="shrink-0 rounded-2xl border border-crypto-border bg-crypto-card/45 p-3 shadow-inner shadow-black/20" aria-label="A股数据维护面板">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3 px-1">
           <div>
+            <div className="text-[11px] font-black uppercase tracking-wider text-blue-300">A股数据维护面板</div>
             <h2 className="text-base font-semibold text-white">同步覆盖矩阵</h2>
             <p className="mt-1 text-xs text-gray-500">按标的聚合 PG 历史 K 线，展开后可按周期查看起止日期、覆盖率和同步入口。</p>
           </div>

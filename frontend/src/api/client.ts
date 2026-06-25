@@ -719,6 +719,69 @@ export const syncTodayConceptSectors = async (): Promise<{status: string; count:
   return response.data;
 };
 
+export interface PulseDailySectorItem {
+  date: string;
+  name: string;
+  change_percent: number;
+  rank?: number | null;
+  inflow?: number | null;
+  outflow?: number | null;
+  net_inflow?: number | null;
+}
+
+export interface PulseLianbanHistoryItem {
+  date: string;
+  stocks?: Array<{
+    code: string;
+    name: string;
+    level?: number;
+    today_level?: number;
+    change_percent?: number | null;
+    price?: number | null;
+    reason?: string | null;
+  }>;
+  [key: string]: unknown;
+}
+
+export interface ReplayNote {
+  note_date: string;
+  title: string;
+  content: string;
+  payload_json?: Record<string, unknown> | null;
+  updated_at?: string | null;
+}
+
+export interface ReplayNotePayload {
+  note_date: string;
+  title: string;
+  content: string;
+  payload_json?: Record<string, unknown>;
+}
+
+export const getPulseDailyStats = async (
+  params: { days?: number; min_change_pct?: number; top_n?: number } = {},
+): Promise<PulseDailySectorItem[]> => {
+  const response = await apiClient.get<PulseDailySectorItem[]>('/market/pulse/daily-stats', { params });
+  return response.data;
+};
+
+export const getPulseLianbanHistory = async (
+  params: { days?: number; min_level?: number } = {},
+): Promise<PulseLianbanHistoryItem[]> => {
+  const response = await apiClient.get<PulseLianbanHistoryItem[]>('/market/pulse/lianban-history', { params });
+  return response.data;
+};
+
+export const listReplayNotes = async (limit = 30): Promise<ReplayNote[]> => {
+  const response = await apiClient.get<{ status: string; data: ReplayNote[] }>('/market/pulse/replay-notes', { params: { limit } });
+  return response.data.data || [];
+};
+
+export const saveReplayNote = async (payload: ReplayNotePayload): Promise<ReplayNote> => {
+  const response = await apiClient.post<{ status: string; data: ReplayNote }>('/market/pulse/replay-notes', payload);
+  return response.data.data;
+};
+
 export interface BackfillResult {
   status: string;
   days_filled?: number;

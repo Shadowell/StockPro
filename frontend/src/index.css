@@ -4,22 +4,37 @@
 
 :root {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #e6edf3;
-  background-color: #0d1117;
+  color: #e5edf7;
+  background-color: #0b1220;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --color-up: #ff1744;
-  --color-down: #00c853;
-  --color-up-bg: #ff17441a;
-  --color-down-bg: #00c8531a;
+  --shell-bg: #0b1220;
+  --shell-sidebar: #111827;
+  --shell-panel: #111827;
+  --shell-card: #0b1020;
+  --shell-border: #223047;
+  --shell-border-soft: rgba(34, 48, 71, 0.74);
+  --shell-muted: #94a3b8;
+  --shell-subtle: #64748b;
+  --shell-accent: #2563eb;
+  --shell-accent-soft: rgba(37, 99, 235, 0.18);
+  --color-up: #ff4d57;
+  --color-down: #10b981;
+  --color-up-bg: #ff4d571a;
+  --color-down-bg: #10b9811a;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: var(--shell-bg);
+}
+
+* {
+  box-sizing: border-box;
 }
 
 ::-webkit-scrollbar {
@@ -28,16 +43,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #161b22;
+  background: #0b1220;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #30363d;
+  background: #223047;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #484f58;
+  background: #334155;
 }
 
 .text-up {
@@ -54,4 +69,40 @@ body {
 
 .bg-down {
   background-color: var(--color-down-bg);
+}
+
+.rounded-2xl {
+  border-radius: 12px;
+}
+
+.rounded-xl {
+  border-radius: 10px;
+}
+
+.shadow-2xl {
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.26);
+}
+
+.bg-purple-600,
+.hover\:bg-purple-500:hover {
+  background-color: #2563eb !important;
+}
+
+.text-purple-400,
+.text-purple-300,
+.text-purple-200 {
+  color: #60a5fa !important;
+}
+
+.border-purple-500\/45,
+.border-purple-500\/40,
+.border-purple-500\/35,
+.border-purple-500\/30 {
+  border-color: rgba(96, 165, 250, 0.45) !important;
+}
+
+.bg-purple-500\/20,
+.bg-purple-500\/15,
+.bg-purple-500\/10 {
+  background-color: rgba(37, 99, 235, 0.16) !important;
 }
