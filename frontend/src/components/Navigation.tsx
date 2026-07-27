@@ -37,12 +37,12 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'factors', to: '/factors', label: '因子', Icon: TestTube2 },
   { id: 'strategy', to: '/strategy', label: '策略', Icon: Code2 },
   { id: 'backtest', to: '/backtest', label: '回测', Icon: FlaskConical },
-  { id: 'ai-lab', to: '/ai-lab', label: 'AI研发', Icon: Bot },
   { id: 'paper', to: '/paper', label: '模拟', Icon: Activity },
   { id: 'watch', to: '/watch', label: '盯盘', Icon: ScanLine },
   { id: 'monitor', to: '/monitor', label: '监控', Icon: Eye },
   { id: 'review', to: '/review', label: '复盘', Icon: ClipboardList },
   { id: 'data', to: '/data', label: '数据', Icon: Database },
+  { id: 'ai-lab', to: '/ai-lab', label: 'AI研发', Icon: Bot },
 ];
 
 export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {

@@ -993,6 +993,8 @@ Verification:
 - Repaired the existing MA5/20 momentum strategy catalogue link locally and
   validated the running Paper instance against snapshot #10. The target instance
   is fresh with a successful latest cycle; no external sync or broker call ran.
+- Moved `AI研发` to the final position in both desktop and mobile primary
+  navigation while preserving its route and page behavior.
 
 ## Verification Evidence
 
