@@ -1,16 +1,18 @@
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from app.db import db_instance
 from app.services.backtest_workbench_service import BacktestWorkbenchService
+from app.services.backtest_job_service import BacktestJobError, BacktestJobService
 from app.services.guest_access_service import GuestAccessError, GuestAccessService
 
 
 router = APIRouter()
 service = BacktestWorkbenchService(db_instance)
 guest_access_service = GuestAccessService(db_instance)
+job_service = BacktestJobService(db_instance)
 
 
 class BacktestRunRequest(BaseModel):
@@ -89,6 +91,10 @@ class HistoricalReferenceRequest(BaseModel):
     benchmarks: List[str] = Field(default_factory=lambda: ["000300.SH"])
 
 
+class BacktestJobRequest(BacktestRunRequest):
+    run_mode: str = Field(default="full", pattern="^(quick|full)$")
+
+
 def _http_error(exc: ValueError, status_code: int = 400) -> HTTPException:
     return HTTPException(status_code=status_code, detail=str(exc))
 
@@ -101,6 +107,80 @@ async def list_cost_models() -> Dict[str, Any]:
 @router.get("/configuration")
 async def get_configuration() -> Dict[str, Any]:
     return service.configuration()
+
+
+@router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
+async def create_backtest_job(
+    request: BacktestJobRequest,
+    http_request: Request,
+) -> Dict[str, Any]:
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
+    try:
+        return job_service.create_job(
+            request.model_dump(exclude={"run_mode"}),
+            mode=request.run_mode,
+            principal=principal,
+        )
+    except (BacktestJobError, GuestAccessError) as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/jobs")
+async def list_backtest_jobs(
+    http_request: Request,
+    limit: int = Query(100, ge=1, le=200),
+) -> Dict[str, Any]:
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
+    items = job_service.list_jobs(principal, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/jobs/{job_id}")
+async def get_backtest_job(job_id: str, http_request: Request) -> Dict[str, Any]:
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
+    try:
+        return job_service.get_job(job_id, principal)
+    except BacktestJobError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/jobs/{job_id}/logs")
+async def get_backtest_job_logs(
+    job_id: str,
+    http_request: Request,
+    after_id: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=1000),
+) -> Dict[str, Any]:
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
+    try:
+        return {
+            "items": job_service.logs(
+                job_id, principal, after_id=after_id, limit=limit
+            )
+        }
+    except BacktestJobError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_backtest_job(job_id: str, http_request: Request) -> Dict[str, Any]:
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
+    try:
+        return job_service.cancel(job_id, principal)
+    except BacktestJobError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post(
+    "/jobs/{job_id}/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_backtest_job(job_id: str, http_request: Request) -> Dict[str, Any]:
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
+    try:
+        return job_service.retry(job_id, principal)
+    except (BacktestJobError, GuestAccessError) as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 @router.post("/datasets/historical-references")

@@ -5,7 +5,7 @@ import hashlib
 import itertools
 import json
 from datetime import date, datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 import psycopg2.extras
 
@@ -15,6 +15,10 @@ from app.services.data_purpose import infer_data_purpose
 from app.services.dataset_snapshot_service import DatasetSnapshotService, canonical_hash
 from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService
 from app.services.strategy_runtime_service import STRATEGY_API_VERSION, StrategyRuntimeService
+
+
+class BacktestCancelled(RuntimeError):
+    pass
 
 
 class BacktestWorkbenchService:
@@ -230,9 +234,23 @@ class BacktestWorkbenchService:
         self._execute("UPDATE backtest_experiments SET status=%s,completed_at=NOW() WHERE id=%s", (status, experiment_id))
         return {"experiment_id": experiment_id, "total": len(results), "items": results, "status": status}
 
-    def run(self, payload: Mapping[str, Any], *, mode: str) -> Dict[str, Any]:
+    def run(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        mode: str,
+        progress_hook: Optional[Callable[[float, str, str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+    ) -> Dict[str, Any]:
+        def checkpoint(progress: float, phase: str, message: str) -> None:
+            if cancel_check and cancel_check():
+                raise BacktestCancelled("用户已停止回测")
+            if progress_hook:
+                progress_hook(progress, phase, message)
+
         if mode not in {"quick", "full"}:
             raise ValueError("run mode 只能为 quick 或 full")
+        checkpoint(5, "validating", "正在校验策略版本与研究快照")
         prepared = self._prepare_inputs(payload, require_protocol=False)
         version = prepared["version"]
         snapshot = prepared["dataset_snapshot"]
@@ -268,9 +286,11 @@ class BacktestWorkbenchService:
                 (input_hash,),
             )
             if existing:
+                checkpoint(100, "completed", "复用相同输入的已封存完整回测")
                 return {**self.get_run(str(existing["id"])), "reused": True}
         run_id = self._create_run(payload, prepared, input_manifest, input_hash, mode, initial_cash)
         try:
+            checkpoint(15, "replay", "正在执行策略回放")
             replay = self.runtime.replay(str(version["id"]), {
                 "dataset_snapshot_id": int(snapshot["id"]),
                 "factor_snapshot_id": prepared["factor_snapshot"]["id"] if prepared["factor_snapshot"] else None,
@@ -281,6 +301,7 @@ class BacktestWorkbenchService:
             if replay["status"] != "success":
                 raise ValueError(f"策略回放失败: {replay.get('error_code') or replay.get('error_message')}")
             self._execute("UPDATE backtest_runs SET replay_run_id=%s,progress=35 WHERE id=%s", (replay["run_id"], run_id))
+            checkpoint(35, "loading_data", "正在读取封存日线与交易规则")
             intents = self.runtime.list_intents(replay["run_id"])
             records = self.runtime.list_records(replay["run_id"])
             bars = self.snapshot_service.load_daily_bars(int(snapshot["id"]), symbols=symbols, limit=1_000_000)
@@ -300,18 +321,34 @@ class BacktestWorkbenchService:
                 benchmark_bars=benchmark_bars, benchmark_symbol=prepared["benchmark_symbol"],
                 industry_by_symbol=prepared["industry_by_symbol"],
             )
-            result = engine.run()
+            checkpoint(50, "simulating", "正在执行 A 股撮合与组合核算")
+            result = engine.run(
+                progress_hook=(
+                    lambda current, total: checkpoint(
+                        50 + (35 * current / max(total, 1)),
+                        "simulating",
+                        f"正在执行 A 股撮合与组合核算（{current}/{total} 交易日）",
+                    )
+                ),
+                cancel_check=cancel_check,
+            )
+            checkpoint(90, "persisting", "正在写入回测证据与指标")
             self._persist_result(run_id, replay, records, result, input_manifest)
             if mode == "full" and payload.get("research_protocol_id"):
                 self._evaluate_protocol_segments(run_id, str(payload["research_protocol_id"]), result)
             return self.get_run(run_id)
+        except BacktestCancelled:
+            self._execute(
+                "UPDATE backtest_runs SET status='cancelled',error_message=NULL,finished_at=NOW() WHERE id=%s",
+                (run_id,),
+            )
+            raise
         except Exception as exc:
             self._execute(
                 "UPDATE backtest_runs SET status='failed',progress=100,error_message=%s,finished_at=NOW() WHERE id=%s",
                 (str(exc)[:1000], run_id),
             )
             raise
-
     def list_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         rows = self._rows(
             """

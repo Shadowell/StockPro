@@ -17,28 +17,37 @@ import {
   Play,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Square,
+  Terminal,
   X,
   Zap,
 } from 'lucide-react';
 import {
   compareBacktestRuns,
+  cancelBacktestJob,
+  createBacktestJob,
   createBacktestExperiment,
   getBacktestConfiguration,
   getBacktestEvidence,
   getBacktestMetrics,
+  getBacktestJobLogs,
   getBacktestRun,
   getBacktestSeries,
   listBacktestRuns,
+  listBacktestJobs,
+  retryBacktestJob,
   runBacktestMatrix,
-  runBacktestV1,
 } from '../api/client';
 import type {
   BacktestConfiguration,
   BacktestDailyPoint,
   BacktestMetric,
+  BacktestJob,
+  BacktestJobLog,
   BacktestRun,
   BacktestRunRequestV1,
 } from '../types';
@@ -190,6 +199,9 @@ export function Backtest() {
   const [searchParams] = useSearchParams();
   const [config, setConfig] = useState<BacktestConfiguration | null>(null);
   const [runs, setRuns] = useState<BacktestRun[]>([]);
+  const [jobs, setJobs] = useState<BacktestJob[]>([]);
+  const [jobLogs, setJobLogs] = useState<Record<string, BacktestJobLog[]>>({});
+  const [openJobLog, setOpenJobLog] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [createStep, setCreateStep] = useState<1 | 2 | 3>(1);
   const [strategyQuery, setStrategyQuery] = useState('');
@@ -218,12 +230,27 @@ export function Backtest() {
   const load = useCallback(async () => {
     setError('');
     try {
-      const [configuration, history] = await Promise.all([getBacktestConfiguration(), listBacktestRuns()]);
-      setConfig(configuration); setRuns(history.items);
+      const [configuration, history, jobHistory] = await Promise.all([
+        getBacktestConfiguration(),
+        listBacktestRuns(),
+        listBacktestJobs(),
+      ]);
+      setConfig(configuration); setRuns(history.items); setJobs(jobHistory.items);
     } catch (reason) { setError(reason instanceof Error ? reason.message : '回测配置加载失败'); }
   }, []);
 
   useEffect(() => { if (!runId) void load(); }, [load, runId]);
+  const hasActiveJobs = jobs.some((job) => ['pending', 'running', 'cancelling'].includes(job.status));
+  useEffect(() => {
+    if (runId || !hasActiveJobs) return;
+    const timer = window.setInterval(() => {
+      void Promise.all([listBacktestJobs(), listBacktestRuns()]).then(([jobHistory, history]) => {
+        setJobs(jobHistory.items);
+        setRuns(history.items);
+      }).catch(() => undefined);
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [hasActiveJobs, runId]);
   useEffect(() => {
     if (!config) return;
     if (!strategyVersionId) setStrategyVersionId(config.strategy_versions[0]?.id ?? '');
@@ -293,9 +320,44 @@ export function Backtest() {
 
   const execute = async (mode: 'quick' | 'full') => {
     setBusy(mode); setError('');
-    try { const result = await runBacktestV1(request(), mode); await load(); navigate(`/backtest/${result.id}`); }
+    try {
+      const job = await createBacktestJob(request(), mode);
+      setJobs((current) => [job, ...current.filter((item) => item.job_id !== job.job_id)]);
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : '回测运行失败'); }
     finally { setBusy(''); }
+  };
+
+  const controlJob = async (job: BacktestJob, action: 'cancel' | 'retry') => {
+    setBusy(`${action}:${job.job_id}`);
+    setError('');
+    try {
+      const updated = action === 'cancel'
+        ? await cancelBacktestJob(job.job_id)
+        : await retryBacktestJob(job.job_id);
+      setJobs((current) => [
+        updated,
+        ...current.filter((item) => item.job_id !== updated.job_id),
+      ]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '任务控制失败');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const toggleJobLog = async (jobId: string) => {
+    if (openJobLog === jobId) {
+      setOpenJobLog('');
+      return;
+    }
+    setOpenJobLog(jobId);
+    try {
+      const logs = await getBacktestJobLogs(jobId);
+      setJobLogs((current) => ({ ...current, [jobId]: logs }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '任务日志加载失败');
+    }
   };
 
   const compare = async () => {
@@ -387,6 +449,67 @@ export function Backtest() {
           </select>
         </label>
       </div>
+
+      <section className={`${panel} mb-5 overflow-hidden`} data-testid="backtest-job-console">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-cyan-400" />
+              <h2 className="font-semibold text-white">任务队列</h2>
+              <span className="text-xs text-gray-600">{jobs.length} 个持久化任务</span>
+            </div>
+            <p className="mt-1 text-[11px] text-gray-600">PostgreSQL 状态与增量日志；页面关闭后仍可追踪，后端重启会标记为已中断。</p>
+          </div>
+          <button type="button" onClick={() => void load()} className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-400 hover:text-white">
+            <RefreshCw className="h-3.5 w-3.5" />刷新任务
+          </button>
+        </div>
+        <div className="space-y-3 p-4">
+          {jobs.slice(0, 20).map((job) => {
+            const active = ['pending', 'running', 'cancelling'].includes(job.status);
+            const retryable = ['failed', 'cancelled', 'interrupted'].includes(job.status);
+            const statusTone = job.status === 'success'
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+              : job.status === 'failed' || job.status === 'interrupted'
+                ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                : job.status === 'cancelled' || job.status === 'cancelling'
+                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                  : 'border-blue-500/30 bg-blue-500/10 text-blue-300';
+            return (
+              <article key={job.job_id} className="rounded-xl border border-crypto-border bg-[#0c1119] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${statusTone}`}>{job.status}</span>
+                      <span className="text-xs font-semibold text-gray-300">{job.run_mode === 'quick' ? '快速预检' : '完整回测'} · 第 {job.attempt} 次</span>
+                      <span className="font-mono text-[10px] text-gray-700">{job.job_id.slice(0, 12)}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">{job.message || job.phase}</p>
+                    {job.error_message ? <p className="mt-1 text-xs text-red-300">{job.error_message}</p> : null}
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-800">
+                      <div className={`h-full transition-all ${job.status === 'failed' ? 'bg-red-500' : job.status === 'success' ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.max(0, Math.min(Number(job.progress), 100))}%` }} />
+                    </div>
+                    <div className="mt-1 flex justify-between text-[10px] text-gray-700"><span>{job.phase}</span><span>{Number(job.progress).toFixed(0)}%</span></div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => void toggleJobLog(job.job_id)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-crypto-border px-2.5 text-[11px] text-gray-400 hover:text-white"><FileText className="h-3.5 w-3.5" />任务日志</button>
+                    {active ? <button type="button" onClick={() => void controlJob(job, 'cancel')} disabled={Boolean(busy)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] text-amber-300 disabled:opacity-40"><Square className="h-3 w-3" />停止任务</button> : null}
+                    {retryable ? <button type="button" onClick={() => void controlJob(job, 'retry')} disabled={Boolean(busy)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 text-[11px] text-blue-300 disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />重试任务</button> : null}
+                    {job.backtest_run_id ? <button type="button" onClick={() => navigate(`/backtest/${job.backtest_run_id}`)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 text-[11px] font-semibold text-white"><Eye className="h-3.5 w-3.5" />结果证据</button> : null}
+                  </div>
+                </div>
+                {openJobLog === job.job_id ? (
+                  <div className="mt-4 max-h-52 overflow-auto rounded-lg border border-crypto-border bg-black/25 p-3 font-mono text-[11px] leading-5">
+                    {(jobLogs[job.job_id] || []).map((item) => <div key={item.id} className={item.level === 'error' ? 'text-red-300' : item.level === 'warning' ? 'text-amber-300' : 'text-gray-400'}><span className="text-gray-700">{item.created_at.slice(11, 19)} [{item.phase}]</span> {item.message}</div>)}
+                    {(jobLogs[job.job_id] || []).length === 0 ? <div className="text-gray-600">暂无任务日志</div> : null}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+          {jobs.length === 0 ? <div className="flex min-h-28 items-center justify-center text-sm text-gray-600">暂无持久化回测任务；创建后会在这里显示状态与日志。</div> : null}
+        </div>
+      </section>
 
       <section className={`${panel} overflow-hidden`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">
@@ -493,7 +616,7 @@ export function Backtest() {
           </div>
           <div className="flex shrink-0 items-center justify-between border-t border-crypto-border px-6 py-4">
             <button type="button" onClick={() => createStep === 1 ? closeCreate() : setCreateStep((createStep - 1) as 1 | 2)} className="h-10 rounded-lg border border-crypto-border px-4 text-sm text-gray-400 hover:text-white">{createStep === 1 ? '取消' : '上一步'}</button>
-            {createStep < 3 ? <button type="button" disabled={createStep === 1 && !strategyVersionId} onClick={() => setCreateStep((createStep + 1) as 2 | 3)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-purple-600 px-5 text-sm font-semibold text-white disabled:opacity-40">下一步<ChevronRight className="h-4 w-4" /></button> : <div className="flex items-center gap-2"><button type="button" onClick={() => void executeFromWizard('quick')} disabled={Boolean(busy)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 text-sm font-semibold text-amber-300 disabled:opacity-50"><Zap className="h-4 w-4" />{busy === 'quick' ? '预检中…' : '快速预检'}</button><button data-testid="run-full-backtest" type="button" onClick={() => void executeFromWizard('full')} disabled={Boolean(busy)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-purple-600 px-5 text-sm font-semibold text-white disabled:opacity-50"><Play className="h-4 w-4" />{busy === 'full' ? '回测运行中…' : '创建并运行'}</button></div>}
+            {createStep < 3 ? <button type="button" disabled={createStep === 1 && !strategyVersionId} onClick={() => setCreateStep((createStep + 1) as 2 | 3)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-purple-600 px-5 text-sm font-semibold text-white disabled:opacity-40">下一步<ChevronRight className="h-4 w-4" /></button> : <div className="flex items-center gap-2"><button type="button" onClick={() => void executeFromWizard('quick')} disabled={Boolean(busy)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 text-sm font-semibold text-amber-300 disabled:opacity-50"><Zap className="h-4 w-4" />{busy === 'quick' ? '正在入队…' : '快速预检'}</button><button data-testid="run-full-backtest" type="button" onClick={() => void executeFromWizard('full')} disabled={Boolean(busy)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-purple-600 px-5 text-sm font-semibold text-white disabled:opacity-50"><Play className="h-4 w-4" />{busy === 'full' ? '正在入队…' : '创建回测任务'}</button></div>}
           </div>
         </section>
       </div> : null}

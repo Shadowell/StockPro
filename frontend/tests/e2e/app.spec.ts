@@ -118,12 +118,13 @@ async function mockApi(page: Page) {
           { id: 'agent', status: 'not_implemented', write_access: false },
         ],
         feature_gates: {
+          async_backtest_jobs: { status: 'available', storage: 'postgresql', controls: ['poll', 'logs', 'cancel', 'retry'] },
           real_broker: { status: 'not_implemented', enabled: false },
         },
         domain_guardrails: ['A股交易日历', 'T+1 可卖约束', '100 股整数手'],
         stages: [
           { id: 'strategy', label: '策略', route: '/strategy', status: 'available', requires: [], evidence: [] },
-          { id: 'backtest', label: '回测', route: '/backtest', status: 'partial', requires: [], evidence: [] },
+          { id: 'backtest', label: '回测', route: '/backtest', status: 'available', requires: [], evidence: ['job_id', 'run_id', 'logs'] },
           { id: 'paper', label: '模拟', route: '/paper', status: 'available', requires: [], evidence: [] },
           { id: 'watch', label: '观察', route: '/watch', status: 'partial', requires: [], evidence: [] },
           { id: 'monitor', label: '监控', route: '/monitor', status: 'partial', requires: [], evidence: [] },
@@ -435,7 +436,31 @@ async function mockApi(page: Page) {
       data_purpose: 'acceptance',
     };
     const mockMetrics = Object.entries(mockBacktestRun.metrics).map(([metric_code, metric_value]) => ({ metric_code, metric_value, unit: metric_code === 'sharpe' ? 'number' : 'ratio', calculation_version: 'backtest-metrics.v1', input_frequency: '1d', null_reason: null }));
+    const mockBacktestJob = {
+      job_id: '77777777-7777-7777-7777-777777777777',
+      request_payload: {},
+      run_mode: 'quick',
+      status: 'success',
+      progress: 100,
+      phase: 'completed',
+      message: '回测完成，结果证据已封存',
+      error_message: null,
+      backtest_run_id: mockBacktestRun.id,
+      owner_role: 'admin',
+      owner_session_id: 'mock-session',
+      owner_guest_code_id: null,
+      parent_job_id: null,
+      attempt: 1,
+      created_at: now,
+      updated_at: now,
+      started_at: now,
+      finished_at: now,
+      cancel_requested_at: null,
+    };
 
+    if (method === 'GET' && path === '/backtest/jobs') return route.fulfill(json({ items: [mockBacktestJob], total: 1 }));
+    if (method === 'POST' && path === '/backtest/jobs') return route.fulfill(json(mockBacktestJob, 202));
+    if (method === 'GET' && path === `/backtest/jobs/${mockBacktestJob.job_id}/logs`) return route.fulfill(json({ items: [{ id: 1, job_id: mockBacktestJob.job_id, level: 'info', phase: 'completed', message: mockBacktestJob.message, payload: { progress: 100 }, created_at: now }] }));
     if (method === 'GET' && path === '/backtest/runs') return route.fulfill(json({ items: [mockBacktestRun], total: 1 }));
     if (method === 'GET' && path === `/backtest/runs/${mockBacktestRun.id}`) return route.fulfill(json({ ...mockBacktestRun, core_metrics: mockMetrics }));
     if (method === 'GET' && path === `/backtest/runs/${mockBacktestRun.id}/metrics`) return route.fulfill(json({ items: mockMetrics }));
@@ -706,6 +731,10 @@ test('backtest center is separated from daily market review center', async ({ pa
   await expect(page.getByTestId('stockpro-ai-topbar').getByRole('heading', { name: '回测中心' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '回测实例控制台' })).toBeVisible();
   await expect(page.getByRole('button', { name: '创建回测实例' })).toBeVisible();
+  await expect(page.getByTestId('backtest-job-console')).toContainText('任务队列');
+  await expect(page.getByRole('button', { name: '结果证据' })).toBeVisible();
+  await page.getByRole('button', { name: '任务日志' }).click();
+  await expect(page.getByTestId('backtest-job-console')).toContainText('回测完成，结果证据已封存');
   await expect(page.getByText('StockPro Strategy API v1')).toHaveCount(0);
 
   await page.goto('/review');

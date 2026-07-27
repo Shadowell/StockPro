@@ -48,8 +48,9 @@ async def workflow_capabilities() -> Dict[str, Any]:
                 "dimensions": ["daily_runs", "concurrent_runs", "date_range_days"],
             },
             "async_backtest_jobs": {
-                "status": "not_implemented",
-                "reason": "当前完整回测仍是同步请求",
+                "status": "available",
+                "storage": "postgresql",
+                "controls": ["poll", "logs", "cancel", "retry"],
             },
             "paper_runtime": {"status": "available"},
             "real_broker": {
@@ -88,10 +89,9 @@ async def workflow_capabilities() -> Dict[str, Any]:
                 "id": "backtest",
                 "label": "回测",
                 "route": "/backtest",
-                "status": "partial",
+                "status": "available",
                 "requires": ["strategy_version", "dataset_snapshot", "universe_snapshot", "cost_model"],
-                "evidence": ["run_id", "metrics", "orders", "trades", "logs"],
-                "reason": "结果证据可用，异步任务控制尚未实现",
+                "evidence": ["job_id", "run_id", "metrics", "orders", "trades", "logs"],
             },
             {
                 "id": "paper",
