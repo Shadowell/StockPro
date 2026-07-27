@@ -956,6 +956,7 @@ Verification:
 - Propagated `data_purpose` from Paper instances into Watch signals, orders, trades, positions, risk/runtime events and alerts; stock-pool movements receive the same derived purpose label.
 - Preserved PostgreSQL snapshot/version evidence and A-share safety rules; no provider sync, Paper runtime cycle, remote deployment or broker operation was triggered.
 - Updated browser acceptance for the flat BitPro navigation, page-owned headers and explicit test scopes.
+- Increased sidebar contrast after visual review: near-black navigation canvas, stronger inactive labels/icons, a deeper blue selected block and a clear active-edge marker.
 
 ## Verification Evidence
 

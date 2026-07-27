@@ -63,17 +63,21 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
           title={item.label}
           className={({ isActive }) =>
             clsx(
-              'group flex shrink-0 items-center justify-center text-xs transition-colors',
+              'group relative flex shrink-0 items-center justify-center text-xs font-semibold transition-colors duration-150',
               vertical
-                ? 'h-[52px] w-16 flex-col gap-1'
+                ? 'h-[52px] w-16 flex-col gap-1 border-l-2'
                 : 'h-10 min-w-[58px] gap-1.5 rounded-md px-2',
               isActive
-                ? 'bg-blue-500/10 text-blue-400'
-                : 'text-slate-500 hover:bg-slate-800 hover:text-slate-200',
+                ? vertical
+                  ? 'border-blue-400 bg-blue-600/25 text-blue-100 shadow-[inset_0_0_18px_rgba(37,99,235,0.12)]'
+                  : 'border-transparent bg-blue-600/30 text-blue-100'
+                : vertical
+                  ? 'border-transparent text-slate-300 hover:border-slate-600 hover:bg-slate-800/80 hover:text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white',
             )
           }
         >
-          <item.Icon className="h-[18px] w-[18px]" />
+          <item.Icon className="h-[18px] w-[18px] stroke-[2.2]" />
           <span className={clsx(vertical ? 'text-[10px]' : 'text-[11px]')}>
             {item.label}
           </span>

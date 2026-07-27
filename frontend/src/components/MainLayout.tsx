@@ -143,14 +143,14 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
       data-testid="financial-operator-shell"
       data-auth-role={authProfile?.role || 'unknown'}
     >
-      <aside className="hidden w-16 shrink-0 flex-col overflow-hidden border-r border-crypto-border bg-crypto-card md:flex">
-        <div className="flex h-16 items-center justify-center border-b border-crypto-border">
+      <aside className="hidden w-16 shrink-0 flex-col overflow-hidden border-r border-slate-800 bg-[#090e15] md:flex">
+        <div className="flex h-16 items-center justify-center border-b border-slate-800">
           <StockProMark />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <Navigation />
         </div>
-        <div className="space-y-1 border-t border-crypto-border p-1">
+        <div className="space-y-1 border-t border-slate-800 p-1">
           <div
             className={clsx(
               'rounded px-1 py-1 text-center text-[9px] font-semibold',
@@ -186,7 +186,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         className="min-w-0 flex-1 overflow-auto"
         data-operator-surface="page"
       >
-        <div className="sticky top-0 z-30 border-b border-crypto-border bg-crypto-card/95 px-3 py-2 backdrop-blur md:hidden">
+        <div className="sticky top-0 z-30 border-b border-slate-800 bg-[#090e15]/95 px-3 py-2 backdrop-blur md:hidden">
           <div className="flex items-center justify-between gap-3">
             <StockProMark />
             <div className="min-w-0 flex-1 overflow-x-auto">
