@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
+import { DataPanel, MetricCard, StatusBadge } from '@bitpro/ui';
 import {
   AlertCircle,
   BarChart3,
@@ -11,6 +12,7 @@ import {
   Download,
   HardDrive,
   Info,
+  LayoutDashboard,
   ListChecks,
   Play,
   Plus,
@@ -95,6 +97,8 @@ type SyncJob = {
   started_at?: string | null;
   finished_at?: string | null;
 };
+
+type DataSection = 'overview' | 'datasets' | 'coverage' | 'jobs' | 'providers';
 
 const TIMEFRAME_LABELS: Record<string, string> = {
   '1m': '1M',
@@ -199,6 +203,7 @@ const compactDate = (value?: string | null) => {
 };
 
 export function DataCenter() {
+  const [activeSection, setActiveSection] = useState<DataSection>('overview');
   const [status, setStatus] = useState<DataStatus | null>(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -297,7 +302,7 @@ export function DataCenter() {
     void load();
   }, []);
 
-  const coverage = status?.kline_coverage || [];
+  const coverage = useMemo(() => status?.kline_coverage || [], [status?.kline_coverage]);
   const jobs = status?.sync_jobs || [];
   const tables = status?.tables || [];
   const defaultTimeframes = dataConfig?.defaultTimeframes?.length ? dataConfig.defaultTimeframes : ['1d'];
@@ -341,7 +346,6 @@ export function DataCenter() {
   const syncedTimeframes = Array.from(new Set(coverage.map((item) => item.timeframe || '1d')));
   const allTimeframes = TIMEFRAME_ORDER;
   const latestJob = jobs[0];
-  const successfulJobs = jobs.filter((job) => ['success', 'completed'].includes(String(job.status))).length;
   const failedJobs = jobs.filter((job) => String(job.status) === 'failed').length;
   const databaseReady = status?.database === 'postgresql' || status?.status === 'ready';
   const dailyCoverageSymbols = new Set(coverage.filter((item) => (item.timeframe || '1d') === '1d' && Number(item.rows || 0) > 0).map((item) => item.symbol)).size;
@@ -396,6 +400,44 @@ export function DataCenter() {
     : researchFreshness.state === 'fresh'
       ? { label: `研究快照当前 · #${latestSealedSnapshot.id}`, tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' }
       : { label: `研究快照历史 · #${latestSealedSnapshot.id}`, tone: 'border-yellow-500/25 bg-yellow-500/10 text-yellow-200' };
+  const attentionItems = useMemo(() => {
+    const items: Array<{ label: string; detail: string; section: DataSection; tone: 'red' | 'amber' }> = [];
+    if (loadIssues.length) {
+      items.push({ label: `${loadIssues.length} 个模块读取失败`, detail: loadIssues.join('、'), section: 'overview', tone: 'red' });
+    }
+    if (!databaseReady) {
+      items.push({ label: '数据仓库不可用', detail: 'PostgreSQL 状态未就绪', section: 'overview', tone: 'red' });
+    }
+    if (!latestSealedSnapshot) {
+      items.push({ label: '没有可用于研究的封存快照', detail: '因子与回测不应使用普通行情缓存替代', section: 'datasets', tone: 'red' });
+    } else if (researchFreshness.state !== 'fresh') {
+      items.push({ label: '研究快照已经陈旧', detail: `知识截止 ${compactDate(latestSealedSnapshot.knowledge_cutoff_at)}`, section: 'datasets', tone: 'amber' });
+    }
+    if (blockingDatasetIssues > 0) {
+      items.push({ label: `${blockingDatasetIssues} 个质量问题阻断发布`, detail: '需要先处理数据集质量门禁', section: 'datasets', tone: 'red' });
+    }
+    if (dailyReferenceSchedule?.enabled && dailyReferenceSchedule.runtimeStatus !== 'running') {
+      items.push({ label: '日终调度配置已启用，但运行器未在线', detail: '配置时间不会自动执行', section: 'datasets', tone: 'amber' });
+    }
+    if (failedJobs > 0 || failedJobItems > 0) {
+      items.push({ label: `${failedJobs} 个同步任务失败`, detail: `失败任务项 ${format(failedJobItems)}`, section: 'jobs', tone: 'amber' });
+    }
+    return items;
+  }, [
+    blockingDatasetIssues,
+    dailyReferenceSchedule,
+    databaseReady,
+    failedJobItems,
+    failedJobs,
+    latestSealedSnapshot,
+    loadIssues,
+    researchFreshness.state,
+  ]);
+  const primaryState = !databaseReady || !latestSealedSnapshot || blockingDatasetIssues > 0
+    ? { label: '不可用于研究', tone: 'red' as const, detail: '先处理阻断项，再运行因子或回测' }
+    : researchFreshness.state !== 'fresh'
+      ? { label: '可用但已陈旧', tone: 'amber' as const, detail: '使用前建议更新并重新封存快照' }
+      : { label: '研究数据可用', tone: 'green' as const, detail: `封存快照 #${latestSealedSnapshot.id} 可追溯` };
 
   useEffect(() => {
     if (!showAddSymbolDialog) return undefined;
@@ -662,11 +704,78 @@ export function DataCenter() {
       {message && <div className="shrink-0 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300">{message}</div>}
       {loadIssues.length > 0 && <div className="shrink-0 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200" role="alert">部分数据模块加载失败：{loadIssues.join('、')}</div>}
 
+      <nav className="flex shrink-0 gap-1 overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1" aria-label="数据管理分区">
+        {([
+          ['overview', '总览', LayoutDashboard],
+          ['datasets', '研究数据', Database],
+          ['coverage', '行情覆盖', BarChart3],
+          ['jobs', '同步任务', ListChecks],
+          ['providers', '数据源', Zap],
+        ] as const).map(([id, label, Icon]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setActiveSection(id)}
+            className={clsx(
+              'flex h-9 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition',
+              activeSection === id
+                ? 'bg-blue-500/15 text-blue-100 shadow-sm'
+                : 'text-gray-400 hover:bg-white/5 hover:text-gray-200',
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+            {id === 'overview' && attentionItems.length > 0 ? (
+              <span className="rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] text-red-200">{attentionItems.length}</span>
+            ) : null}
+          </button>
+        ))}
+      </nav>
+
+      {activeSection === 'overview' && (
+        <>
+      <DataPanel
+        className="shrink-0 border-l-2 border-l-blue-500"
+        title="当前数据结论"
+        subtitle={primaryState.detail}
+        actions={<StatusBadge tone={primaryState.tone}>{primaryState.label}</StatusBadge>}
+      >
+        {attentionItems.length === 0 ? (
+          <div className="flex items-center gap-3 px-4 py-4 text-sm text-emerald-100">
+            <CheckCircle className="h-5 w-5 text-emerald-400" />
+            当前没有阻断项。数据仓库、研究快照和质量门禁均处于可用状态。
+          </div>
+        ) : (
+          <div className="divide-y divide-crypto-border">
+            {attentionItems.slice(0, 4).map((item) => (
+              <button
+                key={`${item.section}-${item.label}`}
+                type="button"
+                onClick={() => setActiveSection(item.section)}
+                className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left transition hover:bg-white/[0.025]"
+              >
+                <span className="flex min-w-0 items-start gap-3">
+                  <AlertCircle className={clsx('mt-0.5 h-4 w-4 shrink-0', item.tone === 'red' ? 'text-red-400' : 'text-amber-400')} />
+                  <span>
+                    <span className="block text-sm font-semibold text-gray-100">{item.label}</span>
+                    <span className="mt-0.5 block text-xs text-gray-400">{item.detail}</span>
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs font-semibold text-blue-300">查看</span>
+              </button>
+            ))}
+            {attentionItems.length > 4 ? (
+              <div className="px-4 py-2 text-xs text-gray-400">另有 {attentionItems.length - 4} 个待处理项</div>
+            ) : null}
+          </div>
+        )}
+      </DataPanel>
+
       <div className="shrink-0 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-white">数据健康度</h2>
-            <p className="mt-1 text-xs text-gray-500">K线历史、同步任务和覆盖率的运行状态。</p>
+            <h2 className="text-base font-semibold text-white">关键指标</h2>
+            <p className="mt-1 text-xs text-gray-400">只展示判断数据是否可用所需的核心信息。</p>
           </div>
           <div className={clsx('inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold', databaseReady ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-red-500/25 bg-red-500/10 text-red-200')}>
             {databaseReady ? <CheckCircle className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
@@ -674,41 +783,35 @@ export function DataCenter() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-          <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
-            <div className="absolute right-3 top-3 opacity-5"><HardDrive className="h-10 w-10" /></div>
-            <div className="mb-1 text-xs text-gray-500">日线记录数</div>
-            <div className="text-2xl font-bold text-white">{format(totalRows)}</div>
-            <div className="mt-2 text-[10px] text-gray-500">{totalRowsLabel}</div>
-          </div>
-          <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
-            <div className="absolute right-3 top-3 opacity-5"><BarChart3 className="h-10 w-10" /></div>
-            <div className="mb-1 text-xs text-gray-500">覆盖统计样本</div>
-            <div className="text-2xl font-bold text-white">{format(coverageSymbolCount)}</div>
-            <div className="mt-2 text-[10px] text-gray-500">接口返回样本，不代表全量标的</div>
-          </div>
-          <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
-            <div className="absolute right-3 top-3 opacity-5"><Zap className="h-10 w-10" /></div>
-            <div className="mb-1 text-xs text-gray-500">同步状态</div>
-            <div className={clsx('text-lg font-bold', isRunning ? 'text-yellow-400' : 'text-emerald-400')}>{isRunning ? '同步中...' : '空闲'}</div>
-            <div className="mt-2 truncate text-[10px] text-gray-500">{status?.sync?.message || latestJob?.message || '--'}</div>
-          </div>
-          <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
-            <div className="absolute right-3 top-3 opacity-5"><TrendingUp className="h-10 w-10" /></div>
-            <div className="mb-1 text-xs text-gray-500">日线样本覆盖</div>
-            <div className={clsx('text-2xl font-bold', healthScore === null ? 'text-gray-500' : healthScore >= 80 ? 'text-emerald-300' : healthScore >= 50 ? 'text-yellow-300' : 'text-red-300')}>{healthScore === null ? '--' : `${healthScore}%`}</div>
-            <div className="mt-2 text-[10px] text-gray-500">覆盖统计中 {dailyCoverageSymbols}/{uniqueSymbols || '--'} 个样本</div>
-          </div>
-          <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
-            <div className="absolute right-3 top-3 opacity-5"><Calendar className="h-10 w-10" /></div>
-            <div className="mb-1 text-xs text-gray-500">任务结果</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-emerald-300">{format(successfulJobs)}</span>
-              <span className="text-xs text-gray-600">/</span>
-              <span className="text-lg font-bold text-red-300">{format(failedJobs)}</span>
-            </div>
-            <div className="mt-2 text-[10px] text-gray-500">成功 / 失败</div>
-          </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="研究快照"
+            value={latestSealedSnapshot ? `#${latestSealedSnapshot.id}` : '--'}
+            icon={<Database className="h-4 w-4" />}
+            color={latestSealedSnapshot ? (researchFreshness.state === 'fresh' ? 'green' : 'amber') : 'red'}
+            detail={latestSealedSnapshot ? `知识截止 ${compactDate(latestSealedSnapshot.knowledge_cutoff_at)}` : '尚未封存，不能用于回测'}
+          />
+          <MetricCard
+            label="日线数据"
+            value={format(totalRows)}
+            icon={<HardDrive className="h-4 w-4" />}
+            color={totalRows === null ? 'neutral' : 'blue'}
+            detail={totalRowsLabel}
+          />
+          <MetricCard
+            label="样本覆盖"
+            value={healthScore === null ? '--' : `${healthScore}%`}
+            icon={<TrendingUp className="h-4 w-4" />}
+            color={healthScore === null ? 'neutral' : healthScore >= 80 ? 'green' : healthScore >= 50 ? 'amber' : 'red'}
+            detail={healthScore === null ? '尚无覆盖统计' : `${dailyCoverageSymbols}/${uniqueSymbols} 个统计样本有日线`}
+          />
+          <MetricCard
+            label="同步任务"
+            value={isRunning ? '运行中' : failedJobs > 0 ? `${failedJobs} 失败` : '空闲'}
+            icon={<RefreshCw className={clsx('h-4 w-4', isRunning && 'animate-spin')} />}
+            color={isRunning ? 'blue' : failedJobs > 0 ? 'red' : 'green'}
+            detail={latestJob ? `${statusLabel(latestJob.status)} · ${compactDate(latestJob.finished_at || latestJob.created_at)}` : '暂无任务记录'}
+          />
         </div>
       </div>
 
@@ -745,7 +848,10 @@ export function DataCenter() {
           </div>
         </div>
       </section>
+        </>
+      )}
 
+      {activeSection === 'providers' && (
       <section className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-crypto-border px-4 py-3">
           <div>
@@ -855,7 +961,9 @@ export function DataCenter() {
           </>
         )}
       </section>
+      )}
 
+      {activeSection === 'datasets' && (
       <section className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-crypto-border px-4 py-3">
           <div>
@@ -963,7 +1071,9 @@ export function DataCenter() {
           </div>
         </div>
       </section>
+      )}
 
+      {activeSection === 'jobs' && (
       <div className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
         <div className={clsx('flex items-stretch', jobHistoryExpanded && 'border-b border-crypto-border')}>
           <button
@@ -1040,7 +1150,9 @@ export function DataCenter() {
           </div>
         )}
       </div>
+      )}
 
+      {activeSection === 'datasets' && (
       <section className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-4 py-3">
           <div>
@@ -1093,7 +1205,9 @@ export function DataCenter() {
           </table>
         </div>
       </section>
+      )}
 
+      {activeSection === 'coverage' && (
       <section className="shrink-0 rounded-2xl border border-crypto-border bg-crypto-card/45 p-3 shadow-inner shadow-black/20" aria-label="A股数据维护面板">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3 px-1">
           <div>
@@ -1299,6 +1413,7 @@ export function DataCenter() {
           </div>
         </div>
       </section>
+      )}
 
       {showScheduleDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">

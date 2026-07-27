@@ -1028,6 +1028,10 @@ Verification:
 - Replaced Paper diagnostic/event entry cards with the shared BitPro terminal
   `LogStream`: one bounded console, stable time/level/message columns, compact
   mobile reflow and explicit empty state.
+- Reorganized `/data` around an operator-first hierarchy. The default view now
+  states whether research data is usable, surfaces only the highest-priority
+  blockers and four decision metrics, while research datasets, market
+  coverage, sync jobs and provider permissions live in dedicated sections.
 
 ## Verification Evidence
 
