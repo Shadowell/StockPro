@@ -251,7 +251,6 @@ export function StrategyDetailPanel({
             </div>
             <h1 className="text-xl font-bold leading-tight text-white sm:text-2xl">{strategy.name}</h1>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
-              <span>策略 ID {strategy.id}</span>
               <span>当前版本 {version ? `v${version.version}` : '未绑定'}</span>
               <span>更新于 {strategy.updated_at ? new Date(strategy.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未提供'}</span>
             </div>
@@ -318,17 +317,16 @@ export function StrategyDetailPanel({
       </div>
 
       <DataPanel
-        title={<span className="inline-flex items-center gap-2"><Database className="h-4 w-4 text-cyan-400" />版本与运行证据</span>}
-        subtitle="版本、内容哈希、API 合同和校验状态来自 PostgreSQL 策略版本记录。"
+        title={<span className="inline-flex items-center gap-2"><Database className="h-4 w-4 text-cyan-400" />版本状态</span>}
+        subtitle="展示使用者需要核对的版本、兼容性、校验和数据绑定状态。"
         actions={<StatusBadge tone={!version ? 'amber' : isValid ? 'green' : 'red'}>{!version ? '未绑定版本' : isValid ? '校验通过' : '校验未通过'}</StatusBadge>}
       >
-        <dl className="grid gap-px bg-crypto-border sm:grid-cols-2 xl:grid-cols-5">
+        <dl className="grid gap-px bg-crypto-border sm:grid-cols-2 xl:grid-cols-4">
           {[
             ['版本', version ? `v${version.version}` : '未提供'],
-            ['内容哈希', version?.content_hash ? version.content_hash.slice(0, 12) : '未提供'],
             ['策略 API', version?.strategy_api_version ?? validation?.api_version ?? '未提供'],
             ['状态', strategyStatusLabel(version?.status ?? version?.validation_status)],
-            ['数据快照', version?.dataset_snapshot_id ? `#${version.dataset_snapshot_id}` : '未绑定'],
+            ['研究数据', version?.dataset_snapshot_id ? '已绑定封存版本' : '未绑定'],
           ].map(([label, value]) => (
             <div key={label} className="min-w-0 bg-crypto-card px-4 py-3">
               <dt className="text-[10px] text-slate-500">{label}</dt>

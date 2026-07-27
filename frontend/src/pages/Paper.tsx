@@ -903,7 +903,7 @@ export function Paper() {
                     {run.data_purpose !== "user" && run.data_purpose
                       ? `[${run.data_purpose === "acceptance" ? "验收" : "种子"}] `
                       : ""}
-                    {run.name} · Pool #{run.pool_snapshot_id}
+                    {run.name} · {run.strategy_name ?? "策略回测"}
                   </option>
                 ))}
               </select>
@@ -911,22 +911,21 @@ export function Paper() {
             {selectedRun ? (
               <dl className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-crypto-border bg-crypto-bg p-3 text-[10px] text-slate-500">
                 <div>
-                  策略版本
+                  策略
                   <div className="mt-1 truncate text-slate-300">
-                    {selectedRun.strategy_version_id.slice(0, 8)}
+                    {selectedRun.strategy_name ?? "未提供"} · 版本 {selectedRun.strategy_version ?? "--"}
                   </div>
                 </div>
                 <div>
-                  数据快照
+                  研究区间
                   <div className="mt-1 text-slate-300">
-                    #{selectedRun.dataset_snapshot_id}
+                    {selectedRun.start_date} 至 {selectedRun.end_date}
                   </div>
                 </div>
                 <div>
-                  因子 / 股票池
+                  研究数据
                   <div className="mt-1 text-slate-300">
-                    #{selectedRun.factor_snapshot_id} / #
-                    {selectedRun.pool_snapshot_id}
+                    {selectedRun.factor_snapshot_id && selectedRun.pool_snapshot_id ? "因子与股票池均已绑定" : "研究数据绑定不完整"}
                   </div>
                 </div>
                 <div>
