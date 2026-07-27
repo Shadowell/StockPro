@@ -21,9 +21,10 @@ async def workflow_capabilities() -> Dict[str, Any]:
             {"id": "admin", "status": "available", "write_access": True},
             {
                 "id": "guest",
-                "status": "not_implemented",
+                "status": "available",
                 "write_access": False,
-                "reason": "访客邀请码与回测配额尚未实现",
+                "permissions": ["read", "backtest:run"],
+                "reason": "访客可只读浏览，并在邀请码配额内运行回测",
             },
             {
                 "id": "agent",
@@ -37,6 +38,15 @@ async def workflow_capabilities() -> Dict[str, Any]:
             "immutable_strategy_versions": {"status": "available"},
             "sealed_research_snapshots": {"status": "available"},
             "backtest_evidence": {"status": "available"},
+            "guest_invite_access": {
+                "status": "available",
+                "storage": "postgresql",
+                "plaintext_retention": False,
+            },
+            "guest_backtest_quota": {
+                "status": "available",
+                "dimensions": ["daily_runs", "concurrent_runs", "date_range_days"],
+            },
             "async_backtest_jobs": {
                 "status": "not_implemented",
                 "reason": "当前完整回测仍是同步请求",

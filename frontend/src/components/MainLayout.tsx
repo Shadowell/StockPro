@@ -3,12 +3,13 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Activity, Languages, LogOut, Settings, X } from 'lucide-react';
 import { StatusBadge } from '@bitpro/ui';
 import clsx from 'clsx';
-import { clearAdminToken, getMarketOverview } from '../api/client';
+import { clearAdminToken, getMarketOverview, getStoredAuthProfile, type AuthProfile } from '../api/client';
 import { useSettingsStore, type ColorScheme } from '../stores/useSettingsStore';
 import { useStore } from '../stores/useStore';
 import type { MarketIndex } from '../types';
 import { Navigation } from './Navigation';
 import { WorkflowRail } from './WorkflowRail';
+import { GuestCodeManager } from './GuestCodeManager';
 
 interface MainLayoutProps {
   children?: ReactNode;
@@ -141,7 +142,9 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
   const [indices, setIndices] = useState<MarketIndex[]>([]);
   const [marketSnapshotState, setMarketSnapshotState] = useState<'loading' | 'fresh' | 'stale' | 'unavailable'>('loading');
   const [marketSnapshotUpdatedAt, setMarketSnapshotUpdatedAt] = useState<string | null>(null);
+  const [authProfile] = useState<AuthProfile | null>(() => getStoredAuthProfile());
   const settingsRef = useRef<HTMLDivElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,6 +190,41 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showSettings]);
 
+  useEffect(() => {
+    if (authProfile?.role !== 'guest' || !shellRef.current) return;
+    const root = shellRef.current;
+    const writeActionPattern = /新建|创建|保存|删除|撤销|同步|更新|导入|生成|执行|运行|启动|停止|暂停|恢复|重试|提交|批准|拒绝|晋级|发布|封存|检测.*连接|清空|重置/;
+    const allowedBacktestPattern = /启动.*回测|运行.*回测|快速回测|完整回测/;
+    const applyGuard = () => {
+      root.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
+        const label = (button.textContent || button.getAttribute('aria-label') || '').trim();
+        if (/^查看.*说明$/.test(label)) return;
+        const isAllowedBacktest = location.pathname.startsWith('/backtest')
+          && allowedBacktestPattern.test(label);
+        if (!isAllowedBacktest && writeActionPattern.test(label) && !button.dataset.guestWriteBlocked) {
+          button.disabled = true;
+          button.dataset.guestWriteBlocked = 'true';
+          button.setAttribute('aria-disabled', 'true');
+          button.title = '访客账号为只读权限；仅回测运行可在配额内执行。';
+          button.classList.add('cursor-not-allowed', 'opacity-45');
+        }
+      });
+    };
+    applyGuard();
+    const observer = new MutationObserver(applyGuard);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      root.querySelectorAll<HTMLButtonElement>('button[data-guest-write-blocked="true"]').forEach((button) => {
+        button.disabled = false;
+        delete button.dataset.guestWriteBlocked;
+        button.removeAttribute('aria-disabled');
+        button.removeAttribute('title');
+        button.classList.remove('cursor-not-allowed', 'opacity-45');
+      });
+    };
+  }, [authProfile?.role, location.pathname]);
+
   const pageTitle = useMemo(() => {
     if (title) return title;
     return PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] || 'StockPro AI';
@@ -198,7 +236,7 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-crypto-bg text-slate-100" data-testid="financial-operator-shell">
+    <div ref={shellRef} className="flex h-screen overflow-hidden bg-crypto-bg text-slate-100" data-testid="financial-operator-shell" data-auth-role={authProfile?.role || 'unknown'}>
       <aside className="hidden w-[232px] shrink-0 flex-col border-r border-crypto-border bg-crypto-card lg:flex">
         <div className="flex h-[58px] items-center border-b border-crypto-border px-3.5">
           <StockProLogo />
@@ -278,6 +316,18 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
 
         <WorkflowRail />
 
+        {authProfile?.role === 'guest' && (
+          <div
+            className="shrink-0 border-b border-amber-400/25 bg-amber-400/10 px-4 py-2 text-xs text-amber-100"
+            role="status"
+            data-testid="guest-access-banner"
+          >
+            访客只读 · 可浏览全部研究证据，仅可在配额内运行回测（每日 {authProfile.max_backtests_per_day ?? '--'} 次、
+            最长 {authProfile.max_backtest_days ?? '--'} 天、并发 {authProfile.max_concurrent_backtests ?? '--'} 个）。
+            策略、数据同步、模拟交易与配置写入已由前后端共同阻止。
+          </div>
+        )}
+
         <div className="stockpro-page-viewport min-h-0 flex-1 overflow-auto" data-operator-surface="page">
           <Suspense fallback={<PageContentFallback />}>
             {children || <Outlet />}
@@ -287,7 +337,7 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
 
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
-          <div ref={settingsRef} className="w-full max-w-sm rounded-[12px] border border-crypto-border bg-crypto-card shadow-2xl shadow-black/40">
+          <div ref={settingsRef} className="max-h-[85vh] w-full max-w-sm overflow-auto rounded-[12px] border border-crypto-border bg-crypto-card shadow-2xl shadow-black/40">
             <div className="flex items-center justify-between border-b border-crypto-border p-4">
               <div>
                 <h3 className="text-sm font-bold text-white">工作台设置</h3>
@@ -320,6 +370,7 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
                   />
                 </div>
               </div>
+              {authProfile?.role === 'admin' && <GuestCodeManager />}
             </div>
           </div>
         </div>

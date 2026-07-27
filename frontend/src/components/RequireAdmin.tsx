@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { clearAdminToken, getAdminProfile, hasAdminToken } from '../api/client';
+import { clearAdminToken, getAuthProfile, hasAdminToken } from '../api/client';
 import { Loader2 } from 'lucide-react';
 
 interface RequireAdminProps {
@@ -22,7 +22,7 @@ export const RequireAdmin: React.FC<RequireAdminProps> = ({ children }) => {
     }
 
     setState('checking');
-    getAdminProfile()
+    getAuthProfile()
       .then(() => {
         if (!cancelled) setState('allowed');
       })
@@ -46,7 +46,7 @@ export const RequireAdmin: React.FC<RequireAdminProps> = ({ children }) => {
       <div className="min-h-screen w-full bg-[#0b1120] text-slate-300 flex items-center justify-center">
         <div className="flex items-center gap-2 text-sm">
           <Loader2 size={16} className="animate-spin text-emerald-400" />
-          <span>Checking admin session...</span>
+          <span>正在校验访问会话...</span>
         </div>
       </div>
     );

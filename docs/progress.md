@@ -1,5 +1,24 @@
 # Progress Log
 
+## BitPro-parity Access Control (2026-07-27)
+
+1. Added PostgreSQL-backed invitation codes, guest backtest usage and authentication audit evidence. Invitation plaintext is returned once; only its hash is stored.
+2. Generalized the authenticated API boundary to administrator and guest principals. Guests can read all authenticated pages, while non-backtest mutations are rejected with `403`.
+3. Added date-range, daily-run and concurrent-run quota reservation around all three supported backtest entrypoints. Rejections return `429` before the engine starts; attempts and outcomes remain attributable to the invitation and session.
+4. Added guest login, role/permission/session introspection, immediate revocation, administrator invitation management and workflow capability reporting.
+5. Added a persistent guest permission banner, frontend mutation gate and visible disabling of known write actions. Read-only explanation and navigation controls remain usable; backtest run controls remain available under quota.
+6. Kept `stockpro-mcp-v1`, asynchronous backtest jobs and real-broker execution explicitly outside this Sprint.
+
+Verification:
+
+- Applied local PostgreSQL migrations only; no provider synchronization or historical backfill ran. `/api/health/storage` reported PostgreSQL healthy with all 26 migrations applied.
+- Real API verification: guest login/read `200`, data synchronization write `403`, over-range backtest `429`, invitation revoke `200`, and the issued guest token then returned `401`.
+- Focused authentication/router tests passed 9/9; TypeScript check passed; lint completed with the existing 7 warnings and 0 errors.
+- Playwright verified invitation-prefilled guest login, 390×844 guest Data page, quota banner, disabled data/provider write controls, usable read-only explanation, administrator invitation manager and zero application console errors.
+- `./scripts/check.sh` passed production build, lint with 7 existing warnings and 0 errors, deploy shell syntax, all 276 backend tests and Python compilation.
+
+Next Sprint: asynchronous PostgreSQL backtest jobs with status, logs, cancellation, retry and guest concurrency ownership.
+
 ## BitPro-parity Workflow Foundation (2026-07-27)
 
 1. Added the authenticated, read-only `stockpro-workflow-v1` capability contract with the canonical Strategy -> Backtest -> Paper -> Watch -> Monitor -> Review stage order.

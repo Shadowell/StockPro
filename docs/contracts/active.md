@@ -1,1 +1,1 @@
-/Users/jie.feng/Dev/Github/Private/StockPro/docs/contracts/active-bitpro-ashare-strategy-workbench.md
+/Users/jie.feng/Dev/Github/Private/StockPro/docs/contracts/active-bitpro-access-control.md

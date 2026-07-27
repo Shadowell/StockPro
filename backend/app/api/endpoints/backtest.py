@@ -1,14 +1,16 @@
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.db import db_instance
 from app.services.backtest_workbench_service import BacktestWorkbenchService
+from app.services.guest_access_service import GuestAccessError, GuestAccessService
 
 
 router = APIRouter()
 service = BacktestWorkbenchService(db_instance)
+guest_access_service = GuestAccessService(db_instance)
 
 
 class BacktestRunRequest(BaseModel):
@@ -129,19 +131,63 @@ async def list_protocols() -> Dict[str, Any]:
 
 
 @router.post("/quick-runs")
-async def quick_run(request: BacktestRunRequest) -> Dict[str, Any]:
+async def quick_run(request: BacktestRunRequest, http_request: Request) -> Dict[str, Any]:
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
     try:
-        return service.run(request.model_dump(), mode="quick")
+        usage_id = guest_access_service.reserve_backtest(
+            principal,
+            endpoint="/api/backtest/quick-runs",
+            start_date=request.start_date,
+            end_date=request.end_date,
+        )
+    except GuestAccessError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    try:
+        result = service.run(request.model_dump(), mode="quick")
+        guest_access_service.finish_backtest(
+            usage_id, success=True, run_id=str(result.get("id") or "")
+        )
+        return result
     except ValueError as exc:
+        guest_access_service.finish_backtest(
+            usage_id, success=False, failure_reason=str(exc)
+        )
         raise _http_error(exc) from exc
+    except Exception as exc:
+        guest_access_service.finish_backtest(
+            usage_id, success=False, failure_reason=str(exc)
+        )
+        raise
 
 
 @router.post("/runs")
-async def full_run(request: BacktestRunRequest) -> Dict[str, Any]:
+async def full_run(request: BacktestRunRequest, http_request: Request) -> Dict[str, Any]:
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
     try:
-        return service.run(request.model_dump(), mode="full")
+        usage_id = guest_access_service.reserve_backtest(
+            principal,
+            endpoint="/api/backtest/runs",
+            start_date=request.start_date,
+            end_date=request.end_date,
+        )
+    except GuestAccessError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    try:
+        result = service.run(request.model_dump(), mode="full")
+        guest_access_service.finish_backtest(
+            usage_id, success=True, run_id=str(result.get("id") or "")
+        )
+        return result
     except ValueError as exc:
+        guest_access_service.finish_backtest(
+            usage_id, success=False, failure_reason=str(exc)
+        )
         raise _http_error(exc) from exc
+    except Exception as exc:
+        guest_access_service.finish_backtest(
+            usage_id, success=False, failure_reason=str(exc)
+        )
+        raise
 
 
 @router.get("/runs")
@@ -254,7 +300,7 @@ async def run_matrix(experiment_id: str, request: MatrixRequest) -> Dict[str, An
 
 # Compatibility wrappers. They resolve immutable inputs before entering the new runtime.
 @router.post("/run")
-async def legacy_run(request: LegacyRunBacktestRequest) -> Dict[str, Any]:
+async def legacy_run(request: LegacyRunBacktestRequest, http_request: Request) -> Dict[str, Any]:
     strategy = db_instance.get_strategy_by_id(request.strategy_id)
     if not strategy:
         raise HTTPException(status_code=404, detail="策略不存在")
@@ -276,6 +322,16 @@ async def legacy_run(request: LegacyRunBacktestRequest) -> Dict[str, Any]:
     symbols = [service._normalize_symbol(item) for item in request.symbols] if request.symbols else available_symbols[:20]
     start = request.start_date or min(str(item["trade_date"])[:10] for item in bars if str(item["symbol"]) in symbols)
     end = request.end_date or max(str(item["trade_date"])[:10] for item in bars if str(item["symbol"]) in symbols)
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
+    try:
+        usage_id = guest_access_service.reserve_backtest(
+            principal,
+            endpoint="/api/backtest/run",
+            start_date=start,
+            end_date=end,
+        )
+    except GuestAccessError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     try:
         result = service.run({
             "strategy_version_id": str(version["id"]), "dataset_snapshot_id": int(snapshot["id"]),
@@ -284,9 +340,20 @@ async def legacy_run(request: LegacyRunBacktestRequest) -> Dict[str, Any]:
             "parameters": {"position_pct": request.position_pct}, "benchmark_code": "000300.SH",
             "name": strategy["name"],
         }, mode="full")
+        guest_access_service.finish_backtest(
+            usage_id, success=True, run_id=str(result.get("id") or "")
+        )
         return _legacy_shape(result)
     except ValueError as exc:
+        guest_access_service.finish_backtest(
+            usage_id, success=False, failure_reason=str(exc)
+        )
         raise _http_error(exc) from exc
+    except Exception as exc:
+        guest_access_service.finish_backtest(
+            usage_id, success=False, failure_reason=str(exc)
+        )
+        raise
 
 
 @router.get("/results")
