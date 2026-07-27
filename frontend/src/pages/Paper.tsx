@@ -36,6 +36,7 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number][0];
 type StatusFilter = "all" | PaperRuntimeInstance["status"] | "stale";
+type DataScope = "business" | "test";
 const panel = "rounded-xl border border-crypto-border bg-crypto-card";
 const input =
   "h-10 rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-slate-200 outline-none focus:border-blue-500/60";
@@ -205,11 +206,17 @@ export function Paper() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [dataScope, setDataScope] = useState<DataScope>("business");
 
   const eligible = useMemo(
     () =>
       runs.filter(
         (item) =>
+          (dataScope === "business"
+            ? !item.data_purpose || item.data_purpose === "user"
+            : Boolean(
+                item.data_purpose && item.data_purpose !== "user",
+              )) &&
           item.status === "success" &&
           item.run_mode === "full" &&
           item.promotion_status === "paper_eligible" &&
@@ -217,12 +224,21 @@ export function Paper() {
           item.pool_snapshot_id &&
           item.research_protocol_id,
       ),
-    [runs],
+    [dataScope, runs],
   );
   const selectedRun = eligible.find((item) => item.id === runId);
+  const scopedInstances = useMemo(
+    () =>
+      instances.filter((item) =>
+        dataScope === "business"
+          ? !item.data_purpose || item.data_purpose === "user"
+          : Boolean(item.data_purpose && item.data_purpose !== "user"),
+      ),
+    [dataScope, instances],
+  );
   const visibleInstances = useMemo(
     () =>
-      instances.filter((item) => {
+      scopedInstances.filter((item) => {
         const presentation = runtimePresentation(item);
         if (
           statusFilter !== "all" &&
@@ -234,10 +250,10 @@ export function Paper() {
           .toLowerCase()
           .includes(query.trim().toLowerCase());
       }),
-    [instances, query, statusFilter],
+    [query, scopedInstances, statusFilter],
   );
   const summary = useMemo(() => {
-    const validEquity = instances.filter(
+    const validEquity = scopedInstances.filter(
       (item) =>
         item.equity !== null &&
         item.equity !== undefined &&
@@ -254,15 +270,15 @@ export function Paper() {
         )
       : null;
     return {
-      running: instances.filter(
+      running: scopedInstances.filter(
         (item) => item.status === "running" && !runtimePresentation(item).stale,
       ).length,
-      stale: instances.filter((item) => runtimePresentation(item).stale).length,
-      trades: instances.reduce((sum, item) => sum + (item.trade_count ?? 0), 0),
+      stale: scopedInstances.filter((item) => runtimePresentation(item).stale).length,
+      trades: scopedInstances.reduce((sum, item) => sum + (item.trade_count ?? 0), 0),
       totalEquity,
       totalPnl,
     };
-  }, [instances]);
+  }, [scopedInstances]);
 
   const load = async (keepId?: string) => {
     setBusy(true);
@@ -274,13 +290,32 @@ export function Paper() {
       ]);
       setInstances(paper.items);
       setRuns(backtests.items);
+      const scopeInstances = paper.items.filter((item) =>
+        dataScope === "business"
+          ? !item.data_purpose || item.data_purpose === "user"
+          : Boolean(item.data_purpose && item.data_purpose !== "user"),
+      );
       const id =
-        keepId ?? selected?.id ?? params.get("instance") ?? paper.items[0]?.id;
+        [
+          keepId,
+          selected?.id,
+          params.get("instance"),
+          scopeInstances[0]?.id,
+        ].find(
+          (candidate) =>
+            Boolean(candidate) &&
+            scopeInstances.some((item) => item.id === candidate),
+        ) ?? undefined;
       setSelected(id ? await getPaperInstance(id) : null);
       if (!runId)
         setRunId(
           backtests.items.find(
             (item) =>
+              (dataScope === "business"
+                ? !item.data_purpose || item.data_purpose === "user"
+                : Boolean(
+                    item.data_purpose && item.data_purpose !== "user",
+                  )) &&
               item.promotion_status === "paper_eligible" &&
               item.factor_snapshot_id &&
               item.pool_snapshot_id,
@@ -298,6 +333,28 @@ export function Paper() {
   useEffect(() => {
     void load();
   }, []);
+  useEffect(() => {
+    if (!loaded) return;
+    let active = true;
+    const next = scopedInstances[0];
+    setSelected(null);
+    setRunId(eligible[0]?.id ?? "");
+    if (next) {
+      getPaperInstance(next.id)
+        .then((instance) => {
+          if (active) setSelected(instance);
+        })
+        .catch((reason) => {
+          if (active)
+            setError(
+              reason instanceof Error ? reason.message : "实例详情加载失败",
+            );
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [dataScope]);
 
   const chooseInstance = async (id: string) => {
     setBusy(true);
@@ -441,16 +498,13 @@ export function Paper() {
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <WalletCards className="h-7 w-7 text-blue-400" />
-            <h1 className="text-2xl font-black text-white">模拟交易控制台</h1>
-            <span className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-xs text-blue-300">
-              模拟交易
-            </span>
+            <h1 className="text-2xl font-black text-white">模拟盘</h1>
             <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
               无真实券商连接
             </span>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            策略实例、风险控制、订单成交与账户权益。
+            管理模拟策略实例、风险控制、订单成交与账户权益。
           </p>
         </div>
         <button
@@ -466,6 +520,24 @@ export function Paper() {
       <section
         className={`${panel} mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-xs`}
       >
+        <div className="flex rounded-lg border border-crypto-border bg-crypto-bg p-1">
+          <button
+            type="button"
+            data-testid="paper-scope-business"
+            onClick={() => setDataScope("business")}
+            className={`rounded-md px-3 py-1.5 font-semibold ${dataScope === "business" ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-200"}`}
+          >
+            我的实例 {instances.filter((item) => !item.data_purpose || item.data_purpose === "user").length}
+          </button>
+          <button
+            type="button"
+            data-testid="paper-scope-test"
+            onClick={() => setDataScope("test")}
+            className={`rounded-md px-3 py-1.5 font-semibold ${dataScope === "test" ? "bg-amber-500/15 text-amber-200" : "text-slate-500 hover:text-slate-200"}`}
+          >
+            测试与验收 {instances.filter((item) => item.data_purpose && item.data_purpose !== "user").length}
+          </button>
+        </div>
         <span className="font-semibold text-slate-300">当前模式：模拟交易</span>
         <span className="text-slate-500">
           数据源：
@@ -481,11 +553,16 @@ export function Paper() {
           陈旧实例：{summary.stale}
         </span>
       </section>
+      {dataScope === "test" ? (
+        <div className="mb-5 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs text-amber-200/80" role="status">
+          当前仅查看自动化验收与种子实例；其权益、盈亏、心跳和成交不会计入默认模拟盘统计。
+        </div>
+      ) : null}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric
           label="模拟实例"
-          current={value(instances.length, 0)}
+          current={value(scopedInstances.length, 0)}
           note={loaded ? "运行记录" : "加载中"}
         />
         <Metric
@@ -683,7 +760,7 @@ export function Paper() {
               ))}
               {visibleInstances.length === 0 ? (
                 <div className="p-12 text-center text-sm text-slate-600">
-                  {instances.length
+                  {scopedInstances.length
                     ? "当前筛选下无实例"
                     : "尚无 Paper 实例；右侧仅在存在晋级回测时可创建。"}
                 </div>

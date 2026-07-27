@@ -30,7 +30,7 @@ The current authorized delivery environment is local development only: React on 
 3. Auditable strategy lifecycle from development to backtest to signal to order.
 4. Local-first delivery with reproducible PostgreSQL migrations and checks; deployment is outside the current roadmap.
 5. Explicit safety gates before any live trading path.
-6. StockPro AI console visual system: fixed dark sidebar, grouped operator navigation, compact bordered cards, and a top market ticker/status bar consistent with the production server reference.
+6. BitPro-compatible operator UI: a fixed 64px dark first-level sidebar, page-owned headers, compact bordered modules and explicit data-state strips.
 
 ## Research Platform Operating Model
 
@@ -60,7 +60,9 @@ The required lifecycle is:
 
 - All routed pages, including admin login, render inside the shared financial operator theme; trading, monitoring, and data-admin surfaces must follow `~/.codex/skills/financial-operator-ui/SKILL.md`.
 - Prefer the installed `@bitpro/ui` primitives and theme tokens for generic panels, metrics, and statuses. StockPro owns its business composition and must not copy BitPro business-page source.
-- Reuse the existing `MainLayout`, grouped fixed sidebar, top A-share status ticker, dark design tokens and Lucide icons.
+- Reuse the existing `MainLayout`, BitPro-compatible 64px single-column sidebar, page-owned headers, dark design tokens and Lucide icons.
+- The twelve first-level destinations stay flat and stable. Catalogue filters, workflow stages and object details belong inside each page rather than in grouped sidebar sections.
+- User/business objects are the default scope. Seed and acceptance objects are excluded from default catalogue, backtest, AI, Paper, Watch and Monitor views and remain reachable only through a clearly labelled test scope.
 - Primary pages are dense operator workspaces: compact title/status, KPI strip, segmented filters, chart/table split panels, drill-down drawers and linkable object details.
 - Color, typography, spacing, borders, radii, buttons, status tags and up/down semantics remain consistent across all pages.
 - Do not add gradients, marketing hero layouts, decorative oversized cards, emoji icons, placeholder dashboards or a parallel component system.

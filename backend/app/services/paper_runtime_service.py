@@ -346,6 +346,36 @@ class PaperRuntimeService:
                 """
             )
         instances = self.list_instances()
+        instance_purpose = {
+            str(item["id"]): item.get("data_purpose", "user")
+            for item in instances
+        }
+
+        def attach_instance_purpose(rows: List[Dict[str, Any]]) -> None:
+            for item in rows:
+                instance_id = item.get("paper_instance_id")
+                item["data_purpose"] = instance_purpose.get(
+                    str(instance_id),
+                    infer_data_purpose(
+                        item.get("instance_name"),
+                        item.get("title"),
+                        item.get("message"),
+                    ),
+                )
+
+        for evidence_rows in (
+            alerts,
+            signals,
+            orders,
+            trades,
+            positions,
+            risk_events,
+            runtime_events,
+        ):
+            attach_instance_purpose(evidence_rows)
+        for item in pool_moves:
+            item["data_purpose"] = infer_data_purpose(item.get("pool_name"))
+
         candidates = [
             *(item.get("triggered_at") for item in alerts),
             *(item.get("signal_time") for item in signals),

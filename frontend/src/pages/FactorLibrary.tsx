@@ -324,11 +324,11 @@ export const FactorLibrary = () => {
     <div className="flex min-h-0 flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-white">
-            <Braces size={17} className="text-blue-400" />
-            因子研究工作台
+          <div className="flex items-center gap-2">
+            <Braces size={24} className="text-blue-400" />
+            <h1 className="text-2xl font-bold text-white">因子研究</h1>
           </div>
-          <p className="mt-1 text-xs text-gray-500">Python 因子版本 · PG 日调度 · 快照封存 · 样本外证据</p>
+          <p className="mt-1 text-xs text-gray-500">管理因子版本、计算记录、分析结果和点时快照。</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setAuthorOpen(true)} className="inline-flex h-9 items-center gap-2 rounded border border-crypto-border bg-crypto-card px-3 text-xs text-gray-200 hover:border-blue-500/50">

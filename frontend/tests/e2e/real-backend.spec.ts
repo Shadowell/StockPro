@@ -215,6 +215,8 @@ test('真实策略页面展示生命周期编辑器且无浏览器错误', async
 
   await page.goto('/strategy', { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: '策略中心' })).toBeVisible();
+  await expect(page.getByText('当前筛选下无策略')).toBeVisible();
+  await page.getByRole('button', { name: '策略广场' }).click();
   await expect(page.getByText('A股标准策略示例')).toBeVisible();
   await expect(page.getByText(/不需要修改框架、路由或重启服务/)).toHaveCount(0);
   await page.getByRole('button', { name: '新建策略' }).click();
@@ -282,10 +284,10 @@ test('真实市场研究与股票池快照形成 PG 研究闭环', async ({ page
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.goto('/market?tab=sentiment', { waitUntil: 'networkidle' });
-  await expect(page.getByRole('heading', { name: '市场研究工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '行情' })).toBeVisible();
   await expect(page.getByText('连板天梯')).toBeVisible();
   await page.goto('/pools?tab=snapshots', { waitUntil: 'networkidle' });
-  await expect(page.getByRole('heading', { name: '股票池研究工作台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '股票池' })).toBeVisible();
   await expect(page.getByTestId('pool-snapshot-table')).toBeVisible();
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
@@ -422,25 +424,25 @@ test('十二个主要页面通过真实后端只读加载且共享可信状态�
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   const pages = [
-    ['/', '实时大盘'],
-    ['/market', '市场概览'],
-    ['/pools', '股票池研究'],
+    ['/', '市场大盘'],
+    ['/market', '行情'],
+    ['/pools', '股票池'],
     ['/factors', '因子研究'],
-    ['/strategy', '策略开发'],
-    ['/backtest', '回测中心'],
-    ['/ai-lab', 'AI 研发'],
-    ['/paper', '模拟交易'],
-    ['/watch', '观察台'],
-    ['/monitor', '运行风控'],
+    ['/strategy', '策略中心'],
+    ['/backtest', '回测实例控制台'],
+    ['/ai-lab', 'AI研发'],
+    ['/paper', '模拟盘'],
+    ['/watch', '盯盘'],
+    ['/monitor', '监控中心'],
     ['/review', '复盘中心'],
-    ['/data', '管理后台'],
+    ['/data', '数据管理中心'],
   ] as const;
 
   for (const [path, title] of pages) {
     const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
     expect(response?.ok(), `${path} document should load`).toBeTruthy();
-    await expect(page.getByTestId('stockpro-ai-topbar').getByRole('heading', { name: title })).toBeVisible();
-    await expect(page.getByRole('navigation', { name: '主工作流' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: title }).first()).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '主菜单' })).toBeVisible();
   }
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });

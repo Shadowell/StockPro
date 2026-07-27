@@ -54,6 +54,7 @@ import type {
 
 const panel = 'rounded-2xl border border-crypto-border bg-crypto-card';
 const input = 'h-11 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-gray-200 outline-none transition focus:border-blue-500/70';
+type DataScope = 'business' | 'test';
 
 const metricLabels: Record<string, string> = {
   strategy_return: '策略收益', annualized_return: '年化收益', benchmark_return: '基准收益', excess_return: '超额收益',
@@ -226,6 +227,7 @@ export function Backtest() {
   const [historyStatus, setHistoryStatus] = useState<'all' | BacktestRun['status']>('all');
   const [historyMode, setHistoryMode] = useState<'all' | BacktestRun['run_mode']>('all');
   const [historySort, setHistorySort] = useState<'created' | 'return' | 'drawdown' | 'sharpe'>('created');
+  const [dataScope, setDataScope] = useState<DataScope>('business');
 
   const load = useCallback(async () => {
     setError('');
@@ -275,10 +277,34 @@ export function Backtest() {
     setFactorSnapshotId(pool.factor_snapshot_id ?? 0); setSymbols('');
   }, [config, searchParams]);
 
+  const scopedRuns = useMemo(
+    () =>
+      runs.filter((run) =>
+        dataScope === 'business'
+          ? !run.data_purpose || run.data_purpose === 'user'
+          : Boolean(run.data_purpose && run.data_purpose !== 'user'),
+      ),
+    [dataScope, runs],
+  );
+  const visibleJobs = useMemo(
+    () =>
+      jobs.filter((job) => {
+        const linkedRun = job.backtest_run_id
+          ? runs.find((run) => run.id === job.backtest_run_id)
+          : undefined;
+        if (dataScope === 'business') {
+          return !linkedRun || !linkedRun.data_purpose || linkedRun.data_purpose === 'user';
+        }
+        return Boolean(
+          linkedRun?.data_purpose && linkedRun.data_purpose !== 'user',
+        );
+      }),
+    [dataScope, jobs, runs],
+  );
   const visibleRuns = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
     const metric = (run: BacktestRun, code: string) => run.metrics?.[code];
-    return runs.filter((run) => {
+    return scopedRuns.filter((run) => {
       if (historyStatus !== 'all' && run.status !== historyStatus) return false;
       if (historyMode !== 'all' && run.run_mode !== historyMode) return false;
       return !query || `${run.name} ${run.strategy_name ?? ''} ${run.id}`.toLowerCase().includes(query);
@@ -288,18 +314,18 @@ export function Backtest() {
       if (historySort === 'drawdown') return Number(metric(b, 'maximum_drawdown') ?? -Infinity) - Number(metric(a, 'maximum_drawdown') ?? -Infinity);
       return Number(metric(b, 'sharpe') ?? -Infinity) - Number(metric(a, 'sharpe') ?? -Infinity);
     });
-  }, [historyMode, historyQuery, historySort, historyStatus, runs]);
+  }, [historyMode, historyQuery, historySort, historyStatus, scopedRuns]);
   const statusCounts = useMemo(() => ({
-    all: runs.length,
-    success: runs.filter((run) => run.status === 'success').length,
-    running: runs.filter((run) => run.status === 'running').length,
-    failed: runs.filter((run) => run.status === 'failed').length,
-  }), [runs]);
+    all: scopedRuns.length,
+    success: scopedRuns.filter((run) => run.status === 'success').length,
+    running: scopedRuns.filter((run) => run.status === 'running').length,
+    failed: scopedRuns.filter((run) => run.status === 'failed').length,
+  }), [scopedRuns]);
   const modeCounts = useMemo(() => ({
-    all: runs.length,
-    full: runs.filter((run) => run.run_mode === 'full').length,
-    quick: runs.filter((run) => run.run_mode === 'quick').length,
-  }), [runs]);
+    all: scopedRuns.length,
+    full: scopedRuns.filter((run) => run.run_mode === 'full').length,
+    quick: scopedRuns.filter((run) => run.run_mode === 'quick').length,
+  }), [scopedRuns]);
   const strategyOptions = useMemo(() => {
     const query = strategyQuery.trim().toLowerCase();
     return (config?.strategy_versions ?? []).filter((item) =>
@@ -420,6 +446,30 @@ export function Backtest() {
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <div className="flex rounded-xl border border-crypto-border bg-crypto-card p-1">
+          <button
+            type="button"
+            data-testid="backtest-scope-business"
+            onClick={() => {
+              setDataScope('business');
+              setSelected([]);
+            }}
+            className={`h-9 rounded-lg px-3 text-xs font-semibold ${dataScope === 'business' ? 'bg-blue-500/20 text-blue-200' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            我的回测 {runs.filter((run) => !run.data_purpose || run.data_purpose === 'user').length}
+          </button>
+          <button
+            type="button"
+            data-testid="backtest-scope-test"
+            onClick={() => {
+              setDataScope('test');
+              setSelected([]);
+            }}
+            className={`h-9 rounded-lg px-3 text-xs font-semibold ${dataScope === 'test' ? 'bg-amber-500/15 text-amber-200' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            测试与验收 {runs.filter((run) => run.data_purpose && run.data_purpose !== 'user').length}
+          </button>
+        </div>
+        <div className="flex rounded-xl border border-crypto-border bg-crypto-card p-1">
           {([
             ['all', '全部', modeCounts.all],
             ['full', '完整回测', modeCounts.full],
@@ -449,6 +499,11 @@ export function Backtest() {
           </select>
         </label>
       </div>
+      {dataScope === 'test' ? (
+        <div className="mb-5 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs text-amber-200/80" role="status">
+          当前仅查看自动化验收与种子回测；这些记录不参与默认业务统计或 Paper 晋级入口。
+        </div>
+      ) : null}
 
       <section className={`${panel} mb-5 overflow-hidden`} data-testid="backtest-job-console">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">
@@ -456,7 +511,7 @@ export function Backtest() {
             <div className="flex items-center gap-2">
               <Terminal className="h-4 w-4 text-cyan-400" />
               <h2 className="font-semibold text-white">任务队列</h2>
-              <span className="text-xs text-gray-600">{jobs.length} 个持久化任务</span>
+              <span className="text-xs text-gray-600">{visibleJobs.length} 个持久化任务</span>
             </div>
             <p className="mt-1 text-[11px] text-gray-600">PostgreSQL 状态与增量日志；页面关闭后仍可追踪，后端重启会标记为已中断。</p>
           </div>
@@ -465,7 +520,7 @@ export function Backtest() {
           </button>
         </div>
         <div className="space-y-3 p-4">
-          {jobs.slice(0, 20).map((job) => {
+          {visibleJobs.slice(0, 20).map((job) => {
             const active = ['pending', 'running', 'cancelling'].includes(job.status);
             const retryable = ['failed', 'cancelled', 'interrupted'].includes(job.status);
             const statusTone = job.status === 'success'
@@ -507,14 +562,14 @@ export function Backtest() {
               </article>
             );
           })}
-          {jobs.length === 0 ? <div className="flex min-h-28 items-center justify-center text-sm text-gray-600">暂无持久化回测任务；创建后会在这里显示状态与日志。</div> : null}
+          {visibleJobs.length === 0 ? <div className="flex min-h-28 items-center justify-center text-sm text-gray-600">当前分区暂无持久化回测任务；创建后会在这里显示状态与日志。</div> : null}
         </div>
       </section>
 
       <section className={`${panel} overflow-hidden`}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-purple-400" /><h2 className="font-semibold text-white">回测实例</h2><span className="text-xs text-gray-600">{visibleRuns.length} / {runs.length} 个</span></div>
+            <div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-purple-400" /><h2 className="font-semibold text-white">回测实例</h2><span className="text-xs text-gray-600">{visibleRuns.length} / {scopedRuns.length} 个</span></div>
             <label className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-600" />
               <input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="搜索策略、运行或 ID" className="h-9 w-64 rounded-lg border border-crypto-border bg-crypto-bg pl-9 pr-3 text-xs text-gray-200 outline-none focus:border-blue-500/60" />

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Filter, Flame, Info, PieChart, TrendingUp, Zap } from 'lucide-react';
+import { Activity, Filter, Flame, Info, LayoutDashboard, PieChart, TrendingUp, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { MetricCard, StatusBadge } from '@bitpro/ui';
 import { getHotConcepts, getMarketOverview, getShortLineIndices, getThsHot } from '../api/client';
@@ -373,6 +373,15 @@ export function Dashboard() {
 
   return (
     <div className="min-h-full bg-crypto-bg p-4 sm:p-6">
+      <header className="mb-4">
+        <div className="flex items-center gap-2">
+          <LayoutDashboard className="h-5 w-5 text-blue-400" />
+          <h1 className="text-xl font-bold text-white">市场大盘</h1>
+        </div>
+        <p className="mt-2 max-w-3xl text-sm text-gray-500">
+          聚合 A 股市场广度、成交活跃度与强弱排行；进入行情页查看完整市场证据。
+        </p>
+      </header>
       <section className="min-h-[720px]">
         <RealtimeMarketModule
           overview={overview}

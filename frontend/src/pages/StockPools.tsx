@@ -7,7 +7,9 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Search,
   ShieldCheck,
+  TestTube2,
 } from "lucide-react";
 import {
   createPoolBacktestDraft,
@@ -37,6 +39,8 @@ const TABS = [
   ["snapshots", "快照仓库"],
 ] as const;
 type TabKey = (typeof TABS)[number][0];
+type CatalogueScope = "business" | "test";
+type PoolTypeFilter = "all" | StockPool["pool_type"];
 const panel = "rounded-xl border border-crypto-border bg-crypto-card";
 const input =
   "h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-slate-200 outline-none focus:border-blue-500/60";
@@ -88,6 +92,11 @@ export function StockPools() {
   const [minPrice, setMinPrice] = useState(0);
   const [minTurnover, setMinTurnover] = useState(0);
   const [lastGenerationId, setLastGenerationId] = useState("");
+  const [catalogueScope, setCatalogueScope] =
+    useState<CatalogueScope>("business");
+  const [poolTypeFilter, setPoolTypeFilter] =
+    useState<PoolTypeFilter>("all");
+  const [poolQuery, setPoolQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,11 +111,6 @@ export function StockPools() {
     const warnings: string[] = [];
     if (poolResult.status === "fulfilled") {
       setPools(poolResult.value.items);
-      setSelectedPoolId((current) =>
-        poolResult.value.items.some((item) => item.id === current)
-          ? current
-          : poolResult.value.items[0]?.id || "",
-      );
     } else {
       setError(poolResult.reason instanceof Error ? poolResult.reason.message : "股票池规则读取失败");
     }
@@ -148,15 +152,62 @@ export function StockPools() {
     };
   }, [selectedPoolId]);
 
+  const businessPools = useMemo(
+    () => pools.filter((item) => !item.data_purpose || item.data_purpose === "user"),
+    [pools],
+  );
+  const testPools = useMemo(
+    () => pools.filter((item) => item.data_purpose && item.data_purpose !== "user"),
+    [pools],
+  );
+  const visiblePools = useMemo(() => {
+    const source = catalogueScope === "business" ? businessPools : testPools;
+    const normalizedQuery = poolQuery.trim().toLowerCase();
+    return source
+      .filter((item) => poolTypeFilter === "all" || item.pool_type === poolTypeFilter)
+      .filter((item) => {
+        if (!normalizedQuery) return true;
+        return [item.name, item.description, item.pool_type, item.rule_type]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+      })
+      .sort((left, right) => {
+        const dateOrder = String(right.latest_trade_date ?? "").localeCompare(
+          String(left.latest_trade_date ?? ""),
+        );
+        return dateOrder || left.name.localeCompare(right.name, "zh-CN");
+      });
+  }, [businessPools, catalogueScope, poolQuery, poolTypeFilter, testPools]);
   const selectedPool = pools.find((item) => item.id === selectedPoolId);
+  useEffect(() => {
+    if (tab !== "mine") return;
+    if (visiblePools.some((item) => item.id === selectedPoolId)) return;
+    setSelectedPoolId(visiblePools[0]?.id ?? "");
+  }, [selectedPoolId, tab, visiblePools]);
   const creationType: StockPool["pool_type"] =
     tab === "factor" || tab === "sector" || tab === "event" ? tab : "screener";
   useEffect(() => {
     if (tab === "mine" || tab === "snapshots") return;
     const current = pools.find((item) => item.id === selectedPoolId);
-    if (current?.pool_type === creationType) return;
-    setSelectedPoolId(pools.find((item) => item.pool_type === creationType)?.id ?? "");
-  }, [creationType, pools, selectedPoolId, tab]);
+    const selectablePools =
+      catalogueScope === "test" ? testPools : businessPools;
+    if (
+      current?.pool_type === creationType &&
+      selectablePools.some((item) => item.id === current.id)
+    )
+      return;
+    setSelectedPoolId(
+      selectablePools.find((item) => item.pool_type === creationType)?.id ?? "",
+    );
+  }, [
+    businessPools,
+    catalogueScope,
+    creationType,
+    pools,
+    selectedPoolId,
+    tab,
+    testPools,
+  ]);
   const binding = useMemo(() => {
     if (!selectedPool || !config) return { ready: false, reason: "请选择股票池并等待输入配置" };
     const needsFactor = selectedPool.pool_type === "factor";
@@ -243,6 +294,7 @@ export function StockPools() {
         config: poolConfig,
       });
       await load();
+      setCatalogueScope("business");
       setSelectedPoolId(created.id);
       setMessage(`已创建规则 v${created.rule_version}`);
     } catch (reason) {
@@ -340,13 +392,10 @@ export function StockPools() {
         <div>
           <div className="flex items-center gap-3">
             <Layers3 className="h-7 w-7 text-purple-400" />
-            <h1 className="text-2xl font-black text-white">股票池研究工作台</h1>
-            <span className="rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-300">
-              Snapshot-first
-            </span>
+            <h1 className="text-2xl font-black text-white">股票池</h1>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            规则、输入、入选理由、有效期和回测引用全部版本化，不复制临时证券列表。
+            管理选股规则、成员、版本和回测引用；业务对象与测试数据分区展示。
           </p>
         </div>
         <button
@@ -397,42 +446,152 @@ export function StockPools() {
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.75fr)]">
           {tab === "mine" ? (
             <section className={`${panel} overflow-hidden`}>
-              <div className="flex items-center justify-between border-b border-crypto-border px-5 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">
                 <div>
-                  <h2 className="font-semibold text-white">版本化股票池</h2>
-                  <p className="mt-1 text-xs text-slate-500">选择规则主线查看最新成员；创建新规则请切换到对应类型。</p>
+                  <h2 className="font-semibold text-white">股票池目录</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    业务股票池与测试对象分区管理；选择一条规则查看版本和成员证据。
+                  </p>
                 </div>
-                <span className="text-xs text-slate-500">{pools.length} 条规则</span>
+                <span className="text-xs text-slate-500">
+                  {visiblePools.length} / {catalogueScope === "business" ? businessPools.length : testPools.length} 条
+                </span>
               </div>
-              <div className="grid gap-3 p-4 md:grid-cols-2">
-                {pools.map((item) => (
+              <div className="space-y-3 border-b border-crypto-border bg-crypto-bg/35 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex rounded-lg border border-crypto-border bg-crypto-bg p-1">
+                    <button
+                      type="button"
+                      data-testid="pool-scope-business"
+                      onClick={() => setCatalogueScope("business")}
+                      className={`rounded-md px-3 py-1.5 text-xs font-semibold ${catalogueScope === "business" ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-200"}`}
+                    >
+                      我的股票池 {businessPools.length}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="pool-scope-test"
+                      onClick={() => setCatalogueScope("test")}
+                      className={`rounded-md px-3 py-1.5 text-xs font-semibold ${catalogueScope === "test" ? "bg-amber-500/20 text-amber-200" : "text-slate-500 hover:text-slate-200"}`}
+                    >
+                      测试与验收 {testPools.length}
+                    </button>
+                  </div>
+                  <div className="relative min-w-[220px] flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-600" />
+                    <input
+                      value={poolQuery}
+                      onChange={(event) => setPoolQuery(event.target.value)}
+                      className={`${input} pl-9`}
+                      placeholder="搜索股票池名称、说明或类型…"
+                      aria-label="搜索股票池"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {([
+                    ["all", "全部"],
+                    ["screener", "条件"],
+                    ["factor", "因子"],
+                    ["sector", "板块"],
+                    ["event", "事件"],
+                    ["manual", "手工"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setPoolTypeFilter(value)}
+                      className={`rounded-md border px-2.5 py-1 text-[11px] ${poolTypeFilter === value ? "border-blue-500/45 bg-blue-500/10 text-blue-200" : "border-crypto-border text-slate-500 hover:text-slate-300"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {catalogueScope === "test" ? (
+                  <div
+                    className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[11px] leading-5 text-amber-200/80"
+                    role="status"
+                  >
+                    <TestTube2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    这里仅保留自动化验收和种子对象，不参与默认业务目录、策略晋级或 Paper 运行。
+                  </div>
+                ) : null}
+              </div>
+              <div className="divide-y divide-white/[0.05]">
+                {visiblePools.map((item) => (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => setSelectedPoolId(item.id)}
-                    className={`rounded-lg border p-4 text-left transition-colors ${selectedPoolId === item.id ? "border-purple-500/60 bg-purple-500/[0.09]" : "border-crypto-border bg-crypto-bg hover:border-slate-600"}`}
+                    className={`grid w-full gap-3 px-5 py-4 text-left transition-colors sm:grid-cols-[minmax(0,1fr)_80px_92px_92px_120px] sm:items-center ${selectedPoolId === item.id ? "bg-blue-500/[0.08]" : "hover:bg-white/[0.025]"}`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-100">{item.name}</div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-slate-100">{item.name}</span>
                         {item.data_purpose !== "user" && item.data_purpose ? (
-                          <div className="mt-1 text-[10px] text-amber-300">
+                          <span className="shrink-0 rounded border border-amber-500/20 bg-amber-500/[0.07] px-1.5 py-0.5 text-[9px] text-amber-300">
                             {item.data_purpose === "acceptance" ? "验收数据" : "种子数据"}
-                          </div>
+                          </span>
                         ) : null}
-                        <div className="mt-1 font-mono text-[10px] text-slate-600">v{item.rule_version} · {short(item.rule_hash)}</div>
                       </div>
-                      <PoolTypeBadge type={item.pool_type} />
+                      <div className="mt-1 truncate text-[11px] text-slate-600">
+                        {item.description || "未填写说明"}
+                      </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 border-t border-white/[0.05] pt-3 text-xs">
-                      <div><span className="text-slate-600">当前成员</span><strong className="ml-2 font-mono text-slate-200">{item.current_member_count}</strong></div>
-                      <div><span className="text-slate-600">封存快照</span><strong className="ml-2 font-mono text-slate-200">{item.snapshot_count}</strong></div>
+                    <PoolTypeBadge type={item.pool_type} />
+                    <div>
+                      <div className="text-[10px] text-slate-600">成员 / 快照</div>
+                      <div className="mt-1 font-mono text-xs text-slate-300">
+                        {item.current_member_count} / {item.snapshot_count}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-600">交易日</div>
+                      <div className="mt-1 font-mono text-xs text-slate-300">
+                        {item.latest_trade_date ?? "--"}
+                      </div>
+                    </div>
+                    <div className="sm:text-right">
+                      <div className="font-mono text-[10px] text-slate-600">
+                        v{item.rule_version} · {short(item.rule_hash)}
+                      </div>
+                      <div className="mt-1 text-[11px] font-semibold text-blue-300">
+                        查看证据 →
+                      </div>
                     </div>
                   </button>
                 ))}
-                {!loading && pools.length === 0 ? (
-                  <div className="grid min-h-40 place-items-center text-center text-xs text-slate-600 md:col-span-2">
-                    暂无股票池规则；请从条件、因子、板块或事件页创建。
+                {!loading && visiblePools.length === 0 ? (
+                  <div className="grid min-h-56 place-items-center px-6 py-10 text-center">
+                    <div>
+                      <Layers3 className="mx-auto h-8 w-8 text-slate-700" />
+                      <div className="mt-3 text-sm font-semibold text-slate-300">
+                        {catalogueScope === "business"
+                          ? "还没有业务股票池"
+                          : "当前筛选下没有测试对象"}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-600">
+                        {catalogueScope === "business"
+                          ? "从条件、因子、板块或事件研究创建第一条可运行规则。"
+                          : "调整类型或搜索条件后再试。"}
+                      </p>
+                      {catalogueScope === "business" ? (
+                        <div className="mt-4 flex flex-wrap justify-center gap-2">
+                          {TABS.filter(([key]) =>
+                            ["screener", "factor", "sector", "event"].includes(key),
+                          ).map(([key, label]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => setParams({ tab: key })}
+                              className="rounded-md border border-crypto-border bg-crypto-bg px-3 py-2 text-xs text-slate-300 hover:border-blue-500/45 hover:text-blue-200"
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
               </div>
