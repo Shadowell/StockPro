@@ -74,3 +74,8 @@ filter controls, detail views and operator-state semantics.
   detail exposes persisted version, validation, dependency, runtime-limit and
   source-code evidence; Paper diagnostics and system events use one continuous
   terminal timeline instead of per-entry cards.
+- `/data` now opens on a concise operating summary with an explicit
+  usable/stale/blocked conclusion, prioritized issues and four shared BitPro
+  metrics. Research data, coverage maintenance, job history and provider
+  permissions are separated into task-oriented sections instead of one long
+  undifferentiated page.
