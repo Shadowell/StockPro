@@ -995,6 +995,9 @@ Verification:
   is fresh with a successful latest cycle; no external sync or broker call ran.
 - Moved `AI研发` to the final position in both desktop and mobile primary
   navigation while preserving its route and page behavior.
+- Raised the global operator typography contrast for legacy gray/slate text
+  tiers, table headers and placeholders, and introduced a Chinese-first
+  `SF Pro` / `PingFang SC` system font stack across all primary pages.
 
 ## Verification Evidence
 
