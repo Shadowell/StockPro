@@ -106,6 +106,33 @@ async function mockApi(page: Page) {
       return route.fulfill(json({ username: 'admin' }));
     }
 
+    if (method === 'GET' && path === '/auth/me') {
+      return route.fulfill(json({
+        role: 'admin',
+        username: 'admin',
+        permissions: ['read', 'write', 'admin'],
+      }));
+    }
+
+    if (method === 'GET' && path === '/auth/guest-codes') {
+      return route.fulfill(json({ items: [] }));
+    }
+
+    if (method === 'GET' && path === '/auth/mcp-agent-tokens') {
+      return route.fulfill(json({
+        items: [{
+          id: 7,
+          name: 'Research Agent',
+          token_hint: 'sp_mcp_abcd…7890',
+          scopes: ['R', 'W'],
+          created_by: 'admin',
+          created_at: now,
+          last_used_at: now,
+          revoked_at: null,
+        }],
+      }));
+    }
+
     if (method === 'GET' && path === '/workflow/capabilities') {
       return route.fulfill(json({
         contract_version: 'stockpro-workflow-v1',
@@ -704,6 +731,17 @@ test('financial operator shell remains usable on a mobile viewport', async ({ pa
   await expect(page.getByRole('heading', { name: '监控中心' })).toBeVisible();
   const bodyOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(bodyOverflow).toBeLessThanOrEqual(1);
+});
+
+test('administrator can inspect the MCP agent access boundary', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/data');
+  await page.getByRole('button', { name: '设置' }).click();
+
+  await expect(page.getByRole('region', { name: 'Agent Token 管理' })).toContainText('stockpro-mcp-v1');
+  await expect(page.getByRole('region', { name: 'Agent Token 管理' })).toContainText('Research Agent');
+  await expect(page.getByRole('region', { name: 'Agent Token 管理' })).toContainText('R/W');
+  await expect(page.getByLabel('授予 W：允许带幂等键的异步回测写操作')).toBeVisible();
 });
 
 test('data-trust pages keep their state evidence usable at 390px', async ({ page }) => {

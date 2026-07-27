@@ -10,6 +10,7 @@ import type { MarketIndex } from '../types';
 import { Navigation } from './Navigation';
 import { WorkflowRail } from './WorkflowRail';
 import { GuestCodeManager } from './GuestCodeManager';
+import { McpAgentManager } from './McpAgentManager';
 
 interface MainLayoutProps {
   children?: ReactNode;
@@ -371,6 +372,7 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
                 </div>
               </div>
               {authProfile?.role === 'admin' && <GuestCodeManager />}
+              {authProfile?.role === 'admin' && <McpAgentManager />}
             </div>
           </div>
         </div>

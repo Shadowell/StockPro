@@ -13,9 +13,11 @@ from app.core.admin_auth import (
 from app.core.config import settings
 from app.db import db_instance
 from app.services.guest_access_service import GuestAccessError, GuestAccessService
+from app.services.mcp_agent_service import McpAgentError, McpAgentService
 
 router = APIRouter()
 guest_service = GuestAccessService(db_instance)
+mcp_agent_service = McpAgentService(db_instance)
 
 
 class AdminLoginRequest(BaseModel):
@@ -42,6 +44,11 @@ class GuestCodeRequest(BaseModel):
     max_backtests_per_day: int = Field(default=10, ge=0, le=500)
     max_concurrent_backtests: int = Field(default=1, ge=1, le=20)
     max_backtest_days: int = Field(default=365, ge=1, le=3650)
+
+
+class McpAgentTokenRequest(BaseModel):
+    name: str = Field(default="StockPro Agent", min_length=1, max_length=120)
+    scopes: list[str] = Field(default_factory=lambda: ["R"])
 
 
 @router.post("/admin/login", response_model=AdminLoginResponse)
@@ -133,4 +140,37 @@ async def revoke_guest_code(
     try:
         return guest_service.revoke_code(code_id, username)
     except GuestAccessError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/mcp-agent-tokens")
+async def create_mcp_agent_token(
+    payload: McpAgentTokenRequest,
+    username: str = Depends(require_admin),
+) -> dict[str, object]:
+    try:
+        return mcp_agent_service.create_token(
+            name=payload.name,
+            scopes=payload.scopes,
+            created_by=username,
+        )
+    except McpAgentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/mcp-agent-tokens")
+async def list_mcp_agent_tokens(
+    _username: str = Depends(require_admin),
+) -> dict[str, object]:
+    return {"items": mcp_agent_service.list_tokens()}
+
+
+@router.delete("/mcp-agent-tokens/{token_id}")
+async def revoke_mcp_agent_token(
+    token_id: int,
+    _username: str = Depends(require_admin),
+) -> dict[str, object]:
+    try:
+        return mcp_agent_service.revoke_token(token_id)
+    except McpAgentError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

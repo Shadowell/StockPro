@@ -8,6 +8,7 @@ pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
 requests>=2.31.0
 httpx>=0.25.0
+mcp>=1.13.0,<2
 dashscope>=1.14.0
 python-multipart>=0.0.6
 backtrader>=1.9.78.123

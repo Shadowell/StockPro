@@ -4,7 +4,7 @@
 
 StockPro is a locally operated B/S A-share strategy workstation. It provides research, factor development, strategy development, backtesting, live signal monitoring, paper trading and risk controls for a personal research workspace.
 
-Sprint 09 `readonly-runtime-safety`, Sprint 10 `daily-publication-integrity` and Sprint 11 `bitpro-ashare-strategy-workbench` completed locally on 2026-07-17. `research-workshop-page-hardening` is active from 2026-07-27 and is currently remediating the local data-integrity audit in the order misleading presentation, synchronization boundaries, research evidence, cross-page data states and regression coverage. Large synchronization, production scheduling, migration execution and remote deployment still require separate explicit approval.
+Sprint 09 `readonly-runtime-safety`, Sprint 10 `daily-publication-integrity` and Sprint 11 `bitpro-ashare-strategy-workbench` completed locally on 2026-07-17. The 2026-07-27 BitPro-parity work has added workflow discovery, guest access, asynchronous PostgreSQL backtest jobs and the authenticated `stockpro-mcp-v1` Agent interface. Large synchronization, production scheduling and remote deployment still require separate explicit approval.
 
 The current authorized delivery environment is local development only: React on `http://localhost:4444`, FastAPI on `http://localhost:4445`, and PostgreSQL through the local `DATABASE_URL`. Remote-server deployment and production-data changes are deferred to a separate explicit contract.
 
@@ -97,6 +97,15 @@ The required lifecycle is:
 - Local PostgreSQL has a recorded daily backup, a weekly restore rehearsal into a disposable database and a `backup_run` audit record; initial targets are RPO <= 24 hours and RTO <= 2 hours.
 - A restore rehearsal must verify snapshot manifests, factor snapshots, backtest evidence and Paper ledgers, not only that PostgreSQL starts.
 - Secrets remain outside the repository. Backup artifacts must be access-controlled and excluded from source control.
+
+## Agent Tool Interface Contract
+
+- External Agents discover the stable `stockpro-mcp-v1` contract through the local stdio MCP resource/tool before calling application APIs.
+- Agent tokens use `X-StockPro-MCP-Token`, are stored in PostgreSQL as SHA-256 hashes, return plaintext once, and can be revoked immediately from the administrator settings panel or API.
+- Scope `R` grants only the listed research, strategy, backtest, Paper, Watch, Monitor, Review and Data reads. Scope `W` grants only the listed asynchronous backtest create/cancel/retry tools.
+- Every W call requires a unique `Idempotency-Key`; duplicate keys are rejected before the underlying mutation. Method/path allowlisting prevents a W token from guessing data-sync, strategy mutation, Paper control or other application routes.
+- Agent reads preserve the same data source, freshness, snapshot, null and missing-reason semantics as the corresponding page APIs. MCP never creates synthetic market data or converts missing values to zero.
+- Remote MCP and all real-broker diagnostics/mutations are absent. The capability response reports `real_broker_available=false`.
 
 ## Factor Platform Contract
 

@@ -1,5 +1,22 @@
 # Progress Log
 
+## StockPro Agent Tool Interface (2026-07-27)
+
+1. Added the stable `stockpro-mcp-v1` local stdio interface with 20 PostgreSQL-backed read tools and three asynchronous backtest mutation tools.
+2. Added PostgreSQL Agent tokens with one-time plaintext return, SHA-256 hash-only storage, administrator list/revoke controls and an in-product Agent access manager.
+3. Added R/W scope enforcement, method/path tool allowlisting, mandatory mutation idempotency keys and PostgreSQL authorization/denial audit evidence. W tokens cannot call data synchronization, arbitrary Paper control or unlisted application routes.
+4. Exposed A-share capability discovery, health, market evidence, strategy, backtest jobs/results, Paper, Watch, Monitor, Review and Data state without adding provider fetches or synthetic fallbacks.
+5. Kept remote MCP and all real-broker diagnostics/mutations absent and explicitly reported `real_broker_available=false`.
+
+Verification:
+
+- Applied local PostgreSQL migrations `202607270003` and `202607270004` for Agent access and Agent-owned backtest jobs; no provider synchronization or historical backfill ran.
+- Real Agent HTTP verification: R read `200`, R write `403`, R/W async job `202 -> success`, duplicate idempotency key `409`, out-of-contract data sync `403`, and revoked token `401`.
+- Real stdio MCP handshake discovered 23 tools and successfully called `stockpro_capabilities` and `stockpro_health`; all acceptance tokens were revoked and no active token remains.
+- Focused backend tests passed 13/13; TypeScript and focused lint passed; Playwright verified the administrator Agent Token manager and R/W evidence.
+
+Next Sprint: close the remaining BitPro parity gaps in daily data orchestration and Paper/Watch/Monitor runtime evidence.
+
 ## BitPro-parity Asynchronous Backtest Jobs (2026-07-27)
 
 1. Added PostgreSQL-owned backtest jobs and append-only transition logs with owner role/session, guest invitation usage, request payload, attempt lineage and immutable result linkage.

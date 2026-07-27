@@ -28,9 +28,11 @@ async def workflow_capabilities() -> Dict[str, Any]:
             },
             {
                 "id": "agent",
-                "status": "not_implemented",
-                "write_access": False,
-                "reason": "stockpro-mcp-v1 尚未实现",
+                "status": "available",
+                "write_access": True,
+                "permissions": ["R", "W"],
+                "contract_version": "stockpro-mcp-v1",
+                "real_broker_access": False,
             },
         ],
         "feature_gates": {

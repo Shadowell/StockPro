@@ -60,6 +60,18 @@ export interface GuestAccessCode {
   revoked_at?: string | null;
 }
 
+export interface McpAgentToken {
+  id: number;
+  name: string;
+  token?: string;
+  token_hint: string;
+  scopes: Array<'R' | 'W'>;
+  created_by: string;
+  created_at: string;
+  last_used_at?: string | null;
+  revoked_at?: string | null;
+}
+
 export const getAdminToken = (): string | null => {
   if (typeof window === 'undefined') return null;
   return window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
@@ -540,6 +552,19 @@ export const createGuestAccessCode = async (request: {
 
 export const revokeGuestAccessCode = async (codeId: number): Promise<void> => {
   await apiClient.delete(`/auth/guest-codes/${codeId}`);
+};
+
+export const listMcpAgentTokens = async (): Promise<McpAgentToken[]> =>
+  (await apiClient.get<{ items: McpAgentToken[] }>('/auth/mcp-agent-tokens')).data.items;
+
+export const createMcpAgentToken = async (request: {
+  name: string;
+  scopes: Array<'R' | 'W'>;
+}): Promise<McpAgentToken> =>
+  (await apiClient.post<McpAgentToken>('/auth/mcp-agent-tokens', request)).data;
+
+export const revokeMcpAgentToken = async (tokenId: number): Promise<void> => {
+  await apiClient.delete(`/auth/mcp-agent-tokens/${tokenId}`);
 };
 
 export const getMarketOverview = async (): Promise<MarketOverview> => {
