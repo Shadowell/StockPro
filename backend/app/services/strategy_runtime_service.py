@@ -151,6 +151,21 @@ class StrategyRuntimeService:
             raise ValueError("策略名称和 Python 代码必填")
         with self.database.get_connection() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                if legacy_strategy_id is None:
+                    cursor.execute(
+                        """
+                        INSERT INTO strategy_scripts
+                        (name, script_content, description, interval_seconds, enabled)
+                        VALUES (%s,%s,%s,60,TRUE)
+                        ON CONFLICT (name) DO UPDATE SET
+                            script_content=EXCLUDED.script_content,
+                            description=EXCLUDED.description,
+                            updated_at=NOW()
+                        RETURNING id
+                        """,
+                        (name, code, payload.get("description") or ""),
+                    )
+                    legacy_strategy_id = int(cursor.fetchone()["id"])
                 cursor.execute("SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM strategy_versions WHERE name = %s", (name,))
                 version_no = int(cursor.fetchone()["next_version"])
                 content_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()

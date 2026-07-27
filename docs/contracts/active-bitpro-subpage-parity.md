@@ -11,7 +11,7 @@ filter controls, detail views and operator-state semantics.
 ## Delivery Order
 
 1. [complete] `/paper`: dashboard, preferred/all views, filter bar, instance cards,
-   creation wizard and instance monitor.
+   creation wizard and full BitPro-parity instance monitor.
 2. [complete] `/strategy`, `/backtest`, `/ai-lab`: catalogue, experiment and detail flows.
 3. `/watch`, `/monitor`, `/review`: observation, operations and review flows.
 4. `/`, `/market`, `/pools`, `/factors`, `/data`: dashboard, inspection,
@@ -52,6 +52,17 @@ filter controls, detail views and operator-state semantics.
 - Paper cards expose persisted PnL, return, trades, security scope and heartbeat
   evidence. Sharpe, win rate and profit factor remain explicitly unavailable
   when the API does not provide them.
+- The Paper instance monitor now contains the complete BitPro module sequence:
+  runtime header/actions, nine KPI cards, strategy logic, read-only parameters,
+  PostgreSQL diagnostic evidence, A-share positions, trades/events, snapshot-bound
+  K-line review, Paper equity curve and risk state.
+- Historical replay heartbeat uses processing time while retaining simulated
+  trade time as evidence. Explicit sealed replay can bypass wall-clock staleness,
+  successful cycles resolve prior stale-feed alerts, and list/detail APIs expose
+  the same latest cycle and aggregate counts.
+- Paper K-lines are read from the instance-bound sealed dataset snapshot; missing
+  runtime statistics remain unavailable with a reason and are never replaced by
+  qualifying-backtest values.
 - `/ai-lab` now follows the three BitPro workspaces: autonomous AI trading,
   new-strategy research and existing-strategy optimization. The research
   workspace contains the four-stage proposal → backtest → result → simulation

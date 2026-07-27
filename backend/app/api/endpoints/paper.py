@@ -115,6 +115,14 @@ async def list_instance_events(instance_id: str) -> Dict[str, Any]:
         raise _runtime_error(exc, 404) from exc
 
 
+@router.get("/instances/{instance_id}/klines/{symbol}")
+async def get_instance_klines(instance_id: str, symbol: str) -> Dict[str, Any]:
+    try:
+        return runtime_service.get_instance_klines(instance_id, symbol)
+    except ValueError as exc:
+        raise _runtime_error(exc, 404) from exc
+
+
 @router.post("/run")
 async def run_paper(request: RunPaperRequest) -> Dict[str, Any]:
     try:

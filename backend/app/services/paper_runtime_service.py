@@ -186,6 +186,7 @@ class PaperRuntimeService:
         cycle_id, reused = self._open_cycle(instance_id, cycle_key, trade_date, data_available_at, observed_at, input_hash)
         if reused:
             return {**self.get_cycle(cycle_id), "reused": True}
+        processed_at = datetime.now(timezone.utc)
         try:
             symbols = [
                 str(item["symbol"]) for item in self._rows(
@@ -199,7 +200,8 @@ class PaperRuntimeService:
                 raise ValueError("固定数据快照在该交易日没有股票池行情")
             stale_seconds = max(0, (observed_at - data_available_at).total_seconds())
             stale_after = int((instance.get("feed_config") or {}).get("stale_after_seconds") or 900)
-            if stale_seconds > stale_after:
+            allow_stale_entries = self._feed_allows_stale_entries(instance.get("feed_config") or {})
+            if stale_seconds > stale_after and not allow_stale_entries:
                 self._record_event(instance_id, cycle_id, "feed", "critical", "行情超过 SLA，禁止新开仓", {"stale_seconds": stale_seconds, "sla_seconds": stale_after})
                 self._alert("stale_feed", instance_id, "data", "critical", "Paper 行情已过期", "新开仓已阻断，退出和估值仍保留", "paper_runtime_cycle", cycle_id, {"trade_date": trade_date, "stale_seconds": stale_seconds}, f"stale:{instance_id}:{trade_date}")
                 order_count, trade_count = self._execute_pending_signals(
@@ -209,10 +211,24 @@ class PaperRuntimeService:
                 self._finish_cycle(cycle_id, "blocked", 0, order_count, trade_count, equity["ledger_difference"])
                 self._execute(
                     "UPDATE paper_instances SET last_processed_trade_date=%s,last_cycle_key=%s,heartbeat_at=%s,updated_at=NOW() WHERE id=%s",
-                    (trade_date, cycle_key, observed_at, instance_id),
+                    (trade_date, cycle_key, processed_at, instance_id),
                 )
-                self._health("paper_feed", "critical", observed_at, "STALE_FEED", "行情超过 SLA", {"instance_id": instance_id, "trade_date": trade_date})
+                self._health("paper_feed", "critical", processed_at, "STALE_FEED", "行情超过 SLA", {"instance_id": instance_id, "trade_date": trade_date, "simulated_observed_at": observed_at.isoformat()})
                 return self.get_cycle(cycle_id)
+            if stale_seconds > stale_after and allow_stale_entries:
+                self._record_event(
+                    instance_id,
+                    cycle_id,
+                    "feed",
+                    "info",
+                    "封存历史回放按模拟时钟执行",
+                    {
+                        "trade_date": trade_date,
+                        "stale_seconds_vs_wall_clock": stale_seconds,
+                        "provider": (instance.get("feed_config") or {}).get("provider"),
+                        "mode": (instance.get("feed_config") or {}).get("mode"),
+                    },
+                )
             order_count, trade_count = self._execute_pending_signals(instance, cycle_id, trade_date, bars, data_available_at)
             start_date = (date.fromisoformat(trade_date) - timedelta(days=120)).isoformat()
             replay = self.runtime.replay(str(instance["strategy_version_id"]), {
@@ -231,15 +247,24 @@ class PaperRuntimeService:
             self._finish_cycle(cycle_id, "success", signal_count, order_count, trade_count, equity["ledger_difference"])
             self._execute(
                 "UPDATE paper_instances SET last_processed_trade_date=%s,last_cycle_key=%s,heartbeat_at=%s,updated_at=NOW() WHERE id=%s",
-                (trade_date, cycle_key, observed_at, instance_id),
+                (trade_date, cycle_key, processed_at, instance_id),
             )
             self._record_event(instance_id, cycle_id, "cycle", "info", "行情周期处理完成", {"trade_date": trade_date, "signals": signal_count, "orders": order_count, "trades": trade_count, "ledger_difference": equity["ledger_difference"]})
-            self._health("paper_runtime", "healthy", observed_at, None, "周期处理成功", {"instance_id": instance_id, "trade_date": trade_date})
+            self._resolve_alerts(instance_id, "stale_feed")
+            self._health(
+                "paper_feed",
+                "healthy",
+                processed_at,
+                None,
+                "封存历史回放周期可用" if allow_stale_entries else "行情时效检查通过",
+                {"instance_id": instance_id, "trade_date": trade_date, "simulated_observed_at": observed_at.isoformat()},
+            )
+            self._health("paper_runtime", "healthy", processed_at, None, "周期处理成功", {"instance_id": instance_id, "trade_date": trade_date, "simulated_observed_at": observed_at.isoformat()})
             return self.get_cycle(cycle_id)
         except Exception as exc:
             self._execute("UPDATE paper_runtime_cycles SET status='failed',error_message=%s,finished_at=NOW() WHERE id=%s", (str(exc)[:1000], cycle_id))
             self._record_event(instance_id, cycle_id, "runtime", "error", "行情周期失败", {"error": str(exc)})
-            self._health("paper_runtime", "critical", observed_at, "CYCLE_FAILED", str(exc)[:500], {"instance_id": instance_id, "trade_date": trade_date})
+            self._health("paper_runtime", "critical", processed_at, "CYCLE_FAILED", str(exc)[:500], {"instance_id": instance_id, "trade_date": trade_date, "simulated_observed_at": observed_at.isoformat()})
             raise
 
     def list_instances(self) -> List[Dict[str, Any]]:
@@ -249,8 +274,22 @@ class PaperRuntimeService:
                    (SELECT COUNT(*) FROM strategy_signals s WHERE s.paper_instance_id=i.id)::INTEGER AS signal_count,
                    (SELECT COUNT(*) FROM orders o WHERE o.paper_instance_id=i.id)::INTEGER AS order_count,
                    (SELECT COUNT(*) FROM trades t WHERE t.paper_instance_id=i.id)::INTEGER AS trade_count,
-                   (SELECT equity FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id ORDER BY trade_date DESC LIMIT 1) AS equity
-            FROM paper_instances i JOIN portfolios p ON p.id=i.portfolio_id ORDER BY i.created_at DESC
+                   e.equity,e.nav,e.drawdown,e.trade_date AS latest_equity_trade_date,
+                   c.id AS latest_cycle_id,c.status AS latest_cycle_status,c.trade_date AS latest_cycle_trade_date,
+                   c.finished_at AS latest_cycle_finished_at,c.error_message AS latest_cycle_error,
+                   c.ledger_difference AS latest_cycle_ledger_difference
+            FROM paper_instances i JOIN portfolios p ON p.id=i.portfolio_id
+            LEFT JOIN LATERAL (
+                SELECT * FROM paper_equity_snapshots pe
+                WHERE pe.paper_instance_id=i.id
+                ORDER BY pe.trade_date DESC,pe.id DESC LIMIT 1
+            ) e ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT * FROM paper_runtime_cycles pc
+                WHERE pc.paper_instance_id=i.id
+                ORDER BY pc.created_at DESC,pc.id DESC LIMIT 1
+            ) c ON TRUE
+            ORDER BY i.created_at DESC
             """
         )
         for row in rows:
@@ -267,8 +306,84 @@ class PaperRuntimeService:
         instance["cash_ledger"] = self._rows("SELECT * FROM cash_ledger WHERE paper_instance_id=%s ORDER BY created_at DESC", (instance_id,))
         instance["equity_snapshots"] = self._rows("SELECT * FROM paper_equity_snapshots WHERE paper_instance_id=%s ORDER BY trade_date", (instance_id,))
         instance["events"] = self.events(instance_id)
-        instance["cycles"] = self._rows("SELECT * FROM paper_runtime_cycles WHERE paper_instance_id=%s ORDER BY trade_date,id", (instance_id,))
+        instance["cycles"] = self._rows("SELECT * FROM paper_runtime_cycles WHERE paper_instance_id=%s ORDER BY created_at,id", (instance_id,))
+        instance["risk_events"] = self._rows("SELECT * FROM risk_events WHERE paper_instance_id=%s ORDER BY created_at DESC,id DESC", (instance_id,))
+        instance["alerts"] = self._rows("SELECT * FROM alerts WHERE paper_instance_id=%s ORDER BY triggered_at DESC,id DESC", (instance_id,))
+        instance["strategy_version"] = self._row("SELECT * FROM strategy_versions WHERE id=%s", (instance["strategy_version_id"],))
+        instance["qualifying_backtest"] = self._row("SELECT * FROM backtest_runs WHERE id=%s", (instance["qualifying_backtest_run_id"],))
+        instance["signal_count"] = len(instance["signals"])
+        instance["order_count"] = len(instance["orders"])
+        instance["trade_count"] = len(instance["trades"])
+        latest_equity = instance["equity_snapshots"][-1] if instance["equity_snapshots"] else None
+        instance["equity"] = latest_equity.get("equity") if latest_equity else None
+        latest_cycle = instance["cycles"][-1] if instance["cycles"] else None
+        if latest_cycle:
+            for source, target in (
+                ("id", "latest_cycle_id"),
+                ("status", "latest_cycle_status"),
+                ("trade_date", "latest_cycle_trade_date"),
+                ("finished_at", "latest_cycle_finished_at"),
+                ("error_message", "latest_cycle_error"),
+                ("ledger_difference", "latest_cycle_ledger_difference"),
+            ):
+                instance[target] = latest_cycle.get(source)
         return instance
+
+    def get_instance_klines(self, instance_id: str, symbol: str) -> Dict[str, Any]:
+        instance = self._instance(instance_id)
+        normalized = self._normalize_symbol(symbol)
+        rows = self.datasets.load_daily_bars(
+            int(instance["dataset_snapshot_id"]),
+            symbols=[normalized],
+            limit=1_000_000,
+        )
+        items = [
+            {
+                "date": str(item.get("trade_date"))[:10],
+                "open": item.get("open"),
+                "high": item.get("high"),
+                "low": item.get("low"),
+                "close": item.get("close"),
+                "volume": item.get("volume"),
+            }
+            for item in rows
+            if str(item.get("symbol")) == normalized
+        ]
+        snapshot = self.datasets.get_snapshot(int(instance["dataset_snapshot_id"])) or {}
+        return {
+            "items": items,
+            "total": len(items),
+            "symbol": normalized,
+            "source_label": "PostgreSQL 封存数据快照",
+            "dataset_snapshot_id": int(instance["dataset_snapshot_id"]),
+            "knowledge_cutoff_at": snapshot.get("knowledge_cutoff_at"),
+            "data_status": "available" if items else "empty",
+        }
+
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        raw = str(symbol or "").strip().upper().replace(".", "_")
+        if raw.startswith(("SH_", "SZ_", "BJ_")):
+            return raw
+        code = "".join(character for character in raw if character.isdigit())
+        if len(code) != 6:
+            return raw
+        if code.startswith("6"):
+            return f"SH_{code}"
+        if code.startswith(("0", "3")):
+            return f"SZ_{code}"
+        if code.startswith(("4", "8", "9")):
+            return f"BJ_{code}"
+        return code
+
+    @staticmethod
+    def _feed_allows_stale_entries(feed_config: Mapping[str, Any]) -> bool:
+        mode = str(feed_config.get("mode") or "").strip().lower()
+        return bool(feed_config.get("allow_new_entries_when_stale")) and mode in {
+            "recorded_replay",
+            "historical_replay",
+            "paper_replay",
+        }
 
     def events(self, instance_id: str) -> List[Dict[str, Any]]:
         self._instance(instance_id)
@@ -879,6 +994,17 @@ class PaperRuntimeService:
         with self.database.get_connection() as connection:
             with connection.cursor() as cursor:
                 self._alert_cursor(cursor, code, instance_id, category, severity, title, message, source_type, source_id, evidence, dedupe_key)
+
+    def _resolve_alerts(self, instance_id: str, alert_code: str) -> None:
+        self._execute(
+            """
+            UPDATE alerts
+            SET status='resolved'
+            WHERE paper_instance_id=%s AND status='active'
+              AND split_part(dedupe_key, ':', 1)=%s
+            """,
+            (instance_id, alert_code.replace("_feed", "")),
+        )
 
     @staticmethod
     def _alert_cursor(cursor, code: str, instance_id: str, category: str, severity: str, title: str, message: str, source_type: str, source_id: str, evidence: Mapping[str, Any], dedupe_key: str) -> None:

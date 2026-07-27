@@ -974,6 +974,26 @@ Verification:
 - Retained the existing Strategy and Backtest object flows because they already
   provide catalogue cards, staged creation and record-level detail evidence.
 
+21. BitPro Paper instance monitor and runtime truthfulness
+- Replaced the legacy Paper detail tabs with one continuous BitPro-parity
+  instance monitor containing all nine KPI slots, strategy logic, parameter
+  evidence, runtime diagnostics, positions, trades/events, buy/sell K-line
+  review, account curve and risk state.
+- Added a read-only Paper K-line endpoint backed by the instance's sealed
+  PostgreSQL dataset snapshot, including source, snapshot id, knowledge cutoff
+  and explicit empty status.
+- Fixed Paper list/detail aggregation so signal/order/trade totals, equity and
+  the latest cycle are selected consistently by creation time.
+- Fixed historical replay heartbeat semantics: processing heartbeat is current,
+  simulated observed time remains in cycle evidence, explicit sealed replay
+  can allow entries without being mistaken for a realtime feed, and a successful
+  cycle resolves its prior stale-feed alert.
+- Native Strategy API v1 creation now also creates/links the catalogue identity,
+  so newly authored strategies appear in `/strategy/list`.
+- Repaired the existing MA5/20 momentum strategy catalogue link locally and
+  validated the running Paper instance against snapshot #10. The target instance
+  is fresh with a successful latest cycle; no external sync or broker call ran.
+
 ## Verification Evidence
 
 - `python3 -m py_compile app/services/scheduler_service.py app/db/postgres_db.py app/api/endpoints/data_dev.py` (pass)
@@ -1003,6 +1023,12 @@ Verification:
 - `npm run build` (pass)
 - Manual `/api/data/realtime/sync` after EM proxy failure: stocks 5528, indices 4, short_line 3; `/api/market/overview` returned fresh sentiment, turnover split and breadth.
 - Manual `/api/market/hot-concepts?limit=30` returned 30 items.
+- Paper parity focused checks:
+  - `venv/bin/python -m pytest tests/test_paper_runtime_api.py -q` (15/15 pass)
+  - `/api/paper/instances/{id}` (200, latest cycle success, signal count 1)
+  - `/api/paper/instances/{id}/klines/SZ_002415` (200, 485 sealed bars)
+  - target strategy visible in `/api/strategy/list`
+  - Playwright desktop + 390px viewport pass; no browser console errors
 
 ## Known Gaps
 
