@@ -4,7 +4,7 @@
 
 StockPro is a locally operated B/S A-share strategy workstation. It provides research, factor development, strategy development, backtesting, live signal monitoring, paper trading and risk controls for a personal research workspace.
 
-Sprint 09 `readonly-runtime-safety`, Sprint 10 `daily-publication-integrity` and Sprint 11 `bitpro-ashare-strategy-workbench` completed locally on 2026-07-17. The 2026-07-27 BitPro-parity work has added workflow discovery, guest access, asynchronous PostgreSQL backtest jobs and the authenticated `stockpro-mcp-v1` Agent interface. Large synchronization, production scheduling and remote deployment still require separate explicit approval.
+Sprint 09 `readonly-runtime-safety`, Sprint 10 `daily-publication-integrity` and Sprint 11 `bitpro-ashare-strategy-workbench` completed locally on 2026-07-17. The 2026-07-27 BitPro-parity work added workflow discovery, guest access, asynchronous PostgreSQL backtest jobs, the authenticated `stockpro-mcp-v1` Agent interface, complete Paper runtime evidence and a real-backend read-only twelve-page acceptance gate. Large synchronization, enabling the scheduler runtime, production scheduling and remote deployment still require separate explicit approval.
 
 The current authorized delivery environment is local development only: React on `http://localhost:4444`, FastAPI on `http://localhost:4445`, and PostgreSQL through the local `DATABASE_URL`. Remote-server deployment and production-data changes are deferred to a separate explicit contract.
 
