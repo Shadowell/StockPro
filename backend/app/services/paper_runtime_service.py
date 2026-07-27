@@ -298,6 +298,46 @@ class PaperRuntimeService:
     def watch_context(self) -> Dict[str, Any]:
         alerts = self.list_alerts(None)
         signals = self._rows("SELECT * FROM strategy_signals WHERE paper_instance_id IS NOT NULL ORDER BY signal_time DESC LIMIT 200")
+        orders = self._rows(
+            """
+            SELECT o.*,i.name AS instance_name
+            FROM orders o JOIN paper_instances i ON i.id=o.paper_instance_id
+            WHERE o.paper_instance_id IS NOT NULL
+            ORDER BY o.created_at DESC,o.id DESC LIMIT 200
+            """
+        )
+        trades = self._rows(
+            """
+            SELECT t.*,i.name AS instance_name
+            FROM trades t JOIN paper_instances i ON i.id=t.paper_instance_id
+            WHERE t.paper_instance_id IS NOT NULL
+            ORDER BY t.traded_at DESC,t.id DESC LIMIT 200
+            """
+        )
+        positions = self._rows(
+            """
+            SELECT p.*,i.id AS paper_instance_id,i.name AS instance_name
+            FROM positions p JOIN paper_instances i ON i.portfolio_id=p.portfolio_id
+            ORDER BY ABS(p.market_value) DESC,p.updated_at DESC,p.id DESC LIMIT 200
+            """
+        )
+        risk_events = self._rows(
+            """
+            SELECT e.*,r.name AS rule_name,r.rule_type,i.name AS instance_name
+            FROM risk_events e
+            JOIN paper_instances i ON i.id=e.paper_instance_id
+            LEFT JOIN risk_rules r ON r.id=e.rule_id
+            WHERE e.paper_instance_id IS NOT NULL
+            ORDER BY e.created_at DESC,e.id DESC LIMIT 200
+            """
+        )
+        runtime_events = self._rows(
+            """
+            SELECT e.*,i.name AS instance_name
+            FROM paper_instance_events e JOIN paper_instances i ON i.id=e.paper_instance_id
+            ORDER BY e.occurred_at DESC,e.id DESC LIMIT 200
+            """
+        )
         pool_moves = self._rows(
                 """
                 SELECT s.id AS snapshot_id,s.pool_id,p.name AS pool_name,s.trade_date,s.member_count,s.manifest_hash
@@ -309,6 +349,11 @@ class PaperRuntimeService:
         candidates = [
             *(item.get("triggered_at") for item in alerts),
             *(item.get("signal_time") for item in signals),
+            *(item.get("updated_at") or item.get("created_at") for item in orders),
+            *(item.get("traded_at") for item in trades),
+            *(item.get("updated_at") for item in positions),
+            *(item.get("created_at") for item in risk_events),
+            *(item.get("occurred_at") for item in runtime_events),
             *(item.get("trade_date") for item in pool_moves),
             *(item.get("heartbeat_at") or item.get("updated_at") for item in instances),
         ]
@@ -324,36 +369,141 @@ class PaperRuntimeService:
         return {
             "alerts": alerts,
             "signals": signals,
+            "orders": orders,
+            "trades": trades,
+            "positions": positions,
+            "risk_events": risk_events,
+            "runtime_events": runtime_events,
             "pool_moves": pool_moves,
             "instances": instances,
+            "coverage": {
+                "instances": len(instances),
+                "signals": len(signals),
+                "orders": len(orders),
+                "trades": len(trades),
+                "positions": len(positions),
+                "risk_events": len(risk_events),
+                "runtime_events": len(runtime_events),
+            },
             "data_status": data_status,
-            "source_label": "PostgreSQL audit records",
+            "source_label": "PostgreSQL Paper audit evidence",
             "source_updated_at": source_updated_at,
             "response_generated_at": now,
         }
 
     def health(self) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc)
         services = self._rows(
             """
             SELECT DISTINCT ON(service_code) * FROM service_health_snapshots
             ORDER BY service_code,observed_at DESC,id DESC
             """
         )
+        for item in services:
+            observed_at = self._timestamp(item["observed_at"]) if item.get("observed_at") else None
+            item["freshness"] = (
+                "missing"
+                if observed_at is None
+                else "stale"
+                if (now - observed_at).total_seconds() > 36 * 60 * 60
+                else "fresh"
+            )
         active_alerts = self._rows("SELECT severity,COUNT(*)::INTEGER AS count FROM alerts WHERE status='active' GROUP BY severity ORDER BY severity")
+        active_alert_details = self._rows(
+            """
+            SELECT a.*,i.name AS instance_name
+            FROM alerts a LEFT JOIN paper_instances i ON i.id=a.paper_instance_id
+            WHERE a.status='active'
+            ORDER BY CASE a.severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+                     a.triggered_at DESC LIMIT 200
+            """
+        )
         data = self._row("SELECT id,status,knowledge_cutoff_at,manifest_hash FROM dataset_snapshots WHERE status='sealed' ORDER BY id DESC LIMIT 1")
         market = self._row("SELECT id,status,trade_date,available_at,content_hash FROM market_evidence_snapshots ORDER BY trade_date DESC,id DESC LIMIT 1")
         instances = self._rows("SELECT status,COUNT(*)::INTEGER AS count FROM paper_instances GROUP BY status ORDER BY status")
+        strategy_health = self._rows(
+            """
+            SELECT i.id,i.name,i.status,i.runtime_version,i.heartbeat_at,i.last_processed_trade_date,
+                   i.error_message,i.updated_at,i.feed_config,p.cash_balance,p.initial_cash,
+                   c.id AS latest_cycle_id,c.status AS latest_cycle_status,c.trade_date AS latest_cycle_trade_date,
+                   c.finished_at AS latest_cycle_finished_at,c.error_message AS latest_cycle_error,
+                   c.ledger_difference AS latest_cycle_ledger_difference,
+                   e.equity AS latest_equity,e.nav AS latest_nav,e.drawdown AS latest_drawdown,
+                   e.trade_date AS latest_equity_trade_date,e.created_at AS latest_equity_at,
+                   (SELECT COUNT(*) FROM orders o WHERE o.paper_instance_id=i.id)::INTEGER AS order_count,
+                   (SELECT COUNT(*) FROM trades t WHERE t.paper_instance_id=i.id)::INTEGER AS trade_count,
+                   (SELECT COUNT(*) FROM risk_events r WHERE r.paper_instance_id=i.id)::INTEGER AS risk_event_count,
+                   (SELECT COUNT(*) FROM risk_events r WHERE r.paper_instance_id=i.id AND r.decision='rejected')::INTEGER AS rejected_count
+            FROM paper_instances i
+            JOIN portfolios p ON p.id=i.portfolio_id
+            LEFT JOIN LATERAL (
+                SELECT * FROM paper_runtime_cycles pc
+                WHERE pc.paper_instance_id=i.id
+                ORDER BY pc.created_at DESC,pc.id DESC LIMIT 1
+            ) c ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT * FROM paper_equity_snapshots pe
+                WHERE pe.paper_instance_id=i.id
+                ORDER BY pe.trade_date DESC,pe.id DESC LIMIT 1
+            ) e ON TRUE
+            ORDER BY CASE i.status WHEN 'running' THEN 0 WHEN 'failed' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,
+                     i.updated_at DESC
+            """
+        )
+        for item in strategy_health:
+            item["data_purpose"] = infer_data_purpose(item.get("name"))
+            heartbeat = self._timestamp(item["heartbeat_at"]) if item.get("heartbeat_at") else None
+            item["heartbeat_age_seconds"] = int((now - heartbeat).total_seconds()) if heartbeat else None
+            if item["status"] in {"stopped", "draft"}:
+                item["health_state"] = item["status"]
+            elif item["status"] == "failed" or item.get("latest_cycle_status") == "failed":
+                item["health_state"] = "failed"
+            elif heartbeat is None:
+                item["health_state"] = "missing"
+            elif (now - heartbeat).total_seconds() > 36 * 60 * 60:
+                item["health_state"] = "stale"
+            else:
+                item["health_state"] = "fresh"
         notification = self._rows("SELECT status,COUNT(*)::INTEGER AS count FROM notification_deliveries GROUP BY status ORDER BY status")
+        source_candidates = [
+            *(item.get("observed_at") for item in services),
+            *(item.get("triggered_at") for item in active_alert_details),
+            *(item.get("heartbeat_at") or item.get("latest_cycle_finished_at") or item.get("updated_at") for item in strategy_health),
+            data.get("knowledge_cutoff_at") if data else None,
+            market.get("available_at") if market else None,
+        ]
+        source_timestamps = [self._timestamp(value) for value in source_candidates if value]
+        source_updated_at = max(source_timestamps) if source_timestamps else None
+        running_health_failure = any(
+            item["status"] in {"running", "starting"} and item["health_state"] in {"missing", "stale", "failed"}
+            for item in strategy_health
+        )
+        current_critical_service = any(
+            item["status"] == "critical" and item["freshness"] == "fresh" for item in services
+        )
+        stale_service_evidence = any(item["freshness"] != "fresh" for item in services)
         overall = (
             "unavailable"
-            if not services
+            if not services and not strategy_health
             else "critical"
-            if any(item["status"] == "critical" for item in services)
+            if current_critical_service or running_health_failure
             else "warning"
-            if active_alerts
+            if active_alerts or stale_service_evidence
             else "healthy"
         )
-        return {"status": overall, "services": services, "data": {"dataset": data, "market": market}, "strategy_instances": instances, "risk_alerts": active_alerts, "notifications": notification, "observed_at": datetime.now(timezone.utc)}
+        return {
+            "status": overall,
+            "services": services,
+            "data": {"dataset": data, "market": market},
+            "strategy_instances": instances,
+            "strategy_health": strategy_health,
+            "risk_alerts": active_alerts,
+            "active_alerts": active_alert_details,
+            "notifications": notification,
+            "source_label": "PostgreSQL runtime and health evidence",
+            "source_updated_at": source_updated_at,
+            "response_generated_at": now,
+        }
 
     def recover_instances(self) -> Dict[str, Any]:
         running = self._rows("SELECT id,status,last_processed_trade_date,last_cycle_key FROM paper_instances WHERE status IN ('running','paused') ORDER BY created_at")

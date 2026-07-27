@@ -527,8 +527,29 @@ async function mockApi(page: Page) {
     };
     if (method === 'GET' && path === '/paper/instances') return route.fulfill(json({ items: [paperInstance], total: 1 }));
     if (method === 'GET' && path === `/paper/instances/${paperInstance.id}`) return route.fulfill(json(paperInstance));
-    if (method === 'GET' && path === '/watch/context') return route.fulfill(json({ alerts: [{ id: 'alert-1', paper_instance_id: paperInstance.id, category: 'signal', severity: 'info', title: '新的 Paper 策略信号', message: 'SH_600519 order_target_percent=1', source_object_type: 'strategy_signal', source_object_id: 'signal-1', evidence: {}, status: 'active', triggered_at: now }], signals: paperInstance.signals, pool_moves: [{ snapshot_id: 11, pool_id: 'pool-1', pool_name: '动量 Top20', trade_date: '2025-01-02', member_count: 20, manifest_hash: 'pool-manifest' }], instances: [paperInstance], data_status: 'fresh', source_label: 'PostgreSQL audit records', source_updated_at: now, response_generated_at: now }));
-    if (method === 'GET' && path === '/monitor/health') return route.fulfill(json({ status: 'healthy', services: [{ id: 1, service_code: 'paper_runtime', status: 'healthy', message: '周期处理成功', observed_at: now }], data: { dataset: { id: 10, status: 'sealed' }, market: { id: 3, status: 'published' } }, strategy_instances: [{ status: 'running', count: 1 }], risk_alerts: [], notifications: [{ status: 'delivered', count: 1 }], observed_at: now }));
+    if (method === 'GET' && path === '/watch/context') return route.fulfill(json({
+      alerts: [{ id: 'alert-1', paper_instance_id: paperInstance.id, category: 'signal', severity: 'info', title: '新的 Paper 策略信号', message: 'SH_600519 order_target_percent=1', source_object_type: 'strategy_signal', source_object_id: 'signal-1', evidence: {}, status: 'active', triggered_at: now }],
+      signals: paperInstance.signals,
+      orders: paperInstance.orders.map((item) => ({ ...item, paper_instance_id: paperInstance.id, instance_name: paperInstance.name, filled_quantity: item.quantity, order_type: 'limit' })),
+      trades: paperInstance.trades.map((item) => ({ ...item, paper_instance_id: paperInstance.id, instance_name: paperInstance.name })),
+      positions: paperInstance.positions.map((item) => ({ ...item, paper_instance_id: paperInstance.id, instance_name: paperInstance.name, updated_at: now })),
+      risk_events: [{ id: 'risk-1', paper_instance_id: paperInstance.id, instance_name: paperInstance.name, rule_name: 'A股整数手', rule_version: 1, decision: 'accepted', message: '风险检查通过', created_at: now }],
+      runtime_events: paperInstance.events,
+      coverage: { instances: 1, signals: 1, orders: 1, trades: 1, positions: 1, risk_events: 1, runtime_events: 1 },
+      pool_moves: [{ snapshot_id: 11, pool_id: 'pool-1', pool_name: '动量 Top20', trade_date: '2025-01-02', member_count: 20, manifest_hash: 'pool-manifest' }],
+      instances: [paperInstance], data_status: 'fresh', source_label: 'PostgreSQL Paper audit evidence', source_updated_at: now, response_generated_at: now,
+    }));
+    if (method === 'GET' && path === '/monitor/health') return route.fulfill(json({
+      status: 'healthy',
+      services: [{ id: 1, service_code: 'paper_runtime', status: 'healthy', freshness: 'fresh', message: '周期处理成功', observed_at: now }],
+      data: { dataset: { id: 10, status: 'sealed' }, market: { id: 3, status: 'published' } },
+      strategy_instances: [{ status: 'running', count: 1 }],
+      strategy_health: [{ id: paperInstance.id, name: paperInstance.name, status: 'running', health_state: 'fresh', data_purpose: 'acceptance', heartbeat_at: now, last_processed_trade_date: '2025-01-02', latest_cycle_status: 'success', latest_cycle_finished_at: now, latest_equity: 1120000, latest_drawdown: 0, latest_cycle_ledger_difference: 0, order_count: 1, trade_count: 1, risk_event_count: 1, rejected_count: 0 }],
+      risk_alerts: [],
+      active_alerts: [],
+      notifications: [{ status: 'delivered', count: 1 }],
+      source_label: 'PostgreSQL runtime and health evidence', source_updated_at: now, response_generated_at: now,
+    }));
     const reviewContext = { review: { id: 'review-1', trade_date: '2025-01-02', status: 'sealed', author_name: 'admin', summary: '全链路复盘', next_day_plan: '继续观察', source_manifest_hash: 'review-manifest' }, trade_date: '2025-01-02', status: 'sealed', source_manifest_hash: 'review-manifest', counts: { market: 1, pool: 1, strategy: 1, risk: 1, order: 1, trade: 1, performance: 1 }, metrics: [{ metric_code: 'limit_up_count', metric_value: 58, source_object_type: 'market_evidence_snapshot', source_object_id: '3', calculation_version: 'v1' }, { metric_code: 'limit_down_count', metric_value: 2, source_object_type: 'market_evidence_snapshot', source_object_id: '3', calculation_version: 'v1' }, { metric_code: 'highest_board', metric_value: 6, source_object_type: 'market_evidence_snapshot', source_object_id: '3', calculation_version: 'v1' }], items: [{ item_key: 'market', occurred_at: '2025-01-02T17:30:00+08:00', category: 'market', title: '市场证据 · post_close', summary: 'all_a · published', source_object_type: 'market_evidence_snapshot', source_object_id: '3', source_route: '/market', resolution_status: 'resolved', evidence: {}, evidence_hash: 'market-hash' }, { item_key: 'pool', occurred_at: '2025-01-02T17:31:00+08:00', category: 'pool', title: '股票池快照 · 动量 Top20', summary: '20 个固定成员', source_object_type: 'stock_pool_snapshot', source_object_id: '11', source_route: '/pools?tab=snapshots', resolution_status: 'resolved', evidence: {}, evidence_hash: 'pool-hash' }, { item_key: 'signal', occurred_at: '2025-01-02T15:00:00+08:00', category: 'strategy', title: '策略信号 · SH_600519 buy', summary: 'MA5', source_object_type: 'strategy_signal', source_object_id: 'signal-1', source_route: `/paper?tab=signals&instance=${paperInstance.id}`, resolution_status: 'resolved', evidence: {}, evidence_hash: 'signal-hash' }, { item_key: 'trade', occurred_at: '2025-01-02T09:30:00+08:00', category: 'trade', title: '模拟成交 · SH_600519 buy', summary: '100 股', source_object_type: 'trade', source_object_id: 'trade-1', source_route: `/paper?tab=orders&instance=${paperInstance.id}`, resolution_status: 'resolved', evidence: {}, evidence_hash: 'trade-hash' }] };
     if (method === 'GET' && path === '/review/dates') return route.fulfill(json({ items: ['2025-01-02'], total: 1 }));
     if (method === 'GET' && path === '/review/2025-01-02') return route.fulfill(json(reviewContext));
@@ -619,7 +640,7 @@ test('sidebar exposes exactly twelve ordered first-level workspaces', async ({ p
     /策略开发/,
     /回测中心/,
     /AI 研发/,
-    /模拟\/实盘交易/,
+    /模拟交易/,
     /观察台/,
     /运行风控/,
     /复盘中心/,
@@ -645,7 +666,7 @@ test('desktop shell matches the StockPro AI server console style', async ({ page
   await expect(sidebar.getByRole('link', { name: /管理后台/ })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: /回测中心/ })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: /复盘中心/ })).toBeVisible();
-  await expect(sidebar.getByRole('link', { name: /模拟\/实盘交易/ })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: /模拟交易/ })).toBeVisible();
   const riskBox = await sidebar.getByText('执行风控').boundingBox();
   const adminBox = await sidebar.getByRole('link', { name: /管理后台/ }).boundingBox();
   expect(adminBox?.y ?? 0).toBeGreaterThan(riskBox?.y ?? 0);
@@ -686,7 +707,7 @@ test('top market ticker stays mounted and does not refetch on page tab changes',
   await expect(page.getByRole('heading', { name: '回测实例控制台' })).toBeVisible();
   await expect(topbar).toHaveAttribute('data-lifecycle-probe', 'persistent');
 
-  await page.getByRole('link', { name: /模拟\/实盘交易/ }).click();
+  await page.getByRole('link', { name: /模拟交易/ }).click();
   await expect(page.getByRole('heading', { name: '模拟交易控制台' })).toBeVisible();
   await expect(topbar).toHaveAttribute('data-lifecycle-probe', 'persistent');
   expect(overviewRequestCount).toBe(initialRequestCount);
@@ -748,7 +769,7 @@ test('data-trust pages keep their state evidence usable at 390px', async ({ page
   await loginAsAdmin(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const pages = [
-    { path: '/', evidence: '未提供可比快照' },
+    { path: '/', evidence: '快照可用' },
     { path: '/paper', evidence: '回放心跳陈旧' },
     { path: '/review', evidence: '今日盘面复盘' },
     { path: '/data', evidence: '缓存同步质量诊断' },
@@ -860,6 +881,8 @@ test('stock-pool snapshot carries evidence into a backtest draft without copied 
   await expect(page.getByTestId('pool-snapshot-table')).toBeVisible();
   await page.getByTestId('pool-backtest-11').click();
   await expect(page).toHaveURL(/\/backtest\?poolSnapshotId=11&experimentId=experiment-1$/);
+  await page.getByRole('button', { name: '创建回测实例' }).click();
+  await page.getByRole('button', { name: '下一步' }).click();
   await expect(page.locator('label').filter({ has: page.getByText('股票池快照', { exact: true }) }).locator('select')).toHaveValue('11');
   await expect(page.locator('input[value="股票池快照 #11"]')).toBeVisible();
 });
@@ -1006,9 +1029,17 @@ test('paper watch and monitor keep separate operator ownership', async ({ page }
   await page.goto('/paper');
   for (const label of ['实例', '信号', '订单', '持仓', '账户', '事件']) await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
   await page.goto('/watch');
-  for (const label of ['策略信号', '股票池变动', '图表联动', '告警']) await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+  for (const label of ['策略信号', '订单与成交', '股票池变动', '图表联动', '告警']) await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '订单与成交', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Paper 订单' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Paper 成交' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前持仓证据' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '风险决策' })).toBeVisible();
   await page.goto('/monitor');
   for (const label of ['总览', '策略健康', '数据健康', '风险', '通知']) await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '策略健康', exact: true }).click();
+  await expect(page.getByText('验收数据')).toBeVisible();
+  await expect(page.getByText('最后心跳')).toBeVisible();
 });
 
 test('strategy backtest and paper expose the A-share operator workflow without implementation notes', async ({ page }) => {
@@ -1086,7 +1117,7 @@ test('monitor keeps counters unavailable when its health snapshot fails', async 
   await loginAsAdmin(page);
   await page.goto('/monitor');
 
-  await expect(page.getByText('服务健康与审计记录')).toBeVisible();
+  await expect(page.getByText('PostgreSQL 运行证据')).toBeVisible();
   await expect(page.getByText('加载失败', { exact: true })).toBeVisible();
   for (const label of ['策略实例', '活动风险告警', '通知投递']) {
     await expect(page.getByText(label).locator('..').getByText('--')).toBeVisible();

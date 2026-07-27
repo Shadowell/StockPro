@@ -318,12 +318,38 @@ test('真实 Paper 五日链路在执行观察监控三页共享审计对象', a
   expect(filled?.signal_id).toBeTruthy();
   expect(filled?.risk_event_id).toBeTruthy();
   expect(String(filled?.filled_at).slice(0, 10) > String(filled?.signal_time).slice(0, 10)).toBeTruthy();
-  const watch = (await watchResp.json()) as { alerts?: Array<{ paper_instance_id?: unknown }>; instances?: Array<{ id?: unknown }> };
+  const watch = (await watchResp.json()) as {
+    alerts?: Array<{ paper_instance_id?: unknown }>;
+    instances?: Array<{ id?: unknown }>;
+    orders?: Array<{ paper_instance_id?: unknown }>;
+    trades?: Array<{ paper_instance_id?: unknown }>;
+    risk_events?: Array<{ paper_instance_id?: unknown }>;
+    source_updated_at?: unknown;
+    response_generated_at?: unknown;
+  };
   expect((watch.instances ?? []).some((item) => String(item.id) === instanceId)).toBeTruthy();
   expect((watch.alerts ?? []).some((item) => String(item.paper_instance_id) === instanceId)).toBeTruthy();
-  const health = (await healthResp.json()) as { status?: unknown; strategy_instances?: unknown[]; services?: unknown[] };
+  expect((watch.orders ?? []).some((item) => String(item.paper_instance_id) === instanceId)).toBeTruthy();
+  expect((watch.trades ?? []).some((item) => String(item.paper_instance_id) === instanceId)).toBeTruthy();
+  expect((watch.risk_events ?? []).some((item) => String(item.paper_instance_id) === instanceId)).toBeTruthy();
+  expect(typeof watch.source_updated_at).toBe('string');
+  expect(typeof watch.response_generated_at).toBe('string');
+  const health = (await healthResp.json()) as {
+    status?: unknown;
+    strategy_instances?: unknown[];
+    strategy_health?: Array<{ id?: unknown; health_state?: unknown; data_purpose?: unknown }>;
+    services?: unknown[];
+    source_updated_at?: unknown;
+    response_generated_at?: unknown;
+  };
   expect(['healthy', 'warning', 'critical']).toContain(String(health.status));
   expect(Array.isArray(health.strategy_instances)).toBeTruthy();
+  const instanceHealth = (health.strategy_health ?? []).find((item) => String(item.id) === instanceId);
+  expect(instanceHealth).toBeTruthy();
+  expect(['fresh', 'stale', 'missing', 'failed', 'stopped', 'draft']).toContain(String(instanceHealth?.health_state));
+  expect(['user', 'acceptance', 'seed']).toContain(String(instanceHealth?.data_purpose));
+  expect(typeof health.source_updated_at).toBe('string');
+  expect(typeof health.response_generated_at).toBe('string');
 
   await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
   const pageErrors: string[] = [];

@@ -901,12 +901,43 @@ export interface RuntimeAlert {
 export interface WatchContext {
   alerts: RuntimeAlert[];
   signals: Array<Record<string, unknown>>;
+  orders: Array<Record<string, unknown>>;
+  trades: Array<Record<string, unknown>>;
+  positions: Array<Record<string, unknown>>;
+  risk_events: Array<Record<string, unknown>>;
+  runtime_events: Array<Record<string, unknown>>;
   pool_moves: Array<Record<string, unknown>>;
   instances: PaperRuntimeInstance[];
+  coverage: Record<string, number>;
   data_status: 'fresh' | 'stale' | 'empty';
   source_label: string;
   source_updated_at?: string | null;
   response_generated_at: string;
+}
+
+export interface StrategyRuntimeHealth {
+  id: string;
+  name: string;
+  status: PaperRuntimeInstance['status'];
+  health_state: 'fresh' | 'stale' | 'missing' | 'failed' | 'stopped' | 'draft';
+  data_purpose: 'user' | 'acceptance' | 'seed';
+  heartbeat_at?: string | null;
+  heartbeat_age_seconds?: number | null;
+  last_processed_trade_date?: string | null;
+  latest_cycle_id?: string | null;
+  latest_cycle_status?: string | null;
+  latest_cycle_trade_date?: string | null;
+  latest_cycle_finished_at?: string | null;
+  latest_cycle_error?: string | null;
+  latest_cycle_ledger_difference?: number | string | null;
+  latest_equity?: number | string | null;
+  latest_nav?: number | string | null;
+  latest_drawdown?: number | string | null;
+  latest_equity_trade_date?: string | null;
+  order_count: number;
+  trade_count: number;
+  risk_event_count: number;
+  rejected_count: number;
 }
 
 export interface MonitorHealth {
@@ -914,9 +945,13 @@ export interface MonitorHealth {
   services: Array<Record<string, unknown>>;
   data: { dataset?: Record<string, unknown> | null; market?: Record<string, unknown> | null };
   strategy_instances: Array<Record<string, unknown>>;
+  strategy_health: StrategyRuntimeHealth[];
   risk_alerts: Array<Record<string, unknown>>;
+  active_alerts: RuntimeAlert[];
   notifications: Array<Record<string, unknown>>;
-  observed_at: string;
+  source_label: string;
+  source_updated_at?: string | null;
+  response_generated_at: string;
 }
 
 export interface DailyReviewItem {
