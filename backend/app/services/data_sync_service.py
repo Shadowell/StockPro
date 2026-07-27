@@ -23,6 +23,32 @@ class DataSyncService:
     def __init__(self):
         self.db = pg_db_instance
         self.is_running = False
+
+    @staticmethod
+    def _stock_spot_frame():
+        errors = []
+        for source_name, fetcher in (
+            ("eastmoney", ak.stock_zh_a_spot_em),
+            ("sina", ak.stock_zh_a_spot),
+        ):
+            try:
+                df = fetcher()
+                if df is not None and not df.empty:
+                    logger.info("Using %s spot data for realtime stock sync: %s rows", source_name, len(df))
+                    return df
+                errors.append(f"{source_name}: empty")
+            except Exception as exc:
+                errors.append(f"{source_name}: {exc}")
+        raise RuntimeError("; ".join(errors))
+
+    @staticmethod
+    def _number(value: Any, default: Any = 0):
+        try:
+            if value is None or pd.isna(value):
+                return default
+            return float(value)
+        except Exception:
+            return default
         
     def sync_stock_history(self, date: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -714,30 +740,25 @@ class DataSyncService:
         
         start_time = time.time()
         try:
-            stock_df = ak.stock_zh_a_spot_em()
+            stock_df = self._stock_spot_frame()
             
             if stock_df is not None and not stock_df.empty:
-                # 只处理A股
-                filtered_df = stock_df[
-                    stock_df['代码'].str.startswith(('00', '60', '30', '68'))
-                ].copy()
-                
                 records = []
-                for _, row in filtered_df.iterrows():
+                for _, row in stock_df.iterrows():
                     records.append({
-                        'code': row['代码'],
-                        'name': row['名称'],
-                        'price': float(row['最新价']) if pd.notna(row['最新价']) else 0,
-                        'change_percent': float(row['涨跌幅']) if pd.notna(row['涨跌幅']) else 0,
-                        'volume': float(row['成交量']) if pd.notna(row['成交量']) else 0,
-                        'amount': float(row['成交额']) if pd.notna(row['成交额']) else 0,
-                        'turnover': float(row['换手率']) if pd.notna(row['换手率']) else 0,
-                        'volume_ratio': float(row['量比']) if pd.notna(row['量比']) else 0,
-                        'pe_dynamic': float(row['市盈率-动态']) if pd.notna(row['市盈率-动态']) else None,
-                        'pb': float(row['市净率']) if pd.notna(row['市净率']) else None,
-                        'total_market_cap': float(row['总市值']) if pd.notna(row['总市值']) else 0,
-                        'float_market_cap': float(row['流通市值']) if pd.notna(row['流通市值']) else 0,
-                        'amplitude': float(row['振幅']) if pd.notna(row['振幅']) else 0
+                        'code': row.get('代码'),
+                        'name': row.get('名称'),
+                        'price': self._number(row.get('最新价')),
+                        'change_percent': self._number(row.get('涨跌幅')),
+                        'volume': self._number(row.get('成交量')),
+                        'amount': self._number(row.get('成交额')),
+                        'turnover': self._number(row.get('换手率'), None),
+                        'volume_ratio': self._number(row.get('量比'), None),
+                        'pe_dynamic': self._number(row.get('市盈率-动态'), None),
+                        'pb': self._number(row.get('市净率'), None),
+                        'total_market_cap': self._number(row.get('总市值'), None),
+                        'float_market_cap': self._number(row.get('流通市值'), None),
+                        'amplitude': self._number(row.get('振幅'), None)
                     })
                 
                 self.db.update_all_stocks_realtime(records)

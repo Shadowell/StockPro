@@ -197,7 +197,7 @@ class StrategyLabService:
         symbol_label = "-".join(resolved_symbols[:2])
         strategy_name = f"本地生成-{objective_clean}-{symbol_label}"
         generated_plan = (
-            f"A股自动开发计划：围绕“{objective_clean}”生成 Backtrader 多股组合策略，"
+            f"A股自动开发计划：围绕“{objective_clean}”生成 StockPro Strategy API v1 多股组合策略，"
             f"标的池 {', '.join(resolved_symbols)}，风险档位 {risk_label}；"
             "先用日线数据回测，再进入模拟盘观察权益、现金、订单、持仓和事件流。"
         )
@@ -206,7 +206,7 @@ class StrategyLabService:
             symbols=resolved_symbols,
             risk_level=risk_level_clean,
         )
-        description = f"自动生成 Backtrader：{objective_clean} / {risk_label} / 标的池 {', '.join(resolved_symbols)}"
+        description = f"自动生成 Strategy API v1：{objective_clean} / {risk_label} / 标的池 {', '.join(resolved_symbols)}"
 
         strategy_id = self.db.save_strategy(
             name=strategy_name,
@@ -215,12 +215,16 @@ class StrategyLabService:
             interval_seconds=60,
         )
         strategy = self.db.get_strategy_by_id(strategy_id)
+        from app.services.strategy_runtime_service import StrategyRuntimeService
+        version_result = StrategyRuntimeService(self.db).ensure_legacy_version(strategy_id, strategy or {})
         return {
             "success": True,
             "id": strategy_id,
             "strategy": strategy,
             "symbols": resolved_symbols,
             "generated_plan": generated_plan,
+            "strategy_version": version_result.get("strategy_version"),
+            "validation": version_result.get("validation"),
         }
 
     def run_backtest(
@@ -579,7 +583,7 @@ class StrategyLabService:
     def _strategy_class_from_script(self, script_content: str) -> Type[bt.Strategy]:
         if "bt.Strategy" in script_content or "backtrader.Strategy" in script_content:
             return self.load_custom_strategy_class(script_content)
-        return RegisteredMomentumStrategy
+        raise ValueError("普通 Python 生命周期策略必须通过 StockPro Strategy API v1 运行，禁止静默回退到内置策略")
 
     def _validate_strategy_ast(self, tree: ast.AST) -> None:
         for node in ast.walk(tree):
@@ -668,49 +672,39 @@ class StrategyLabService:
             "aggressive": {"max_positions": 8, "entry_change": 0.016, "exit_change": -0.01},
         }[risk_level]
         symbols_json = json.dumps(symbols, ensure_ascii=False)
-        return f'''# StockPro 自动生成 A股 Backtrader 策略：{objective}
-import backtrader as bt
+        return f'''# StockPro Strategy API v1：{objective}
+TARGET_SYMBOLS = {symbols_json}
+ENTRY_CHANGE = {risk_params["entry_change"]}
+EXIT_CHANGE = {risk_params["exit_change"]}
+MAX_POSITIONS = {risk_params["max_positions"]}
 
 
-class GeneratedAshareStrategy(bt.Strategy):
-    params = dict(
-        target_symbols={symbols_json},
-        max_positions={risk_params["max_positions"]},
-        position_pct=0.9,
-        entry_change={risk_params["entry_change"]},
-        exit_change={risk_params["exit_change"]},
-    )
+def initialize(context):
+    context.target_symbols = TARGET_SYMBOLS
+    context.max_positions = MAX_POSITIONS
+    set_option("avoid_future_data", True)
+    set_benchmark("000300.SH")
 
-    def __init__(self):
-        self.entry_date = {{}}
 
-    def next(self):
-        open_count = sum(1 for data in self.datas if self.getposition(data).size)
-        slots = max(int(self.p.max_positions) - open_count, 0)
-        candidates = []
-        for data in self.datas:
-            if data._name not in self.p.target_symbols or len(data.close) < 3:
-                continue
-            pos = self.getposition(data)
-            momentum = (data.close[0] - data.close[-2]) / data.close[-2] if data.close[-2] else 0
-            if pos.size:
-                entry_date = self.entry_date.get(data._name)
-                if entry_date and data.datetime.date(0) <= entry_date:
-                    continue
-                if momentum <= self.p.exit_change:
-                    self.sell(data=data, size=pos.size)
-            elif momentum >= self.p.entry_change and data.volume[0] >= data.volume[-1]:
-                candidates.append((momentum, data))
-
-        candidates.sort(key=lambda item: item[0], reverse=True)
-        if not candidates or slots <= 0:
-            return
-        allocation = self.broker.getcash() * self.p.position_pct / max(min(len(candidates), slots), 1)
-        for _, data in candidates[:slots]:
-            size = int((allocation / data.close[0]) // 100) * 100
-            if size > 0:
-                self.buy(data=data, size=size)
-                self.entry_date[data._name] = data.datetime.date(0)
+def handle_data(context, data):
+    candidates = []
+    for symbol in context.target_symbols:
+        if symbol not in data:
+            continue
+        closes = history(symbol, 3, "1d", "close")
+        volumes = history(symbol, 2, "1d", "volume")
+        if len(closes) < 3 or len(volumes) < 2 or not closes[-2]:
+            continue
+        momentum = (closes[-1] - closes[-2]) / closes[-2]
+        if momentum >= ENTRY_CHANGE and volumes[-1] >= volumes[-2]:
+            candidates.append((momentum, symbol))
+        elif momentum <= EXIT_CHANGE:
+            order_target_percent(symbol, 0.0)
+    candidates = sorted(candidates, reverse=True)[:context.max_positions]
+    target = 0.9 / len(candidates) if candidates else 0.0
+    for _, symbol in candidates:
+        order_target_percent(symbol, target)
+    record(candidate_count=len(candidates))
 '''
 
     def _load_history(

@@ -8,6 +8,7 @@ import logging
 
 from app.services.strategy_execution_service import strategy_execution_service
 from app.services.strategy_lab_service import strategy_lab_service
+from app.services.data_purpose import infer_data_purpose
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -54,6 +55,11 @@ async def get_strategies() -> List[Dict[str, Any]]:
     """获取所有策略列表"""
     try:
         strategies = strategy_execution_service.get_strategies()
+        for strategy in strategies:
+            strategy["data_purpose"] = infer_data_purpose(
+                strategy.get("name"),
+                strategy.get("description"),
+            )
         return strategies
     except Exception as e:
         logger.error(f"Error getting strategies: {e}")
@@ -67,6 +73,10 @@ async def get_strategy(strategy_id: int) -> Dict[str, Any]:
         strategy = strategy_execution_service.get_strategy(strategy_id)
         if not strategy:
             raise HTTPException(status_code=404, detail="Strategy not found")
+        strategy["data_purpose"] = infer_data_purpose(
+            strategy.get("name"),
+            strategy.get("description"),
+        )
         return strategy
     except HTTPException:
         raise

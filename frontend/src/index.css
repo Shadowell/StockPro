@@ -10,20 +10,20 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --shell-bg: #0b1220;
-  --shell-sidebar: #111827;
-  --shell-panel: #111827;
-  --shell-card: #0b1020;
-  --shell-border: #223047;
-  --shell-border-soft: rgba(34, 48, 71, 0.74);
-  --shell-muted: #94a3b8;
-  --shell-subtle: #64748b;
-  --shell-accent: #2563eb;
-  --shell-accent-soft: rgba(37, 99, 235, 0.18);
-  --color-up: #ff4d57;
-  --color-down: #10b981;
-  --color-up-bg: #ff4d571a;
-  --color-down-bg: #10b9811a;
+  --shell-bg: #0d1117;
+  --shell-sidebar: #161b22;
+  --shell-panel: #111820;
+  --shell-card: #161b22;
+  --shell-border: #30363d;
+  --shell-border-soft: rgba(48, 54, 61, 0.74);
+  --shell-muted: #8b949e;
+  --shell-subtle: #6e7681;
+  --shell-accent: #58a6ff;
+  --shell-accent-soft: rgba(88, 166, 255, 0.14);
+  --color-up: #ff1744;
+  --color-down: #00c853;
+  --color-up-bg: rgb(255 23 68 / 10%);
+  --color-down-bg: rgb(0 200 83 / 10%);
 }
 
 body {
@@ -31,6 +31,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background: var(--shell-bg);
+  overflow: hidden;
 }
 
 * {
@@ -43,16 +44,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0b1220;
+  background: #0d1117;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #223047;
+  background: #30363d;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #484f58;
 }
 
 .text-up {
@@ -105,4 +106,211 @@ body {
 .bg-purple-500\/15,
 .bg-purple-500\/10 {
   background-color: rgba(37, 99, 235, 0.16) !important;
+}
+
+/* StockPro financial operator contract. The selectors intentionally normalize
+   legacy route markup while business pages migrate toward @bitpro/ui primitives. */
+.stockpro-financial-workspace {
+  --bp-bg: var(--shell-bg);
+  --bp-card: var(--shell-card);
+  --bp-card-muted: var(--shell-panel);
+  --bp-border: var(--shell-border);
+  --bp-text: #e6edf3;
+  --bp-muted: var(--shell-muted);
+  --bp-accent: var(--shell-accent);
+  --bp-up: var(--color-up);
+  --bp-down: var(--color-down);
+  --bp-up-bg: var(--color-up-bg);
+  --bp-down-bg: var(--color-down-bg);
+  min-height: 100vh;
+  background: var(--shell-bg);
+  color-scheme: dark;
+  font-size: 13px;
+}
+
+.stockpro-financial-workspace[data-bitpro-color-scheme='green-up-red-down'] {
+  --color-up: #00c853;
+  --color-down: #ff1744;
+  --color-up-bg: rgb(0 200 83 / 10%);
+  --color-down-bg: rgb(255 23 68 / 10%);
+}
+
+.stockpro-financial-workspace button,
+.stockpro-financial-workspace input,
+.stockpro-financial-workspace select,
+.stockpro-financial-workspace textarea {
+  font: inherit;
+}
+
+.stockpro-financial-workspace button,
+.stockpro-financial-workspace a,
+.stockpro-financial-workspace input,
+.stockpro-financial-workspace select,
+.stockpro-financial-workspace textarea {
+  outline: none;
+}
+
+.stockpro-financial-workspace button:focus-visible,
+.stockpro-financial-workspace a:focus-visible,
+.stockpro-financial-workspace input:focus-visible,
+.stockpro-financial-workspace select:focus-visible,
+.stockpro-financial-workspace textarea:focus-visible {
+  box-shadow: 0 0 0 2px rgb(13 17 23), 0 0 0 4px rgb(88 166 255 / 70%);
+}
+
+.stockpro-financial-workspace button:not(.rounded-full),
+.stockpro-financial-workspace input:not([type='checkbox']):not([type='radio']),
+.stockpro-financial-workspace select,
+.stockpro-financial-workspace textarea {
+  border-radius: 6px;
+}
+
+.stockpro-financial-workspace input,
+.stockpro-financial-workspace select,
+.stockpro-financial-workspace textarea {
+  border-color: var(--shell-border);
+  background-color: #0d1117;
+  color: #e6edf3;
+}
+
+.stockpro-financial-workspace input::placeholder,
+.stockpro-financial-workspace textarea::placeholder {
+  color: #6e7681;
+}
+
+.stockpro-page-viewport {
+  height: calc(100vh - 48px);
+  background: var(--shell-bg);
+  scrollbar-gutter: stable;
+}
+
+.stockpro-page-viewport > * {
+  min-width: 0;
+}
+
+.stockpro-page-viewport h1 {
+  letter-spacing: -0.02em;
+}
+
+.stockpro-page-viewport h2,
+.stockpro-page-viewport h3 {
+  letter-spacing: -0.01em;
+}
+
+.stockpro-page-viewport table {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stockpro-page-viewport thead {
+  background: #111820;
+}
+
+.stockpro-page-viewport th {
+  height: 34px;
+  color: #8b949e;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.stockpro-page-viewport td {
+  height: 38px;
+}
+
+.stockpro-page-viewport tbody tr {
+  transition: background-color 120ms ease;
+}
+
+.stockpro-page-viewport tbody tr:hover {
+  background: rgb(88 166 255 / 4%);
+}
+
+.stockpro-page-viewport pre,
+.stockpro-page-viewport code,
+.stockpro-page-viewport .font-mono,
+.stockpro-page-viewport .tabular-nums {
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+.stockpro-page-viewport .space-y-5 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 14px;
+}
+
+.stockpro-page-viewport .gap-5 {
+  gap: 14px;
+}
+
+.stockpro-page-viewport .p-5 {
+  padding: 16px;
+}
+
+.stockpro-page-viewport .py-6 {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.stockpro-page-viewport .bp-panel,
+.stockpro-page-viewport .bp-metric-card {
+  box-shadow: 0 1px 0 rgb(255 255 255 / 2%);
+}
+
+.stockpro-page-viewport .bp-panel__header {
+  min-height: 42px;
+  padding: 10px 14px;
+}
+
+.stockpro-page-viewport .bp-metric-card {
+  min-height: 98px;
+  padding: 12px;
+}
+
+.stockpro-page-viewport .bp-metric-card__value {
+  font-size: 19px;
+}
+
+@media (max-width: 1279px) {
+  .stockpro-financial-workspace [data-testid='stockpro-ai-topbar'] [aria-label='A股指数快照'] > div {
+    min-width: 104px;
+    padding-inline: 8px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .stockpro-page-viewport {
+    height: calc(100vh - 101px);
+  }
+
+  .stockpro-page-viewport > div,
+  .stockpro-page-viewport > main {
+    padding-inline: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .stockpro-page-viewport {
+    scrollbar-gutter: auto;
+  }
+
+  .stockpro-page-viewport > div,
+  .stockpro-page-viewport > main {
+    padding: 14px 12px 24px;
+  }
+
+  .stockpro-page-viewport header h1 {
+    font-size: 19px;
+  }
+
+  .stockpro-page-viewport .p-5,
+  .stockpro-page-viewport .p-6 {
+    padding: 14px;
+  }
+
+  .stockpro-page-viewport td,
+  .stockpro-page-viewport th {
+    padding-inline: 10px;
+  }
 }

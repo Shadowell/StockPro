@@ -71,3 +71,13 @@ logs/
 # Misc
 .trae/
 .vercel/
+.local/
+
+# Frontend test artifacts
+frontend/playwright-report/
+frontend/test-results/
+
+# Local runtime and browser-review artifacts
+.data-runtime-config.json
+.playwright-cli/
+output/

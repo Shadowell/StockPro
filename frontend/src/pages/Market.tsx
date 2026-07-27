@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import clsx from 'clsx';
-import { ChevronDown, Flame, RefreshCw, Search, Sparkles, TrendingUp, X } from 'lucide-react';
+import { ChevronDown, Flame, RefreshCw, Search, TrendingUp, X } from 'lucide-react';
 import {
   getDailyChart,
   getHotConceptLeaders,
@@ -11,10 +11,14 @@ import {
 } from '../api/client';
 import type { ConceptLeaderStock, DailyChartData, StockFundamentals, ThsHotItem } from '../types';
 
-const TIMEFRAMES = ['分时', '1D', '5D', '1M', '3M', '1Y'];
 const MIN_KLINES_TO_RENDER = 1;
 
-const pctClass = (value?: number | null) => ((value || 0) >= 0 ? 'text-up' : 'text-down');
+const pctClass = (value?: number | null) =>
+  value === null || value === undefined || Number.isNaN(value)
+    ? 'text-gray-500'
+    : value >= 0
+      ? 'text-up'
+      : 'text-down';
 const format = (value?: number | null, digits = 2) =>
   value === null || value === undefined || Number.isNaN(value)
     ? '--'
@@ -27,6 +31,11 @@ const signedPct = (value?: number | null) =>
   value === null || value === undefined || Number.isNaN(value)
     ? '--'
     : `${value >= 0 ? '+' : ''}${format(value)}%`;
+
+const publicSymbol = (value: string) => {
+  const match = /^([A-Z]{2})_(\d{6})$/.exec(value);
+  return match ? `${match[2]}.${match[1]}` : value;
+};
 
 const ema = (rows: DailyChartData[], period: number) => {
   const k = 2 / (period + 1);
@@ -47,7 +56,11 @@ type MarketRow = {
   rank?: number;
 };
 
-export function Market() {
+type MarketProps = {
+  asOfDate?: string;
+};
+
+export function Market({ asOfDate }: MarketProps = {}) {
   const [thsHot, setThsHot] = useState<ThsHotItem[]>([]);
   const [selectedConcept, setSelectedConcept] = useState('');
   const [leaders, setLeaders] = useState<ConceptLeaderStock[]>([]);
@@ -57,25 +70,28 @@ export function Market() {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [showPrediction, setShowPrediction] = useState(false);
-  const [activeRange, setActiveRange] = useState('1D');
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [conceptData, thsData] = await Promise.all([getHotConcepts(40), getThsHot(40)]);
-      setThsHot(thsData);
-      if (!selectedConcept && conceptData[0]?.name) setSelectedConcept(conceptData[0].name);
+      const [conceptResult, thsResult] = await Promise.allSettled([
+        getHotConcepts(40, asOfDate),
+        getThsHot(40, asOfDate),
+      ]);
+      setThsHot(thsResult.status === 'fulfilled' ? thsResult.value : []);
+      if (conceptResult.status === 'fulfilled' && conceptResult.value[0]?.name) {
+        setSelectedConcept((current) => current || conceptResult.value[0].name);
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [asOfDate]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     const handleMouseDown = (event: MouseEvent) => {
@@ -93,25 +109,42 @@ export function Market() {
 
   useEffect(() => {
     if (!selectedConcept) return;
-    getHotConceptLeaders({ name: selectedConcept, limit: 20 }).then((items) => {
-      setLeaders(items);
-      if (items[0]?.code) setSelectedSymbol(items[0].code);
-    });
-  }, [selectedConcept]);
+    let active = true;
+    getHotConceptLeaders({ name: selectedConcept, limit: 20, date: asOfDate })
+      .then((items) => {
+        if (!active) return;
+        setLeaders(items);
+        if (items[0]?.code) setSelectedSymbol(items[0].code);
+      })
+      .catch(() => {
+        if (active) setLeaders([]);
+      });
+    return () => { active = false; };
+  }, [asOfDate, selectedConcept]);
 
   useEffect(() => {
-    Promise.all([getDailyChart(selectedSymbol), getStockFundamentals(selectedSymbol)]).then(([dailyData, fundamentalsData]) => {
-      setDaily(dailyData);
-      setFundamentals(fundamentalsData);
-    });
+    let active = true;
+    Promise.allSettled([getDailyChart(selectedSymbol), getStockFundamentals(selectedSymbol)])
+      .then(([dailyResult, fundamentalsResult]) => {
+        if (!active) return;
+        setDaily(dailyResult.status === 'fulfilled' ? dailyResult.value : []);
+        setFundamentals(fundamentalsResult.status === 'fulfilled' ? fundamentalsResult.value : null);
+      });
+    return () => { active = false; };
   }, [selectedSymbol]);
 
-  const fallbackPrice = fundamentals?.current_price ?? daily.at(-1)?.close;
-  const fallbackChangePct = fundamentals?.change_percent
-    ?? (daily.length > 1 && daily[0].close
-      ? ((daily.at(-1)!.close - daily[0].close) / daily[0].close) * 100
-      : undefined);
-  const fallbackAmount = daily.at(-1)?.volume && fallbackPrice ? daily.at(-1)!.volume * fallbackPrice : undefined;
+  const visibleDaily = useMemo(
+    () => asOfDate ? daily.filter((item) => item.date <= asOfDate) : daily,
+    [asOfDate, daily],
+  );
+  const latestDaily = visibleDaily.at(-1);
+  const previousDaily = visibleDaily.at(-2);
+  const dailyChangePct = latestDaily && previousDaily?.close
+    ? ((latestDaily.close - previousDaily.close) / previousDaily.close) * 100
+    : undefined;
+  const fallbackPrice = asOfDate ? latestDaily?.close : fundamentals?.current_price ?? latestDaily?.close;
+  const fallbackChangePct = asOfDate ? dailyChangePct : fundamentals?.change_percent ?? dailyChangePct;
+  const fallbackAmount = latestDaily?.volume && fallbackPrice ? latestDaily.volume * fallbackPrice : undefined;
 
   const marketRows: MarketRow[] = useMemo(() => {
     if (leaders.length > 0) {
@@ -136,11 +169,11 @@ export function Market() {
         rank: item.rank,
       }));
     }
-    if (fallbackPrice != null || daily.length > 0 || fundamentals) {
+    if (fallbackPrice != null || visibleDaily.length > 0 || (!asOfDate && fundamentals)) {
       return [
         {
           code: selectedSymbol,
-          name: fundamentals?.name || selectedSymbol,
+          name: fundamentals?.name || publicSymbol(selectedSymbol),
           price: fallbackPrice,
           change_percent: fallbackChangePct,
           amount: fallbackAmount,
@@ -150,7 +183,7 @@ export function Market() {
       ];
     }
     return [];
-  }, [daily.length, fallbackAmount, fallbackChangePct, fallbackPrice, fundamentals, leaders, selectedSymbol, thsHot]);
+  }, [asOfDate, fallbackAmount, fallbackChangePct, fallbackPrice, fundamentals, leaders, selectedSymbol, thsHot, visibleDaily.length]);
 
   const filteredMarketRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -159,25 +192,26 @@ export function Market() {
   }, [marketRows, searchQuery]);
 
   const selectedLeader = marketRows.find((item) => item.code === selectedSymbol);
-  const selectedPrice = fundamentals?.current_price ?? selectedLeader?.price ?? daily.at(-1)?.close;
-  const selectedChangePct = fundamentals?.change_percent ?? selectedLeader?.change_percent;
-  const selectedName = fundamentals?.name || selectedLeader?.name || selectedSymbol;
+  const selectedPrice = asOfDate
+    ? latestDaily?.close ?? selectedLeader?.price
+    : fundamentals?.current_price ?? selectedLeader?.price ?? latestDaily?.close;
+  const selectedChangePct = asOfDate
+    ? dailyChangePct ?? selectedLeader?.change_percent
+    : fundamentals?.change_percent ?? selectedLeader?.change_percent ?? dailyChangePct;
+  const selectedName = fundamentals?.name || selectedLeader?.name || publicSymbol(selectedSymbol);
 
   const chartOption = useMemo(() => {
-    const dates = daily.map((item) => item.date);
-    const candleRows = daily.map((item) => [item.open, item.close, item.low, item.high]);
-    const volumeRows = daily.map((item, index) => ({
+    const dates = visibleDaily.map((item) => item.date);
+    const candleRows = visibleDaily.map((item) => [item.open, item.close, item.low, item.high]);
+    const volumeRows = visibleDaily.map((item, index) => ({
       value: item.volume,
       itemStyle: { color: item.close >= item.open ? '#F6465D66' : '#00C85366' },
       date: dates[index],
     }));
-    const ema5 = ema(daily, 5);
-    const ema10 = ema(daily, 10);
-    const ema20 = ema(daily, 20);
-    const ema30 = ema(daily, 30);
-    const predictionRows = showPrediction
-      ? daily.map((item, index) => Number((item.close * (1 + (index + 1) * 0.002)).toFixed(4)))
-      : [];
+    const ema5 = ema(visibleDaily, 5);
+    const ema10 = ema(visibleDaily, 10);
+    const ema20 = ema(visibleDaily, 20);
+    const ema30 = ema(visibleDaily, 30);
     return {
       backgroundColor: 'transparent',
       legend: {
@@ -191,8 +225,8 @@ export function Market() {
         { left: 56, right: 20, top: '74%', height: '14%' },
       ],
       dataZoom: [
-        { type: 'inside', xAxisIndex: [0, 1], start: daily.length > 80 ? 45 : 0, end: 100 },
-        { type: 'slider', xAxisIndex: [0, 1], bottom: 8, height: 18, start: daily.length > 80 ? 45 : 0, end: 100, borderColor: '#30363D', fillerColor: 'rgba(88,166,255,0.16)', textStyle: { color: '#8B949E' } },
+        { type: 'inside', xAxisIndex: [0, 1], start: visibleDaily.length > 80 ? 45 : 0, end: 100 },
+        { type: 'slider', xAxisIndex: [0, 1], bottom: 8, height: 18, start: visibleDaily.length > 80 ? 45 : 0, end: 100, borderColor: '#30363D', fillerColor: 'rgba(88,166,255,0.16)', textStyle: { color: '#8B949E' } },
       ],
       tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
       axisPointer: { link: [{ xAxisIndex: 'all' }] },
@@ -244,19 +278,15 @@ export function Market() {
         { name: 'EMA10', type: 'line', data: ema10, smooth: true, symbol: 'none', lineStyle: { color: '#00B8FF', width: 1.2 } },
         { name: 'EMA20', type: 'line', data: ema20, smooth: true, symbol: 'none', lineStyle: { color: '#E85AAD', width: 1.2 } },
         { name: 'EMA30', type: 'line', data: ema30, smooth: true, symbol: 'none', lineStyle: { color: '#00C853', width: 1.2 } },
-        ...(showPrediction
-          ? [{ name: 'AI 预测', type: 'line', data: predictionRows, smooth: true, symbol: 'none', lineStyle: { color: '#facc15', width: 1.5, type: 'dashed' } }]
-          : []),
         { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: volumeRows, barWidth: '60%' },
       ],
     };
-  }, [daily, showPrediction]);
+  }, [visibleDaily]);
 
-  const lastClose = daily.at(-1)?.close ?? selectedPrice ?? 0;
-  const lastBar = daily.at(-1);
-  const lastUpdateLabel = lastBar?.date || fundamentals?.updated_at?.slice(0, 10) || '待同步';
-  const currentPrice = Number(selectedPrice || lastClose || 0);
-  const priceChange = Number(selectedChangePct || 0);
+  const lastClose = latestDaily?.close ?? selectedPrice ?? null;
+  const lastUpdateLabel = latestDaily?.date || (!asOfDate ? fundamentals?.updated_at?.slice(0, 10) : null) || '待同步';
+  const currentPrice = selectedPrice ?? lastClose;
+  const priceChange = selectedChangePct ?? null;
   const displayRows = (searchQuery.trim() ? filteredMarketRows : marketRows).slice(0, 8);
   const quickSymbols = (marketRows.length > 0 ? marketRows : filteredMarketRows).slice(0, 4);
 
@@ -269,31 +299,6 @@ export function Market() {
       setIsSearchOpen(false);
     }
   };
-
-  const orderBook = useMemo(() => {
-    const base = Number(lastClose || 10);
-    const asks = Array.from({ length: 10 }, (_, index) => ({
-      price: base + (10 - index) * 0.01,
-      volume: 800 + index * 137,
-      total: 0,
-    }));
-    let askTotal = 0;
-    for (const row of asks) {
-      askTotal += row.volume;
-      row.total = askTotal;
-    }
-    const bids = Array.from({ length: 10 }, (_, index) => ({
-      price: base - (index + 1) * 0.01,
-      volume: 760 + index * 121,
-      total: 0,
-    }));
-    let bidTotal = 0;
-    for (const row of bids) {
-      bidTotal += row.volume;
-      row.total = bidTotal;
-    }
-    return { asks, bids };
-  }, [lastClose]);
 
   return (
     <div className="h-full overflow-y-auto bg-crypto-bg p-6">
@@ -308,20 +313,6 @@ export function Market() {
         <div className="market-action-strip flex flex-wrap items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card/80 p-1 shadow-sm shadow-black/10">
           <button
             type="button"
-            onClick={() => setShowPrediction((value) => !value)}
-            className={clsx(
-              'group flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-all duration-200',
-              showPrediction
-                ? 'bg-blue-500/20 text-blue-300'
-                : 'text-gray-400 hover:bg-gray-800/70 hover:text-gray-300',
-            )}
-            title="AI 预测"
-          >
-            <Sparkles className={clsx('h-4 w-4 transition-colors', showPrediction ? 'text-white' : 'text-gray-500 group-hover:text-blue-300')} />
-            AI 预测
-          </button>
-          <button
-            type="button"
             onClick={load}
             disabled={loading}
             className={clsx(
@@ -333,17 +324,13 @@ export function Market() {
             <RefreshCw className={clsx('h-4 w-4 shrink-0', loading && 'animate-spin')} />
             刷新
           </button>
-          <span className="market-connection-pill flex h-9 items-center gap-2 rounded-lg bg-emerald-500/10 px-3 text-xs font-medium text-emerald-300">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inset-0 animate-ping rounded-full bg-[#2ebd85] opacity-50" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#2ebd85]" />
-            </span>
-            实时
+          <span className="market-connection-pill flex h-9 items-center gap-2 rounded-lg bg-amber-500/10 px-3 text-xs font-medium text-amber-200">
+            {asOfDate ? `研究截止 ${asOfDate} · K线至 ${lastUpdateLabel}` : `PostgreSQL 历史缓存 · ${lastUpdateLabel}`}
           </span>
         </div>
       </div>
 
-      {loading && daily.length < MIN_KLINES_TO_RENDER ? (
+      {loading && visibleDaily.length < MIN_KLINES_TO_RENDER ? (
         <div className="flex min-h-[560px] items-center justify-center text-gray-400">加载中...</div>
       ) : (
         <div className="grid min-h-[560px] grid-cols-1 gap-4 lg:grid-cols-4">
@@ -384,7 +371,7 @@ export function Market() {
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
                       {(selectedName || selectedSymbol).slice(0, 1)}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">{selectedSymbol}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">{publicSymbol(selectedSymbol)}</span>
                     <ChevronDown className={clsx('h-4 w-4 shrink-0 text-gray-400 transition-transform', isSearchOpen && 'rotate-180')} />
                   </button>
 
@@ -473,7 +460,7 @@ export function Market() {
                               </span>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-medium text-white">{item.name || item.code}</span>
-                                <span className="block truncate text-xs text-gray-500">{item.code}</span>
+                                <span className="block truncate text-xs text-gray-500">{publicSymbol(item.code)}</span>
                               </span>
                               <span className={clsx('ml-2 shrink-0 text-xs font-semibold tabular-nums', pctClass(item.change_percent))}>
                                 {signedPct(item.change_percent)}
@@ -500,30 +487,16 @@ export function Market() {
               </div>
 
               <div className="market-detail-timeframe-controls ml-auto flex flex-wrap items-center justify-end gap-3">
-                <div className="flex overflow-hidden rounded-lg border border-crypto-border bg-crypto-card">
-                  {TIMEFRAMES.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setActiveRange(item)}
-                      className={clsx(
-                        'px-3 py-1.5 text-xs font-medium transition-colors',
-                        activeRange === item
-                          ? 'bg-blue-500/20 text-blue-300'
-                          : 'text-gray-500 hover:bg-gray-800/60 hover:text-gray-300',
-                      )}
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
+                <span className="rounded-lg border border-crypto-border bg-crypto-bg/60 px-3 py-1.5 text-xs font-medium text-gray-400">
+                  日线
+                </span>
               </div>
 
               <div className="flex basis-full flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span>共 {daily.length} 根K线</span>
+                  <span>共 {visibleDaily.length} 根K线</span>
                   <span className="text-gray-600">·</span>
-                  <span className="truncate text-gray-500">{selectedName || selectedSymbol}</span>
+                  <span className="truncate text-gray-500">{selectedName || publicSymbol(selectedSymbol)}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {quickSymbols.map((item) => (
@@ -538,40 +511,23 @@ export function Market() {
                           : 'border-crypto-border bg-crypto-bg/60 text-gray-500 hover:border-gray-600 hover:text-gray-300',
                       )}
                     >
-                      {item.name || item.code}
+                      {item.name || publicSymbol(item.code)}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {showPrediction && (
-                <div className="basis-full rounded-lg border border-crypto-border bg-black/20 px-4 py-3">
-                  <div className="text-xs font-medium text-gray-400">预测偏差分析（视觉预览）</div>
-                  <div className="mt-2 flex flex-wrap gap-6 text-sm text-gray-200">
-                    <div>
-                      <span className="text-gray-500">MAE</span>
-                      <span className="ml-2 font-mono tabular-nums">{Math.abs(priceChange / 100).toFixed(6)}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">方向准确率</span>
-                      <span className="ml-2 font-mono tabular-nums">{daily.length > 1 ? '66.7%' : '-'}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">重合样本数</span>
-                      <span className="ml-2 font-mono tabular-nums">{Math.max(0, daily.length - 1)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col gap-2">
               <h2 className="sr-only">K线图表</h2>
               <div className="h-[610px] min-h-[460px] min-w-0">
-                {daily.length >= MIN_KLINES_TO_RENDER ? (
+                {visibleDaily.length >= MIN_KLINES_TO_RENDER ? (
                   <ReactECharts option={chartOption} style={{ height: '100%', width: '100%' }} />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-gray-400">K线数据加载中...</div>
+                  <div className="flex h-full items-center justify-center px-6 text-center text-gray-400">
+                    {asOfDate ? `${asOfDate} 及以前暂无该标的日线数据` : '本地 PostgreSQL 暂无该标的日线数据'}
+                  </div>
                 )}
               </div>
             </div>
@@ -579,47 +535,11 @@ export function Market() {
 
           <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-crypto-border bg-crypto-card p-4 lg:min-h-0">
             <h2 className="mb-4 text-lg font-semibold text-white">订单簿</h2>
-            <div className="grid grid-cols-3 border-b border-crypto-border pb-2 text-xs text-gray-400">
-              <span>价格</span>
-              <span className="text-right">数量</span>
-              <span className="text-right">总计</span>
-            </div>
-
-            <div className="asks">
-              {orderBook.asks.slice().reverse().map((row, index) => {
-                const max = Math.max(...orderBook.asks.map((item) => item.volume), ...orderBook.bids.map((item) => item.volume), 1);
-                const percentage = (row.volume / max) * 100;
-                return (
-                  <div key={`ask-${index}`} className="relative grid grid-cols-3 py-1 text-sm hover:bg-gray-800/30">
-                    <div className="absolute right-0 top-0 h-full bg-red-500/10" style={{ width: `${percentage}%` }} />
-                    <span className="relative z-10 font-mono text-up">{format(row.price)}</span>
-                    <span className="relative z-10 text-right text-gray-300">{format(row.volume, 0)}</span>
-                    <span className="relative z-10 text-right text-gray-400">{format(row.total, 0)}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="my-2 border-y border-crypto-border py-3">
-              <div className="flex items-center justify-between">
-                <span className="text-lg font-bold text-white">{format(lastClose)}</span>
-                <span className="text-right text-xs text-yellow-400">价差: 0.01 (0.000%)</span>
+            <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-crypto-border bg-crypto-bg/40 px-5 text-center">
+              <div className="text-sm font-semibold text-gray-300">盘口数据未接入</div>
+              <div className="mt-2 text-xs leading-relaxed text-gray-500">
+                当前页面只有 PostgreSQL 历史日线，未提供交易所级买卖盘和价差证据。
               </div>
-            </div>
-
-            <div className="bids">
-              {orderBook.bids.map((row, index) => {
-                const max = Math.max(...orderBook.asks.map((item) => item.volume), ...orderBook.bids.map((item) => item.volume), 1);
-                const percentage = (row.volume / max) * 100;
-                return (
-                  <div key={`bid-${index}`} className="relative grid grid-cols-3 py-1 text-sm hover:bg-gray-800/30">
-                    <div className="absolute right-0 top-0 h-full bg-green-500/10" style={{ width: `${percentage}%` }} />
-                    <span className="relative z-10 font-mono text-down">{format(row.price)}</span>
-                    <span className="relative z-10 text-right text-gray-300">{format(row.volume, 0)}</span>
-                    <span className="relative z-10 text-right text-gray-400">{format(row.total, 0)}</span>
-                  </div>
-                );
-              })}
             </div>
 
           </aside>

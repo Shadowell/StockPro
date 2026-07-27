@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult } from '../types';
+import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -284,6 +284,91 @@ export interface DataHubFactorFeaturesResponse {
   };
   selected_factor?: Record<string, unknown> | null;
   ranking: Array<Record<string, unknown>>;
+}
+
+export interface ResearchFactor {
+  id: number;
+  factor_code: string;
+  factor_name: string;
+  category: string;
+  description?: string | null;
+  direction: number;
+  research_status: string;
+  enabled: boolean;
+  active_version_id: number;
+  version_no: number;
+  content_hash: string;
+  validation_status: string;
+  last_trade_date?: string | null;
+  publication_state?: string | null;
+  dataset_snapshot_id?: number | null;
+  universe_snapshot_id?: number | null;
+  knowledge_cutoff_at?: string | null;
+  coverage?: number | null;
+  rank_ic?: number | null;
+  icir?: number | null;
+  long_short_return?: number | null;
+  turnover?: number | null;
+  decay?: number | null;
+}
+
+export interface FactorComputeRun {
+  id: number;
+  factor_version_id: number;
+  factor_code: string;
+  factor_name: string;
+  version_no: number;
+  trade_date: string;
+  dataset_snapshot_id: number;
+  universe_snapshot_id: number;
+  knowledge_cutoff_at: string;
+  status: string;
+  input_count: number;
+  output_count: number;
+  missing_count: number;
+  error_message?: string | null;
+  value_hash?: string | null;
+}
+
+export interface FactorMetricRow {
+  compute_run_id: number;
+  trade_date: string;
+  dataset_snapshot_id: number;
+  universe_snapshot_id: number;
+  knowledge_cutoff_at: string;
+  factor_version_id: number;
+  version_no: number;
+  metric_code: string;
+  horizon?: number | null;
+  metric_value?: number | null;
+  metric_payload?: Record<string, unknown>;
+  pending_reason?: string | null;
+}
+
+export interface FactorValueRow {
+  trade_date: string;
+  symbol: string;
+  raw_value?: number | null;
+  processed_value?: number | null;
+  rank?: number | null;
+  percentile?: number | null;
+  quantile?: number | null;
+  quality_flags: Record<string, unknown>;
+  compute_run_id: number;
+  factor_version_id: number;
+  dataset_snapshot_id: number;
+  universe_snapshot_id: number;
+  knowledge_cutoff_at: string;
+}
+
+export interface FactorCorrelationRow {
+  trade_date: string;
+  factor_version_id_a: number;
+  factor_code_a: string;
+  factor_version_id_b: number;
+  factor_code_b: string;
+  correlation?: number | null;
+  universe_snapshot_id: number;
 }
 
 // Extend axios config type to include retry count
@@ -664,18 +749,38 @@ export const getStrategies = async (): Promise<Strategy[]> => {
   return response.data;
 };
 
+export const getAICapabilities = async (): Promise<AICapabilities> => {
+  const response = await apiClient.get<AICapabilities>('/ai/capabilities');
+  return response.data;
+};
+
 export const getStrategy = async (strategyId: number): Promise<Strategy> => {
   const response = await apiClient.get<Strategy>(`/strategy/${strategyId}`);
   return response.data;
 };
 
-export const saveStrategy = async (data: SaveStrategyRequest): Promise<{ success: boolean; id?: number; message?: string; error?: string }> => {
-  const response = await apiClient.post<{ success: boolean; id?: number; message?: string; error?: string }>('/strategy/save', data);
+export const saveStrategy = async (data: SaveStrategyRequest): Promise<StrategySaveResponse> => {
+  const response = await apiClient.post<StrategySaveResponse>('/strategy/save', data);
   return response.data;
 };
 
-export const updateStrategy = async (strategyId: number, data: SaveStrategyRequest): Promise<Strategy> => {
-  const response = await apiClient.put<Strategy>(`/strategy/${strategyId}`, data);
+export const updateStrategy = async (strategyId: number, data: SaveStrategyRequest): Promise<StrategySaveResponse> => {
+  const response = await apiClient.put<StrategySaveResponse>(`/strategy/${strategyId}`, data);
+  return response.data;
+};
+
+export const getLatestStrategyVersion = async (strategyId: number): Promise<StrategyVersion> => {
+  const response = await apiClient.get<StrategyVersion>(`/strategy/${strategyId}/versions/latest`);
+  return response.data;
+};
+
+export const quickRunStrategyVersion = async (versionId: string, request: { dataset_snapshot_id: number; factor_snapshot_id?: number; event_limit?: number }): Promise<StrategyReplayResult> => {
+  const response = await apiClient.post<StrategyReplayResult>(`/strategy/versions/${versionId}/quick-run`, request);
+  return response.data;
+};
+
+export const getFactorSnapshots = async (): Promise<{ items: Array<{ id: number; dataset_snapshot_id: number; universe_snapshot_id: number; status: string }> }> => {
+  const response = await apiClient.get('/factor-snapshots');
   return response.data;
 };
 
@@ -822,6 +927,66 @@ export const listBacktestResults = async (limit = 20): Promise<{ items: Strategy
   return response.data;
 };
 
+export const getBacktestConfiguration = async (): Promise<BacktestConfiguration> =>
+  (await apiClient.get<BacktestConfiguration>('/backtest/configuration')).data;
+
+export const getMarketResearchContext = async (params?: { snapshot_id?: number; trade_date?: string; market_scope?: string }): Promise<MarketResearchContext> =>
+  (await apiClient.get<MarketResearchContext>('/market/research-context', { params })).data;
+
+export const listStockPools = async (): Promise<{ items: StockPool[]; total: number }> =>
+  (await apiClient.get<{ items: StockPool[]; total: number }>('/pools')).data;
+
+export const createStockPool = async (request: { name: string; pool_type: StockPool['pool_type']; description?: string; config: Record<string, unknown> }): Promise<StockPool> =>
+  (await apiClient.post<StockPool>('/pools', request)).data;
+
+export const generateStockPool = async (poolId: string, request: { dataset_snapshot_id: number; universe_snapshot_id: number; trade_date: string; factor_snapshot_id?: number; market_evidence_snapshot_id?: number }): Promise<StockPoolGeneration> =>
+  (await apiClient.post<StockPoolGeneration>(`/pools/${poolId}/generate`, request)).data;
+
+export const getStockPoolMembers = async (poolId: string, generationId?: string): Promise<StockPoolMember[]> =>
+  (await apiClient.get<{ items: StockPoolMember[] }>(`/pools/${poolId}/members`, { params: { generation_id: generationId } })).data.items;
+
+export const sealStockPoolSnapshot = async (poolId: string, generationId?: string): Promise<StockPoolSnapshot> =>
+  (await apiClient.post<StockPoolSnapshot>(`/pools/${poolId}/snapshots`, { generation_id: generationId })).data;
+
+export const listStockPoolSnapshots = async (poolId?: string): Promise<{ items: StockPoolSnapshot[]; total: number }> =>
+  (await apiClient.get<{ items: StockPoolSnapshot[]; total: number }>('/pool-snapshots', { params: { pool_id: poolId } })).data;
+
+export const getStockPoolSnapshot = async (snapshotId: number): Promise<StockPoolSnapshot> =>
+  (await apiClient.get<StockPoolSnapshot>(`/pool-snapshots/${snapshotId}`)).data;
+
+export const createPoolBacktestDraft = async (snapshotId: number, request: { strategy_version_id: string; start_date: string; end_date: string; initial_cash: number; benchmark_code?: string; parameters?: Record<string, unknown> }): Promise<{ status: string; experiment: Record<string, unknown>; pool_snapshot: StockPoolSnapshot }> =>
+  (await apiClient.post(`/pool-snapshots/${snapshotId}/backtests`, request)).data;
+
+export const listBacktestRuns = async (limit = 100): Promise<{ items: BacktestRun[]; total: number }> =>
+  (await apiClient.get<{ items: BacktestRun[]; total: number }>('/backtest/runs', { params: { limit } })).data;
+
+export const runBacktestV1 = async (request: BacktestRunRequestV1, mode: 'quick' | 'full'): Promise<BacktestRun> =>
+  (await apiClient.post<BacktestRun>(mode === 'quick' ? '/backtest/quick-runs' : '/backtest/runs', request, { timeout: 120000 })).data;
+
+export const getBacktestRun = async (runId: string): Promise<BacktestRun> =>
+  (await apiClient.get<BacktestRun>(`/backtest/runs/${runId}`)).data;
+
+export const getBacktestMetrics = async (runId: string): Promise<BacktestMetric[]> =>
+  (await apiClient.get<{ items: BacktestMetric[] }>(`/backtest/runs/${runId}/metrics`)).data.items;
+
+export const getBacktestSeries = async (runId: string): Promise<{ daily: BacktestDailyPoint[]; custom_records: Array<Record<string, unknown>>; monthly_returns: Array<{ month: string; return: number | null }> }> =>
+  (await apiClient.get(`/backtest/runs/${runId}/series`)).data;
+
+export const getBacktestEvidence = async (runId: string, kind: 'positions' | 'orders' | 'trades' | 'logs' | 'attribution'): Promise<Array<Record<string, unknown>>> =>
+  (await apiClient.get<{ items: Array<Record<string, unknown>> }>(`/backtest/runs/${runId}/${kind}`)).data.items;
+
+export const compareBacktestRuns = async (runIds: string[]): Promise<{ runs: BacktestRun[]; series: Record<string, BacktestDailyPoint[]> }> =>
+  (await apiClient.post('/backtest/compare', { run_ids: runIds })).data;
+
+export const createBacktestProtocol = async (request: Record<string, unknown>): Promise<Record<string, unknown>> =>
+  (await apiClient.post('/backtest/protocols', request)).data;
+
+export const createBacktestExperiment = async (request: BacktestRunRequestV1 & { hypothesis: string }): Promise<Record<string, unknown>> =>
+  (await apiClient.post('/backtest/experiments', request)).data;
+
+export const runBacktestMatrix = async (experimentId: string, request: { parameter_grid: Record<string, unknown[]>; start_date: string; end_date: string; initial_cash: number; symbols: string[]; event_limit: number }): Promise<Record<string, unknown>> =>
+  (await apiClient.post(`/backtest/experiments/${experimentId}/matrix`, request, { timeout: 300000 })).data;
+
 export const runPaperTrading = async (
   strategyId: number,
   request: PaperRunRequest
@@ -852,6 +1017,61 @@ export const stopPaperAccount = async (accountId: number): Promise<PaperRunResul
   const response = await apiClient.post<PaperRunResult>(`/paper/${accountId}/stop`);
   return response.data;
 };
+
+export const listPaperInstances = async (): Promise<{ items: PaperRuntimeInstance[]; total: number }> =>
+  (await apiClient.get<{ items: PaperRuntimeInstance[]; total: number }>('/paper/instances')).data;
+
+export const getPaperInstance = async (instanceId: string): Promise<PaperRuntimeInstance> =>
+  (await apiClient.get<PaperRuntimeInstance>(`/paper/instances/${instanceId}`)).data;
+
+export const createPaperInstance = async (request: {
+  name?: string;
+  strategy_version_id: string;
+  dataset_snapshot_id: number;
+  factor_snapshot_id: number;
+  universe_snapshot_id: number;
+  pool_snapshot_id: number;
+  research_protocol_id: string;
+  qualifying_backtest_run_id: string;
+  initial_cash: number;
+  parameters?: Record<string, unknown>;
+  capacity_limits?: Record<string, unknown>;
+  feed_config?: Record<string, unknown>;
+}): Promise<PaperRuntimeInstance> =>
+  (await apiClient.post<PaperRuntimeInstance>('/paper/instances', request)).data;
+
+export const paperInstanceAction = async (instanceId: string, action: 'start' | 'pause' | 'resume' | 'stop'): Promise<PaperRuntimeInstance> =>
+  (await apiClient.post<PaperRuntimeInstance>(`/paper/instances/${instanceId}/${action}`)).data;
+
+export const processPaperCycle = async (instanceId: string, request: { trade_date: string; data_available_at?: string; observed_at?: string; cycle_key?: string }): Promise<Record<string, unknown>> =>
+  (await apiClient.post<Record<string, unknown>>(`/paper/instances/${instanceId}/cycles`, request)).data;
+
+export const getWatchContext = async (): Promise<WatchContext> =>
+  (await apiClient.get<WatchContext>('/watch/context')).data;
+
+export const listRuntimeAlerts = async (status?: string): Promise<{ items: RuntimeAlert[]; total: number }> =>
+  (await apiClient.get<{ items: RuntimeAlert[]; total: number }>('/watch/alerts', { params: status ? { status } : {} })).data;
+
+export const acknowledgeRuntimeAlert = async (alertId: string): Promise<RuntimeAlert> =>
+  (await apiClient.post<RuntimeAlert>(`/watch/alerts/${alertId}/acknowledge`)).data;
+
+export const getMonitorHealth = async (): Promise<MonitorHealth> =>
+  (await apiClient.get<MonitorHealth>('/monitor/health')).data;
+
+export const getDailyReviewDates = async (): Promise<{ items: string[]; total: number }> =>
+  (await apiClient.get<{ items: string[]; total: number }>('/review/dates')).data;
+
+export const getDailyReview = async (tradeDate: string): Promise<DailyReviewContext> =>
+  (await apiClient.get<DailyReviewContext>(`/review/${tradeDate}`)).data;
+
+export const assembleDailyReview = async (tradeDate: string): Promise<DailyReviewContext> =>
+  (await apiClient.post<DailyReviewContext>(`/review/${tradeDate}/assemble`)).data;
+
+export const saveDailyReview = async (tradeDate: string, request: { author_name?: string; summary?: string; next_day_plan?: string }): Promise<DailyReviewContext> =>
+  (await apiClient.put<DailyReviewContext>(`/review/${tradeDate}`, request)).data;
+
+export const sealDailyReview = async (tradeDate: string): Promise<DailyReviewContext> =>
+  (await apiClient.post<DailyReviewContext>(`/review/${tradeDate}/seal`)).data;
 
 export const getDataStatus = async <T = unknown>(): Promise<T> => {
   const response = await apiClient.get<T>('/data/status');
@@ -908,6 +1128,112 @@ export type DataTableStatsResponse = {
   }>;
 };
 
+export type TushareEndpoint = {
+  endpoint_code: string;
+  module_code: string;
+  display_name: string;
+  required_credits: number;
+  requires_independent_authorization: boolean;
+  schedule_kind: string;
+  storage_dataset: string;
+  contract_url: string;
+  baseline_state: string;
+  enabled: boolean;
+  permission_state?: string | null;
+  checked_at?: string | null;
+  supported_fields?: string[] | null;
+  rate_limit?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+};
+
+export type TushareEndpointCatalogResponse = {
+  credit_tier: number;
+  items: TushareEndpoint[];
+  total: number;
+};
+
+export type TushareEndpointProbeResponse = {
+  endpoint_code: string;
+  permission_state: string;
+  checked_at?: string | null;
+  supported_fields?: string[] | null;
+  rate_limit?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+};
+
+export type ResearchDataset = {
+  code: string;
+  name: string;
+  primary_source: string;
+  fallback_source?: string | null;
+  schema_version: string;
+  enabled: boolean;
+  latest_partition_id?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  row_count?: number | null;
+  symbol_count?: number | null;
+  partition_status?: string | null;
+  content_hash?: string | null;
+  available_at?: string | null;
+  knowledge_cutoff_at?: string | null;
+  requested_source?: string | null;
+  actual_source?: string | null;
+  fallback_reason?: string | null;
+  response_hash?: string | null;
+  blocking_issues?: number | null;
+};
+
+export type ResearchDatasetSnapshot = {
+  id: number;
+  name: string;
+  status: 'draft' | 'sealed' | 'failed';
+  knowledge_cutoff_at: string;
+  manifest_hash?: string | null;
+  created_at: string;
+  sealed_at?: string | null;
+  partition_count?: number;
+  datasets?: string[] | null;
+};
+
+export type DailyReferenceOrchestrationRun = {
+  id: number;
+  tradeDate: string;
+  status: 'queued' | 'running' | 'not_trading_day' | 'skipped' | 'blocked' | 'failed' | 'sealed';
+  syncJobId?: number | null;
+  snapshotId?: number | null;
+  marketEvidenceSnapshotId?: number | null;
+  attemptCount: number;
+  result?: Record<string, unknown>;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type DailyReferenceSchedule = {
+  code: string;
+  cron: string;
+  timezone: string;
+  configured?: boolean;
+  enabled: boolean;
+  catchupDays: number;
+  maxRetries: number;
+  updatedAt?: string | null;
+  nextRunAt?: string | null;
+  configuredNextRunAt?: string | null;
+  runtimeEnabled?: boolean;
+  runnerOnline?: boolean;
+  jobRegistered?: boolean;
+  effectiveNextRunAt?: string | null;
+  runtimeStatus?: 'running' | 'runner_offline' | 'disabled' | string;
+  dailyBarsWatermark?: string | null;
+  watermarkUpdatedAt?: string | null;
+  lastRun?: DailyReferenceOrchestrationRun | null;
+};
+
 export const getDataConfig = async (): Promise<DataSyncConfigResponse> => {
   const response = await apiClient.get<DataSyncConfigResponse>('/data/config');
   return response.data;
@@ -915,6 +1241,36 @@ export const getDataConfig = async (): Promise<DataSyncConfigResponse> => {
 
 export const getDataTableStats = async (): Promise<DataTableStatsResponse> => {
   const response = await apiClient.get<DataTableStatsResponse>('/data/table-stats');
+  return response.data;
+};
+
+export const getTushareEndpoints = async (module?: string): Promise<TushareEndpointCatalogResponse> => {
+  const response = await apiClient.get<TushareEndpointCatalogResponse>('/data/tushare/endpoints', {
+    params: module ? { module } : undefined,
+  });
+  return response.data;
+};
+
+export const getResearchDatasets = async (): Promise<{ items: ResearchDataset[] }> => {
+  const response = await apiClient.get<{ items: ResearchDataset[] }>('/data/datasets');
+  return response.data;
+};
+
+export const getResearchDatasetSnapshots = async (limit = 10): Promise<{ items: ResearchDatasetSnapshot[] }> => {
+  const response = await apiClient.get<{ items: ResearchDatasetSnapshot[] }>('/data/snapshots', { params: { limit } });
+  return response.data;
+};
+
+export const getDailyReferenceSchedule = async (): Promise<DailyReferenceSchedule> => {
+  const response = await apiClient.get<DailyReferenceSchedule>('/data/schedules/daily');
+  return response.data;
+};
+
+export const probeTushareEndpoint = async (
+  endpointCode: string,
+  request: { params?: Record<string, unknown>; fields?: string } = {},
+): Promise<TushareEndpointProbeResponse> => {
+  const response = await apiClient.post<TushareEndpointProbeResponse>(`/data/tushare/endpoints/${endpointCode}/probe`, request);
   return response.data;
 };
 
@@ -952,5 +1308,50 @@ export const removeDataSymbol = async (symbol: string): Promise<{ symbol: string
 
 export const deleteDataKlines = async (request: { symbol: string; timeframe?: string }): Promise<{ message: string; deleted: number }> => {
   const response = await apiClient.post<{ message: string; deleted: number }>('/data/delete-data', request);
+  return response.data;
+};
+
+export const getResearchFactorLibrary = async (): Promise<{ items: ResearchFactor[] }> => {
+  const response = await apiClient.get<{ items: ResearchFactor[] }>('/factors/research/library');
+  return response.data;
+};
+
+export const getFactorComputeRuns = async (limit = 100): Promise<{ items: FactorComputeRun[] }> => {
+  const response = await apiClient.get<{ items: FactorComputeRun[] }>('/factor-compute-runs', { params: { limit } });
+  return response.data;
+};
+
+export const getResearchFactorMetrics = async (factorId: number): Promise<{ factor: ResearchFactor; metrics: FactorMetricRow[] }> => {
+  const response = await apiClient.get<{ factor: ResearchFactor; metrics: FactorMetricRow[] }>(`/factors/${factorId}/metrics`);
+  return response.data;
+};
+
+export const getResearchFactorValues = async (factorId: number, limit = 500): Promise<{ items: FactorValueRow[] }> => {
+  const response = await apiClient.get<{ items: FactorValueRow[] }>(`/factors/${factorId}/values`, { params: { limit } });
+  return response.data;
+};
+
+export const getFactorCorrelations = async (tradeDate?: string): Promise<{ items: FactorCorrelationRow[] }> => {
+  const response = await apiClient.get<{ items: FactorCorrelationRow[] }>('/factor-correlations', { params: tradeDate ? { trade_date: tradeDate } : undefined });
+  return response.data;
+};
+
+export const runDailyFactorSchedule = async (request: {
+  trade_date: string;
+  dataset_snapshot_id: number;
+  universe_snapshot_id: number;
+}): Promise<Record<string, unknown>> => {
+  const response = await apiClient.post<Record<string, unknown>>('/factor-schedules/run-daily', request);
+  return response.data;
+};
+
+export const createResearchFactor = async (request: {
+  factor_code: string;
+  factor_name: string;
+  category: string;
+  description?: string;
+  python_code: string;
+}): Promise<Record<string, unknown>> => {
+  const response = await apiClient.post<Record<string, unknown>>('/factors', request);
   return response.data;
 };

@@ -136,9 +136,9 @@
 
 | 服务 | 职责 | 默认状态 |
 |------|------|---------|
-| `RealtimeSyncService` | 大盘指数/全市场行情/板块数据轮询 | 自动启动 |
-| `SchedulerService` | APScheduler 定时任务（概念/热榜/情绪等） | 自动启动 |
-| `StrategyExecutionService` | 用户策略并行执行与信号推送 | 自动启动 |
+| `RealtimeSyncService` | 大盘指数/全市场行情/板块数据轮询 | 默认停用，显式配置后启动 |
+| `SchedulerService` | APScheduler 定时任务（概念/热榜/情绪等） | 默认停用，显式配置后启动 |
+| `StrategyExecutionService` | 用户策略并行执行与信号推送 | 默认停用，显式配置后启动 |
 | `FactorSyncService` | 量化因子计算与同步 | 按需调用 |
 | `MAConvergenceService` | 均线粘合选股算法 | 按需调用 |
 | `DataSyncService` | 历史数据回补与增量同步 | 按需调用 |
@@ -170,7 +170,7 @@
 | 热门股票 TOP20 | 东方财富热门股票排行榜 | 120s |
 | 平底均线图突破 | MA5/10/20/30 四线粘合后的突破机会 | 600s |
 
-在新设备上克隆项目后，策略会在后端启动时自动导入。也可手动运行：
+在新设备上克隆项目后，先执行显式 bootstrap 导入数据注册表与预置策略。后端普通启动不会写入数据库。也可单独运行策略导入脚本：
 
 ```bash
 python scripts/init_strategies.py          # 仅导入缺失的策略
@@ -219,11 +219,17 @@ ADMIN_TOKEN_SECRET=change-this-random-secret
 ENABLE_SCHEDULER=false
 ENABLE_REALTIME_SYNC=false
 ENABLE_STRATEGY_EXECUTION=false
+RUN_MIGRATIONS_ON_STARTUP=false
+RUN_BOOTSTRAP_ON_STARTUP=false
+RUN_PAPER_RECOVERY_ON_STARTUP=false
 BACKEND_CORS_ORIGINS=["http://localhost:4444"]
 EOF
 
+# 首次安装或迁移后显式初始化；该命令会写入 PG，但不会启动定时/provider 同步
+python bootstrap_runtime.py
+
 # 启动服务
-uvicorn app.main:app --reload --port 4445
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 4445
 ```
 
 ### 3. 启动前端
@@ -252,6 +258,7 @@ npm run dev
 | `QWEN_API_KEY` | 是（AI 功能） | `""` | 通义千问 API Key |
 | `QWEN_STOCK_MODEL` | 否 | `qwen-plus` | AI 分析使用的模型 |
 | `TUSHARE_TOKEN` | 是（行情主源） | `""` | TuShare token；为空时自动走 AKShare 兜底 |
+| `TUSHARE_CREDIT_TIER` | 否 | `5000` | 当前 TuShare 积分档位；用于本地接口目录、权限提示与受限接口拦截，不保存 token |
 | `TUSHARE_REALTIME_SOURCE` | 否 | `dc` | TuShare 实时行情源 |
 | `ENABLE_TUSHARE` | 否 | `true` | 是否启用 TuShare 优先数据源 |
 | `AKSHARE_TIMEOUT` | 否 | `30` | AKShare 兜底请求超时（秒） |
@@ -260,10 +267,15 @@ npm run dev
 | `ADMIN_USERNAME` | 是 | `admin` | 管理员登录用户名 |
 | `ADMIN_PASSWORD` | 是 | `""` | 管理员登录密码 |
 | `ADMIN_TOKEN_SECRET` | 是 | `""` | 管理员 token 签名密钥 |
-| `ENABLE_SCHEDULER` | 否 | `true` | 调度服务开关 |
+| `RUN_MIGRATIONS_ON_STARTUP` | 否 | `false` | 是否在服务启动时执行数据库迁移；本地默认要求显式 bootstrap |
+| `RUN_BOOTSTRAP_ON_STARTUP` | 否 | `false` | 是否在服务启动时安装目录、数据注册表和预置策略 |
+| `RUN_PAPER_RECOVERY_ON_STARTUP` | 否 | `false` | 是否在服务启动时标记真正中断的 Paper 周期并记录恢复证据 |
+| `ENABLE_SCHEDULER` | 否 | `false` | 调度服务开关；启用后可能触发 provider 任务 |
+| `ENABLE_LOCAL_PG_BACKUP` | 否 | `true` | 调度器每天生成带审计清单的本地 PG 备份 |
+| `LOCAL_PG_BACKUP_CRON` | 否 | `30 2 * * *` | 本地 PG 备份时间（Asia/Shanghai） |
 | `ENABLE_REALTIME_SYNC` | 否 | `false` | 实时同步服务开关 |
-| `ENABLE_STRATEGY_EXECUTION` | 否 | `true` | 策略执行服务开关 |
-| `ENABLE_EXTERNAL_MARKET_FETCH` | 否 | `true` | 启用外部行情数据拉取 |
+| `ENABLE_STRATEGY_EXECUTION` | 否 | `false` | 策略执行服务开关 |
+| `ENABLE_EXTERNAL_MARKET_FETCH` | 否 | `false` | 允许页面兼容接口在缓存缺失时请求外部行情；默认只读 PG，建议仅在显式同步进程中启用 |
 | `ENFORCE_OPERATION_ALLOWLIST` | 否 | `false` | 启用 API 操作白名单（生产环境安全限制） |
 
 ### 前端 (`frontend/.env`)
@@ -435,7 +447,7 @@ StockPro/
 
 1. 在 `strategies/` 下编写 Python 脚本（参考现有策略格式）
 2. 在 `strategies/manifest.json` 中添加条目
-3. 运行 `python scripts/init_strategies.py` 导入，或等后端重启自动加载
+3. 运行 `python scripts/init_strategies.py` 导入，或在 `backend` 执行 `python bootstrap_runtime.py`
 
 详见 [strategies/README.md](strategies/README.md)。
 
@@ -480,7 +492,7 @@ npm run test:e2e:report   # 查看测试报告
 在 `backend/.env` 中设置 `DATABASE_URL=postgresql://stockpro_app:<password>@127.0.0.1:5432/stockpro_prod`，所有业务数据都会走 Postgres。
 
 **Q: 策略在新设备上看不到？**
-克隆项目后重启后端即可自动导入，或手动运行 `python scripts/init_strategies.py`。
+进入 `backend` 执行 `python bootstrap_runtime.py` 完成显式初始化，或手动运行 `python scripts/init_strategies.py`。普通后端启动不会自动写入策略。
 
 ---
 

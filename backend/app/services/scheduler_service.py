@@ -16,7 +16,10 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from app.core.config import settings
 from app.services.data_sync_service import data_sync_service
+from app.services.daily_reference_sync_service import DailyReferenceSyncService
 from app.services.factor_sync_service import factor_sync_service
+from app.services.local_backup_service import LocalBackupService
+from app.services.tushare_catalog_service import TushareCatalogService
 from app.db import db_instance as db
 
 
@@ -44,6 +47,7 @@ class SchedulerService:
             "processed": 0,
             "message": "Idle",
         }
+        self.tushare_catalog_service = TushareCatalogService(db)
         
     def _is_trading_time(self) -> bool:
         """判断当前是否为交易时间（周一到周五 9:00-15:30）"""
@@ -92,6 +96,28 @@ class SchedulerService:
                 self.scheduler.remove_job(job_id)
         except Exception:
             logger.debug("No data-dev job found for task_id=%s", task_id)
+
+    def refresh_daily_reference_schedule(self, schedule: Dict[str, Any]) -> None:
+        """Make the one managed post-close job match its PG schedule record."""
+        job_id = "daily_reference_publication"
+        if not bool(schedule.get("enabled")):
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            logger.info("Daily reference publication is disabled in PostgreSQL")
+            return
+        cron = str(schedule.get("cron") or "30 17 * * 1-5")
+        timezone = ZoneInfo(str(schedule.get("timezone") or "Asia/Shanghai"))
+        trigger = CronTrigger.from_crontab(cron, timezone=timezone)
+        self.scheduler.add_job(
+            func=self._sync_daily_reference_publication,
+            trigger=trigger,
+            id=job_id,
+            name="PG 日终参考数据与市场证据",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=1800,
+        )
 
     def _reload_data_dev_jobs(self) -> None:
         try:
@@ -269,32 +295,28 @@ class SchedulerService:
         
         # ========== 天级任务 ==========
             
-        # 股票历史数据 - 每天16:00
-        self.scheduler.add_job(
-            func=self._sync_stock_history,
-            trigger=CronTrigger(hour=16, minute=0, day_of_week='mon-fri'),
-            id='daily_stock_history',
-            name='同步股票历史数据',
-            replace_existing=True
-        )
+        # The daily reference job is the single source of truth for calendar
+        # gate -> bars -> sealed snapshot -> post-close evidence.  It replaces
+        # the legacy independent K-line and market-evidence timers.
+        self.refresh_daily_reference_schedule(DailyReferenceSyncService(db).get_schedule())
 
-        # 每天收盘后同步全量 A 股日 K，任务进度写入 v2 数据模块的同步任务表
-        self.scheduler.add_job(
-            func=self._sync_all_ashare_klines,
-            trigger=CronTrigger(hour=18, minute=10, timezone=ZoneInfo("Asia/Shanghai")),
-            id='sync_all_ashare_klines',
-            name='每日同步全量A股K线',
-            replace_existing=True
-        )
-        
-        # 涨停连板数据 - 每天16:30
-        self.scheduler.add_job(
-            func=self._sync_zt_pool,
-            trigger=CronTrigger(hour=16, minute=30, day_of_week='mon-fri'),
-            id='daily_zt_pool',
-            name='同步涨停连板数据',
-            replace_existing=True
-        )
+        # Local PostgreSQL is the only supported store for this delivery phase.
+        # Keep a daily custom-format dump plus a PG audit manifest. Restore is
+        # deliberately a separate acceptance drill against a disposable DB.
+        if settings.ENABLE_LOCAL_PG_BACKUP:
+            self.scheduler.add_job(
+                func=self._create_local_pg_backup,
+                trigger=CronTrigger.from_crontab(
+                    settings.LOCAL_PG_BACKUP_CRON,
+                    timezone=ZoneInfo("Asia/Shanghai"),
+                ),
+                id="local_pg_daily_backup",
+                name="本地 PostgreSQL 每日备份",
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=3600,
+            )
         
         # 每日概念板块数据（用于复盘中心）- 每天15:30
         self.scheduler.add_job(
@@ -323,14 +345,9 @@ class SchedulerService:
             replace_existing=True
         )
         
-        # 因子数据 - 每天16:00
-        self.scheduler.add_job(
-            func=self._sync_factor_data,
-            trigger=CronTrigger(hour=16, minute=0, day_of_week='mon-fri'),
-            id='daily_factor_data',
-            name='同步因子库数据',
-            replace_existing=True
-        )
+        # Factor calculation is intentionally not registered here. Sprint 02
+        # attaches it to the sealed dataset-snapshot event, never to a clock
+        # that can observe incomplete or provider-backed daily data.
         
         # ========== 小时级任务 ==========
         
@@ -446,13 +463,45 @@ class SchedulerService:
         每日同步全量 A 股日 K 数据
         """
         try:
-            logger.info("Starting daily all A-share kline sync")
+            logger.info("Starting PG-backed daily A-share reference sync")
             from app.api.endpoints import data as data_module
 
-            result = await data_module.run_scheduled_all_ashare_sync()
-            logger.info(f"Daily all A-share kline sync completed: {result}")
+            result = await data_module.run_daily_reference_sync()
+            logger.info("Daily A-share reference sync completed: %s", result)
         except Exception as e:
             logger.error(f"Error in daily all A-share kline sync: {str(e)}")
+
+    async def _sync_daily_reference_publication(self):
+        """APScheduler entrypoint for the persisted daily-reference schedule."""
+        await self._sync_all_ashare_klines()
+
+    async def _create_local_pg_backup(self):
+        """Create one audited local PG backup without blocking the event loop."""
+        try:
+            result = await asyncio.to_thread(LocalBackupService(db).create_backup)
+            logger.info(
+                "Local PostgreSQL backup completed: id=%s size=%s",
+                result.get("id"),
+                result.get("backup_size_bytes"),
+            )
+        except Exception as exc:
+            logger.error("Local PostgreSQL backup failed: %s", exc)
+
+    async def _sync_post_close_market_evidence(self):
+        """Publish one source-labelled post-close market-evidence snapshot."""
+        now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        if now.weekday() >= 5:
+            return
+        try:
+            self.tushare_catalog_service.install_catalog()
+            result = await asyncio.to_thread(
+                self.tushare_catalog_service.sync_market_evidence,
+                now.strftime("%Y%m%d"),
+                "all_a",
+            )
+            logger.info("Post-close market evidence synced: %s", result)
+        except Exception as e:
+            logger.error("Error in post-close market evidence sync: %s", e)
     
     async def _sync_market_data(self):
         """

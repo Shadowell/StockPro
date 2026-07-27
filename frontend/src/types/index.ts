@@ -22,6 +22,9 @@ export interface StockFundamentals {
   float_market_cap?: number | null;
   amplitude?: number | null;
   updated_at?: string | null;
+  source_label?: string | null;
+  data_status?: 'fresh' | 'stale' | 'empty' | 'error' | string;
+  error?: string | null;
 }
 
 export interface Sector {
@@ -41,6 +44,8 @@ export interface DailyChartData {
   high: number;
   low: number;
   volume: number;
+  source_label?: string | null;
+  updated_at?: string | null;
 }
 
 export interface IntradayChartData {
@@ -74,6 +79,8 @@ export interface HotConceptItem {
   inflow: number;
   outflow: number;
   net_inflow: number;
+  updated_at?: string | null;
+  source_label?: string | null;
 }
 
 export interface ConceptIntradayKlineItem {
@@ -93,6 +100,9 @@ export interface ConceptLeaderStock {
   change_percent: number;
   amount: number;
   turnover: number;
+  source_label?: string | null;
+  updated_at?: string | null;
+  data_status?: 'fresh' | 'stale' | string;
 }
 
 export interface ThsHotItem {
@@ -104,6 +114,8 @@ export interface ThsHotItem {
   price: number;
   reason: string;
   tags: string;
+  updated_at?: string | null;
+  source_label?: string | null;
 }
 
 export interface LianbanStockItem {
@@ -190,6 +202,14 @@ export interface AbnormalStockItem {
 
 export interface MessageStreamResponse {
   updated_at: string;
+  source_updated_at?: string | null;
+  response_generated_at?: string | null;
+  data_status?: {
+    stock_snapshot_state?: 'fresh' | 'stale' | 'unavailable' | string;
+    stock_snapshot_updated_at?: string | null;
+    news_state?: 'available' | 'empty' | string;
+    message?: string | null;
+  };
   abnormal: {
     rules: AbnormalRule[];
     triggered: AbnormalStockItem[];
@@ -230,28 +250,39 @@ export interface MarketIndex {
 export interface MarketOverview {
   indices: MarketIndex[];
   sentiment?: {
-    score: number;
+    score: number | null;
     status: string;
-    advancing: number;
-    declining: number;
-    unchanged: number;
+    advancing: number | null;
+    declining: number | null;
+    unchanged: number | null;
   };
   volume?: {
-    amount: number;
+    amount: number | null;
     unit: string;
-    ratio: number;
-    sh_amount?: number;  // 上交所成交额
-    sz_amount?: number;  // 深交所成交额
-    bj_amount?: number;  // 北交所成交额
+    ratio: number | null;
+    sh_amount?: number | null;  // 上交所成交额
+    sz_amount?: number | null;  // 深交所成交额
+    bj_amount?: number | null;  // 北交所成交额
   };
   hot_sectors?: Sector[];
   market_breadth?: {
-    up: number;
-    down: number;
-    flat: number;
+    up: number | null;
+    down: number | null;
+    flat: number | null;
+  };
+  data_status?: {
+    stock_snapshot_state?: 'fresh' | 'stale' | 'unavailable' | string;
+    stock_snapshot_count?: number;
+    stock_snapshot_updated_at?: string | null;
+    index_snapshot_state?: 'fresh' | 'stale' | 'unavailable' | string;
+    index_snapshot_count?: number;
+    index_snapshot_updated_at?: string | null;
+    source_label?: string | null;
+    message?: string;
   };
   is_open: boolean;
   last_update?: string;
+  response_generated_at?: string;
   updated_at?: string;
 }
 
@@ -267,6 +298,18 @@ export interface Strategy {
   is_running: boolean;
   created_at: string;
   updated_at: string;
+  data_purpose?: 'user' | 'acceptance' | 'seed';
+}
+
+export interface AICapabilities {
+  provider: 'qwen';
+  model: string | null;
+  configured: boolean;
+  generation_status: 'available' | 'not_configured';
+  reason: string | null;
+  strategy_auto_develop_mode: 'deterministic_template';
+  strategy_auto_develop_uses_ai: false;
+  checked_at: string;
 }
 
 export interface StrategyResult {
@@ -300,6 +343,48 @@ export interface SaveStrategyRequest {
   script_content: string;
   description?: string;
   interval_seconds?: number;
+}
+
+export interface StrategyValidationReport {
+  valid: boolean;
+  api_version: string;
+  issues: Array<{ code: string; message: string; line?: number | null }>;
+  dependencies: string[];
+}
+
+export interface StrategyVersion {
+  id: string;
+  legacy_strategy_id?: number | null;
+  name: string;
+  version: number;
+  description: string;
+  script_content: string;
+  content_hash: string;
+  strategy_api_version: string;
+  validation_status: string;
+  validation_report: StrategyValidationReport;
+  dataset_snapshot_id?: number;
+}
+
+export interface StrategySaveResponse extends Partial<Strategy> {
+  success: boolean;
+  id?: number;
+  message?: string;
+  error?: string;
+  strategy_version?: StrategyVersion;
+  validation?: StrategyValidationReport;
+}
+
+export interface StrategyReplayResult {
+  run_id: string;
+  status: 'success' | 'failed' | 'resource_failed';
+  event_count?: number;
+  intent_count?: number;
+  record_count?: number;
+  intent_hash?: string;
+  record_hash?: string;
+  error_code?: string;
+  error_message?: string;
 }
 
 export interface StartStrategyRequest {
@@ -369,6 +454,259 @@ export interface StrategyBacktestResult {
   created_at: string;
 }
 
+export interface BacktestMetric {
+  metric_code: string;
+  metric_value: number | null;
+  unit: string;
+  calculation_version: string;
+  input_frequency: string;
+  null_reason?: string | null;
+  metric_payload?: Record<string, unknown>;
+}
+
+export interface BacktestRun {
+  id: string;
+  name: string;
+  status: 'running' | 'success' | 'failed';
+  run_mode: 'quick' | 'full';
+  progress: number;
+  promotion_status: string;
+  strategy_version_id: string;
+  strategy_name?: string;
+  strategy_version?: number;
+  script_content?: string;
+  strategy_content_hash?: string;
+  dataset_snapshot_id: number;
+  factor_snapshot_id?: number | null;
+  pool_snapshot_id?: number | null;
+  universe_snapshot_id: number;
+  research_protocol_id?: string | null;
+  protocol_name?: string | null;
+  cost_model_id: string;
+  cost_model_name?: string;
+  benchmark_code: string;
+  start_date: string;
+  end_date: string;
+  initial_cash: number;
+  parameters: Record<string, unknown>;
+  universe: { symbols?: string[] };
+  metrics?: Record<string, number | null>;
+  core_metrics?: BacktestMetric[];
+  result_manifest?: Record<string, unknown>;
+  input_hash?: string;
+  error_message?: string | null;
+  created_at: string;
+  finished_at?: string | null;
+  data_purpose?: 'user' | 'acceptance' | 'seed';
+}
+
+export interface BacktestConfiguration {
+  strategy_versions: Array<{
+    id: string;
+    name: string;
+    version: number;
+    description?: string;
+    script_content: string;
+    content_hash: string;
+  }>;
+  dataset_snapshots: Array<{
+    id: number;
+    name: string;
+    start_date: string;
+    end_date: string;
+    row_count: number;
+    symbol_count: number;
+    manifest_hash: string;
+    datasets: string[];
+  }>;
+  universe_snapshots: Array<{
+    id: number;
+    code: string;
+    rule_version: string;
+    trade_date: string;
+    member_count: number;
+    manifest_hash: string;
+  }>;
+  factor_snapshots: Array<{
+    id: number;
+    name: string;
+    trade_date: string;
+    dataset_snapshot_id: number;
+    universe_snapshot_id: number;
+    manifest_hash: string;
+  }>;
+  pool_snapshots: StockPoolSnapshot[];
+  cost_models: Array<{
+    id: string;
+    code: string;
+    name: string;
+    version: number;
+    content_hash: string;
+  }>;
+  protocols: Array<{
+    id: string;
+    name: string;
+    hypothesis: string;
+    status: string;
+  }>;
+}
+
+export interface BacktestDailyPoint {
+  trade_date: string;
+  strategy_nav: number;
+  strategy_return?: number | null;
+  benchmark_nav?: number | null;
+  benchmark_return?: number | null;
+  excess_nav?: number | null;
+  excess_return?: number | null;
+  equity: number;
+  cash: number;
+  market_value: number;
+  gross_exposure: number;
+  position_count: number;
+  drawdown: number;
+  excess_drawdown?: number | null;
+}
+
+export interface BacktestRunRequestV1 {
+  strategy_version_id: string;
+  dataset_snapshot_id: number;
+  universe_snapshot_id: number;
+  symbols: string[];
+  start_date: string;
+  end_date: string;
+  initial_cash: number;
+  factor_snapshot_id?: number | null;
+  pool_snapshot_id?: number | null;
+  cost_model_id?: string;
+  research_protocol_id?: string | null;
+  benchmark_code: string;
+  parameters: Record<string, unknown>;
+  event_limit?: number;
+  name?: string;
+}
+
+export interface MarketEvidenceMetric {
+  metric_code: string;
+  label: string;
+  value: number | null;
+  unit?: string | null;
+  definition: string;
+  source_label?: string | null;
+  publication_state: 'published' | 'unavailable';
+  missing_reason?: string | null;
+}
+
+export interface MarketResearchContext {
+  publication_state: string;
+  snapshot: {
+    id: number;
+    trade_date: string;
+    snapshot_type: string;
+    session_label?: string;
+    freshness?: string;
+    source_map: Record<string, string>;
+    status: string;
+    content_hash: string;
+  } | null;
+  sentiment?: {
+    metrics: MarketEvidenceMetric[];
+    market_temperature: {
+      value: number | null;
+      formula_version: string;
+      weights: Record<string, number>;
+      missing_components: string[];
+      publication_state: string;
+    };
+  };
+  limit_ecosystem?: {
+    source_label?: string | null;
+    highest_board: number;
+    ladder: Array<{ level: string; count: number; members: Array<Record<string, unknown>> }>;
+    pools: Record<string, Array<Record<string, unknown>>>;
+    promotion_elimination: Array<Record<string, unknown>>;
+  };
+  sector_evidence?: {
+    classification_system: string;
+    items: Array<Record<string, unknown>>;
+  };
+  comparisons?: Array<Record<string, unknown>>;
+  evidence_summary?: {
+    summary_version: string;
+    kind: string;
+    facts: Array<{ text: string; evidence_ref: string }>;
+    inferences: Array<{ text: string; basis: string }>;
+    evidence_snapshot_id: number;
+    disclaimer: string;
+  };
+  heat_rankings?: Array<Record<string, unknown>>;
+}
+
+export interface StockPool {
+  id: string;
+  name: string;
+  pool_type: 'screener' | 'factor' | 'sector' | 'event' | 'manual';
+  description: string;
+  status: string;
+  data_purpose?: 'user' | 'acceptance' | 'seed';
+  rule_id: string;
+  rule_type: string;
+  rule_version: number;
+  config: Record<string, unknown>;
+  rule_hash: string;
+  snapshot_count: number;
+  current_member_count: number;
+  latest_generation_id?: string | null;
+  latest_dataset_snapshot_id?: number | null;
+  latest_universe_snapshot_id?: number | null;
+  latest_factor_snapshot_id?: number | null;
+  latest_market_evidence_snapshot_id?: number | null;
+  latest_trade_date?: string | null;
+  latest_knowledge_cutoff_at?: string | null;
+  latest_input_hash?: string | null;
+}
+
+export interface StockPoolMember {
+  ordinal: number;
+  symbol: string;
+  score?: number | null;
+  reason: string;
+  evidence: Record<string, unknown>;
+  evidence_hash: string;
+  valid_from: string;
+  valid_until?: string | null;
+  generator_version: string;
+}
+
+export interface StockPoolGeneration {
+  id: string;
+  pool_id: string;
+  status: string;
+  trade_date: string;
+  input_hash: string;
+  member_manifest_hash?: string;
+  member_count: number;
+  members: StockPoolMember[];
+  reused?: boolean;
+}
+
+export interface StockPoolSnapshot {
+  id: number;
+  pool_id: string;
+  pool_name: string;
+  pool_type: string;
+  trade_date: string;
+  dataset_snapshot_id: number;
+  universe_snapshot_id: number;
+  factor_snapshot_id?: number | null;
+  market_evidence_snapshot_id?: number | null;
+  knowledge_cutoff_at: string;
+  manifest_hash: string;
+  member_count: number;
+  status: string;
+  members?: StockPoolMember[];
+}
+
 export interface PaperRunRequest {
   symbols?: string[];
   initial_capital?: number;
@@ -426,4 +764,129 @@ export interface PaperAccount {
 export interface PaperRunResult extends PaperAccount {
   orders: PaperOrder[];
   positions: PaperPosition[];
+}
+
+export interface PaperRuntimeCycle {
+  id: string;
+  cycle_key: string;
+  trade_date: string;
+  status: 'running' | 'success' | 'blocked' | 'failed';
+  signal_count: number;
+  order_count: number;
+  trade_count: number;
+  ledger_difference?: number | string | null;
+  error_message?: string | null;
+}
+
+export interface PaperRuntimeInstance {
+  id: string;
+  name: string;
+  status: 'draft' | 'starting' | 'running' | 'paused' | 'stopping' | 'stopped' | 'failed';
+  strategy_version_id: string;
+  dataset_snapshot_id: number;
+  factor_snapshot_id: number;
+  universe_snapshot_id: number;
+  pool_snapshot_id: number;
+  research_protocol_id: string;
+  qualifying_backtest_run_id: string;
+  portfolio_id: string;
+  parameters: Record<string, unknown>;
+  capacity_limits: Record<string, unknown>;
+  feed_config: Record<string, unknown>;
+  cash_balance: number | string;
+  initial_cash: number | string;
+  equity?: number | string | null;
+  signal_count?: number;
+  order_count?: number;
+  trade_count?: number;
+  last_processed_trade_date?: string | null;
+  heartbeat_at?: string | null;
+  signals?: Array<Record<string, unknown>>;
+  orders?: Array<Record<string, unknown>>;
+  trades?: Array<Record<string, unknown>>;
+  positions?: Array<Record<string, unknown>>;
+  cash_ledger?: Array<Record<string, unknown>>;
+  equity_snapshots?: Array<Record<string, unknown>>;
+  events?: Array<Record<string, unknown>>;
+  cycles?: PaperRuntimeCycle[];
+  reused?: boolean;
+  data_purpose?: 'user' | 'acceptance' | 'seed';
+}
+
+export interface RuntimeAlert {
+  id: string;
+  paper_instance_id?: string | null;
+  category: 'signal' | 'pool' | 'data' | 'risk' | 'system';
+  severity: 'info' | 'warning' | 'critical';
+  title: string;
+  message: string;
+  source_object_type: string;
+  source_object_id: string;
+  evidence: Record<string, unknown>;
+  status: 'active' | 'acknowledged' | 'resolved';
+  triggered_at: string;
+}
+
+export interface WatchContext {
+  alerts: RuntimeAlert[];
+  signals: Array<Record<string, unknown>>;
+  pool_moves: Array<Record<string, unknown>>;
+  instances: PaperRuntimeInstance[];
+  data_status: 'fresh' | 'stale' | 'empty';
+  source_label: string;
+  source_updated_at?: string | null;
+  response_generated_at: string;
+}
+
+export interface MonitorHealth {
+  status: 'healthy' | 'warning' | 'critical' | 'unavailable';
+  services: Array<Record<string, unknown>>;
+  data: { dataset?: Record<string, unknown> | null; market?: Record<string, unknown> | null };
+  strategy_instances: Array<Record<string, unknown>>;
+  risk_alerts: Array<Record<string, unknown>>;
+  notifications: Array<Record<string, unknown>>;
+  observed_at: string;
+}
+
+export interface DailyReviewItem {
+  id?: number;
+  item_key: string;
+  occurred_at: string;
+  category: 'market' | 'pool' | 'strategy' | 'risk' | 'order' | 'trade' | 'position' | 'performance' | 'system';
+  title: string;
+  summary?: string | null;
+  source_object_type: string;
+  source_object_id: string;
+  source_route?: string | null;
+  resolution_status: 'resolved' | 'archived' | 'unavailable';
+  evidence: Record<string, unknown>;
+  evidence_hash: string;
+}
+
+export interface DailyReviewMetric {
+  metric_code: string;
+  metric_value: number | null;
+  unit?: string | null;
+  comparison_window?: string | null;
+  source_object_type: string;
+  source_object_id: string;
+  calculation_version: string;
+}
+
+export interface DailyReviewContext {
+  review?: {
+    id: string;
+    trade_date: string;
+    status: 'draft' | 'sealed';
+    author_name: string;
+    summary?: string | null;
+    next_day_plan?: string | null;
+    source_manifest_hash?: string | null;
+  } | null;
+  trade_date: string;
+  status: 'live' | 'draft' | 'sealed';
+  items: DailyReviewItem[];
+  metrics: DailyReviewMetric[];
+  source_manifest_hash: string;
+  counts: Record<string, number>;
 }

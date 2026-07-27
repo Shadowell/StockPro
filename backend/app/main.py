@@ -64,10 +64,34 @@ app.include_router(api_router, prefix=settings.API_PREFIX)
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting up application...")
-    applied = apply_migrations(settings.DATABASE_URL)
-    logger.info("Postgres migrations applied: %s", applied or "none")
-    db_instance.init_preset_strategies()
-    logger.info("Preset strategies initialized")
+    if settings.RUN_MIGRATIONS_ON_STARTUP:
+        applied = apply_migrations(settings.DATABASE_URL)
+        logger.info("Postgres migrations applied: %s", applied or "none")
+    else:
+        logger.info("Postgres migrations skipped; run backend/apply_migration.py explicitly")
+
+    if settings.RUN_BOOTSTRAP_ON_STARTUP:
+        from app.services.tushare_catalog_service import TushareCatalogService
+        from app.services.dataset_snapshot_service import DatasetSnapshotService
+
+        catalog_count = TushareCatalogService(db_instance).install_catalog()
+        dataset_count = DatasetSnapshotService(db_instance).install_registry()
+        db_instance.init_preset_strategies()
+        logger.info("Runtime bootstrap completed: %s endpoints, %s datasets", catalog_count, dataset_count)
+    else:
+        logger.info("Runtime bootstrap skipped; run backend/bootstrap_runtime.py explicitly")
+
+    if settings.RUN_PAPER_RECOVERY_ON_STARTUP:
+        from app.services.paper_runtime_service import PaperRuntimeService
+
+        recovered = PaperRuntimeService(db_instance).recover_instances()
+        logger.info(
+            "Paper runtime recovery completed: %s instance(s), %s interrupted cycle(s)",
+            recovered["restored"],
+            recovered["interrupted_cycles"],
+        )
+    else:
+        logger.info("Paper runtime recovery skipped by config")
 
     if settings.ENABLE_SCHEDULER:
         from app.services.scheduler_service import init_scheduler

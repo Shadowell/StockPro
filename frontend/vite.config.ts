@@ -13,6 +13,9 @@ export default defineConfig(({ mode }) => {
       host: true,
       port: 4444,
       strictPort: true,
+      watch: {
+        ignored: ['**/playwright-report/**', '**/test-results/**'],
+      },
       proxy: {
         "/api": {
           target: proxyTarget,

@@ -25,15 +25,21 @@ class Settings(BaseSettings):
     QWEN_STOCK_MODEL: str = "qwen-plus"
 
     TUSHARE_TOKEN: str = ""
+    TUSHARE_CREDIT_TIER: int = 5000
     TUSHARE_REALTIME_SOURCE: str = "dc"
     ENABLE_TUSHARE: bool = True
     AKSHARE_TIMEOUT: int = 30
     AKSHARE_SUBPROCESS_FALLBACK: bool = True
     RUN_STARTUP_DATA_SYNC: bool = False
-    ENABLE_SCHEDULER: bool = True
+    RUN_MIGRATIONS_ON_STARTUP: bool = False
+    RUN_BOOTSTRAP_ON_STARTUP: bool = False
+    RUN_PAPER_RECOVERY_ON_STARTUP: bool = False
+    ENABLE_SCHEDULER: bool = False
+    ENABLE_LOCAL_PG_BACKUP: bool = True
+    LOCAL_PG_BACKUP_CRON: str = "30 2 * * *"
     ENABLE_REALTIME_SYNC: bool = False
-    ENABLE_STRATEGY_EXECUTION: bool = True
-    ENABLE_EXTERNAL_MARKET_FETCH: bool = True
+    ENABLE_STRATEGY_EXECUTION: bool = False
+    ENABLE_EXTERNAL_MARKET_FETCH: bool = False
 
     ENFORCE_OPERATION_ALLOWLIST: bool = False
     OPERATION_ALLOWLIST: List[str] = []

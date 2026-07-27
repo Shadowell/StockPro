@@ -66,7 +66,15 @@ class KlineSyncService:
                     item["end_date"],
                 )
                 self.db.insert_klines(records, timeframe=item["timeframe"], exchange=item["exchange"])
-                self.db.update_sync_job_item(item["id"], status="success", records_count=len(records))
+                actual_sources = {str(record.get("source") or "unknown") for record in records}
+                fallback_reasons = {str(record.get("fallback_reason")) for record in records if record.get("fallback_reason")}
+                self.db.update_sync_job_item(
+                    item["id"],
+                    status="success",
+                    records_count=len(records),
+                    actual_source=next(iter(actual_sources)) if len(actual_sources) == 1 else "mixed",
+                    fallback_reason=";".join(sorted(fallback_reasons)) or None,
+                )
             except Exception as exc:
                 self.db.update_sync_metadata(
                     item["symbol"],
@@ -97,13 +105,24 @@ class KlineSyncService:
         digits = "".join(ch for ch in symbol if ch.isdigit())
         if not digits:
             raise ValueError(f"Invalid A-share symbol: {symbol}")
-        df = ak.stock_zh_a_hist(
-            symbol=digits,
-            period="daily",
-            start_date=start_date.replace("-", ""),
-            end_date=end_date.replace("-", ""),
-            adjust="qfq",
-        )
+        source = "unknown"
+        fallback_reason = None
+        if hasattr(ak, "stock_zh_a_hist_with_source"):
+            df, source, fallback_reason = ak.stock_zh_a_hist_with_source(
+                symbol=digits,
+                period="daily",
+                start_date=start_date.replace("-", ""),
+                end_date=end_date.replace("-", ""),
+                adjust="",
+            )
+        else:
+            df = ak.stock_zh_a_hist(
+                symbol=digits,
+                period="daily",
+                start_date=start_date.replace("-", ""),
+                end_date=end_date.replace("-", ""),
+                adjust="",
+            )
         if df is None or df.empty:
             return []
         stock_name = self._resolve_symbol_name(symbol)
@@ -124,7 +143,8 @@ class KlineSyncService:
                     "close": self._float(row.get("收盘")),
                     "volume": self._int(row.get("成交量")),
                     "turnover": self._float(row.get("成交额")),
-                    "source": "tushare",
+                    "source": source,
+                    "fallback_reason": fallback_reason,
                 }
             )
         return records

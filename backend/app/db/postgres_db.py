@@ -651,7 +651,7 @@ class PostgresDatabase:
                     """
                     INSERT INTO kline_history
                     (exchange, symbol, name, timeframe, timestamp_ms, trade_date,
-                     open, high, low, close, volume, turnover, source, updated_at)
+                     open, high, low, close, volume, turnover, source, collected_at, updated_at)
                     VALUES %s
                     ON CONFLICT (exchange, symbol, timeframe, timestamp_ms) DO UPDATE SET
                         name = EXCLUDED.name,
@@ -663,6 +663,7 @@ class PostgresDatabase:
                         volume = EXCLUDED.volume,
                         turnover = EXCLUDED.turnover,
                         source = EXCLUDED.source,
+                        collected_at = EXCLUDED.collected_at,
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
@@ -681,7 +682,7 @@ class PostgresDatabase:
                         item[10],
                         item[11],
                         item[12],
-                        item[13],
+                        item[14],
                     )
                     for item in values
                 ]
@@ -934,7 +935,7 @@ class PostgresDatabase:
     def get_sync_job_items(self, job_id: int, status: str = None) -> List[Dict]:
         query = """
             SELECT id, job_id, exchange, symbol, timeframe, data_type, start_date,
-                   end_date, status, records_count, error_message, started_at,
+                   end_date, status, records_count, actual_source, fallback_reason, error_message, started_at,
                    finished_at, updated_at
             FROM sync_job_items
             WHERE job_id = %s
@@ -956,6 +957,8 @@ class PostgresDatabase:
         status: str,
         records_count: int = 0,
         error_message: str = None,
+        actual_source: str = None,
+        fallback_reason: str = None,
     ) -> None:
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
@@ -964,13 +967,15 @@ class PostgresDatabase:
                     UPDATE sync_job_items
                     SET status = %s,
                         records_count = %s,
+                        actual_source = COALESCE(%s, actual_source),
+                        fallback_reason = COALESCE(%s, fallback_reason),
                         error_message = %s,
                         started_at = COALESCE(started_at, CURRENT_TIMESTAMP),
                         finished_at = CASE WHEN %s IN ('success', 'failed') THEN CURRENT_TIMESTAMP ELSE finished_at END,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     """,
-                    (status, int(records_count or 0), error_message, status, item_id),
+                    (status, int(records_count or 0), actual_source, fallback_reason, error_message, status, item_id),
                 )
 
     def update_sync_job_status(self, job_id: int, status: str, message: str = None) -> None:
@@ -1944,7 +1949,7 @@ class PostgresDatabase:
             return
         self.save_strategy(
             name="A股多股动量模板",
-            description="Backtrader 注册策略：多股组合、100股一手、T+1、只做多。",
+            description="A股多标的策略，遵循 100 股整数手、T+1 与只做多约束。",
             script_content=self._preset_strategy_code(),
             interval_seconds=60,
         )
@@ -4112,6 +4117,7 @@ class PostgresDatabase:
             self._coerce_float(record.get("turnover") or record.get("amount")),
             str(record.get("source") or "tushare"),
             datetime.now(),
+            datetime.now(),
         )
 
     def _get_kline_history_unified(
@@ -4217,14 +4223,18 @@ class PostgresDatabase:
             market, raw = text.split("_", 1)
             market = market[:2]
             return f"{market}_{raw.zfill(6)}" if raw.isdigit() else f"{market}_{raw}"
+        for market in ("SH", "SZ", "BJ"):
+            if text.startswith(market):
+                digits = "".join(ch for ch in text[len(market):] if ch.isdigit())
+                return f"{market}_{digits.zfill(6)}" if digits else text
         digits = "".join(ch for ch in text if ch.isdigit())
         if len(digits) >= 6:
             raw = digits[-6:]
-            if raw.startswith(("6", "9")):
+            if raw.startswith("6"):
                 return f"SH_{raw}"
             if raw.startswith(("0", "3")):
                 return f"SZ_{raw}"
-            if raw.startswith(("4", "8")):
+            if raw.startswith(("9", "4", "8")):
                 return f"BJ_{raw}"
             return raw
         return text
@@ -4310,6 +4320,8 @@ class PostgresDatabase:
             "end_date": row["end_date"].isoformat() if row["end_date"] else None,
             "status": row["status"],
             "records_count": int(row["records_count"] or 0),
+            "actual_source": row.get("actual_source"),
+            "fallback_reason": row.get("fallback_reason"),
             "error_message": row["error_message"],
             "started_at": row["started_at"].isoformat() if row["started_at"] else None,
             "finished_at": row["finished_at"].isoformat() if row["finished_at"] else None,
@@ -4330,30 +4342,26 @@ class PostgresDatabase:
         }
 
     def _preset_strategy_code(self) -> str:
-        return """import backtrader as bt
+        return """POSITION_PERCENT = 0.18
+MOMENTUM_THRESHOLD = 0.012
 
 
-class AshareMomentumTemplate(bt.Strategy):
-    params = dict(position_pct=0.9, max_positions=5)
+def initialize(context):
+    context.lookback = 3
+    set_benchmark("000300.SH")
+    set_option("avoid_future_data", True)
+    set_order_cost(open_tax=0.0, close_tax=0.0005, commission=0.0003, min_commission=5.0)
 
-    def next(self):
-        open_count = sum(1 for data in self.datas if self.getposition(data).size)
-        slots = max(int(self.p.max_positions) - open_count, 0)
-        if slots <= 0:
-            return
-        candidates = []
-        for data in self.datas:
-            if len(data.close) < 3 or self.getposition(data).size:
-                continue
-            momentum = (data.close[0] - data.close[-2]) / data.close[-2] if data.close[-2] else 0
-            if momentum > 0.012:
-                candidates.append((momentum, data))
-        candidates.sort(key=lambda item: item[0], reverse=True)
-        allocation = self.broker.getcash() * self.p.position_pct / max(min(len(candidates), slots), 1)
-        for _, data in candidates[:slots]:
-            size = int((allocation / data.close[0]) // 100) * 100
-            if size > 0:
-                self.buy(data=data, size=size)
+
+def handle_data(context, data):
+    for security in context.universe:
+        closes = history(security, context.lookback, "1d", "close")
+        if len(closes) < context.lookback or not closes[-2]:
+            continue
+        momentum = (closes[-1] - closes[-2]) / closes[-2]
+        target = POSITION_PERCENT if momentum > MOMENTUM_THRESHOLD else 0.0
+        order_target_percent(security, target)
+        record(security=security, momentum=float(momentum), target=float(target))
 """
 
     def _schema_sql(self) -> str:

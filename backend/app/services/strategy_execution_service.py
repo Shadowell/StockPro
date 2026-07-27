@@ -2,16 +2,9 @@
 策略执行服务：管理Python策略脚本的执行、调度
 使用项目的虚拟环境执行Python脚本
 """
-import asyncio
-import json
 import logging
-import subprocess
-import sys
-import tempfile
 import threading
-import time
-import os
-from datetime import datetime
+import psycopg2.extras
 from typing import Dict, List, Any, Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -19,30 +12,6 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.db import db_instance as db
 
 logger = logging.getLogger(__name__)
-
-# 获取项目虚拟环境的Python解释器路径
-def get_venv_python() -> str:
-    """获取虚拟环境中的Python解释器路径"""
-    # 获取backend目录
-    current_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    
-    # 虚拟环境的Python路径
-    if sys.platform == 'win32':
-        venv_python = os.path.join(current_dir, 'venv', 'Scripts', 'python.exe')
-    else:
-        venv_python = os.path.join(current_dir, 'venv', 'bin', 'python')
-    
-    # 如果虚拟环境存在，使用它；否则使用当前Python
-    if os.path.exists(venv_python):
-        logger.info(f"Using venv Python: {venv_python}")
-        return venv_python
-    else:
-        logger.warning(f"Venv not found at {venv_python}, using system Python: {sys.executable}")
-        return sys.executable
-
-# 全局变量：虚拟环境Python路径
-VENV_PYTHON = get_venv_python()
-
 
 class StrategyExecutionService:
     """
@@ -97,9 +66,16 @@ class StrategyExecutionService:
                 description=description,
                 interval_seconds=interval_seconds
             )
+            from app.services.strategy_runtime_service import StrategyRuntimeService
+            version_result = StrategyRuntimeService(db).ensure_legacy_version(
+                strategy_id,
+                db.get_strategy_by_id(strategy_id) or {},
+            )
             return {
                 'success': True,
                 'id': strategy_id,
+                'strategy_version': version_result.get('strategy_version'),
+                'validation': version_result.get('validation'),
                 'message': f'Strategy "{name}" saved successfully'
             }
         except Exception as e:
@@ -136,7 +112,9 @@ class StrategyExecutionService:
             )
             if not strategy:
                 return {"success": False, "error": "Strategy not found"}
-            return {**strategy, "success": True}
+            from app.services.strategy_runtime_service import StrategyRuntimeService
+            version_result = StrategyRuntimeService(db).ensure_legacy_version(strategy_id, strategy)
+            return {**strategy, "success": True, "strategy_version": version_result.get("strategy_version"), "validation": version_result.get("validation")}
         except Exception as e:
             logger.error(f"Error updating strategy: {e}")
             return {"success": False, "error": str(e)}
@@ -160,120 +138,24 @@ class StrategyExecutionService:
     # ============ 策略执行 ============
     
     def execute_strategy(self, strategy_id: int) -> Dict[str, Any]:
-        """立即执行策略"""
+        """Use the shared snapshot replay runtime; never execute arbitrary stdout scripts."""
         strategy = db.get_strategy_by_id(strategy_id)
         if not strategy:
             return {'success': False, 'error': 'Strategy not found'}
-        
-        return self._run_script(strategy_id, strategy['script_content'], strategy['name'])
-    
-    def _run_script(self, strategy_id: int, script_content: str, strategy_name: str) -> Dict[str, Any]:
-        """执行Python脚本"""
-        start_time = time.time()
-        
-        try:
-            # 创建临时文件存放脚本
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
-                f.write(script_content)
-                temp_script_path = f.name
-            
-            try:
-                # 获取backend目录作为工作目录
-                backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                
-                # 设置环境变量，确保使用虚拟环境
-                env = os.environ.copy()
-                env['PYTHONPATH'] = backend_dir + os.pathsep + env.get('PYTHONPATH', '')
-                venv_dir = os.path.join(backend_dir, 'venv')
-                if os.path.exists(venv_dir):
-                    if sys.platform == 'win32':
-                        env['PATH'] = os.path.join(venv_dir, 'Scripts') + os.pathsep + env.get('PATH', '')
-                    else:
-                        env['PATH'] = os.path.join(venv_dir, 'bin') + os.pathsep + env.get('PATH', '')
-                    env['VIRTUAL_ENV'] = venv_dir
-                
-                # 使用虚拟环境的Python执行脚本
-                result = subprocess.run(
-                    [VENV_PYTHON, temp_script_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,  # 5分钟超时
-                    cwd=backend_dir,
-                    env=env
-                )
-                
-                execution_duration_ms = int((time.time() - start_time) * 1000)
-                
-                if result.returncode == 0:
-                    # 解析输出
-                    output = result.stdout.strip()
-                    try:
-                        # 尝试解析JSON输出
-                        parsed_output = json.loads(output)
-                        result_data = json.dumps(parsed_output, ensure_ascii=False)
-                    except json.JSONDecodeError:
-                        # 如果不是JSON，包装为text格式
-                        result_data = json.dumps({'raw_output': output}, ensure_ascii=False)
-                    
-                    # 保存成功结果
-                    db.save_strategy_result(
-                        strategy_id=strategy_id,
-                        status='success',
-                        result_data=result_data,
-                        execution_duration_ms=execution_duration_ms
-                    )
-                    
-                    logger.info(f"Strategy '{strategy_name}' executed successfully in {execution_duration_ms}ms")
-                    
-                    return {
-                        'success': True,
-                        'result': parsed_output if 'parsed_output' in dir() else {'raw_output': output},
-                        'execution_time_ms': execution_duration_ms
-                    }
-                else:
-                    # 执行失败
-                    error_msg = result.stderr or f"Script exited with code {result.returncode}"
-                    
-                    db.save_strategy_result(
-                        strategy_id=strategy_id,
-                        status='failed',
-                        error_message=error_msg,
-                        execution_duration_ms=execution_duration_ms
-                    )
-                    
-                    logger.error(f"Strategy '{strategy_name}' failed: {error_msg}")
-                    
-                    return {
-                        'success': False,
-                        'error': error_msg,
-                        'execution_time_ms': execution_duration_ms
-                    }
-                    
-            finally:
-                # 清理临时文件
-                try:
-                    os.unlink(temp_script_path)
-                except:
-                    pass
-                    
-        except subprocess.TimeoutExpired:
-            error_msg = "Script execution timed out (5 minutes)"
-            db.save_strategy_result(
-                strategy_id=strategy_id,
-                status='failed',
-                error_message=error_msg
-            )
-            return {'success': False, 'error': error_msg}
-            
-        except Exception as e:
-            error_msg = str(e)
-            db.save_strategy_result(
-                strategy_id=strategy_id,
-                status='failed',
-                error_message=error_msg
-            )
-            logger.error(f"Error executing strategy: {e}")
-            return {'success': False, 'error': error_msg}
+        from app.services.strategy_runtime_service import StrategyRuntimeService
+        runtime = StrategyRuntimeService(db)
+        version_result = runtime.ensure_legacy_version(strategy_id, strategy)
+        version = version_result.get("strategy_version") or {}
+        if (version_result.get("validation") or {}).get("valid") is not True:
+            return {"success": False, "error": "Strategy API v1 validation failed", "validation": version_result.get("validation")}
+        with db.get_connection() as connection:
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute("SELECT id FROM dataset_snapshots WHERE status='sealed' ORDER BY trade_date DESC NULLS LAST, id DESC LIMIT 1")
+                row = cursor.fetchone()
+        if not row:
+            return {"success": False, "error": "No sealed dataset snapshot"}
+        result = runtime.replay(str(version["id"]), {"dataset_snapshot_id": int(row["id"]), "mode": "quick", "event_limit": 30})
+        return {"success": result.get("status") == "success", "result": result}
     
     # ============ 策略调度 ============
     
@@ -340,7 +222,7 @@ class StrategyExecutionService:
         """执行调度的策略"""
         strategy = db.get_strategy_by_id(strategy_id)
         if strategy:
-            self._run_script(strategy_id, strategy['script_content'], strategy['name'])
+            self.execute_strategy(strategy_id)
     
     def stop_strategy(self, strategy_id: int) -> Dict[str, Any]:
         """停止策略定时执行"""

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Activity, Languages, LogOut, Settings, X } from 'lucide-react';
+import { StatusBadge } from '@bitpro/ui';
 import clsx from 'clsx';
 import { clearAdminToken, getMarketOverview } from '../api/client';
 import { useSettingsStore, type ColorScheme } from '../stores/useSettingsStore';
@@ -13,21 +14,16 @@ interface MainLayoutProps {
   title?: string;
 }
 
-const FALLBACK_INDICES: MarketIndex[] = [
-  { name: '上证指数', code: '000001', price: 4120.28, change_amount: 9.47, change_percent: 0.23 },
-  { name: '深证成指', code: '399001', price: 16344.08, change_amount: 292.76, change_percent: 1.82 },
-  { name: '创业板指', code: '399006', price: 4371.99, change_amount: 120.56, change_percent: 2.84 },
-  { name: '科创50', code: '000688', price: 2066.33, change_amount: 76.91, change_percent: 3.87 },
-];
-
 const TOP_INDEX_ORDER = ['上证指数', '深证成指', '创业板指', '科创50'];
 
 const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/$/, '实时大盘'],
   [/^\/market/, '市场概览'],
+  [/^\/pools/, '股票池研究'],
   [/^\/research\/overview/, '市场概览'],
   [/^\/sentiment/, '市场情绪'],
   [/^\/news/, '消息中心'],
+  [/^\/ai-lab/, 'AI 研发'],
   [/^\/ai/, '智能选股'],
   [/^\/factors/, '因子研究'],
   [/^\/calendar/, '交易日历'],
@@ -35,6 +31,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/backtest/, '回测中心'],
   [/^\/review/, '复盘中心'],
   [/^\/paper/, '模拟/实盘交易'],
+  [/^\/watch/, '观察台'],
   [/^\/monitor/, '运行风控'],
   [/^\/data\/processing/, '管理后台'],
   [/^\/data/, '管理后台'],
@@ -88,14 +85,15 @@ function ColorSchemeCard({
 
 function StockProLogo() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-11 w-11 items-center justify-center rounded-[9px] bg-blue-600 text-white shadow-[0_10px_28px_rgba(37,99,235,0.32)]">
-        <Activity className="h-6 w-6" />
+    <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] border border-blue-400/30 bg-blue-500/15 text-blue-300">
+        <Activity className="h-4 w-4" />
       </div>
       <div className="min-w-0">
-        <div className="text-[22px] font-black leading-none tracking-tight text-white">
-          StockPro <span className="text-slate-400">AI</span>
+        <div className="truncate text-[16px] font-black leading-none tracking-tight text-white">
+          StockPro <span className="text-slate-500">AI</span>
         </div>
+        <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-600">A-Share Operator</div>
       </div>
     </div>
   );
@@ -106,20 +104,29 @@ function TopTicker({ indices }: { indices: MarketIndex[] }) {
     .map((name) => indices.find((item) => item.name === name))
     .filter((item): item is MarketIndex => Boolean(item));
   const displayIndices = ordered.length >= 4 ? ordered : [...ordered, ...indices.filter((item) => !TOP_INDEX_ORDER.includes(item.name))];
+  const slots = TOP_INDEX_ORDER.map((name) => displayIndices.find((item) => item.name === name) ?? null);
 
   return (
-    <div className="flex min-w-0 items-center gap-7">
-      {displayIndices.slice(0, 4).map((item) => {
-        const positive = (item.change_percent || 0) >= 0;
+    <div className="flex min-w-0 items-center gap-1" aria-label="A股指数快照">
+      {slots.map((item, index) => {
+        const positive = (item?.change_percent || 0) >= 0;
         return (
-          <div key={item.name} className="min-w-[112px] text-right">
-            <div className="text-[12px] font-bold text-slate-500">{item.name}</div>
-            <div className={clsx('mt-0.5 text-[13px] font-black tabular-nums', positive ? 'text-up' : 'text-down')}>
-              {formatNumber(item.price)} ({positive ? '+' : ''}{formatNumber(item.change_percent)}%)
+          <div key={TOP_INDEX_ORDER[index]} className="min-w-[118px] border-l border-crypto-border px-3 first:border-l-0">
+            <div className="text-[10px] font-bold text-slate-500">{TOP_INDEX_ORDER[index]}</div>
+            <div className={clsx('mt-0.5 font-mono text-[12px] font-bold tabular-nums', item ? (positive ? 'text-up' : 'text-down') : 'text-slate-600')}>
+              {item ? `${formatNumber(item.price)} ${positive ? '+' : ''}${formatNumber(item.change_percent)}%` : '-- --'}
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function PageContentFallback() {
+  return (
+    <div className="flex min-h-[calc(100vh-48px)] items-center justify-center bg-crypto-bg text-sm text-slate-500">
+      正在加载页面…
     </div>
   );
 }
@@ -130,19 +137,38 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
   const { language, setLanguage } = useStore();
   const { colorScheme, setColorScheme } = useSettingsStore();
   const [showSettings, setShowSettings] = useState(false);
-  const [indices, setIndices] = useState<MarketIndex[]>(FALLBACK_INDICES);
+  const [indices, setIndices] = useState<MarketIndex[]>([]);
+  const [marketSnapshotState, setMarketSnapshotState] = useState<'loading' | 'fresh' | 'stale' | 'unavailable'>('loading');
+  const [marketSnapshotUpdatedAt, setMarketSnapshotUpdatedAt] = useState<string | null>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     getMarketOverview()
       .then((overview) => {
-        if (!cancelled && overview.indices?.length) {
-          setIndices(overview.indices);
-        }
+        if (cancelled) return;
+        setIndices(overview.indices || []);
+        const stockState = overview.data_status?.stock_snapshot_state;
+        const indexState = overview.data_status?.index_snapshot_state;
+        const effectiveState = stockState === 'stale' || indexState === 'stale'
+          ? 'stale'
+          : stockState === 'fresh' && (indexState === 'fresh' || indexState === undefined)
+            ? 'fresh'
+            : 'unavailable';
+        setMarketSnapshotState(effectiveState);
+        setMarketSnapshotUpdatedAt(
+          overview.data_status?.stock_snapshot_updated_at
+          || overview.data_status?.index_snapshot_updated_at
+          || overview.last_update
+          || null,
+        );
       })
       .catch(() => {
-        if (!cancelled) setIndices(FALLBACK_INDICES);
+        if (!cancelled) {
+          setIndices([]);
+          setMarketSnapshotState('unavailable');
+          setMarketSnapshotUpdatedAt(null);
+        }
       });
     return () => {
       cancelled = true;
@@ -171,26 +197,31 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-crypto-bg text-slate-100">
-      <aside className="hidden w-[264px] shrink-0 flex-col border-r border-crypto-border bg-crypto-card lg:flex">
-        <div className="flex h-[106px] items-center border-b border-crypto-border px-3">
+    <div className="flex h-screen overflow-hidden bg-crypto-bg text-slate-100" data-testid="financial-operator-shell">
+      <aside className="hidden w-[232px] shrink-0 flex-col border-r border-crypto-border bg-crypto-card lg:flex">
+        <div className="flex h-[58px] items-center border-b border-crypto-border px-3.5">
           <StockProLogo />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto py-3 pr-3">
+        <div className="min-h-0 flex-1 overflow-y-auto py-2">
           <Navigation orientation="vertical" />
         </div>
       </aside>
 
       <main className="min-w-0 flex-1 overflow-hidden bg-crypto-bg">
-        <div className="hidden h-[54px] items-center justify-between border-b border-crypto-border bg-crypto-panel px-6 lg:flex" data-testid="stockpro-ai-topbar">
-          <h1 className="shrink-0 text-xl font-black tracking-tight text-white">{pageTitle}</h1>
-          <div className="ml-6 flex min-w-0 items-center gap-7">
+        <div className="hidden h-[48px] items-center justify-between border-b border-crypto-border bg-crypto-panel px-4 lg:flex" data-testid="stockpro-ai-topbar">
+          <h1 className="shrink-0 text-sm font-bold tracking-tight text-slate-100">{pageTitle}</h1>
+          <div className="ml-4 flex min-w-0 items-center gap-3">
             <TopTicker indices={indices} />
-            <span className="inline-flex h-8 items-center gap-2 rounded-full border border-crypto-border bg-crypto-card px-3 text-xs font-black text-red-300">
-              <span className="h-2 w-2 rounded-full bg-red-400" />
-              已休市
-            </span>
+            <StatusBadge tone={marketSnapshotState === 'fresh' ? 'green' : marketSnapshotState === 'loading' ? 'blue' : 'amber'}>
+              {marketSnapshotState === 'fresh'
+                ? '行情快照新鲜'
+                : marketSnapshotState === 'stale'
+                  ? `行情已陈旧${marketSnapshotUpdatedAt ? ` · ${marketSnapshotUpdatedAt.slice(0, 10)}` : ''}`
+                  : marketSnapshotState === 'loading'
+                    ? '行情加载中'
+                    : '行情快照不可用'}
+            </StatusBadge>
             <button
               type="button"
               onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
@@ -244,7 +275,11 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
           <Navigation orientation="horizontal" />
         </div>
 
-        <div className="h-full overflow-auto">{children || <Outlet />}</div>
+        <div className="stockpro-page-viewport h-full overflow-auto" data-operator-surface="page">
+          <Suspense fallback={<PageContentFallback />}>
+            {children || <Outlet />}
+          </Suspense>
+        </div>
       </main>
 
       {showSettings && (

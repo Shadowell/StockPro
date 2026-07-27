@@ -34,7 +34,7 @@ export const RequireAdmin: React.FC<RequireAdminProps> = ({ children }) => {
     return () => {
       cancelled = true;
     };
-  }, [location.pathname, location.search]);
+  }, []);
 
   if (state === 'denied') {
     const redirect = `${location.pathname}${location.search}`;

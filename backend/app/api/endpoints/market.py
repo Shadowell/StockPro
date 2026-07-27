@@ -1,10 +1,61 @@
 import asyncio
 from fastapi import APIRouter, Query, Body, HTTPException
 from app.services.market_service import MarketService
+from app.services.market_research_service import MarketResearchService
 from app.db import db_instance as db
 from typing import List, Dict, Any
 
 router = APIRouter()
+research_service = MarketResearchService(db)
+
+
+@router.get("/research-context")
+async def get_research_context(
+    snapshot_id: int | None = Query(None),
+    trade_date: str | None = Query(None),
+    market_scope: str = Query("all_a"),
+) -> Dict[str, Any]:
+    try:
+        return research_service.research_context(snapshot_id, trade_date, market_scope)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/evidence-snapshots")
+async def list_evidence_snapshots(
+    trade_date: str | None = Query(None),
+    market_scope: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=365),
+) -> Dict[str, Any]:
+    items = research_service.list_snapshots(trade_date=trade_date, market_scope=market_scope, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/sentiment")
+async def get_research_sentiment(snapshot_id: int = Query(...)) -> Dict[str, Any]:
+    try:
+        return research_service.sentiment(snapshot_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/limit-ecosystem")
+async def get_limit_ecosystem(snapshot_id: int = Query(...)) -> Dict[str, Any]:
+    try:
+        return research_service.limit_ecosystem(snapshot_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/sector-evidence")
+async def get_sector_evidence(
+    snapshot_id: int = Query(...),
+    classification: str = Query("tushare_limit_industry"),
+) -> Dict[str, Any]:
+    try:
+        return research_service.sector_evidence(snapshot_id, classification)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 @router.get("/overview")
 async def get_market_overview() -> Dict[str, Any]:
@@ -15,9 +66,6 @@ async def get_market_overview() -> Dict[str, Any]:
 @router.get("/short-line-indices")
 async def get_short_line_indices() -> List[Dict[str, Any]]:
     """获取短线指数 - 优先从数据库，没有则实时获取"""
-    result = db.get_short_line_indices_realtime()
-    if result:
-        return result
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, MarketService.get_short_line_indices)
 
@@ -40,7 +88,8 @@ async def get_hot_concepts(
 ) -> List[Dict[str, Any]]:
     """获取热门概念板块 - 页面只读 PG 缓存/历史"""
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: MarketService.get_hot_concepts(limit, date))
+    rows = await loop.run_in_executor(None, lambda: MarketService.get_hot_concepts(limit, date))
+    return [{**row, "source_label": row.get("source_label") or "PG 缓存；上游来源未记录"} for row in rows]
 
 @router.get("/ths-hot")
 async def get_ths_hot(
@@ -49,7 +98,8 @@ async def get_ths_hot(
 ) -> List[Dict[str, Any]]:
     """获取同花顺热榜 - 页面只读 PG 缓存/历史"""
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: MarketService.get_ths_hot(limit, date))
+    rows = await loop.run_in_executor(None, lambda: MarketService.get_ths_hot(limit, date))
+    return [{**row, "source_label": row.get("source_label") or "PG 缓存；上游来源未记录"} for row in rows]
 
 @router.get("/lianban-ladder")
 async def get_lianban_ladder(date: str | None = Query(None)) -> Dict[str, Any]:
@@ -72,21 +122,27 @@ async def get_hot_concept_leaders(
     limit: int = Query(20, ge=1, le=200),
     date: str | None = Query(None)
 ) -> List[Dict[str, Any]]:
-    """获取概念板块龙头股 - 优先从数据库读取缓存，更快"""
-    # 优先从数据库读取
+    """Return the stored concept-leader cache without provider side effects."""
     cached = db.get_concept_leaders_cache(name, limit)
-    if cached and len(cached) > 0:
-        return cached
-    
-    # 数据库没有则从API获取
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: MarketService.get_concept_leading_stocks(name=name, limit=limit, date=date))
+    if not cached:
+        return []
+    updated_at = db.get_concept_leaders_cache_updated_at(name)
+    state = "stale" if MarketService._is_stale_timestamp(updated_at, max_age_hours=36) else "fresh"
+    return [
+        {
+            **row,
+            "source_label": row.get("source_label") or "PostgreSQL concept-leader cache",
+            "updated_at": row.get("updated_at") or updated_at,
+            "data_status": state,
+        }
+        for row in cached
+    ]
 
 @router.get("/fundamentals/{symbol}")
 async def get_stock_fundamentals(symbol: str) -> Dict[str, Any]:
-    """获取股票基本面数据 - 实时获取"""
+    """Read stored fundamentals; explicit sync jobs own provider access."""
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: MarketService.get_stock_fundamentals(symbol))
+    return await loop.run_in_executor(None, lambda: MarketService.get_stock_fundamentals(symbol, cache_only=True))
 
 @router.get("/message-stream")
 async def get_message_stream(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
