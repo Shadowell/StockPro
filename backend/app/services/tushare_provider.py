@@ -117,6 +117,41 @@ class TushareFirstDataProvider:
             ),
         )
 
+    def stock_zh_a_hist_with_source(
+        self,
+        symbol: str,
+        period: str = "daily",
+        start_date: str = "",
+        end_date: str = "",
+        adjust: str = "",
+    ) -> tuple[pd.DataFrame, str, Optional[str]]:
+        """Fetch daily bars with the actual provider and an explicit fallback reason.
+
+        The legacy AkShare-shaped method intentionally hides the fallback for
+        display pages.  Dataset publication must not: one partition has one
+        actual source, and its audit record has to tell a researcher why a
+        fallback was used.
+        """
+        fallback_reason: Optional[str] = None
+        if self._tushare_ready():
+            try:
+                frame = self._tushare_daily_history(symbol, period, start_date, end_date, adjust)
+                if isinstance(frame, pd.DataFrame) and not frame.empty:
+                    return frame, "tushare", None
+                fallback_reason = "tushare_empty_response"
+            except Exception as exc:
+                fallback_reason = f"tushare_error:{type(exc).__name__}"
+        else:
+            fallback_reason = "tushare_not_ready"
+        frame = self._akshare_attr("stock_zh_a_hist")(
+            symbol=symbol,
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            adjust=adjust,
+        )
+        return frame, "akshare", fallback_reason
+
     def stock_zh_a_daily(
         self,
         symbol: str,
@@ -299,6 +334,37 @@ class TushareFirstDataProvider:
             lambda: self._tushare_limit_list(trade_date=trade_date, limit_type="D"),
             lambda: self._akshare_attr("stock_zt_pool_dtgc_em")(date=date, *args, **kwargs),
         )
+
+    def is_tushare_ready(self) -> bool:
+        """Whether an authenticated TuShare request may be made right now."""
+        return self._tushare_ready()
+
+    def fetch_pro_endpoint(self, endpoint_code: str, *, fields: Optional[str] = None, **params) -> pd.DataFrame:
+        """Call one catalogue endpoint without silently falling back to AkShare.
+
+        Research ingestion needs the actual provider and permission failure, so
+        this method intentionally differs from the legacy AkShare-shaped
+        adapter methods above.
+        """
+        if not self._tushare_ready():
+            raise RuntimeError("TuShare 未就绪：请检查 ENABLE_TUSHARE、TUSHARE_TOKEN 和 tushare 包。")
+        endpoint_code = str(endpoint_code or "").strip()
+        if not endpoint_code:
+            raise ValueError("endpoint_code 不能为空")
+        request_params = {key: value for key, value in params.items() if value is not None}
+        if fields:
+            request_params["fields"] = fields
+        pro = self._pro_api()
+        method = getattr(pro, endpoint_code, None)
+        if callable(method):
+            result = method(**request_params)
+        elif hasattr(pro, "query"):
+            result = pro.query(endpoint_code, **request_params)
+        else:
+            raise RuntimeError(f"TuShare Pro 不支持端点：{endpoint_code}")
+        if not isinstance(result, pd.DataFrame):
+            raise TypeError(f"TuShare {endpoint_code} 返回了非 DataFrame 结果")
+        return result
 
     def _with_fallback(
         self,

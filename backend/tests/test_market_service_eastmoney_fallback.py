@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
 
+from app.core.config import settings
 from app.services.market_service import MarketService
 
 
@@ -47,6 +48,7 @@ class MarketServiceEastMoneyFallbackTests(unittest.TestCase):
         }
 
         with (
+            patch.object(settings, "ENABLE_EXTERNAL_MARKET_FETCH", True),
             patch("app.services.market_service.ak.stock_zh_a_spot_em", side_effect=RuntimeError("blocked")),
             patch("app.services.market_service.ak.stock_hot_rank_em", side_effect=RuntimeError("blocked")),
             patch("app.services.market_service.ak.stock_zh_a_spot", side_effect=RuntimeError("blocked")),
@@ -63,6 +65,7 @@ class MarketServiceEastMoneyFallbackTests(unittest.TestCase):
 
     def test_all_stocks_does_not_call_slow_sina_spot_when_fast_sources_fail(self):
         with (
+            patch.object(settings, "ENABLE_EXTERNAL_MARKET_FETCH", True),
             patch("app.services.market_service.ak.stock_zh_a_spot_em", side_effect=RuntimeError("blocked")),
             patch("app.services.market_service._fetch_eastmoney_a_spot_direct", side_effect=RuntimeError("blocked")),
             patch("app.services.market_service.ak.stock_hot_rank_em", side_effect=RuntimeError("blocked")),

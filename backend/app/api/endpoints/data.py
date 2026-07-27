@@ -12,12 +12,31 @@ import psycopg2.extras
 from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.core.config import settings
 from app.db import db_instance as db
+from app.services.daily_reference_sync_service import DailyReferenceSyncService
+from app.services.dataset_snapshot_service import DatasetSnapshotService
 from app.services.kline_sync_service import KlineSyncService
+from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService
+from app.services.tushare_catalog_service import TushareCatalogService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 kline_sync_service = KlineSyncService(db)
+tushare_catalog_service = TushareCatalogService(db, ak)
+dataset_snapshot_service = DatasetSnapshotService(db)
+reference_dataset_sync_service = ReferenceDatasetSyncService(
+    db,
+    catalog_service=tushare_catalog_service,
+    snapshot_service=dataset_snapshot_service,
+)
+daily_reference_sync_service = DailyReferenceSyncService(
+    db,
+    kline_service=kline_sync_service,
+    catalog_service=tushare_catalog_service,
+    snapshot_service=dataset_snapshot_service,
+    reference_service=reference_dataset_sync_service,
+)
 
 sync_status: Dict[str, Any] = {
     "is_running": False,
@@ -71,6 +90,33 @@ class HistorySyncRequest(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     job_name: Optional[str] = None
+
+
+class TushareEndpointRequest(BaseModel):
+    params: Dict[str, Any] = Field(default_factory=dict)
+    fields: Optional[str] = None
+
+
+class MarketEvidenceRequest(BaseModel):
+    trade_date: str
+    market_scope: str = "all_a"
+
+
+class DatasetSnapshotRequest(BaseModel):
+    name: str
+    partition_ids: List[int] = Field(default_factory=list)
+    knowledge_cutoff_at: Optional[datetime] = None
+
+
+class DailyBarsPublicationRequest(BaseModel):
+    trade_date: str
+    knowledge_cutoff_at: Optional[datetime] = None
+
+
+class DailyReferenceRunRequest(BaseModel):
+    trade_date: Optional[str] = None
+    symbols: List[str] = Field(default_factory=list)
+    force: bool = False
 
 
 def _date_to_ms(value: Any) -> Optional[int]:
@@ -415,7 +461,17 @@ async def run_scheduled_all_ashare_sync(
         )
         _schedule_config = {**_schedule_config, "lastFinishedAt": finished_at, "lastError": None}
         save_data_runtime_config()
-        return {**job_payload, "result": result}
+        publication: Dict[str, Any] = {"status": "not_attempted"}
+        if str(result.get("status") or "").lower() == "success":
+            try:
+                publication = await asyncio.to_thread(
+                    DatasetSnapshotService(database).publish_daily_bars,
+                    end_date,
+                )
+            except Exception as publication_error:
+                publication = {"status": "blocked", "message": str(publication_error)}
+                logger.warning("Daily K-line sync completed but snapshot publication is blocked: %s", publication_error)
+        return {**job_payload, "result": result, "snapshotPublication": publication}
     except Exception as exc:
         finished_at = datetime.now().isoformat(timespec="seconds")
         sync_status.update(
@@ -430,6 +486,31 @@ async def run_scheduled_all_ashare_sync(
         save_data_runtime_config()
         logger.exception("Scheduled all A-share kline sync failed")
         return {"success": False, "message": str(exc)}
+
+
+async def run_daily_reference_sync(
+    trade_date: Optional[str] = None,
+    symbols: Optional[List[str]] = None,
+    force: bool = False,
+    database=db,
+    service: Optional[DailyReferenceSyncService] = None,
+) -> Dict[str, Any]:
+    """Run the PG-backed post-close pipeline; used by both API and scheduler."""
+    target_date = trade_date or datetime.now().date().isoformat()
+    resolved_symbols = _dedupe_symbols(symbols) if symbols else resolve_all_ashare_symbols(database)
+    runner = service or daily_reference_sync_service
+    result = await asyncio.to_thread(runner.run, target_date, resolved_symbols, force)
+    now = datetime.now().isoformat(timespec="seconds")
+    if result.get("status") in {"sealed", "failed", "blocked", "not_trading_day", "skipped"}:
+        sync_status.update(
+            {
+                "is_running": False,
+                "last_finished_at": now,
+                "last_result": result,
+                "message": f"日终参考数据编排：{result.get('status')}",
+            }
+        )
+    return result
 
 
 def _job_elapsed_seconds(job: Dict[str, Any]) -> Optional[float]:
@@ -572,6 +653,11 @@ def _job_item_to_progress(item: Dict[str, Any]) -> Dict[str, Any]:
         "elapsedSeconds": None,
         "error": item.get("error_message"),
         "errorMessage": item.get("error_message"),
+        # The configured job source is only an intent.  Surface the provider that
+        # actually supplied this partition so callers cannot silently treat an
+        # AkShare fallback as TuShare data.
+        "actualSource": item.get("actual_source"),
+        "fallbackReason": item.get("fallback_reason"),
     }
 
 
@@ -637,10 +723,18 @@ def _schedule_payload() -> Dict[str, Any]:
 
 
 def _normalize_code(code: str) -> str:
-    digits = "".join(ch for ch in str(code or "") if ch.isdigit())
+    text = str(code or "").strip().upper().replace(".", "_")
+    if "_" in text:
+        market, raw = text.split("_", 1)
+        return f"{market[:2]}_{raw.zfill(6)}" if raw.isdigit() else f"{market[:2]}_{raw}"
+    for prefix in ("SH", "SZ", "BJ"):
+        if text.startswith(prefix):
+            raw = "".join(ch for ch in text[len(prefix):] if ch.isdigit())
+            return f"{prefix}_{raw.zfill(6)}" if raw else text
+    digits = "".join(ch for ch in text if ch.isdigit())
     if digits.startswith("6"):
         return f"SH_{digits}"
-    if digits.startswith(("8", "4")):
+    if digits.startswith(("9", "8", "4")):
         return f"BJ_{digits}"
     return f"SZ_{digits}" if digits else str(code or "")
 
@@ -663,6 +757,23 @@ def _int(value, default=0):
         return default
 
 
+def _stock_spot_frame_for_cache() -> pd.DataFrame:
+    errors: List[str] = []
+    for source_name, fetcher in (
+        ("eastmoney", ak.stock_zh_a_spot_em),
+        ("sina", ak.stock_zh_a_spot),
+    ):
+        try:
+            df = fetcher()
+            if df is not None and not df.empty:
+                logger.info("Using %s spot data for market cache sync: %s rows", source_name, len(df))
+                return df
+            errors.append(f"{source_name}: empty")
+        except Exception as exc:
+            errors.append(f"{source_name}: {exc}")
+    raise RuntimeError("; ".join(errors))
+
+
 @router.get("/status")
 async def data_status() -> Dict[str, Any]:
     coverage = db.kline_coverage(limit=500) if hasattr(db, "kline_coverage") else []
@@ -679,6 +790,174 @@ async def data_status() -> Dict[str, Any]:
         "sync_jobs": jobs[:10],
         **manager_status,
     }
+
+
+@router.post("/tushare/catalog/install")
+async def install_tushare_catalog() -> Dict[str, Any]:
+    return {"installed": tushare_catalog_service.install_catalog(), "credit_tier": tushare_catalog_service.credit_tier}
+
+
+@router.get("/datasets")
+async def list_research_datasets() -> Dict[str, Any]:
+    return {"items": dataset_snapshot_service.list_datasets()}
+
+
+@router.get("/quality/issues")
+async def list_research_quality_issues(
+    dataset_code: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+) -> Dict[str, Any]:
+    return {"items": dataset_snapshot_service.list_quality_issues(dataset_code=dataset_code, severity=severity, limit=limit)}
+
+
+@router.get("/source-entitlements")
+async def list_research_source_entitlements() -> Dict[str, Any]:
+    return {"items": dataset_snapshot_service.list_source_entitlements()}
+
+
+@router.get("/snapshots")
+async def list_research_dataset_snapshots(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
+    return {"items": dataset_snapshot_service.list_snapshots(limit=limit)}
+
+
+@router.get("/universe-snapshots/{snapshot_id}")
+async def get_research_universe_snapshot(snapshot_id: int) -> Dict[str, Any]:
+    snapshot = reference_dataset_sync_service.get_universe_snapshot(snapshot_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Universe 快照不存在")
+    return snapshot
+
+
+@router.post("/snapshots")
+async def create_research_dataset_snapshot(request: DatasetSnapshotRequest) -> Dict[str, Any]:
+    try:
+        return dataset_snapshot_service.create_snapshot(
+            name=request.name,
+            partition_ids=request.partition_ids,
+            knowledge_cutoff_at=request.knowledge_cutoff_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/snapshots/{snapshot_id}")
+async def get_research_dataset_snapshot(snapshot_id: int) -> Dict[str, Any]:
+    snapshot = dataset_snapshot_service.get_snapshot(snapshot_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="数据快照不存在")
+    return snapshot
+
+
+@router.get("/snapshots/{snapshot_id}/daily-bars")
+async def get_snapshot_daily_bars(
+    snapshot_id: int,
+    symbols: Optional[str] = Query(None),
+    limit: int = Query(100_000, ge=1, le=1_000_000),
+) -> Dict[str, Any]:
+    try:
+        symbol_list = [item.strip() for item in (symbols or "").split(",") if item.strip()]
+        rows = dataset_snapshot_service.load_daily_bars(snapshot_id, symbols=symbol_list, limit=limit)
+        return {"snapshot_id": snapshot_id, "items": rows, "total": len(rows)}
+    except ValueError as exc:
+        status_code = 404 if "不存在" in str(exc) else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.get("/snapshots/{snapshot_id}/datasets/{dataset_code}/records")
+async def get_snapshot_dataset_records(
+    snapshot_id: int,
+    dataset_code: str,
+    symbols: Optional[str] = Query(None),
+    limit: int = Query(100_000, ge=1, le=1_000_000),
+) -> Dict[str, Any]:
+    try:
+        symbol_list = [item.strip() for item in (symbols or "").split(",") if item.strip()]
+        rows = dataset_snapshot_service.load_snapshot_dataset(
+            snapshot_id,
+            dataset_code,
+            symbols=symbol_list,
+            limit=limit,
+        )
+        return {"snapshot_id": snapshot_id, "dataset_code": dataset_code, "items": rows, "total": len(rows)}
+    except ValueError as exc:
+        status_code = 404 if "不存在" in str(exc) else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.post("/snapshots/{snapshot_id}/seal")
+async def seal_research_dataset_snapshot(snapshot_id: int) -> Dict[str, Any]:
+    try:
+        return dataset_snapshot_service.seal_snapshot(snapshot_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/datasets/daily-bars/publish")
+async def publish_daily_bars_snapshot(request: DailyBarsPublicationRequest) -> Dict[str, Any]:
+    try:
+        return dataset_snapshot_service.publish_daily_bars(
+            trade_date=request.trade_date,
+            knowledge_cutoff_at=request.knowledge_cutoff_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/tushare/endpoints")
+async def list_tushare_endpoints(module: Optional[str] = Query(None)) -> Dict[str, Any]:
+    rows = tushare_catalog_service.catalogue(module=module)
+    return {"credit_tier": tushare_catalog_service.credit_tier, "items": rows, "total": len(rows)}
+
+
+@router.post("/tushare/endpoints/{endpoint_code}/probe")
+async def probe_tushare_endpoint(endpoint_code: str, request: TushareEndpointRequest) -> Dict[str, Any]:
+    tushare_catalog_service.install_catalog()
+    try:
+        return tushare_catalog_service.probe(endpoint_code, params=request.params, fields=request.fields)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/tushare/endpoints/{endpoint_code}/sync")
+async def sync_tushare_endpoint(endpoint_code: str, request: TushareEndpointRequest) -> Dict[str, Any]:
+    tushare_catalog_service.install_catalog()
+    try:
+        return await asyncio.to_thread(
+            tushare_catalog_service.sync_endpoint,
+            endpoint_code,
+            request.params,
+            request.fields,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/market-evidence/sync")
+async def sync_market_evidence(request: MarketEvidenceRequest) -> Dict[str, Any]:
+    try:
+        return await asyncio.to_thread(
+            tushare_catalog_service.sync_market_evidence,
+            request.trade_date,
+            request.market_scope,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/market-evidence/latest")
+async def latest_market_evidence(
+    trade_date: Optional[str] = Query(None),
+    market_scope: str = Query("all_a"),
+) -> Dict[str, Any]:
+    snapshot = tushare_catalog_service.latest_market_evidence(trade_date=trade_date, market_scope=market_scope)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="未找到市场证据快照")
+    return snapshot
 
 
 @router.post("/sync")
@@ -726,6 +1005,66 @@ async def data_jobs(
 @router.get("/schedule")
 async def data_schedule() -> Dict[str, Any]:
     return _schedule_payload()
+
+
+@router.get("/schedules/daily")
+async def daily_reference_schedule() -> Dict[str, Any]:
+    schedule = daily_reference_sync_service.get_schedule()
+    try:
+        from app.services.scheduler_service import scheduler_service
+
+        runner_online = bool(settings.ENABLE_SCHEDULER and scheduler_service.scheduler.running)
+        job = scheduler_service.scheduler.get_job(schedule["code"]) if runner_online else None
+        effective_next_run = getattr(job, "next_run_time", None) if job else None
+    except Exception:
+        runner_online = False
+        job = None
+        effective_next_run = None
+    configured_next_run = schedule.get("nextRunAt")
+    return {
+        **schedule,
+        "configuredNextRunAt": configured_next_run,
+        "runtimeEnabled": bool(settings.ENABLE_SCHEDULER),
+        "runnerOnline": runner_online,
+        "jobRegistered": job is not None,
+        "effectiveNextRunAt": effective_next_run,
+        "runtimeStatus": (
+            "running"
+            if runner_online and job is not None and schedule.get("enabled")
+            else "runner_offline"
+            if schedule.get("enabled")
+            else "disabled"
+        ),
+    }
+
+
+@router.put("/schedules/daily")
+async def update_daily_reference_schedule(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
+    try:
+        schedule = daily_reference_sync_service.update_schedule(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # The scheduler may be disabled locally.  When it is running, refresh only
+    # this managed job so the persisted contract and APScheduler stay aligned.
+    try:
+        from app.services.scheduler_service import scheduler_service
+
+        scheduler_service.refresh_daily_reference_schedule(schedule)
+    except Exception:
+        logger.warning("Daily reference schedule persisted but scheduler refresh was deferred", exc_info=True)
+    return schedule
+
+
+@router.post("/schedules/daily/run")
+async def run_daily_reference_schedule(request: DailyReferenceRunRequest) -> Dict[str, Any]:
+    try:
+        return await run_daily_reference_sync(
+            trade_date=request.trade_date,
+            symbols=request.symbols,
+            force=request.force,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.put("/schedule")
@@ -956,7 +1295,7 @@ def _sync_market_cache() -> Dict[str, Any]:
 
 
 def _sync_all_stocks() -> int:
-    df = ak.stock_zh_a_spot_em()
+    df = _stock_spot_frame_for_cache()
     if df is None or df.empty:
         return 0
 
@@ -979,13 +1318,13 @@ def _sync_all_stocks() -> int:
                 _float(row.get("涨跌幅")),
                 _float(row.get("成交量")),
                 _float(row.get("成交额")),
-                _float(row.get("换手率")),
-                _float(row.get("量比")),
-                _float(row.get("市盈率-动态")),
-                _float(row.get("市净率")),
-                _float(row.get("总市值")),
-                _float(row.get("流通市值")),
-                _float(row.get("振幅")),
+                _float(row.get("换手率"), None),
+                _float(row.get("量比"), None),
+                _float(row.get("市盈率-动态"), None),
+                _float(row.get("市净率"), None),
+                _float(row.get("总市值"), None),
+                _float(row.get("流通市值"), None),
+                _float(row.get("振幅"), None),
                 updated_at,
             )
         )
@@ -1132,6 +1471,7 @@ def _refresh_short_line_indices() -> int:
             cursor.execute(
                 """
                 SELECT
+                    COUNT(*) AS total_stocks,
                     COUNT(*) FILTER (WHERE change_percent >= 9.8) AS limit_up,
                     COUNT(*) FILTER (WHERE change_percent <= -9.8) AS limit_down,
                     COUNT(*) FILTER (WHERE change_percent > 0) AS up_count,
@@ -1139,7 +1479,9 @@ def _refresh_short_line_indices() -> int:
                 FROM all_stocks_realtime
                 """
             )
-            limit_up, limit_down, up_count, down_count = cursor.fetchone()
+            total_stocks, limit_up, limit_down, up_count, down_count = cursor.fetchone()
+            if not total_stocks:
+                return 0
             rows = [
                 ("LIMIT_UP", "涨停家数", limit_up or 0, 0, 0, datetime.now()),
                 ("LIMIT_DOWN", "跌停家数", limit_down or 0, 0, 0, datetime.now()),

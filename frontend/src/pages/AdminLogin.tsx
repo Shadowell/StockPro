@@ -77,7 +77,7 @@ export const AdminLogin: React.FC = () => {
 
   if (isCheckingSession) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-crypto-bg text-slate-200">
+      <div className="flex min-h-screen items-center justify-center bg-crypto-bg text-slate-200" data-operator-surface="auth">
         <div className="flex items-center gap-2 text-sm text-gray-300">
           <Loader2 size={16} className="animate-spin text-emerald-400" />
           {copy.checking}
@@ -87,7 +87,7 @@ export const AdminLogin: React.FC = () => {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-crypto-bg px-4 text-slate-200">
+    <main className="flex min-h-screen items-center justify-center bg-crypto-bg px-4 text-slate-200" data-operator-surface="auth">
       <section className="relative w-full max-w-md rounded-[12px] border border-crypto-border bg-crypto-card shadow-2xl shadow-black/30">
         <div className="border-b border-crypto-border px-6 py-5">
           <div className="flex items-center gap-3">

@@ -220,7 +220,7 @@ export function StrategyDetailPanel({ strategy, onBack, onEdit }: { strategy: St
       </div>
 
       <LogicSummarySection
-        selection="基于全 A 股票池、指数环境、板块热度与 PG 缓存日线数据生成候选标的；策略可继续扩展 ST、行业、概念和指数成分过滤。"
+        selection="基于全 A 股票池、指数环境、板块热度与日线数据生成候选标的，并支持 ST、行业、概念和指数成分过滤。"
         trading="以 Backtrader Strategy 类为执行核心，统一复用 A 股只做多、100 股一手、T+1、佣金、印花税、滑点和最低佣金约束。"
       />
 
@@ -658,7 +658,7 @@ export function PaperInstanceDetailPanel({
       </div>
 
       <LogicSummarySection
-        selection="使用策略输出的 A 股候选股票池、PG 行情缓存和最新模拟持仓生成下一轮候选信号。"
+        selection="使用策略输出的 A 股候选股票池、最新行情和模拟持仓生成下一轮候选信号。"
         trading="复用回测成本、仓位和风控口径；模拟成交只写入 PaperBroker 账户、订单、持仓、权益曲线和事件流。"
         icon={<BookOpen className="h-4 w-4 shrink-0 text-blue-400" />}
       />
@@ -808,7 +808,7 @@ export function PaperInstanceDetailPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="text-sm font-semibold text-white">成交点时间线</div>
-              <p className="mt-1 text-xs text-gray-500">按最近成交顺序展示买卖点，后续行情缓存补齐后可叠加完整 K 线。</p>
+              <p className="mt-1 text-xs text-gray-500">按最近成交顺序展示买卖点。</p>
             </div>
             <span className="rounded-full border border-crypto-border bg-crypto-bg px-2.5 py-1 text-[11px] font-semibold text-gray-400">
               {reviewOrders.length} 个成交点

@@ -1,27 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, BarChart3, BookOpen, CalendarDays, Code2, Layers, Plus, Save, Search, TrendingUp, Zap, X } from 'lucide-react';
+import { Activity, AlertCircle, BarChart3, BookOpen, CalendarDays, CheckCircle2, Code2, Layers, Play, Plus, RefreshCw, Save, Search, TrendingUp, Zap, X } from 'lucide-react';
 import clsx from 'clsx';
-import { autoDevelopStrategy, getStrategies, saveStrategy, updateStrategy } from '../api/client';
+import { autoDevelopStrategy, getAICapabilities, getFactorSnapshots, getLatestStrategyVersion, getStrategies, quickRunStrategyVersion, saveStrategy, updateStrategy } from '../api/client';
 import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
 import { StrategyDetailPanel } from '../components/BitProDetailPanels';
-import type { Strategy as StrategyType } from '../types';
+import type { AICapabilities, Strategy as StrategyType, StrategyReplayResult, StrategyValidationReport, StrategyVersion } from '../types';
 
 type ListTab = 'my' | 'plaza';
-type StatusFilter = 'all' | 'running' | 'paused' | 'not_started';
-type AssetFilter = 'all' | 'ashare' | 'backtrader';
+type StatusFilter = 'all' | 'running' | 'not_started';
+type AssetFilter = 'all' | 'ashare' | 'strategy_v1';
 
 const statusFilters: { value: StatusFilter; label: string; dot: string }[] = [
   { value: 'all', label: '全部', dot: 'bg-blue-400' },
   { value: 'running', label: '运行中', dot: 'bg-emerald-400' },
-  { value: 'paused', label: '暂停', dot: 'bg-yellow-400' },
   { value: 'not_started', label: '未启动', dot: 'bg-gray-500' },
 ];
 
 const assetFilters: { value: AssetFilter; label: string }[] = [
   { value: 'all', label: '全部' },
   { value: 'ashare', label: 'A股' },
-  { value: 'backtrader', label: 'Backtrader' },
+  { value: 'strategy_v1', label: '标准策略' },
 ];
 
 const plazaTemplates = [
@@ -57,21 +56,21 @@ const plazaTemplates = [
   },
 ];
 
-const emptyCode = `import backtrader as bt
+const emptyCode = `def initialize(context):
+    context.security = "SH_600000"
+    set_benchmark("000300.SH")
+    set_option("avoid_future_data", True)
 
 
-class CustomAshareStrategy(bt.Strategy):
-    params = dict(position_pct=0.9)
-
-    def next(self):
-        for data in self.datas:
-            if len(data.close) < 3:
-                continue
-            pos = self.getposition(data)
-            if not pos and data.close[0] > data.close[-1]:
-                size = int((self.broker.getcash() * self.p.position_pct / data.close[0]) // 100) * 100
-                if size > 0:
-                    self.buy(data=data, size=size)
+def handle_data(context, data):
+    if context.security not in data:
+        return
+    closes = history(context.security, 20, "1d", "close")
+    if len(closes) < 20:
+        return
+    target = 1.0 if data[context.security].close > closes.mean() else 0.0
+    order_target_percent(context.security, target)
+    record(ma20=closes.mean(), target=target)
 `;
 
 const formatDate = (value?: string) => {
@@ -82,6 +81,17 @@ const formatDate = (value?: string) => {
 };
 
 const normalizeText = (value: string) => value.toLowerCase().replace(/[\s:_\-，。,.]+/g, '');
+
+const productStrategyCopy = (strategy: StrategyType): StrategyType => {
+  const name = strategy.name === 'StockPro Strategy API v1 示例' ? 'A股标准策略示例' : strategy.name;
+  const description = strategy.description === '纯 Python 生命周期参考策略；保存新版本不需要修改框架、路由或重启服务。'
+    ? 'A股多标的动量参考策略，可用于回测与模拟验证。'
+    : strategy.description.startsWith('StockPro Strategy API v1 生命周期策略')
+      || strategy.description.startsWith('Backtrader 注册策略')
+      ? 'A股多标的策略，遵循 100 股整数手、T+1 与只做多约束。'
+      : strategy.description;
+  return { ...strategy, name, description };
+};
 
 const inferTags = (strategy: StrategyType) => {
   const text = `${strategy.name} ${strategy.description} ${strategy.script_content}`;
@@ -101,19 +111,24 @@ export function Strategy() {
   const [script, setScript] = useState(emptyCode);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [listError, setListError] = useState('');
   const [view, setView] = useState<'editor' | 'detail'>('editor');
   const [searchQuery, setSearchQuery] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [listTab, setListTab] = useState<ListTab>('my');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [assetFilter, setAssetFilter] = useState<AssetFilter>('all');
+  const [activeVersion, setActiveVersion] = useState<StrategyVersion | null>(null);
+  const [validation, setValidation] = useState<StrategyValidationReport | null>(null);
+  const [replayResult, setReplayResult] = useState<StrategyReplayResult | null>(null);
+  const [aiCapabilities, setAiCapabilities] = useState<AICapabilities | null>(null);
 
   const selected = useMemo(() => strategies.find((item) => item.id === selectedId) || null, [selectedId, strategies]);
   const statusCounts = useMemo(
     () => ({
       all: strategies.length,
       running: strategies.filter((item) => item.is_running).length,
-      paused: 0,
       not_started: strategies.filter((item) => !item.is_running).length,
     }),
     [strategies],
@@ -122,7 +137,7 @@ export function Strategy() {
     () => ({
       all: strategies.length,
       ashare: strategies.length,
-      backtrader: strategies.filter((item) => /backtrader|bt\.Strategy/i.test(item.script_content || item.description || '')).length,
+      strategy_v1: strategies.filter((item) => /def\s+initialize\s*\(|def\s+handle_data\s*\(/.test(item.script_content || '')).length,
     }),
     [strategies],
   );
@@ -134,8 +149,7 @@ export function Strategy() {
     return strategies.filter((strategy) => {
       if (statusFilter === 'running' && !strategy.is_running) return false;
       if (statusFilter === 'not_started' && strategy.is_running) return false;
-      if (statusFilter === 'paused') return false;
-      if (assetFilter === 'backtrader' && !/backtrader|bt\.Strategy/i.test(strategy.script_content || strategy.description || '')) return false;
+      if (assetFilter === 'strategy_v1' && !/def\s+initialize\s*\(|def\s+handle_data\s*\(/.test(strategy.script_content || '')) return false;
       const haystack = normalizeText(`${strategy.name} ${strategy.description} ${strategy.script_content} ${inferTags(strategy).join(' ')}`);
       if (tokens.length === 0) return true;
       return tokens.every((token) => haystack.includes(token));
@@ -143,9 +157,21 @@ export function Strategy() {
   }, [assetFilter, searchQuery, statusFilter, strategies]);
 
   const load = async () => {
-    const data = await getStrategies();
-    setStrategies(data);
-    if (!selectedId && data[0]) setSelectedId(data[0].id);
+    setListState('loading');
+    setListError('');
+    try {
+      const [data, capabilities] = await Promise.all([
+        getStrategies(),
+        getAICapabilities().catch(() => null),
+      ]);
+      setStrategies(data);
+      setAiCapabilities(capabilities);
+      if (!selectedId && data[0]) setSelectedId(data[0].id);
+      setListState('ready');
+    } catch (error) {
+      setListState('error');
+      setListError(error instanceof Error ? error.message : '策略记录加载失败');
+    }
   };
 
   useEffect(() => {
@@ -154,12 +180,27 @@ export function Strategy() {
 
   useEffect(() => {
     if (!selected) return;
-    setName(selected.name);
-    setDescription(selected.description || '');
+    const copy = productStrategyCopy(selected);
+    setName(copy.name);
+    setDescription(copy.description || '');
     setScript(selected.script_content || emptyCode);
+    setReplayResult(null);
+    getLatestStrategyVersion(selected.id)
+      .then((version) => {
+        setActiveVersion(version);
+        setValidation(version.validation_report);
+      })
+      .catch(() => {
+        setActiveVersion(null);
+        setValidation(null);
+      });
   }, [selected]);
 
   const handleGenerate = async () => {
+    if (!aiCapabilities?.configured) {
+      setMessage(aiCapabilities?.reason || 'AI 能力状态未知，当前禁止生成');
+      return;
+    }
     setLoading(true);
     setMessage('');
     try {
@@ -175,29 +216,60 @@ export function Strategy() {
       setDescription(result.strategy.description);
       setScript(result.strategy.script_content);
       setShowEditor(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? `AI 写策略失败：${error.message}` : 'AI 写策略失败');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (closeEditor = true): Promise<string | undefined> => {
     setLoading(true);
     setMessage('');
     try {
       if (selectedId) {
         const saved = await updateStrategy(selectedId, { name, description, script_content: script, interval_seconds: 60 });
-        setStrategies((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
-        setMessage('策略已保存');
-        setShowEditor(false);
+        setStrategies((prev) => prev.map((item) => (item.id === saved.id ? ({ ...item, ...saved } as StrategyType) : item)));
+        setActiveVersion(saved.strategy_version ?? null);
+        setValidation(saved.validation ?? null);
+        setMessage(saved.validation?.valid ? '策略版本已保存并通过校验' : '策略版本已保存，但校验未通过');
+        if (closeEditor) setShowEditor(false);
+        return saved.strategy_version?.id;
       } else {
         const result = await saveStrategy({ name, description, script_content: script, interval_seconds: 60 });
         if (result.id) {
           setSelectedId(result.id);
           await load();
         }
-        setMessage('策略已保存');
-        setShowEditor(false);
+        setActiveVersion(result.strategy_version ?? null);
+        setValidation(result.validation ?? null);
+        setMessage(result.validation?.valid ? '策略版本已保存并通过校验' : '策略版本已保存，但校验未通过');
+        if (closeEditor) setShowEditor(false);
+        return result.strategy_version?.id;
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuickRun = async () => {
+    setLoading(true);
+    setReplayResult(null);
+    try {
+      const versionId = await handleSave(false);
+      if (!versionId) return;
+      const snapshots = await getFactorSnapshots();
+      const snapshot = snapshots.items.find((item) => item.status === 'sealed');
+      if (!snapshot) throw new Error('尚无已封存因子/数据快照');
+      const result = await quickRunStrategyVersion(versionId, {
+        dataset_snapshot_id: snapshot.dataset_snapshot_id,
+        factor_snapshot_id: snapshot.id,
+        event_limit: 30,
+      });
+      setReplayResult(result);
+      setMessage(result.status === 'success' ? `快速运行完成：${result.intent_count ?? '--'} 条委托意图` : `快速运行失败：${result.error_code ?? 'runtime'}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '快速运行失败');
     } finally {
       setLoading(false);
     }
@@ -206,14 +278,14 @@ export function Strategy() {
   if (view === 'detail' && selected) {
     return (
       <div className="min-h-full bg-crypto-bg p-6">
-        <StrategyDetailPanel strategy={selected} onBack={() => setView('editor')} onEdit={() => setShowEditor(true)} />
+        <StrategyDetailPanel strategy={productStrategyCopy(selected)} onBack={() => setView('editor')} onEdit={() => setShowEditor(true)} />
       </div>
     );
   }
 
   return (
     <div className="min-h-full bg-crypto-bg p-6">
-      <div className="mb-6 flex items-center justify-between gap-4">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Code2 className="h-6 w-6 text-blue-400" />
           <h1 className="text-2xl font-bold text-white">策略中心</h1>
@@ -222,11 +294,16 @@ export function Strategy() {
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={loading}
+            disabled={loading || !aiCapabilities?.configured}
+            title={
+              aiCapabilities?.configured
+                ? `Qwen ${aiCapabilities.model || ''}`
+                : aiCapabilities?.reason || 'AI 能力状态读取中'
+            }
             className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/[0.12] px-4 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-500/45 hover:bg-purple-500/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Zap className="h-4 w-4" />
-            AI 写策略
+            {aiCapabilities?.configured ? 'AI 写策略' : 'AI 未配置'}
           </button>
           <button
             type="button"
@@ -235,6 +312,9 @@ export function Strategy() {
               setName('');
               setDescription('');
               setScript(emptyCode);
+              setActiveVersion(null);
+              setValidation(null);
+              setReplayResult(null);
               setShowEditor(true);
             }}
             className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
@@ -342,12 +422,15 @@ export function Strategy() {
       </div>
 
       {message && <div className="mb-4 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300">{message}</div>}
+      {listState === 'error' && <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"><span><strong>加载失败：</strong>{listError}</span><button type="button" onClick={() => void load()} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-red-100"><RefreshCw className="h-3.5 w-3.5" />重试</button></div>}
+      {listState === 'loading' && <div className="rounded-xl border border-crypto-border bg-crypto-card py-20 text-center text-sm text-gray-500"><RefreshCw className="mx-auto mb-3 h-5 w-5 animate-spin" />正在读取策略与版本…</div>}
 
-      {listTab === 'my' && (
+      {listTab === 'my' && listState === 'ready' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {visibleStrategies.map((item) => {
             const active = selectedId === item.id;
             const tags = inferTags(item);
+            const copy = productStrategyCopy(item);
             return (
               <article
                 key={item.id}
@@ -362,11 +445,16 @@ export function Strategy() {
                   <div className="mb-2 flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2.5">
                       <span className={clsx('mt-1 h-2 w-2 shrink-0 rounded-full', item.is_running ? 'animate-pulse bg-emerald-400' : 'bg-gray-600')} />
-                      <h2 className="truncate text-sm font-semibold text-[#FFAB73]">{item.name}</h2>
+                      <h2 className="truncate text-sm font-semibold text-[#FFAB73]">{copy.name}</h2>
+                      {item.data_purpose !== 'user' && item.data_purpose ? (
+                        <span className="shrink-0 rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-300">
+                          {item.data_purpose === 'acceptance' ? '验收数据' : '种子数据'}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   <p className="ml-[18px] line-clamp-2 min-h-[2.25rem] text-xs leading-relaxed text-gray-500">
-                    {item.description || '暂无策略说明'}
+                    {copy.description || '暂无策略说明'}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 px-5 pb-3">
@@ -429,7 +517,7 @@ export function Strategy() {
         </div>
       )}
 
-      {listTab === 'plaza' && (
+      {listTab === 'plaza' && listState === 'ready' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {plazaTemplates.map((template) => {
             const Icon = template.icon;
@@ -442,6 +530,9 @@ export function Strategy() {
                   setName(template.name.replace('模板', '策略'));
                   setDescription(template.description);
                   setScript(emptyCode);
+                  setActiveVersion(null);
+                  setValidation(null);
+                  setReplayResult(null);
                   setShowEditor(true);
                 }}
               >
@@ -483,9 +574,10 @@ export function Strategy() {
               <div>
                 <h2 className="flex items-center gap-2 text-lg font-bold text-white">
                   <Code2 className="h-5 w-5 text-blue-400" />
-                  Backtrader 策略类
+                  Python 生命周期策略
                 </h2>
-                <p className="mt-1 text-xs text-gray-500">支持完整 bt.Strategy 类；危险 import 和调用会在后端拦截。</p>
+                <p className="mt-1 text-xs text-gray-500">编写初始化与交易逻辑，保存后可校验并运行预检。</p>
+                <p className="mt-1 text-[11px] text-amber-300/70">A股运行边界：日线 1D · 收盘信号次日成交 · 100股整手 · T+1 · 涨跌停与停牌拦截。</p>
               </div>
               <button
                 type="button"
@@ -526,6 +618,17 @@ export function Strategy() {
                   className="h-[460px] w-full resize-none rounded-xl border border-crypto-border bg-[#0D1117] p-4 font-mono text-sm leading-6 text-gray-200 outline-none focus:border-blue-500"
                 />
               </label>
+              {(validation || replayResult || activeVersion) && (
+                <div className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {validation?.valid ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <AlertCircle className="h-4 w-4 text-amber-400" />}
+                    <span className={validation?.valid ? 'text-emerald-300' : 'text-amber-300'}>{validation?.valid ? '策略校验通过' : '等待校验或存在问题'}</span>
+                    {activeVersion && <span className="font-mono text-gray-500">v{activeVersion.version} · {activeVersion.content_hash.slice(0, 10)}</span>}
+                  </div>
+                  {validation && !validation.valid && <div className="mt-2 text-amber-200/70">{validation.issues.map((item) => `${item.code}: ${item.message}`).join('；')}</div>}
+                  {replayResult?.status === 'success' && <div className="mt-2 text-gray-400">预检 {replayResult.run_id.slice(0, 8)} · {replayResult.event_count} 个交易日 · {replayResult.intent_count} 个委托意图 · {replayResult.record_count} 条指标</div>}
+                </div>
+              )}
             </div>
 
             <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-crypto-border bg-crypto-card/95 px-6 py-4 backdrop-blur">
@@ -536,15 +639,10 @@ export function Strategy() {
               >
                 取消
               </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={loading || !name.trim()}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"
-              >
-                <Save className="h-4 w-4" />
-                保存策略
-              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => void handleSave(true)} disabled={loading || !name.trim()} className="inline-flex items-center gap-2 rounded-xl border border-blue-500/40 px-4 py-2 text-sm font-semibold text-blue-300 disabled:opacity-50"><Save className="h-4 w-4" />验证并保存版本</button>
+                <button type="button" onClick={() => void handleQuickRun()} disabled={loading || !name.trim()} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"><Play className="h-4 w-4" />保存并快速运行</button>
+              </div>
             </div>
           </section>
         </div>

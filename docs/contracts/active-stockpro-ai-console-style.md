@@ -1,5 +1,7 @@
 # Sprint Contract: StockPro AI Console Style
 
+> Status: Superseded on 2026-07-15 by the A-share Sprint 00-07 contract set; that roadmap completed locally on 2026-07-16 and has no active successor contract.
+
 ## Sprint Name
 
 `stockpro-ai-console-style`

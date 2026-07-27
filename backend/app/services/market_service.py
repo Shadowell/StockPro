@@ -12,6 +12,7 @@ import time
 
 from app.db import get_database
 from app.core.config import settings
+from app.services.market_research_service import MarketResearchService
 
 import threading
 from app.db import db_instance
@@ -206,6 +207,53 @@ def time_limited_cache(expiration_seconds=300):  # Default 5 minutes
 
 class MarketService:
     @staticmethod
+    def _latest_timestamp(rows: Sequence[Dict[str, Any]], field: str = "updated_at") -> Optional[Any]:
+        values = [row.get(field) for row in rows if row.get(field)]
+        return max(values) if values else None
+
+    @staticmethod
+    def _is_stale_timestamp(value: Any, max_age_hours: int = 36) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return True
+        if not isinstance(value, datetime):
+            return True
+        now = datetime.now(value.tzinfo) if value.tzinfo else datetime.now()
+        return now - value > timedelta(hours=max_age_hours)
+
+    @staticmethod
+    def _valid_short_line_cache(rows: Sequence[Dict[str, Any]]) -> bool:
+        if not rows:
+            return False
+        latest = MarketService._latest_timestamp(rows)
+        if MarketService._is_stale_timestamp(latest):
+            return False
+        return any((row.get("price") is not None and float(row.get("price") or 0) != 0) for row in rows)
+
+    @staticmethod
+    def _exchange_bucket(code: Any) -> str:
+        text = str(code or "").strip().upper().replace(".", "_")
+        if text.startswith("SH_") or text.startswith("SH"):
+            return "sh"
+        if text.startswith("SZ_") or text.startswith("SZ"):
+            return "sz"
+        if text.startswith("BJ_") or text.startswith("BJ"):
+            return "bj"
+        digits = "".join(ch for ch in text if ch.isdigit())
+        raw = digits[-6:] if len(digits) >= 6 else digits
+        if raw.startswith("6"):
+            return "sh"
+        if raw.startswith(("0", "3")):
+            return "sz"
+        if raw.startswith(("9", "8", "4")):
+            return "bj"
+        return ""
+
+    @staticmethod
     def _external_fetch_enabled() -> bool:
         return bool(settings.ENABLE_EXTERNAL_MARKET_FETCH)
 
@@ -368,35 +416,55 @@ class MarketService:
             logger.info("No cached realtime stocks for market overview; returning neutral breadth data")
             stocks = []
         
-        # 如果指数数据为空，尝试获取
-        if not indices_data or len(indices_data) == 0:
-            if MarketService._external_fetch_enabled():
-                try:
-                    indices_data = MarketService._fetch_main_indices()
-                    logger.info(f"Fetched {len(indices_data)} indices from API")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch indices from API: {e}")
-                    indices_data = []
-            else:
-                logger.info("External market fetch disabled; using cache-only indices for market overview")
-                indices_data = []
+        if not indices_data:
+            logger.info("No cached indices for market overview; page reads remain PostgreSQL-only")
+            indices_data = []
         
-        sentiment_data = {"score": 50.0, "status": "中性", "advancing": 0, "declining": 0, "unchanged": 0}
-        volume_data = {"amount": 0.0, "unit": "亿", "ratio": 1.0, "sh_amount": 0.0, "sz_amount": 0.0, "bj_amount": 0.0}
+        stock_snapshot_updated_at = MarketService._latest_timestamp(stocks)
+        stock_snapshot_state = "unavailable" if not stocks else (
+            "stale" if MarketService._is_stale_timestamp(stock_snapshot_updated_at) else "fresh"
+        )
+        index_snapshot_updated_at = MarketService._latest_timestamp(indices_data)
+        index_snapshot_state = "unavailable" if not indices_data else (
+            "stale" if MarketService._is_stale_timestamp(index_snapshot_updated_at) else "fresh"
+        )
+        sentiment_data = {
+            "score": None,
+            "status": "未同步",
+            "advancing": None,
+            "declining": None,
+            "unchanged": None,
+        }
+        volume_data = {
+            "amount": None,
+            "unit": "亿",
+            "ratio": None,
+            "sh_amount": None,
+            "sz_amount": None,
+            "bj_amount": None,
+        }
+        market_breadth = {"up": None, "down": None, "flat": None}
         
         if stocks:
             # 计算情绪数据
-            advancing = sum(1 for s in stocks if s.get('change_percent', 0) > 0)
-            declining = sum(1 for s in stocks if s.get('change_percent', 0) < 0)
-            unchanged = len(stocks) - advancing - declining
+            valid_changes = [
+                float(s["change_percent"])
+                for s in stocks
+                if s.get("change_percent") is not None
+            ]
+            advancing = sum(1 for value in valid_changes if value > 0)
+            declining = sum(1 for value in valid_changes if value < 0)
+            unchanged = sum(1 for value in valid_changes if value == 0)
             
             total = advancing + declining
             if total > 0:
                 score = round((advancing / total) * 100, 1)
             else:
-                score = 50.0
+                score = None
             
-            if score >= 80:
+            if score is None:
+                status = "不可用"
+            elif score >= 80:
                 status = "火热"
             elif score >= 60:
                 status = "活跃"
@@ -414,39 +482,95 @@ class MarketService:
                 "declining": declining,
                 "unchanged": unchanged
             }
+            market_breadth = {"up": advancing, "down": declining, "flat": unchanged}
             
             # 计算成交额
-            total_amount = sum(s.get('amount', 0) for s in stocks) / 100_000_000
-            sh_amount = sum(s.get('amount', 0) for s in stocks if s.get('code', '').startswith('6')) / 100_000_000
-            sz_amount = sum(s.get('amount', 0) for s in stocks if s.get('code', '').startswith(('0', '3'))) / 100_000_000
-            bj_amount = sum(s.get('amount', 0) for s in stocks if s.get('code', '').startswith(('4', '8'))) / 100_000_000
+            valid_amounts = [float(s["amount"]) for s in stocks if s.get("amount") is not None]
+            total_amount = sum(valid_amounts) / 100_000_000 if valid_amounts else None
+            sh_values = [float(s["amount"]) for s in stocks if s.get("amount") is not None and MarketService._exchange_bucket(s.get("code")) == "sh"]
+            sz_values = [float(s["amount"]) for s in stocks if s.get("amount") is not None and MarketService._exchange_bucket(s.get("code")) == "sz"]
+            bj_values = [float(s["amount"]) for s in stocks if s.get("amount") is not None and MarketService._exchange_bucket(s.get("code")) == "bj"]
             
             # 计算平均量比
             ratios = [s.get('volume_ratio', 0) or 0 for s in stocks if s.get('volume_ratio') is not None and 0 < (s.get('volume_ratio') or 0) < 100]
-            avg_ratio = round(sum(ratios) / len(ratios), 2) if ratios else 1.0
+            avg_ratio = round(sum(ratios) / len(ratios), 2) if ratios else None
             
             volume_data = {
-                "amount": round(total_amount, 2),
+                "amount": round(total_amount, 2) if total_amount is not None else None,
                 "unit": "亿",
                 "ratio": avg_ratio,
-                "sh_amount": round(sh_amount, 2),
-                "sz_amount": round(sz_amount, 2),
-                "bj_amount": round(bj_amount, 2),
+                "sh_amount": round(sum(sh_values) / 100_000_000, 2) if sh_values else None,
+                "sz_amount": round(sum(sz_values) / 100_000_000, 2) if sz_values else None,
+                "bj_amount": round(sum(bj_values) / 100_000_000, 2) if bj_values else None,
             }
         
         return {
             "indices": indices_data,
             "sentiment": sentiment_data,
             "volume": volume_data,
+            "market_breadth": market_breadth,
+            "data_status": {
+                "stock_snapshot_state": stock_snapshot_state,
+                "stock_snapshot_count": len(stocks),
+                "stock_snapshot_updated_at": stock_snapshot_updated_at,
+                "index_snapshot_state": index_snapshot_state,
+                "index_snapshot_count": len(indices_data),
+                "index_snapshot_updated_at": index_snapshot_updated_at,
+                "source_label": "PostgreSQL realtime cache",
+                "message": "全市场实时快照未同步" if not stocks else (
+                    "全市场实时快照已陈旧" if stock_snapshot_state == "stale" else "全市场实时快照可用"
+                ),
+            },
             "is_open": is_open,
-            "last_update": now.isoformat()
+            "last_update": stock_snapshot_updated_at or index_snapshot_updated_at,
+            "response_generated_at": now.isoformat(),
         }
 
     @staticmethod
     def get_short_line_indices() -> List[Dict[str, Any]]:
-        """获取短线指数 - 从数据库读取"""
+        """Read current short-line cache, falling back to the latest sealed market evidence."""
         results = db.get_short_line_indices_realtime()
-        return results if results else []
+        if MarketService._valid_short_line_cache(results):
+            return results
+
+        research = MarketResearchService(db)
+        snapshots = research.list_snapshots(market_scope="all_a", limit=1)
+        if not snapshots:
+            return []
+        snapshot = snapshots[0]
+        sentiment = research.sentiment(int(snapshot["id"]))
+        wanted = (
+            "limit_up_count",
+            "limit_down_count",
+            "broken_board_count",
+            "highest_board",
+            "rise_count",
+            "fall_count",
+            "seal_rate",
+            "rise_fall_ratio",
+        )
+        metrics = {item["metric_code"]: item for item in sentiment["metrics"]}
+        output: List[Dict[str, Any]] = []
+        for code in wanted:
+            metric = metrics.get(code)
+            if not metric or metric.get("value") is None:
+                continue
+            output.append({
+                "code": code,
+                "name": metric["label"],
+                "price": metric["value"],
+                "change_percent": None,
+                "change_amount": None,
+                "updated_at": snapshot.get("captured_at") or snapshot.get("available_at"),
+                "trade_date": snapshot.get("trade_date"),
+                "snapshot_id": snapshot.get("id"),
+                "data_state": "sealed_snapshot",
+                "source_label": metric.get("source_label"),
+                "unit": metric.get("unit"),
+                "definition": metric.get("definition"),
+                "comparison_state": "unavailable",
+            })
+        return output
 
     @staticmethod
     def _fetch_main_indices() -> List[Dict[str, Any]]:
@@ -680,7 +804,7 @@ class MarketService:
         return stocks
 
     @staticmethod
-    def get_stock_fundamentals(symbol: str) -> Dict[str, Any]:
+    def get_stock_fundamentals(symbol: str, cache_only: bool = False) -> Dict[str, Any]:
         try:
             code = MarketService._to_code(symbol)
             if not code:
@@ -714,12 +838,20 @@ class MarketService:
                         "float_market_cap": _to_float(row.get("float_market_cap")),
                         "amplitude": _to_float(row.get("amplitude")),
                         "updated_at": row.get("updated_at"),
+                        "source_label": row.get("source_label") or "PostgreSQL fundamentals cache",
+                        "data_status": "stale" if MarketService._is_stale_timestamp(row.get("updated_at")) else "fresh",
                     }
             except Exception as e:
                 logger.warning(f"Error fetching from local DB for {code}: {e}")
 
-            if not MarketService._external_fetch_enabled():
-                return {"code": code, "error": "external_fetch_disabled"}
+            if cache_only or not MarketService._external_fetch_enabled():
+                return {
+                    "code": code,
+                    "error": "not_available_in_postgresql",
+                    "source_label": "PostgreSQL fundamentals cache",
+                    "data_status": "empty",
+                    "updated_at": None,
+                }
 
             # Priority 1: Try East Money interface
             df_list = None
@@ -928,19 +1060,6 @@ class MarketService:
                 return hist[:limit]
         except Exception as e:
             logger.warning(f"Failed to fetch today's hot concepts history from DB: {e}")
-
-        if MarketService._external_fetch_enabled():
-            try:
-                external_results = MarketService._get_cached_hot_concepts()
-                if external_results:
-                    try:
-                        db.update_hot_concepts_realtime(external_results)
-                        db.insert_hot_concepts_history(today, external_results)
-                    except Exception as e:
-                        logger.warning(f"Failed to persist external hot concepts fallback: {e}")
-                    return external_results[:limit]
-            except Exception as e:
-                logger.warning(f"Failed to fetch external hot concepts fallback: {e}")
 
         elapsed_time = time.time() - start_time
         logger.info(f"No cached hot concepts available; returned empty list in {elapsed_time:.2f} seconds")
@@ -1441,18 +1560,21 @@ class MarketService:
         hour = now.hour
         is_trading_time = now.weekday() < 5 and 9 <= hour <= 15
 
-        # 异动数据 - 仅在交易时间获取，非交易时间返回空
-        stocks = []
-        if is_trading_time:
-            try:
-                stocks = MarketService.get_all_stocks()
-            except Exception as e:
-                logger.warning(f"获取股票列表失败: {e}")
-                stocks = []
+        # Page reads use only the stored market cache. Stale cache cannot create
+        # a current intraday anomaly claim.
+        try:
+            cached_stocks = db.get_all_stocks_realtime()
+        except Exception as exc:
+            logger.warning("读取全市场缓存失败: %s", exc)
+            cached_stocks = []
+        stock_updated_at = MarketService._latest_timestamp(cached_stocks)
+        stock_state = "unavailable" if not cached_stocks else (
+            "stale" if MarketService._is_stale_timestamp(stock_updated_at) else "fresh"
+        )
+        stocks = cached_stocks if is_trading_time and stock_state == "fresh" else []
 
         triggered: List[Dict[str, Any]] = []
         near: List[Dict[str, Any]] = []
-        upsert_payload: List[Dict[str, Any]] = []
         for s in stocks:
             code = str(s.get("code") or "").strip()
             name = str(s.get("name") or "").strip()
@@ -1473,29 +1595,11 @@ class MarketService:
             }
             if abs_pct >= threshold:
                 triggered.append(item)
-                event_key_src = f"{trade_date}:{code}:{rule.get('rule_id')}:{item['direction']}"
-                event_key = hashlib.sha1(event_key_src.encode("utf-8")).hexdigest()
-                upsert_payload.append(
-                    {
-                        "event_key": event_key,
-                        "trade_date": trade_date,
-                        "code": code,
-                        "name": name or None,
-                        "exchange": rule.get("exchange"),
-                        "rule_id": rule.get("rule_id"),
-                        "threshold_pct": threshold,
-                        "change_percent": pct,
-                        "direction": item["direction"],
-                        "triggered_at": now.isoformat(),
-                    }
-                )
             elif abs_pct >= max(0.0, threshold - 1.0):
                 near.append(item)
 
         triggered = sorted(triggered, key=lambda x: abs(float(x.get("change_percent") or 0.0)), reverse=True)[:limit]
         near = sorted(near, key=lambda x: abs(float(x.get("change_percent") or 0.0)), reverse=True)[:limit]
-        MarketService._upsert_abnormal_events(upsert_payload)
-
         # 新闻数据 - 优先从数据库读取（快速）
         cailian_news = MarketService._get_news_from_db_or_api('ths', limit)
         cls_news = MarketService._get_news_from_db_or_api('cls', limit)
@@ -1511,9 +1615,25 @@ class MarketService:
         bad_news: List[Dict[str, Any]] = []
         xueqiu_news: List[Dict[str, Any]] = []
         eastmoney_news: List[Dict[str, Any]] = []
+        content_times = [item.get("time") for item in all_cailian if item.get("time")]
+        content_updated_at = max(content_times) if content_times else stock_updated_at
 
         return {
-            "updated_at": now.isoformat(),
+            "updated_at": content_updated_at,
+            "source_updated_at": content_updated_at,
+            "response_generated_at": now.isoformat(),
+            "data_status": {
+                "stock_snapshot_state": stock_state,
+                "stock_snapshot_updated_at": stock_updated_at,
+                "news_state": "available" if all_cailian else "empty",
+                "message": (
+                    "全市场缓存陈旧，未计算当前异动"
+                    if stock_state == "stale"
+                    else "全市场缓存不可用，未计算当前异动"
+                    if stock_state == "unavailable"
+                    else "异动基于新鲜 PostgreSQL 行情缓存"
+                ),
+            },
             "abnormal": {
                 "rules": MarketService._abnormal_rules(),
                 "triggered": triggered,

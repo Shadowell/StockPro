@@ -1,142 +1,658 @@
-# StockPro A-Share Research Roadmap
+# StockPro A 股研发平台改造计划
 
-Date: 2026-06-26
+日期：2026-07-16
+状态：Sprint 00-07 已于 2026-07-16 完成本地实现与验收
+目标用户：单一所有者使用的个人 A 股研究与策略研发工作台
 
-## Product North Star
+## 1. 改造结论
 
-StockPro should behave like a professional A-share research workstation, not a generic market dashboard. The core loop is:
+StockPro 的下一阶段不再以“增加更多行情页面”为目标，而是建设一个类似 BitPro 研发闭环的 A 股平台：同一份策略代码在真实数据、回测、模拟盘和风控中使用同一套执行语义，并且每个结果都能追溯到数据、代码、参数和交易规则。
 
-```mermaid
-flowchart LR
-  A["数据底座<br/>行情/K线/板块/财报/事件"] --> B["市场研究<br/>指数/情绪/板块/连板/消息"]
-  B --> C["股票池构建<br/>概念龙头/因子候选/AI证据"]
-  C --> D["策略开发<br/>信号/参数/约束/版本"]
-  D --> E["回测验证<br/>成本/T+1/涨跌停/成交"]
-  E --> F["模拟交易<br/>PaperBroker/订单/持仓"]
-  F --> G["运行风控<br/>回撤/延迟/拒单/异常"]
-  G --> H["实盘预备<br/>券商适配/干跑/审批开关"]
-  G --> B
+产品主链固定为：
+
+```text
+数据资产
+  -> 因子快照
+  -> 市场研究
+  -> 股票池
+  -> 策略版本
+  -> 实验回测
+  -> 模拟运行
+  -> 风控与复盘
+  -> 返回研究与迭代
 ```
 
-## Phase 0: Page Readiness Contract
+改造期间冻结实盘交易、更多独立资讯页面和纯视觉扩展。现有页面允许继续使用，但新开发必须服务于上述主链。
 
-Goal: every page opens, has a clear purpose, exposes data readiness, and does not degrade into a generic admin screen.
+## 2. 产品原则
 
-- Keep `primary pages expose usable A-share research workflow anchors` as the route-level smoke test.
-- Add route error-state checks for `/market`, `/ai`, `/factors`, `/data`, and `/paper`.
-- Add page readiness metadata: `source`, `lastUpdated`, `freshness`, `blockingIssues`.
-- Mark hidden routes as either maintained or redirected.
+1. **TuShare 是研究数据主源。** 股票主数据、交易日历、历史行情、复权因子、每日指标、停复牌、涨跌停、财务数据和基准指数优先使用 TuShare。
+2. **AKShare 是特色数据补充源和明确兜底。** 全市场快照、概念/行业板块、热榜、涨停池、龙虎榜、新闻和公告等 TuShare 无同形能力的数据使用 AKShare。
+3. **禁止无痕降级。** 每条数据必须保存 `source`、`trade_date`、`collected_at`、`schema_version` 和新鲜度；页面必须显示当前来源。
+4. **禁止用 0 或模拟值伪装缺失数据。** 缺失值保持 `null`，页面显示“缺失/过期/不可用”；影响回测的数据缺口必须阻塞实验。
+5. **回测不临时联网补数据。** 数据同步与策略实验分离，回测只能读取已落库并形成快照的数据。
+6. **选股器不是交易策略。** 选股器只生成带原因和有效期的股票池；策略负责把 Bar 和股票池转成标准化 Signal/OrderIntent。
+7. **一份策略贯穿回测和模拟盘。** 不允许研发执行、回测和模拟盘分别使用不同的隐藏实现。
+8. **默认 Paper。** 实盘接入不属于本计划，任何 Broker 适配必须先通过单独合同和人工确认。
+9. **因子是版本化数据产品。** 因子定义、预处理、股票范围、计算批次、每日值、诊断指标和发布快照都必须可追溯；策略和回测只读已发布因子快照。
+10. **时间可得性优先于数据日期。** 每个研究事实必须同时记录 `trade_date` 与 `available_at`；回测、因子和股票池只能读取当时已经可见的数据。
+11. **历史证券状态不可用当前状态替代。** 上市、ST、停牌、退市、代码/名称、行业和基准成分都必须按有效期冻结到 Universe Snapshot。
+12. **先证明，再晋级。** 因子/策略的探索、验证、样本外和 Paper 准入必须分层；全样本挑出的最优结果不能直接进入 Paper。
+13. **本地也必须可恢复。** PostgreSQL 每日备份、每周还原演练和数据源授权状态都是研发平台的验收对象，不是上线后再补的运维项。
 
-Exit criteria:
+## 3. 页面分级：参考 BitPro 操作者工作台
 
-- All protected pages render in mocked E2E with no page errors.
-- Every primary page has at least one visible A-share workflow anchor.
-- Every data-driven page shows freshness or an actionable empty state.
+页面结构参考 BitPro 当前的阶段式侧栏：首页、行情、策略、回测、模拟、实盘、盯盘、监控、复盘、数据和 AI 研发。StockPro 沿用这种“从研究到执行”的顺序，但去掉币圈专属的链上/套利能力，增加 A 股研发必需的股票池，并在单独合同完成前隐藏实盘入口。
 
-## Phase 1: Data Foundation
+### 3.1 页面层级规则
 
-Goal: make research pages trustworthy by showing what data is available, fresh, missing, or stale.
+| 层级 | 职责 | 展现方式 | 示例 |
+| --- | --- | --- | --- |
+| L0 应用壳 | 全局市场状态、交易时段、数据状态、搜索和设置 | 固定侧栏 + 顶部状态栏 | 四大指数、开休市状态、全局股票搜索 |
+| L1 一级页面 | 对应研发流程中的稳定工作阶段 | 左侧主导航，短名称、固定顺序 | 行情、股票池、策略、回测、模拟 |
+| L2 页内工作区 | 同一阶段内的功能切面 | 页面顶部 Tab/分段控件 | 行情下的板块轮动、情绪涨停、资讯事件 |
+| L3 对象详情 | 围绕一个对象完成分析和操作 | 独立详情路由或侧滑抽屉 | 策略版本、回测实例、股票池快照、模拟实例 |
 
-- Define dataset SLAs for `market_indices_realtime`, `all_stocks_realtime`, `short_line_indices_realtime`, `daily_concept_sectors`, `kline_history`, `stock_fundamentals`, `message_stream`, and `market_calendar`.
-- Move data freshness into reusable frontend badges and backend readiness endpoints.
-- Treat Tushare as data-only; keep broker/execution separate.
-- Preserve cache-first page rendering: no slow full-market fetch in page paths.
+原则：L1 不按数据接口拆页面；L2 不重复创建侧栏入口；L3 必须带对象 ID，支持复制链接和返回上级上下文。
 
-Exit criteria:
+### 3.2 L1 一级侧栏
 
-- Dashboard, market overview, sentiment, AI, factor, backtest, and data pages show freshness.
-- Backtest creation warns when selected symbols lack enough K-line coverage.
-- Page paths remain fast even when upstream providers are slow.
+| 分组 | 顺序 | 页面 | 推荐路由 | L2 工作区 | 第一阶段 |
+| --- | --- | --- | --- | --- | --- |
+| 研究工作台 | 1 | 首页 | `/` | 市场状态、研发待办、关注对象、数据健康 | 保留并改造 |
+| 研究工作台 | 2 | 行情 | `/market` | 市场结构、板块轮动、情绪涨停、资讯事件、交易日历、个股 | 聚合现有研究页面 |
+| 研究工作台 | 3 | 股票池 | `/pools` | 我的池、选股器、因子池、板块池、事件池、快照 | 新建 A 股核心页面 |
+| 策略研发 | 4 | 因子 | `/factors` | 因子库、计算任务、单因子、多因子、相关性/暴露、因子值 | 专业因子研发入口 |
+| 策略研发 | 5 | 策略 | `/strategy` | 策略库、版本、编辑器、验证 | 重构现有策略页 |
+| 策略研发 | 6 | 回测 | `/backtest` | 实例、新建实验、参数矩阵、对比 | 升级现有回测页 |
+| 策略研发 | 7 | AI 研发 | `/ai-lab` | 策略助手、新策略研发、策略优化、候选版本 | 新建受控研发入口 |
+| 执行验证 | 8 | 模拟 | `/paper` | 实例、信号、订单、持仓、账户、事件 | 重构现有 Paper 页 |
+| 执行验证 | 9 | 盯盘 | `/watch` | 策略信号、股票池异动、K 线联动、告警 | 新建轻量盘中工作台 |
+| 执行验证 | 10 | 监控 | `/monitor` | 总览、策略健康、数据健康、风险、通知 | 保留为系统运行视角 |
+| 执行验证 | 11 | 复盘 | `/review` | 市场复盘、股票池复盘、策略复盘、交易复盘、日志 | 扩展现有复盘页 |
+| 系统 | 12 | 数据 | `/data` | 数据资产、同步任务、质量、快照、维护 | 合并现有数据页面 |
 
-## Phase 2: Research Workbench
+“模拟、盯盘、监控”保持独立，职责分别是执行、人工观察和系统健康，避免一个页面同时承担交易台与运维台。实盘沿用 BitPro 的阶段位置，但在 StockPro 中不显示导航，也不注册可提交订单的路由。
 
-Goal: turn market pages into a coherent A-share research workflow.
+### 3.3 路由迁移
 
-- Market overview: concept strength score, leader stock detail, intraday concept K-line, previous-day comparison.
-- Sentiment: publish formula for score, breadth, limit-up ladder, hot stock reason, money-flow proxy.
-- News: map catalysts to stocks and sectors; deduplicate repeated headlines.
-- Calendar: official trading days, IPO, earnings, dividends, futures/options events, holiday/lunch-break awareness.
-- AI: require evidence citations from K-line/fundamentals/news and show data timestamp.
+| 当前路由 | 目标位置 | 处理方式 |
+| --- | --- | --- |
+| `/market` | `/market?tab=stock` | 保留一级入口，默认可按首页来源切换到个股或市场结构 |
+| `/research/overview` | `/market?tab=structure` | 重定向到市场结构 |
+| `/sentiment` | `/market?tab=sentiment` | 重定向到情绪涨停 |
+| `/news` | `/market?tab=events` | 重定向到资讯事件 |
+| `/calendar` | `/market?tab=calendar` | 重定向到交易日历 |
+| `/ai` | `/market?tab=stock&panel=ai` | 现有个股 AI 归入个股研究；新的策略 AI 使用 `/ai-lab` |
+| `/factors` | `/factors` | 保留并升级为一级因子研发入口；发布结果可生成因子股票池 |
+| `/strategy` | `/strategy` | 保留一级入口，详情使用 `/strategy/:strategyId` |
+| `/backtest` | `/backtest` | 保留一级入口，实例详情使用 `/backtest/:runId` |
+| `/paper` | `/paper` | 保留一级入口，实例详情使用 `/paper/:instanceId` |
+| `/monitor` | `/monitor` | 保留独立的系统健康入口 |
+| `/data/processing` | `/data?tab=maintenance` | 重定向到系统维护标签 |
+| 无 | `/pools`、`/watch`、`/ai-lab` | 新增一级入口 |
 
-Exit criteria:
+### 3.4 BitPro 视觉与交互合同
 
-- A user can move from market structure to candidate stock with visible evidence.
-- Research pages distinguish realtime data, delayed data, daily data, and AI inference.
+- 所有 L1/L2/L3 页面复用现有 `MainLayout`、固定分组侧栏、顶部 A 股状态条、深色 Token 和 Lucide 图标，不新建平行设计系统。
+- 页面采用高密度操作者工作台：紧凑标题区、KPI 条、分段筛选、表格/图表分栏、详情抽屉和可链接的对象详情。
+- 涨跌颜色、边框、卡片、圆角、字号、间距、按钮和状态标签沿用 BitPro 成熟组件语义；同一交互在不同业务页保持一致。
+- 禁止营销式 Hero、渐变背景、装饰性大卡片、超大标题、Emoji 图标和无真实数据的视觉占位。
+- 数据面板必须提供 loading、empty、stale、error 和 permission-denied 状态，并展示数据日期、来源/快照与版本。
 
-## Phase 3: Factor And Stock Pool
+## 4. 页面功能规划
 
-Goal: create a repeatable candidate-generation layer.
+## 4.1 今日工作台
 
-- Add universe filters: main board, ChiNext, STAR, Beijing Exchange, ST exclusion, suspension exclusion.
-- Add factor diagnostics: IC, RankIC, turnover, coverage, neutralization, missing-value policy.
-- Add candidate pool persistence: source page, reason, score, evidence, expiry.
-- Add one-click handoff from factor/AI/news/concept pages into strategy candidate pools.
+### 页面目标
 
-Exit criteria:
+用一个屏幕回答三个问题：市场当前状态、数据是否可信、有哪些需要继续研究或处理的任务。
 
-- Candidate pools can be reproduced from data snapshots.
-- Factor rankings show coverage and methodology, not only a ranked table.
+### 核心模块
 
-## Phase 4: Strategy Lifecycle
+- 指数与市场状态：上证、深证、创业板、科创 50，标记交易时段和最后更新时间。
+- 市场宽度：上涨/下跌/平盘、涨停/跌停/炸板、成交额和量能变化。
+- 板块主线：概念/行业强度、领涨股、持续天数和相对昨日变化。
+- 研发待办：数据同步失败、待回测策略、运行中实验、Paper 风险告警。
+- 我的关注：关注股票池、策略最新信号、模拟组合权益变化。
+- 数据状态条：每个模块显示来源、采集时间、状态和降级原因。
 
-Goal: make strategy development auditable and A-share-aware.
+### 数据映射
 
-- Add strategy versioning and declared data dependencies.
-- Convert visible guardrails into validations: T+1, 100-share lots, limit-up/down, suspension, ST exclusion, cash constraints.
-- Add strategy linting before save/run.
-- Add standard signal output contract with `symbol`, `side`, `size`, `reason`, `confidence`, `risk`.
+| 数据 | 主源 | 补充/兜底 | 落库建议 | 新鲜度目标 |
+| --- | --- | --- | --- | --- |
+| 指数行情 | TuShare `realtime_quote` / `index_daily` | AKShare `stock_zh_index_spot_*` | `market_indices_realtime` | 交易时段 30 秒 |
+| 全市场宽度 | TuShare `realtime_quote` | AKShare `stock_zh_a_spot_em` | `all_stocks_realtime` + 聚合快照 | 交易时段 30-60 秒 |
+| 涨跌停/炸板池 | TuShare `limit_list_d` | AKShare `stock_zt_pool_em`、`stock_zt_pool_dtgc_em`、`stock_zt_pool_zbgc_em` | `market_evidence_snapshots` + `limit_pool_members` | 收盘后完整快照；盘中可用时另存 |
+| 开盘啦短线榜单 | TuShare `kpl_list` | AKShare 涨跌停池 | `short_line_rank_rows` | 收盘后完整快照 |
+| 连板天梯 | 5,000 积分下由 `limit_list_d.limit_times` 聚合 | AKShare 涨停池按“连板数”聚合 | `market_evidence_metrics` | 收盘后完整快照 |
+| 市场宽度/技术扩散 | TuShare 全市场快照/日线计算 | AKShare `stock_zh_a_spot_em`、`stock_market_activity_legu`、`stock_rank_*_ths` | `market_evidence_metrics` | 交易时段 30-60 秒；收盘后固化 |
+| 板块强度/资金流 | 5,000 积分下的允许数据集 | AKShare 概念/行业/板块资金流接口 | `sector_evidence_rows` | 收盘后完整；盘中可用时另存 |
+| 人气热度 | 5,000 积分未含 TuShare 热榜 | AKShare `stock_hot_rank_em` | `heat_ranking_rows` | 2-10 分钟；标注为东财人气榜 |
+| 研发任务 | Postgres 内部任务表 | 无 | `sync_jobs`、`backtest_runs` | 即时 |
 
-Exit criteria:
+### 验收标准
 
-- A strategy cannot move to backtest or paper trading without passing A-share validation.
-- Strategy history, parameters, code, and dependencies are recoverable.
+- 任一数字都能展开查看来源和更新时间。
+- 数据过期时保留缓存并明显标记，不切换成模拟数值。
+- 首页不直接请求全市场外部接口，只读 Postgres 快照。
 
-## Phase 5: Backtest Engine
+## 4.2 数据中心
 
-Goal: make backtests realistic enough to guide actual decisions.
+### 页面目标
 
-- Enforce T+1, 100-share lots, commission, stamp duty, slippage, suspension, limit-up/down.
-- Add benchmark and attribution: index benchmark, sector contribution, trade distribution, drawdown path.
-- Add result comparison and parameter archives.
-- Add data-readiness gate before run.
+成为所有研究和实验的可信数据入口，而不是混合 SQL 工具和同步按钮的管理页。
 
-Exit criteria:
+### 标签页
 
-- Backtest results are explainable and reproducible.
-- Poor data coverage blocks or warns before execution.
+1. **数据资产**：数据集、记录量、覆盖股票数、起止日期、主源、最新时间和质量状态。
+2. **同步任务**：配置本地每日 17:30 增量任务，查看交易日、数据集粒度进度、水位、重试、补数和错误；同时保留人工全量/修复入口。
+3. **质量报告**：唯一性、空值、OHLC 合法性、日期连续性、复权/公司行动一致性、来源冲突、可得时间和历史证券状态。
+4. **数据快照**：为实验冻结 `dataset_snapshot_id` 与 `universe_snapshot_id`，展示知识截止时间、涉及表、时间范围、行数和哈希。
+5. **系统维护**：原 SQL Workbench、表管理和数据开发任务；默认折叠并增加危险操作确认。
 
-## Phase 6: Paper Trading And Risk
+### 数据集规划
 
-Goal: validate strategies in a live-like but isolated environment.
+| 域 | TuShare 主源 | AKShare 补充 | 用途 |
+| --- | --- | --- | --- |
+| 股票主数据/历史状态 | `stock_basic`、上市/停复牌相关接口 | 实时行情代码表 | 上市、ST、停牌、退市、代码/名称和行业的有效期历史 |
+| 交易日历 | `trade_cal` | `tool_trade_date_hist_sina` | 交易日、回测日期对齐、T+1 |
+| 日线行情 | `daily` / `pro_bar` | `stock_zh_a_hist` | 回测、因子、个股研究 |
+| 分钟行情 | `pro_bar` 分钟频率（按权限） | `stock_zh_a_minute` | 盘中研究和后续分钟策略 |
+| 公司行动/复权 | `adj_factor`、分红送配等公司行动接口 | AKShare qfq/hfq 仅作核对 | 价格还原、持仓/现金调整与企业行动一致性 |
+| 每日估值 | `daily_basic` | `stock_a_indicator_lg` | PE/PB/换手率/市值 |
+| 停复牌/价格限制 | `suspend_d`、`stk_limit`、`limit_list_d` | 涨跌停池接口 | A 股成交约束和情绪研究 |
+| 财务数据 | `income`、`balancesheet`、`cashflow`、`fina_indicator` | 主营构成等特色接口 | 基本面、因子和 AI 证据 |
+| 指数/基准 | `index_daily`、指数成分历史 | AKShare 指数接口 | 回测基准、历史成员和归因 |
+| 资金流 | TuShare `moneyflow` 系列（按权限） | AKShare 个股/板块资金流 | 研究特征，不作为真实成交资金 |
+| 涨停生态/连板 | `limit_list_d`、`kpl_list` | `stock_zt_pool_*_em`，按连板数聚合 | 收盘后的市场生态、股票池证据与历史回看 |
+| 板块/热点 | 5,000 积分下经权限探测可用的板块数据 | AKShare 概念、行业、东财人气榜 | 市场研究和股票池；真实来源不能伪标为同花顺 |
+| 新闻/公告/龙虎榜 | TuShare 可用资讯接口 | AKShare 新闻、公告、龙虎榜 | 事件研究与证据链 |
 
-- PaperBroker remains isolated from real funds.
-- Add pre-trade risk checks: lot size, cash, exposure, concentration, drawdown, stale signal, no-trade status.
-- Add order lifecycle: created, accepted, rejected, filled, cancelled.
-- Add monitor alerts: equity drawdown, stale update, rejected order, abnormal volatility, limit risk.
+### 来源与冲突规则
 
-Exit criteria:
+- 同一个同步任务只能选一个事实主源，不做“同一列按行静默混源”。
+- 主源失败时可整批切到兜底源，并在批次元数据记录 `fallback_reason`。
+- 两个来源同时存在时写入原始层并生成对账结果；标准层按数据集策略选择，不自动取平均。
+- TuShare 权限不足、积分不足或限流属于配置错误/受限状态，不伪装成空数据成功。
+- AKShare 依赖上游网页，接口变化时任务失败并保留上次成功快照。
+- 数据中心维护 TuShare 5,000 积分端点目录；每个端点先进行字段、权限和频率契约探测，再按所属模块启用调度。独立授权的分钟、新闻、公告等端点不因积分达标而自动启用。
+- `limit_step`、`limit_cpt_list`、`dc_hot` 需要 8,000 积分，`ths_hot` 与 THS 资金流需要 6,000 积分；5,000 积分基线将其展示为受限项，不用同名 AKShare/东财数据冒充。
 
-- Every simulated order has a risk decision and audit trail.
-- Monitor can explain why an instance is healthy or risky.
+### 建议新表
 
-## Phase 7: Broker Dry-Run
+- `dataset_definitions`
+- `dataset_partitions`
+- `dataset_snapshots`
+- `dataset_snapshot_items`
+- `data_quality_issues`
+- `source_fetch_runs`
+- `security_status_history`、`security_alias_history`、`corporate_actions`
+- `universe_definitions`、`universe_snapshots`、`universe_snapshot_members`
+- `source_entitlements`
+- `market_evidence_snapshots`、`market_evidence_metrics`、`limit_pool_members`、`short_line_rank_rows`
+- `sector_evidence_rows`、`heat_ranking_rows`、`tushare_endpoint_catalog`
 
-Goal: prepare for real broker integration without enabling live trading by default.
+## 4.3 行情
 
-- Add broker adapter interface for QMT, PTrade, XTP, or selected provider.
-- Add dry-run mode with broker-like order validation and no real submission.
-- Add live-trading feature gate requiring explicit env and UI confirmation.
-- Add audit logs and rollback checklist.
+### 页面目标
 
-Exit criteria:
+从市场结构逐层下钻到板块、个股和事件证据，并能把结果加入股票池。
 
-- Dry-run broker path can replay paper orders against broker constraints.
-- Real order submission remains disabled unless a separate live-trading contract is approved.
+### 标签页与功能
 
-## Near-Term Priority
+#### 市场结构
 
-1. Page readiness and data freshness.
-2. Executable A-share constraint policy.
-3. Research-to-candidate handoff.
-4. Backtest realism.
-5. Paper trading risk checks.
+- 指数走势、成交额、市场宽度、风格分层和基准对比。
+- 主板/创业板/科创板/北交所分布。
+- 当日与近 20 日分位，不只展示单日数字。
+
+#### 板块轮动
+
+- 概念与行业榜单、强度、持续性、成交额、领涨/跟涨结构。
+- 板块详情：成分股、龙头、板块 K 线、近 5 日排名变化。
+- 一键将板块成分生成股票池快照。
+
+#### 情绪与涨停生态
+
+- KPI 条带：上涨/下跌/平盘、涨停/跌停/炸板、封板率、最高连板、红盘率、涨跌比、新高/新低；每项显示当日变化和近 20 日分位。
+- 连板生态：1/2/3/4/5+ 板天梯、最高标、首板/连板数量、昨日首板晋级率、昨日涨停溢价、晋级/淘汰流向、炸板率及封单/换手字段（仅在来源实际提供时展示）。5,000 积分基线以 `limit_list_d.limit_times` 生成天梯，并显示 `tushare_limit_list_derived` 来源标签。
+- 市场温度只在五个公开维度完整时发布：市场广度、涨停生态、连板延续、亏钱效应、流动性参与度。展示输入、权重、公式版本和缺失项；否则显示“指标未发布”，不以 0 分代替。
+- 指标可按全 A、主板、创业板、科创板、北交所及 ST 排除范围过滤；趋势同时提供日环比、5/20 日趋势和近一年分位。
+- 概念/行业必须锁定一个分类口径，展示涨幅、板块内广度、涨停/连板参与、龙头/跟随结构、5/20 日持续性及允许的资金流；不把板块净流入代理称为交易所级真实资金流。
+- 每张卡片必须标出实际来源、抓取/可用时间、快照、权限/陈旧状态。`stock_hot_rank_em` 只能标为“东财人气榜”，不可显示为同花顺热榜。
+
+#### 事件与资讯
+
+- 新闻、公告、龙虎榜、业绩预告、分红、解禁和交易日事件。
+- 标题去重、来源、发布时间、关联股票/板块、置信度。
+- 一键加入事件股票池，并保存当时证据快照。
+
+#### 个股研究
+
+- K 线/分时、估值、财务趋势、所属板块、资金流代理、新闻与公告。
+- 所有研究卡片显示数据日期，禁止把不同日期数据混成“当前结论”。
+- AI 仅基于当前页面证据生成摘要，每个结论必须引用证据卡片。
+
+## 4.4 股票池
+
+### 页面目标
+
+把“看到一只股票”升级为可复现、可过期、可交给策略的候选集合。
+
+### 核心功能
+
+- 股票池列表：手工池、板块池、因子池、事件池、选股器池。
+- 生成规则：市场范围、ST 排除、停牌排除、上市天数、价格和流动性门槛。
+- 候选记录：股票、入池时间、来源页面、原因、分数、证据、有效期。
+- 快照：策略实验使用不可变的 `pool_snapshot_id`，后续池变化不影响历史结果。
+- 对比：两个股票池的重合、换手、行业分布和后续收益。
+- 一键送入策略或回测页面。
+
+### 现有功能归位
+
+- 7 个 `strategies/*.py` 选股脚本迁移为 Screener 定义。
+- 因子页负责计算与研究；股票池这里只选择已发布因子快照和排序规则生成候选。
+- AI 选股不直接给买卖结论，只能生成带证据和有效期的候选记录。
+
+### 建议新表
+
+- `stock_pools`
+- `stock_pool_rules`
+- `stock_pool_members`
+- `stock_pool_snapshots`
+- `stock_pool_snapshot_members`
+
+## 4.5 因子研发
+
+### 页面目标
+
+把因子作为可版本化、每日计算、可诊断、可供策略与回测复用的数据产品，而不是页面临时公式。
+
+### 标签页与展示
+
+- 因子库：代码、分类、版本、方向、最近计算日期、覆盖率、RankIC、ICIR、多空收益、换手、衰减和状态。
+- 计算任务：交易日、数据快照、依赖、进度、行数、重试、错误、发布时间和内容哈希。
+- 单因子分析：分布、覆盖、IC/RankIC 时序和热力图、Q1-Q5 分层累计收益、多空、换手、自相关/衰减、行业与规模暴露。
+- 多因子分析：相关性矩阵、冗余、组合权重、暴露约束和样本外对比。
+- 因子值：按交易日和股票查询原始值、处理值、排名、分位组和质量标记。
+
+### 计算与存储
+
+- 用户只写 `calculate(context, data)` Python 函数；平台提供历史数据、截面预处理、标准化和中性化 API。
+- 每日数据快照在 PostgreSQL 成功封存后触发因子 DAG，禁止直接从 TuShare/AKShare 计算。
+- 日值采用按交易月分区的长表，保存原始值、处理值、百分位、分组、因子版本、数据快照和计算批次。
+- 因子结果通过不可变 `factor_snapshot_id` 发布；策略和回测按时间点读取，不在运行中临时重算。
+- 初期提供 10 个基于价量、市值和流动性的参考因子；安全使用披露日期的财务数据完成前，不上线价值/质量/成长因子。
+- 任何可晋级因子必须绑定研究假设、训练/验证/样本外区间、Embargo、成本和淘汰条件；保留所有被拒绝候选与选择理由。
+
+### 每日链路
+
+```text
+17:30 本地日更任务
+  -> 交易日校验
+  -> TuShare 主源增量拉取（AKShare 整批显式兜底）
+  -> 暂存、标准化、质量门禁
+  -> 封存 dataset_snapshot
+  -> 触发因子计算、诊断与 factor_snapshot
+  -> 页面/策略/回测只读 PG 已发布快照
+```
+
+### 建议新表
+
+- `factor_definitions`、`factor_versions`
+- `factor_compute_runs`、`factor_schedule_runs`
+- `factor_daily_values`、`factor_daily_metrics`、`factor_correlations`
+- `factor_snapshots`、`factor_snapshot_items`
+
+## 4.6 策略
+
+### 页面目标
+
+创建一份可验证、可版本化、能同时运行于回测和 Paper 的 A 股策略。
+
+### 核心功能
+
+- 策略库：名称、类型、周期、状态、最新版本、最后验证结果。
+- 代码编辑器：用户只编写普通 Python 策略代码，不继承框架类、不修改注册表、不重启后端。
+- 版本管理：代码哈希、参数默认值、变更说明、父版本和创建时间。
+- 验证中心：语法、生命周期函数、禁止调用、数据依赖和 A 股规则检查。
+- 本地试跑：选择单个数据快照，展示逐 Bar 信号，不产生真实订单。
+- 研发助手：允许生成或修改策略草案，但必须先通过验证才能保存为可运行版本。
+
+### 策略代码合同
+
+策略采用类似聚宽的函数式生命周期，最小策略只需要 `initialize` 和 `handle_data`：
+
+```python
+def initialize(context):
+    context.security = "600519.SH"
+    set_benchmark("000300.SH")
+
+def handle_data(context, data):
+    prices = history(context.security, 20, "1d", "close")
+    if data[context.security].close > prices.mean():
+        order_target_percent(context.security, 1.0)
+    else:
+        order_target_percent(context.security, 0.0)
+```
+
+平台固定并版本化 `StockPro Strategy API`，提供 `context`、`data`、行情查询、定时任务、下单、日志和 `record` 能力。策略可以实现可选的 `before_trading_start`、`after_trading_end` 和 `on_strategy_end`，但不能导入 StockPro 内部服务、直接写数据库、调用 TuShare/AKShare 或访问券商。
+
+策略代码保存到 `strategy_versions.script_content`，创建新策略或新版本不会修改基础框架文件，也不需要新增后端路由或重启服务。
+
+## 4.7 回测
+
+### 页面目标
+
+用可比较、可恢复的实验回答“这个策略是否值得进入模拟盘”，而不是只生成一张收益卡片。
+
+### 核心功能
+
+- 聚宽式编辑与运行：代码编辑器、开始/结束日期、初始资金、回测频率、基准、成本模型、快速编译和完整回测。
+- 新建实验：固定策略版本、股票池快照、数据快照、时间区间、基准和成本模型。
+- 参数矩阵：批量参数组合、训练/验证区间、样本外区间。
+- 任务中心：排队、运行、完成、失败、取消、重试和进度。
+- 结果概览：策略收益、年化收益、基准收益、超额收益、最大回撤和 Sharpe 六个主指标。
+- 完整指标：Alpha、Beta、Sortino、信息比率、策略/基准波动率、超额收益最大回撤、超额收益 Sharpe、胜率、盈亏比、日胜率、盈利/亏损次数、换手率和总费用。
+- 图表：策略/基准/超额累计收益、回撤区间、日收益、月度收益热力图、仓位与行业暴露。
+- 结果标签：概览、收益分析、每日持仓、交易记录、订单与拒单、日志、代码与参数、归因。
+- 结果对比：选择 2-8 个回测，对比核心指标、收益曲线、回撤和成本敏感性。
+- 交易分析：逐笔订单、拒单原因、持仓路径、行业归因、基准超额。
+- 稳健性：不同区间、不同股票池、成本敏感性和 Walk-Forward。
+- 晋级门槛：只有通过数据、历史 Universe/公司行动、容量、研究协议和样本外规则的版本才能进入 Paper。
+
+快速回测只用于语法和短区间行为检查；完整回测才保存全部输入、指标、曲线、订单、交易和日志，并可用于对比或晋级 Paper。
+
+### A 股回测规则
+
+- 100 股买入整数手；卖出允许处理不足 100 股的剩余持仓。
+- T+1 可卖数量按成交日管理。
+- 停牌不撮合。
+- 涨停买入、跌停卖出默认拒单；后续可按成交模型扩展。
+- 主板、创业板、科创板、北交所和 ST 使用各自价格限制元数据。
+- 佣金、最低佣金、印花税、过户费和滑点可配置且进入结果快照。
+- 使用复权数据生成信号时，撮合价格与企业行动处理必须保持一致。
+- 日线 D 收盘数据只在收盘后可见；由此生成的订单最早于 D+1 下一个可交易日成交，禁止同 Bar 收盘成交。
+- 每笔 intent/order/fill 保存 `signal_at`、`data_available_at`、`submitted_at`、`earliest_fill_at`、执行价格来源与拒绝原因。
+- 初期不模拟集合竞价、盘中订单簿队列和 Tick 撮合；超出 ADV/参与率上限的结果不可晋级。
+
+## 4.8 AI 研发
+
+### 页面目标
+
+把 AI 作为策略研发助手，而不是绕过数据、验证和风控的第二套策略引擎。
+
+### 标签页
+
+- 策略助手：解释策略、数据依赖、回测结果和失败原因。
+- 新策略研发：从研究假设生成策略草案、参数 Schema 和测试建议。
+- 现有策略优化：基于指定策略版本和实验结果提出变更，禁止直接覆盖已发布版本。
+- 候选版本：展示 AI 生成的草案、证据引用、验证状态和人工采纳记录。
+
+### 约束
+
+- AI 只能读取已授权的数据快照、股票池快照、策略版本和实验结果。
+- AI 生成代码必须进入统一策略验证流程，不能直接启动回测或模拟实例。
+- AI 输出必须区分事实、推断和建议，并链接到对应的数据或实验对象。
+- 第一阶段只允许生成 Paper 候选版本，不提供实盘发布动作。
+
+## 4.9 模拟
+
+### 页面目标
+
+在真实行情驱动下持续执行已晋级策略，观察信号、订单、组合和风险，而不是启动时一次性买入。
+
+### 标签页
+
+- 实例：策略版本、股票池、启动时间、最新心跳和运行状态。
+- 信号：每条 Signal 的输入 Bar、原因、置信度和处理结果。
+- 订单：created/accepted/rejected/partially_filled/filled/cancelled 状态流转。
+- 持仓：总资产、现金、可用数量、冻结数量、成本和浮动盈亏。
+- 风控：现金、集中度、单票暴露、回撤、陈旧数据、陈旧信号和涨跌停风险。
+- 事件：策略、Broker、风控、数据源和人工操作的完整审计流。
+
+### 数据要求
+
+- 运行只读取同步后的行情快照或统一 MarketDataFeed。
+- AKShare/TuShare 实时源切换必须产生事件，不能静默切换。
+- 数据超过 SLA 时停止产生新开仓 Signal，但允许展示和估值已有持仓。
+- Paper 账户不得读取或展示真实券商余额。
+- Paper 启动必须绑定通过样本外验证的研究协议、数据/因子/Universe/股票池快照和容量证据；未满足任何一项直接拒绝启动。
+
+## 4.10 盯盘
+
+### 页面目标
+
+为盘中人工观察提供低干扰工作台，把策略信号、股票池异动和个股走势联动起来，但不承担后台任务运维。
+
+### 标签页
+
+- 策略信号：按策略、股票池、置信度和处理状态过滤当前信号。
+- 股票池异动：价格、成交量、涨跌停、板块联动和事件触发。
+- K 线联动：选择信号或异动后同步打开个股分时、日线和研究证据。
+- 告警：确认、静默、升级和跳转到模拟订单/风险事件。
+
+### 验收标准
+
+- 盯盘只消费标准化信号与告警，不自行执行策略代码。
+- 所有告警显示数据源、发生时间、规则版本和关联对象。
+- 可从告警一键进入策略、股票池、模拟实例或个股详情。
+
+## 4.11 监控
+
+### 页面目标
+
+集中展示平台是否健康，回答“数据、策略任务、模拟实例和风险服务是否正常”，不混入研究结论和人工下单操作。
+
+### 标签页
+
+- 总览：核心服务、任务队列、活跃实例和未处理异常。
+- 策略健康：心跳、最近运行、错误率、延迟和信号吞吐。
+- 数据健康：数据集新鲜度、同步失败、来源降级和质量阻塞。
+- 风险：超限事件、连续拒单、回撤阈值和集中度异常。
+- 通知：通知通道、投递状态、确认状态和升级记录。
+
+### 验收标准
+
+- 模拟实例异常可从监控页跳到对应实例详情。
+- 数据过期与策略异常分别呈现，不能合并成笼统的“系统错误”。
+- 监控页不提供绕过风险的直接成交或订单修改入口。
+
+## 4.12 复盘
+
+### 页面目标
+
+把盘面复盘、股票池变化、策略信号和模拟结果放在同一交易日时间线上。
+
+### 核心功能
+
+- 收盘快照：市场宽度、板块轮动、涨停生态和风险提示。
+- 股票池变化：新增/移除、原因、来源和次日有效池。
+- 策略表现：当日信号、未成交/拒单、持仓和权益变化。
+- 判断复核：盘前计划、盘中事件、收盘结论和次日计划。
+- 历史对比：与前一交易日、近 5 日和近 20 日比较。
+- 审计链接：从结论跳到原始数据快照、策略版本、实验和订单。
+
+## 5. 数据服务架构
+
+## 5.1 分层
+
+```text
+TuShare / AKShare
+  -> Source Adapter（限流、重试、字段映射）
+  -> Raw Batch（原始响应、来源、采集时间、哈希）
+  -> Normalized Dataset（统一 symbol/date/单位/空值）
+  -> Dataset Snapshot（不可变实验输入）
+  -> Research API / Strategy Feed / Backtest / Paper
+```
+
+禁止页面、策略或回测引擎直接调用 AKShare/TuShare。所有外部调用必须进入任务系统并保存来源记录。
+
+## 5.2 标识与单位
+
+- 股票代码统一为 TuShare 风格：`600519.SH`、`000001.SZ`、`430047.BJ`。
+- 内部日期统一使用 `DATE`，分钟时间统一使用带 Asia/Shanghai 时区的时间戳。
+- 成交量原始单位和标准单位必须写入 Schema；标准层统一为“股”，页面可转换为“手”。
+- 成交额标准层统一为人民币元。
+- 比例字段内部统一使用小数或百分数之一，必须在 Schema 明确，不允许混用。
+
+## 5.3 建议 SLA
+
+| 数据集 | 正常状态 | 过期状态 | 阻塞规则 |
+| --- | --- | --- | --- |
+| 全市场实时快照 | 交易时段 <= 60 秒 | 1-5 分钟 | >5 分钟禁止新 Paper 开仓 |
+| 指数实时快照 | 交易时段 <= 30 秒 | 30 秒-3 分钟 | >3 分钟标红 |
+| 板块/热榜 | <= 2 分钟 | 2-10 分钟 | 研究可看，策略不得当实时信号 |
+| 日线/复权/每日指标 | 最近交易日收盘后完成 | 落后 1 个交易日 | 阻塞包含缺口日期的实验 |
+| 财务数据 | 最新披露批次已同步 | 落后一次披露 | 因子和 AI 标记缺失，不伪造 |
+| 新闻/公告 | <= 5 分钟 | 5-30 分钟 | 事件策略禁止新信号 |
+
+SLA 必须可配置，节假日和非交易时段按 `trade_cal` 判断，不使用自然日误报。
+
+## 6. 实施阶段
+
+Sprint 合同按严格依赖顺序执行：
+
+```text
+Sprint 00 产品合同（Completed）
+  -> Sprint 01 数据可信与快照（Completed）
+  -> Sprint 02 因子存储、日算与研究（Completed）
+  -> Sprint 03 统一策略运行时（Completed）
+  -> Sprint 04 回测实验工作台（Completed）
+  -> Sprint 05 行情与股票池闭环（Completed）
+  -> Sprint 06 模拟、盯盘与监控（Completed）
+  -> Sprint 07 复盘与本地验收（Completed）
+```
+
+任何 Sprint 只能在上一个 Sprint 的退出条件通过后启动；需求变化必须同时更新本路线图、`docs/spec.md` 和对应合同。
+
+## Phase 0：统一产品合同与导航冻结
+
+合同：[`sprint-00-product-contract-and-page-hierarchy.md`](contracts/sprint-00-product-contract-and-page-hierarchy.md)（Completed）
+
+- 以本文档、`docs/spec.md` 和 Sprint 00-07 合同作为唯一主线。
+- 旧 active 合同标记为已被替代。
+- 冻结本文定义之外的新一级页面和实盘交易；AI 研发只保留统一策略运行时下的受控入口。
+
+退出条件：文档、导航目标和数据源政策无冲突。
+
+## Phase 1：数据可信与快照
+
+合同：[`active-sprint-01-data-trust-and-snapshots.md`](contracts/active-sprint-01-data-trust-and-snapshots.md)（Completed）
+
+- 数据模块只服务回测和因子，覆盖历史证券状态、交易日历、未复权日线、公司行动/复权、每日估值/换手、停牌、价格限制、历史行业/基准成员和基准指数。
+- 复用现有 APScheduler，于本地默认 17:30 按交易日做增量同步、五日滚动校正、质量门禁和 PG 原子发布。
+- 为同步批次记录来源、字段版本、错误和 fallback 原因。
+- 删除页面路径中的硬编码行情和缺失字段 `0` 补位。
+- 增加 Dataset/Universe Snapshot 与 `knowledge_cutoff_at`，因子和回测只接受已封存快照。
+- 重构数据中心页面。
+
+退出条件：参考证券集（含 ST、停牌、退市和公司行动样例）可生成带知识截止时间、质量通过的不可变 Dataset/Universe Snapshot。
+
+## Phase 2：因子存储、日算与研究
+
+合同：[`sprint-02-factor-store-and-daily-research.md`](contracts/sprint-02-factor-store-and-daily-research.md)（Completed）
+
+- 建立因子定义/版本、每日值、计算批次、诊断、相关性和不可变因子快照。
+- 每日 dataset snapshot 封存后触发因子 DAG；重复运行幂等，修订只产生新版本和新快照。
+- 建立 BitPro 风格 `/factors` 一级页，展示因子库、任务、单/多因子分析、暴露和明细值。
+- 初期交付 10 个价量/市值/流动性参考因子，完成 IC、RankIC、分层收益、换手和衰减验证，并保存训练/验证/样本外与被拒绝候选证据。
+
+退出条件：同一数据/Universe Snapshot 和因子版本重复计算得到相同哈希，页面可从 PG 展示完整诊断、时间可得性和研究协议，并能封存 `factor_snapshot_id`。
+
+## Phase 3：统一策略运行时
+
+合同：[`sprint-03-stable-python-strategy-runtime.md`](contracts/sprint-03-stable-python-strategy-runtime.md)（Completed）
+
+- 新增平台内部运行引擎和稳定的 `StockPro Strategy API v1`；用户策略只实现普通 Python 生命周期函数。
+- 回测与 Paper 使用同一个策略加载与调用路径。
+- 用户脚本运行于版本化资源配额与依赖白名单内；超时、内存/输出超限必须可审计且不影响其他任务。
+- 删除普通脚本回测时静默切换到内置动量策略的行为。
+- 将一个现有选股逻辑改造成股票池生成器，再实现一个参考交易策略。
+- 策略版本接通已有 `strategy_versions` 表。
+
+退出条件补充：新增或修改策略只更新 `strategy_versions.script_content`，不修改基础框架、策略注册表或后端路由，也不需要重启服务。
+
+退出条件：同一策略版本在同一 Bar 序列、可得时间与资源限制下，回测和 Paper Replay 产生相同 Signal 序列。
+
+## Phase 4：实验与 A 股回测
+
+合同：[`sprint-04-joinquant-backtest-workbench.md`](contracts/sprint-04-joinquant-backtest-workbench.md)（Completed）
+
+- 接通 `backtest_runs`、`backtest_trades` 和参数归档。
+- 实现任务化回测、参数矩阵、样本外区间和结果对比。
+- 实现 T+1、100 股、停牌、价格限制和完整成本模型。
+- 冻结“日线收盘信号 -> 次交易日最早可成交”的时间语义、公司行动处理和容量/参与率限制。
+- 将现有回测页重构为聚宽式策略编辑/参数运行区和完整结果详情，并保留实例、矩阵和对比工作区。
+
+退出条件：参考策略完成至少 3 个区间、2 组成本模型的研究协议矩阵，含独立样本外区间、容量检查与全部输入追溯。
+
+## Phase 5：股票池与研究闭环
+
+合同：[`sprint-05-market-stock-pool-loop.md`](contracts/sprint-05-market-stock-pool-loop.md)（Completed）
+
+- 新建股票池及快照模型。
+- 将市场、情绪、新闻、日历和个股研究迁移为“行情”页的 L2 工作区。
+- 因子、板块、新闻、AI 都只能向股票池输出候选和证据。
+- 股票池快照可直接进入实验。
+
+退出条件：从板块研究生成股票池，再选择策略完成实验，全程不手工复制股票代码。
+
+## Phase 6：PaperBroker 与运行风控
+
+合同：[`sprint-06-paper-watch-monitor.md`](contracts/sprint-06-paper-watch-monitor.md)（Completed）
+
+- 事件驱动执行策略，建立信号、订单、成交、持仓、现金和权益流水。
+- 接通已有 portfolio/order/risk 仓储能力，删除无产品入口的平行 API。
+- 建立模拟、盯盘、监控三个独立页面，共用标准信号、订单、告警和健康数据。
+- 加入数据过期、陈旧信号、集中度、现金、回撤、行业暴露和参与率规则；仅允许通过样本外协议的版本启动 Paper。
+
+退出条件：Paper 连续运行 5 个交易日，每个订单都有风险决策和审计记录。
+
+## Phase 7：复盘、性能与本地验收
+
+合同：[`sprint-07-review-local-acceptance.md`](contracts/sprint-07-review-local-acceptance.md)（Completed）
+
+- 将研究、股票池、信号、订单和收益按交易日串联。
+- 运行真实后端 E2E、数据故障演练和重启恢复测试。
+- 验证每日 PG 备份与每周还原演练，核对快照、因子、回测证据和 Paper 账本。
+- 完成页面路由迁移并移除旧导航入口。
+
+退出条件：核心用户旅程全部通过，旧页面只保留重定向，不存在两套事实入口。
+
+完成证据：12 个一级页面、5 个复盘工作区、真实 PG 研究到复盘链路、9 项故障/恢复演练、本地备份还原核对和 5 项性能预算均通过；未部署服务器，真实券商能力仍关闭。
+
+## 7. 明确不做
+
+- 本计划不接真实券商，不提交真实订单。
+- 不做多租户、团队权限和公开 SaaS。
+- 不承诺 tick 级或 Level-2 能力。
+- 不把 AKShare 网页抓取结果描述为交易所官方实时数据。
+- 不在数据快照、因子快照和统一策略运行时完成前做大规模因子库扩展。
+- 不继续添加与研发主链无关的一级页面。
+
+## 8. 验收总指标
+
+1. 形成 12 个 BitPro 风格的一级页面；研究子功能进入 L2，因子、策略、股票池、回测和模拟实例进入 L3。
+2. 每个数据卡片显示来源、交易日期、采集时间和新鲜度。
+3. 回测输入全部绑定 `strategy_version_id`、`pool_snapshot_id`、`dataset_snapshot_id` 和可选 `factor_snapshot_id`。
+4. 同一策略版本在回测和 Paper Replay 中产生一致 Signal。
+5. 缺数据、权限不足、限流和来源失败不会生成伪造数值。
+6. A 股核心约束有单元测试、集成测试和至少一条真实后端 E2E。
+7. 从市场研究到 Paper 的完整路径不需要复制粘贴股票代码或重建参数。
+8. `./scripts/check.sh` 继续通过，并纳入策略、实验和 Paper 核心测试。
+9. 任一历史回测都可重建当时可得数据、Universe、公司行动、因子、策略、研究协议和成交时序；不得使用事后修订或当前证券状态。
+10. 日线收盘信号没有同 Bar 成交；所有订单都有可验证的信号、可得、提交和最早成交时间。
+11. 任一晋级 Paper 的策略有独立样本外、容量和拒绝候选记录；探索结果不得绕过闸门。
+12. 最新本地备份不超过 24 小时，且已通过一次两小时内完成的还原核对。
+
+## 9. 官方数据源参考
+
+- [TuShare 股票数据文档](https://tushare.pro/document/2?doc_id=)
+- [TuShare 通用行情接口说明](https://tushare.pro/document/1?doc_id=109)
+- [TuShare API 权限与积分说明](https://tushare.pro/document/1?doc_id=108)
+- [AKShare 股票数据文档](https://akshare.akfamily.xyz/data/stock/stock.html)
+- [AKShare 数据字典](https://akshare.akfamily.xyz/data/index.html)
+
+TuShare 接口权限取决于当前账户积分和授权；AKShare 接口依赖其上游公开页面。实现每个数据集前必须以当时官方文档和实际返回字段做一次契约测试。

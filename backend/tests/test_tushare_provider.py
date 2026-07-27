@@ -73,6 +73,22 @@ class TushareProviderTests(unittest.TestCase):
         self.assertEqual(df.iloc[0]["名称"], "AI")
         akshare.stock_board_concept_name_em.assert_called_once()
 
+    def test_history_with_source_reports_akshare_when_tushare_is_not_ready(self):
+        from app.services.tushare_provider import TushareFirstDataProvider
+
+        akshare = types.SimpleNamespace(
+            stock_zh_a_hist=Mock(return_value=pd.DataFrame([{"日期": "2026-07-15", "收盘": 10.0}]))
+        )
+        provider = TushareFirstDataProvider(tushare_module=types.SimpleNamespace(), akshare_module=akshare, token="")
+
+        frame, source, fallback_reason = provider.stock_zh_a_hist_with_source(
+            symbol="600000", period="daily", start_date="20260715", end_date="20260715"
+        )
+
+        self.assertEqual(len(frame), 1)
+        self.assertEqual(source, "akshare")
+        self.assertEqual(fallback_reason, "tushare_not_ready")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -67,20 +67,42 @@ A sprint is done only when:
 - known gaps are documented
 - the repository is left in a coherent state for the next session
 
-## Frontend Dev Server
+## Local Service Restart Rule
 
-After any frontend file modification, the Vite dev server auto-reloads. If the backend is modified, restart it manually:
+After every source-code change, restart both the frontend and backend services before verification. Do this even when Vite hot reload or Uvicorn reload appears to have applied the change; hot reload does not replace the required clean restart.
+
+Documentation-only changes do not require a service restart.
+
+Restart the backend with the virtual environment's Python module entrypoint:
 
 ```bash
 kill $(lsof -ti:4445) 2>/dev/null; sleep 1
 source backend/venv/bin/activate
-nohup uvicorn app.main:app --reload --port 4445 > /tmp/backend.log 2>&1 &
+cd backend
+nohup python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 4445 > /tmp/backend.log 2>&1 &
 ```
+
+Restart the frontend after returning to the repository root:
+
+```bash
+kill $(lsof -ti:4444) 2>/dev/null; sleep 1
+cd frontend
+nohup npm run dev -- --host 127.0.0.1 --port 4444 > /tmp/frontend.log 2>&1 &
+```
+
+After each restart, verify both ports are listening and call the backend health endpoint. Do not report a code change complete while either service is unavailable.
 
 Both services:
 - Frontend: http://localhost:4444
 - Backend: http://localhost:4445
 - Admin login: `admin` / `stockpro123`
+
+## 前端设计
+
+所有交易、监控、数据后台类页面必须先读取并遵循
+`~/.codex/skills/financial-operator-ui/SKILL.md`。
+
+优先使用 `@bitpro/ui` 组件和主题令牌，禁止复制 BitPro 业务页面代码。
 
 ## Verification
 

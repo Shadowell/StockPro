@@ -18,6 +18,7 @@
     "electron:dist": "npm run build && electron-builder"
   },
   "dependencies": {
+    "@bitpro/ui": "file:../../BitPro/packages/bitpro-ui",
     "@monaco-editor/react": "^4.7.0",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",

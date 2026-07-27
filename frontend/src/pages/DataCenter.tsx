@@ -25,9 +25,14 @@ import {
   addDataSymbol,
   deleteDataKlines,
   getDataConfig,
+  getDailyReferenceSchedule,
   getDataSchedule,
   getDataStatus,
   getDataTableStats,
+  getResearchDatasetSnapshots,
+  getResearchDatasets,
+  getTushareEndpoints,
+  probeTushareEndpoint,
   removeDataSymbol,
   searchStocks,
   startDataSync,
@@ -36,8 +41,14 @@ import {
   type DataTableStatsResponse,
   type DataSyncConfigResponse,
   type DataSyncScheduleConfig,
+  type DailyReferenceSchedule,
+  type ResearchDataset,
+  type ResearchDatasetSnapshot,
+  type TushareEndpoint,
+  type TushareEndpointCatalogResponse,
 } from '../api/client';
 import type { StockCandidate } from '../types';
+import { evaluateFreshness } from '../utils/dataFreshness';
 import { formatSymbolLabel } from '../utils/symbolDisplay';
 
 type DataStatus = {
@@ -116,6 +127,30 @@ const TIMEFRAME_COLORS: Record<string, string> = {
 };
 
 const TIMEFRAME_ORDER = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
+
+const TUSHARE_MODULE_LABELS: Record<string, string> = {
+  reference_calendar: '基础与日历',
+  price_valuation: '行情与估值',
+  financial_disclosure: '财报与披露',
+  index_industry: '指数与行业',
+  capital_flow_dragon_tiger: '资金流与龙虎榜',
+  limit_up_ecology: '涨跌停生态',
+  fund_etf_convertible: '基金、ETF 与可转债',
+  macro_context: '宏观环境',
+  restricted_extensions: '权限受限扩展',
+  independent_extensions: '单独授权扩展',
+};
+
+const endpointState = (endpoint: TushareEndpoint) => {
+  const state = endpoint.permission_state || (endpoint.enabled ? 'catalogue_eligible' : endpoint.baseline_state);
+  if (state === 'available') return { label: '已验证', tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' };
+  if (state === 'available_empty') return { label: '已验证（空）', tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' };
+  if (state === 'missing_token') return { label: '待配置令牌', tone: 'border-yellow-500/25 bg-yellow-500/10 text-yellow-200' };
+  if (state === 'failed') return { label: '探测失败', tone: 'border-red-500/25 bg-red-500/10 text-red-200' };
+  if (state === 'independent_authorization') return { label: '需单独授权', tone: 'border-violet-500/25 bg-violet-500/10 text-violet-200' };
+  if (state === 'restricted') return { label: '需要更高权限', tone: 'border-gray-600 bg-gray-800 text-gray-400' };
+  return { label: '目录支持', tone: 'border-blue-500/25 bg-blue-500/10 text-blue-200' };
+};
 
 const format = (value?: number | null) =>
   value === null || value === undefined || Number.isNaN(value) ? '--' : Number(value).toLocaleString('zh-CN');
@@ -198,23 +233,46 @@ export function DataCenter() {
   const [removeSymbolTarget, setRemoveSymbolTarget] = useState<{ symbol: string; name?: string | null } | null>(null);
   const [removingSymbol, setRemovingSymbol] = useState(false);
   const [tableStats, setTableStats] = useState<DataTableStatsResponse | null>(null);
+  const [tushareCatalog, setTushareCatalog] = useState<TushareEndpointCatalogResponse | null>(null);
+  const [researchDatasets, setResearchDatasets] = useState<ResearchDataset[]>([]);
+  const [researchSnapshots, setResearchSnapshots] = useState<ResearchDatasetSnapshot[]>([]);
+  const [dailyReferenceSchedule, setDailyReferenceSchedule] = useState<DailyReferenceSchedule | null>(null);
+  const [catalogModule, setCatalogModule] = useState('');
+  const [probingEndpoint, setProbingEndpoint] = useState(false);
   const [showDeleteDataDialog, setShowDeleteDataDialog] = useState(false);
   const [deleteDataTarget, setDeleteDataTarget] = useState<{ symbol: string; name?: string | null } | null>(null);
   const [deletingData, setDeletingData] = useState(false);
+  const [loadIssues, setLoadIssues] = useState<string[]>([]);
 
   const load = async () => {
     setLoading(true);
+    setLoadIssues([]);
     try {
-      const [nextStatus, nextConfig, nextSchedule, nextTableStats] = await Promise.all([
-        getDataStatus<DataStatus>(),
-        getDataConfig().catch(() => null),
-        getDataSchedule().catch(() => null),
-        getDataTableStats().catch(() => null),
+      const issues: string[] = [];
+      const safe = async <T,>(label: string, request: Promise<T>): Promise<T | null> => {
+        try {
+          return await request;
+        } catch {
+          issues.push(label);
+          return null;
+        }
+      };
+      const [nextStatus, nextConfig, nextSchedule, nextTableStats, nextTushareCatalog, nextResearchDatasets, nextResearchSnapshots, nextDailyReferenceSchedule] = await Promise.all([
+        safe('数据状态', getDataStatus<DataStatus>()),
+        safe('同步配置', getDataConfig()),
+        safe('调度配置', getDataSchedule()),
+        safe('表统计', getDataTableStats()),
+        safe('TuShare 目录', getTushareEndpoints()),
+        safe('研究数据集', getResearchDatasets()),
+        safe('研究快照', getResearchDatasetSnapshots()),
+        safe('日终编排', getDailyReferenceSchedule()),
       ]);
       setStatus(nextStatus);
-      if (nextTableStats) {
-        setTableStats(nextTableStats);
-      }
+      setTableStats(nextTableStats);
+      setTushareCatalog(nextTushareCatalog);
+      setResearchDatasets(nextResearchDatasets?.items || []);
+      setResearchSnapshots(nextResearchSnapshots?.items || []);
+      setDailyReferenceSchedule(nextDailyReferenceSchedule);
       if (nextConfig) {
         setDataConfig(nextConfig);
         if (nextConfig.defaultSymbols?.length) {
@@ -229,6 +287,7 @@ export function DataCenter() {
         setScheduleRunMinute(Number(nextSchedule.runMinute ?? 10));
         setScheduleHistoryDays(Number(nextSchedule.historyDays || nextConfig?.defaultHistoryDays || 365));
       }
+      setLoadIssues(issues);
     } finally {
       setLoading(false);
     }
@@ -243,11 +302,20 @@ export function DataCenter() {
   const tables = status?.tables || [];
   const defaultTimeframes = dataConfig?.defaultTimeframes?.length ? dataConfig.defaultTimeframes : ['1d'];
   const defaultHistoryDays = dataConfig?.defaultHistoryDays || 365;
-  const klineRows = coverage.reduce((sum, item) => sum + Number(item.rows || 0), 0);
-  const tableRows = tables.reduce((sum, item) => sum + Number(item.rows || 0), 0);
-  const totalRows = klineRows || tableRows;
+  const coverageSampleRows = coverage.reduce((sum, item) => sum + Number(item.rows || 0), 0);
+  const dailyTable = tables.find((item) => ['kline_1d', 'kline_history'].includes(item.name));
+  const dailyTableRows = dailyTable ? Number(dailyTable.rows || 0) : null;
+  const totalRows = dailyTableRows ?? (coverage.length > 0 ? coverageSampleRows : null);
+  const totalRowsLabel = dailyTable ? '日线全表统计' : coverage.length > 0 ? '覆盖统计样本合计' : '尚未读取日线统计';
   const isRunning = Boolean(status?.sync?.is_running || syncing || jobs.some((job) => ['pending', 'running', 'syncing'].includes(String(job.status))));
   const scheduleTimeValue = `${String(scheduleRunHour).padStart(2, '0')}:${String(scheduleRunMinute).padStart(2, '0')}`;
+  const lastRunResult = dailyReferenceSchedule?.lastRun?.result as {
+    publication?: { actual_source?: string; fallback_reason?: string | null; response_hash?: string; snapshot?: { id?: number } };
+    factorSchedule?: { status?: string; factor_snapshot?: { id?: number }; factor_snapshot_id?: number };
+    marketEvidence?: { status?: string; snapshot_id?: number | null };
+  } | undefined;
+  const lastPublication = lastRunResult?.publication;
+  const lastFactorSchedule = lastRunResult?.factorSchedule;
 
   const groupedCoverage = useMemo(() => {
     const groups = new Map<string, { symbol: string; name?: string; rows: CoverageRow[]; total: number }>();
@@ -269,6 +337,7 @@ export function DataCenter() {
   }, [coverage, filterSymbol]);
 
   const uniqueSymbols = new Set(coverage.map((item) => item.symbol)).size;
+  const coverageSymbolCount = coverage.length > 0 ? uniqueSymbols : null;
   const syncedTimeframes = Array.from(new Set(coverage.map((item) => item.timeframe || '1d')));
   const allTimeframes = TIMEFRAME_ORDER;
   const latestJob = jobs[0];
@@ -276,13 +345,13 @@ export function DataCenter() {
   const failedJobs = jobs.filter((job) => String(job.status) === 'failed').length;
   const databaseReady = status?.database === 'postgresql' || status?.status === 'ready';
   const dailyCoverageSymbols = new Set(coverage.filter((item) => (item.timeframe || '1d') === '1d' && Number(item.rows || 0) > 0).map((item) => item.symbol)).size;
-  const healthScore = uniqueSymbols > 0 ? Math.round((dailyCoverageSymbols / uniqueSymbols) * 100) : 0;
+  const healthScore = uniqueSymbols > 0 ? Math.round((dailyCoverageSymbols / uniqueSymbols) * 100) : null;
   const totalJobItems = jobs.reduce((sum, job) => sum + Number(job.total_items || 0), 0);
   const completedJobItems = jobs.reduce((sum, job) => sum + Number(job.completed_items || 0), 0);
   const failedJobItems = jobs.reduce((sum, job) => sum + Number(job.failed_items || 0), 0);
-  const successRate = totalJobItems > 0 ? Math.round((completedJobItems / totalJobItems) * 100) : jobs.length > 0 ? 0 : 100;
+  const successRate = totalJobItems > 0 ? Math.round((completedJobItems / totalJobItems) * 100) : null;
   const coveredTimeframeCells = coverage.filter((item) => Number(item.rows || 0) > 0).length;
-  const coverageGap = Math.max(0, uniqueSymbols * allTimeframes.length - coveredTimeframeCells);
+  const coverageGap = uniqueSymbols > 0 ? Math.max(0, uniqueSymbols * allTimeframes.length - coveredTimeframeCells) : null;
   const configuredSymbols = useMemo(() => {
     const names = new Map(coverage.map((item) => [item.symbol, item.name]));
     const configured = dataConfig?.defaultSymbols?.length
@@ -291,6 +360,42 @@ export function DataCenter() {
     const source = configured.length ? configured : Array.from(new Set(coverage.map((item) => item.symbol)));
     return Array.from(new Set(source)).map((symbol) => ({ symbol, name: names.get(symbol) }));
   }, [coverage, dataConfig, symbols]);
+  const catalogItems = useMemo(() => tushareCatalog?.items || [], [tushareCatalog]);
+  const catalogModules = useMemo(() => {
+    const groups = new Map<string, TushareEndpoint[]>();
+    catalogItems.forEach((item) => {
+      const rows = groups.get(item.module_code) || [];
+      rows.push(item);
+      groups.set(item.module_code, rows);
+    });
+    return Array.from(groups.entries()).map(([code, items]) => ({
+      code,
+      label: TUSHARE_MODULE_LABELS[code] || code,
+      total: items.length,
+      eligible: items.filter((item) => item.enabled).length,
+      verified: items.filter((item) => ['available', 'available_empty'].includes(item.permission_state || '')).length,
+    }));
+  }, [catalogItems]);
+  const visibleCatalogItems = useMemo(
+    () => catalogItems.filter((item) => !catalogModule || item.module_code === catalogModule),
+    [catalogItems, catalogModule],
+  );
+  const eligibleEndpointCount = catalogItems.filter((item) => item.enabled).length;
+  const restrictedEndpointCount = catalogItems.filter((item) => item.baseline_state === 'restricted').length;
+  const independentlyAuthorizedCount = catalogItems.filter((item) => item.requires_independent_authorization).length;
+  const publishedDatasetCount = researchDatasets.filter((dataset) => dataset.partition_status === 'published').length;
+  const blockingDatasetIssues = researchDatasets.reduce((sum, dataset) => sum + Number(dataset.blocking_issues || 0), 0);
+  const sealedSnapshotCount = researchSnapshots.filter((snapshot) => snapshot.status === 'sealed').length;
+  const latestSealedSnapshot = [...researchSnapshots]
+    .filter((snapshot) => snapshot.status === 'sealed')
+    .sort((left, right) => new Date(right.sealed_at || right.created_at).getTime() - new Date(left.sealed_at || left.created_at).getTime())[0];
+  const researchFreshness = evaluateFreshness(latestSealedSnapshot?.knowledge_cutoff_at, 7 * 24 * 60 * 60 * 1000);
+  const dailyBarsDataset = researchDatasets.find((dataset) => dataset.code === 'daily_bars');
+  const researchReadiness = !latestSealedSnapshot
+    ? { label: '研究快照未封存', tone: 'border-red-500/25 bg-red-500/10 text-red-200' }
+    : researchFreshness.state === 'fresh'
+      ? { label: `研究快照当前 · #${latestSealedSnapshot.id}`, tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' }
+      : { label: `研究快照历史 · #${latestSealedSnapshot.id}`, tone: 'border-yellow-500/25 bg-yellow-500/10 text-yellow-200' };
 
   useEffect(() => {
     if (!showAddSymbolDialog) return undefined;
@@ -473,6 +578,21 @@ export function DataCenter() {
     void runSync({ symbols: [symbol], start_date: start, end_date: end, job_name: `kline-sync-${symbol}-${Date.now()}` });
   };
 
+  const probeBasicTushareAccess = async () => {
+    setProbingEndpoint(true);
+    setMessage('');
+    try {
+      const result = await probeTushareEndpoint('stock_basic', { fields: 'ts_code,name,market' });
+      const refreshed = await getTushareEndpoints();
+      setTushareCatalog(refreshed);
+      setMessage(result.error_message || `TuShare 基础连接：${result.permission_state}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'TuShare 基础连接探测失败');
+    } finally {
+      setProbingEndpoint(false);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto bg-crypto-bg p-6">
       <div className="flex shrink-0 items-center justify-between">
@@ -482,7 +602,7 @@ export function DataCenter() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-white">数据管理中心</h1>
-            <p className="mt-0.5 text-xs text-gray-500">PostgreSQL · A股 · {format(uniqueSymbols)} 个标的 · {allTimeframes.length} 个周期视图</p>
+            <p className="mt-0.5 text-xs text-gray-500">A股 · {format(coverageSymbolCount)} 个覆盖统计样本 · {coverage.length ? syncedTimeframes.length : '--'}/{allTimeframes.length} 周期有数据</p>
             {loading && (
               <div className="mt-1 flex items-center gap-1.5 text-xs text-blue-300">
                 <RefreshCw className="h-3 w-3 animate-spin" />
@@ -540,31 +660,32 @@ export function DataCenter() {
       </div>
 
       {message && <div className="shrink-0 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300">{message}</div>}
+      {loadIssues.length > 0 && <div className="shrink-0 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200" role="alert">部分数据模块加载失败：{loadIssues.join('、')}</div>}
 
       <div className="shrink-0 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-white">数据健康度</h2>
-            <p className="mt-1 text-xs text-gray-500">PostgreSQL 缓存、K线历史、同步任务和覆盖率的运行快照。</p>
+            <p className="mt-1 text-xs text-gray-500">K线历史、同步任务和覆盖率的运行状态。</p>
           </div>
           <div className={clsx('inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold', databaseReady ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-red-500/25 bg-red-500/10 text-red-200')}>
             {databaseReady ? <CheckCircle className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
-            {databaseReady ? 'PG 就绪' : 'PG 异常'}
+            {databaseReady ? '数据仓库就绪' : '数据仓库异常'}
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
           <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
             <div className="absolute right-3 top-3 opacity-5"><HardDrive className="h-10 w-10" /></div>
-            <div className="mb-1 text-xs text-gray-500">总记录数</div>
+            <div className="mb-1 text-xs text-gray-500">日线记录数</div>
             <div className="text-2xl font-bold text-white">{format(totalRows)}</div>
-            <div className="mt-2 text-[10px] text-gray-500">kline_history / 核心缓存</div>
+            <div className="mt-2 text-[10px] text-gray-500">{totalRowsLabel}</div>
           </div>
           <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
             <div className="absolute right-3 top-3 opacity-5"><BarChart3 className="h-10 w-10" /></div>
-            <div className="mb-1 text-xs text-gray-500">数据标的</div>
-            <div className="text-2xl font-bold text-white">{format(uniqueSymbols)}</div>
-            <div className="mt-2 text-[10px] text-gray-500">已同步 A股标的</div>
+            <div className="mb-1 text-xs text-gray-500">覆盖统计样本</div>
+            <div className="text-2xl font-bold text-white">{format(coverageSymbolCount)}</div>
+            <div className="mt-2 text-[10px] text-gray-500">接口返回样本，不代表全量标的</div>
           </div>
           <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
             <div className="absolute right-3 top-3 opacity-5"><Zap className="h-10 w-10" /></div>
@@ -574,9 +695,9 @@ export function DataCenter() {
           </div>
           <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
             <div className="absolute right-3 top-3 opacity-5"><TrendingUp className="h-10 w-10" /></div>
-            <div className="mb-1 text-xs text-gray-500">覆盖健康</div>
-            <div className={clsx('text-2xl font-bold', healthScore >= 80 ? 'text-emerald-300' : healthScore >= 50 ? 'text-yellow-300' : 'text-red-300')}>{healthScore}%</div>
-            <div className="mt-2 text-[10px] text-gray-500">日线覆盖 {dailyCoverageSymbols}/{uniqueSymbols || 0}</div>
+            <div className="mb-1 text-xs text-gray-500">日线样本覆盖</div>
+            <div className={clsx('text-2xl font-bold', healthScore === null ? 'text-gray-500' : healthScore >= 80 ? 'text-emerald-300' : healthScore >= 50 ? 'text-yellow-300' : 'text-red-300')}>{healthScore === null ? '--' : `${healthScore}%`}</div>
+            <div className="mt-2 text-[10px] text-gray-500">覆盖统计中 {dailyCoverageSymbols}/{uniqueSymbols || '--'} 个样本</div>
           </div>
           <div className="relative overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-4">
             <div className="absolute right-3 top-3 opacity-5"><Calendar className="h-10 w-10" /></div>
@@ -594,18 +715,18 @@ export function DataCenter() {
       <section className="shrink-0 rounded-xl border border-crypto-border bg-crypto-card p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-white">同步质量诊断</h2>
-            <p className="mt-1 text-xs text-gray-500">把同步任务结果、失败项和覆盖缺口集中展示，便于判断历史数据是否可用于回测。</p>
+            <h2 className="text-base font-semibold text-white">缓存同步质量诊断</h2>
+            <p className="mt-1 text-xs text-gray-500">同步任务与覆盖样本仅说明缓存链路；回测可用性必须以封存研究快照为准。研究日线截止 {dailyBarsDataset?.end_date || '--'}。</p>
           </div>
-          <span className={clsx('rounded-lg border px-3 py-1.5 text-xs font-semibold', successRate >= 95 ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : successRate >= 70 ? 'border-yellow-500/25 bg-yellow-500/10 text-yellow-200' : 'border-red-500/25 bg-red-500/10 text-red-200')}>
-            {successRate >= 95 ? '可回测' : successRate >= 70 ? '需补齐' : '需排查'}
+          <span className={clsx('rounded-lg border px-3 py-1.5 text-xs font-semibold', researchReadiness.tone)}>
+            {researchReadiness.label}
           </span>
         </div>
         <div className="grid gap-3 md:grid-cols-4">
           <div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-3">
-            <div className="text-xs text-gray-500">成功率</div>
-            <div className={clsx('mt-1 text-xl font-bold tabular-nums', successRate >= 95 ? 'text-emerald-300' : successRate >= 70 ? 'text-yellow-300' : 'text-red-300')}>{successRate}%</div>
-            <div className="mt-1 text-[10px] text-gray-600">{format(completedJobItems)} / {format(totalJobItems)} 项</div>
+            <div className="text-xs text-gray-500">缓存任务成功率</div>
+            <div className={clsx('mt-1 text-xl font-bold tabular-nums', successRate === null ? 'text-gray-500' : successRate >= 95 ? 'text-emerald-300' : successRate >= 70 ? 'text-yellow-300' : 'text-red-300')}>{successRate === null ? '--' : `${successRate}%`}</div>
+            <div className="mt-1 text-[10px] text-gray-600">{totalJobItems > 0 ? `${format(completedJobItems)} / ${format(totalJobItems)} 项` : '尚无任务项统计'}</div>
           </div>
           <div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-3">
             <div className="text-xs text-gray-500">失败项</div>
@@ -614,13 +735,231 @@ export function DataCenter() {
           </div>
           <div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-3">
             <div className="text-xs text-gray-500">覆盖缺口</div>
-            <div className={clsx('mt-1 text-xl font-bold tabular-nums', coverageGap > 0 ? 'text-yellow-300' : 'text-emerald-300')}>{format(coverageGap)}</div>
-            <div className="mt-1 text-[10px] text-gray-600">按标的 × 周期估算</div>
+            <div className={clsx('mt-1 text-xl font-bold tabular-nums', coverageGap === null ? 'text-gray-500' : coverageGap > 0 ? 'text-yellow-300' : 'text-emerald-300')}>{format(coverageGap)}</div>
+            <div className="mt-1 text-[10px] text-gray-600">覆盖样本 × 7 周期（非研究快照）</div>
           </div>
           <div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-3">
             <div className="text-xs text-gray-500">最近任务</div>
             <div className="mt-1 truncate text-sm font-bold text-white">{latestJob?.job_name || '--'}</div>
             <div className="mt-1 text-[10px] text-gray-600">{statusLabel(latestJob?.status)} · {compactDate(latestJob?.finished_at || latestJob?.created_at)}</div>
+          </div>
+        </div>
+      </section>
+
+      <section className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-crypto-border px-4 py-3">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-wider text-cyan-300">TuShare data access</div>
+            <h2 className="mt-0.5 text-base font-semibold text-white">TuShare 数据接口</h2>
+            <p className="mt-1 text-xs text-gray-500">按 A 股研究模块展示接口支持情况；目录支持不代表当前账户已经完成远端权限验证。</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-200">
+              权限配置已加载
+            </span>
+            <button
+              type="button"
+              onClick={() => void probeBasicTushareAccess()}
+              disabled={probingEndpoint}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              title="仅验证 stock_basic 的当前账户访问权限，不写入业务数据。"
+            >
+              <Zap className={clsx('h-3.5 w-3.5', probingEndpoint && 'animate-pulse')} />
+              {probingEndpoint ? '检测中' : '检测基础连接'}
+            </button>
+          </div>
+        </div>
+
+        {!tushareCatalog ? (
+          <div className="px-4 py-6 text-center text-sm text-gray-500">数据目录暂不可用；请检查本地后端和 PostgreSQL 连接。</div>
+        ) : (
+          <>
+            <div className="grid gap-px border-b border-crypto-border bg-crypto-border sm:grid-cols-4">
+              <div className="bg-crypto-card px-4 py-3">
+                <div className="text-[11px] text-gray-500">目录端点</div>
+                <div className="mt-1 text-xl font-bold tabular-nums text-white">{format(catalogItems.length)}</div>
+              </div>
+              <div className="bg-crypto-card px-4 py-3">
+                <div className="text-[11px] text-gray-500">当前目录支持</div>
+                <div className="mt-1 text-xl font-bold tabular-nums text-emerald-300">{format(eligibleEndpointCount)}</div>
+              </div>
+              <div className="bg-crypto-card px-4 py-3">
+                <div className="text-[11px] text-gray-500">权限受限扩展</div>
+                <div className="mt-1 text-xl font-bold tabular-nums text-gray-300">{format(restrictedEndpointCount)}</div>
+              </div>
+              <div className="bg-crypto-card px-4 py-3">
+                <div className="text-[11px] text-gray-500">需单独授权</div>
+                <div className="mt-1 text-xl font-bold tabular-nums text-violet-300">{format(independentlyAuthorizedCount)}</div>
+              </div>
+            </div>
+
+            <div className="flex gap-1 overflow-x-auto border-b border-crypto-border px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setCatalogModule('')}
+                className={clsx('shrink-0 rounded-md px-2.5 py-1.5 text-xs transition', !catalogModule ? 'bg-blue-500/15 text-blue-200' : 'text-gray-500 hover:bg-white/5 hover:text-gray-300')}
+              >
+                全部 {catalogItems.length}
+              </button>
+              {catalogModules.map((module) => (
+                <button
+                  key={module.code}
+                  type="button"
+                  onClick={() => setCatalogModule(module.code)}
+                  className={clsx('shrink-0 rounded-md px-2.5 py-1.5 text-xs transition', catalogModule === module.code ? 'bg-blue-500/15 text-blue-200' : 'text-gray-500 hover:bg-white/5 hover:text-gray-300')}
+                >
+                  {module.label} {module.total}
+                </button>
+              ))}
+            </div>
+
+            <div className="max-h-72 overflow-auto">
+              <table className="w-full min-w-[900px] text-xs">
+                <thead className="sticky top-0 z-10 bg-gray-900/95 text-gray-500 backdrop-blur">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">接口 / 模块</th>
+                    <th className="px-4 py-2 text-left font-medium">调度与落库</th>
+                    <th className="px-4 py-2 text-left font-medium">账户状态</th>
+                    <th className="px-4 py-2 text-left font-medium">最近探测</th>
+                    <th className="px-4 py-2 text-right font-medium">官方文档</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-crypto-border">
+                  {visibleCatalogItems.map((endpoint) => {
+                    const state = endpointState(endpoint);
+                    return (
+                      <tr key={endpoint.endpoint_code} className="text-gray-400 hover:bg-white/[0.025]">
+                        <td className="px-4 py-2.5">
+                          <div className="font-medium text-gray-200">{endpoint.display_name}</div>
+                          <div className="mt-0.5 font-mono text-[10px] text-gray-600">{endpoint.endpoint_code} · {TUSHARE_MODULE_LABELS[endpoint.module_code] || endpoint.module_code}</div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div>{endpoint.schedule_kind}</div>
+                          <div className="mt-0.5 font-mono text-[10px] text-gray-600">{endpoint.storage_dataset}</div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={clsx('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold', state.tone)}>{state.label}</span>
+                        </td>
+                        <td className="max-w-[260px] px-4 py-2.5">
+                          <div className="truncate text-[11px] text-gray-400" title={endpoint.error_message || undefined}>{endpoint.error_message || (endpoint.checked_at ? compactDate(endpoint.checked_at) : '尚未使用当前令牌探测')}</div>
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <a href={endpoint.contract_url} target="_blank" rel="noreferrer" className="text-blue-300 transition hover:text-blue-200">查看</a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-crypto-border px-4 py-3">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-wider text-emerald-300">Point-in-time research data</div>
+            <h2 className="mt-0.5 text-base font-semibold text-white">回测数据快照与质量门禁</h2>
+            <p className="mt-1 text-xs text-gray-500">只有封存快照可作为后续因子与回测输入；历史缓存尚未重新采集并通过门禁时，不会自动被视作可回测数据。</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 font-semibold text-emerald-200">已发布数据集 {publishedDatasetCount}/{researchDatasets.length}</span>
+            <span className={clsx('rounded-lg border px-3 py-1.5 font-semibold', blockingDatasetIssues ? 'border-red-500/25 bg-red-500/10 text-red-200' : 'border-crypto-border bg-crypto-bg text-gray-400')}>阻断问题 {blockingDatasetIssues}</span>
+            <span className="rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-1.5 font-semibold text-blue-200">已封存 {sealedSnapshotCount}</span>
+          </div>
+        </div>
+        <div className="grid border-b border-crypto-border lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="max-h-64 overflow-auto border-b border-crypto-border lg:border-b-0 lg:border-r">
+            <table className="w-full min-w-[720px] text-xs">
+              <thead className="sticky top-0 z-10 bg-gray-900/95 text-gray-500 backdrop-blur">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">研究数据集</th>
+                  <th className="px-4 py-2 text-left font-medium">来源优先级</th>
+                  <th className="px-4 py-2 text-left font-medium">最新分区</th>
+                  <th className="px-4 py-2 text-right font-medium">行 / 标的</th>
+                  <th className="px-4 py-2 text-left font-medium">门禁状态</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-crypto-border">
+                {researchDatasets.length === 0 ? (
+                  <tr><td colSpan={5} className="px-4 py-5 text-center text-gray-500">本地 PG 尚未返回研究数据集注册表</td></tr>
+                ) : researchDatasets.map((dataset) => {
+                  const published = dataset.partition_status === 'published';
+                  const blockers = Number(dataset.blocking_issues || 0);
+                  return (
+                    <tr key={dataset.code} className="text-gray-400 hover:bg-white/[0.025]">
+                      <td className="px-4 py-2.5">
+                        <div className="font-medium text-gray-200">{dataset.name}</div>
+                        <div className="mt-0.5 font-mono text-[10px] text-gray-600">{dataset.code} · {dataset.schema_version}</div>
+                      </td>
+                      <td className="px-4 py-2.5"><span className="font-mono text-[11px] text-gray-300">{dataset.primary_source}</span><span className="px-1 text-gray-700">→</span><span className="font-mono text-[11px] text-gray-500">{dataset.fallback_source || '--'}</span><div className="mt-0.5 font-mono text-[10px] text-gray-600">实际 {dataset.actual_source || '--'}{dataset.fallback_reason ? ` · ${dataset.fallback_reason}` : ''}</div></td>
+                      <td className="px-4 py-2.5">{dataset.end_date || '--'}<div className="mt-0.5 font-mono text-[10px] text-gray-600">{dataset.content_hash ? dataset.content_hash.slice(0, 12) : '未发布'}</div></td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-300">{dataset.row_count ? format(dataset.row_count) : '--'} <span className="text-gray-600">/</span> {dataset.symbol_count ? format(dataset.symbol_count) : '--'}</td>
+                      <td className="px-4 py-2.5"><span className={clsx('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold', blockers ? 'border-red-500/25 bg-red-500/10 text-red-200' : published ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-gray-600 bg-gray-800 text-gray-400')}>{blockers ? `阻断 ${blockers}` : published ? '已发布' : '待采集'}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="max-h-64 overflow-auto p-3">
+            <div className="mb-3 rounded-lg border border-blue-500/20 bg-blue-500/[0.045] p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-100"><Clock className="h-3.5 w-3.5 text-blue-300" />日终发布计划</div>
+                <span className={clsx(
+                  'rounded border px-1.5 py-0.5 text-[10px] font-semibold',
+                  dailyReferenceSchedule?.runtimeStatus === 'running'
+                    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+                    : dailyReferenceSchedule
+                      ? 'border-amber-500/25 bg-amber-500/10 text-amber-200'
+                      : 'border-red-500/25 bg-red-500/10 text-red-200',
+                )}>
+                  {dailyReferenceSchedule?.runtimeStatus === 'running'
+                    ? '运行中'
+                    : dailyReferenceSchedule?.enabled
+                      ? '配置已启用 · 运行器未启动'
+                      : dailyReferenceSchedule?.configured === false
+                        ? '未初始化'
+                        : dailyReferenceSchedule
+                          ? '已停用'
+                          : '读取失败'}
+                </span>
+              </div>
+              {dailyReferenceSchedule ? (
+                <>
+                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[10px] text-gray-500">
+                    <div>计划 <span className="font-mono text-gray-300">{dailyReferenceSchedule.cron}</span></div>
+                    <div>时区 <span className="font-mono text-gray-300">{dailyReferenceSchedule.timezone}</span></div>
+                    <div>配置下次 <span className="text-gray-300">{compactDate(dailyReferenceSchedule.configuredNextRunAt ?? dailyReferenceSchedule.nextRunAt)}</span></div>
+                    <div>有效下次 <span className="text-gray-300">{compactDate(dailyReferenceSchedule.effectiveNextRunAt)}</span></div>
+                    <div>日线水位 <span className="font-mono text-gray-300">{dailyReferenceSchedule.dailyBarsWatermark || '--'}</span></div>
+                  </div>
+                  {dailyReferenceSchedule.configured === false ? <div className="mt-2 rounded border border-amber-500/15 bg-amber-500/[0.05] px-2 py-1.5 text-[10px] leading-relaxed text-amber-200">日终计划尚未初始化，请由管理员完成初始化后启用。</div> : null}
+                  {dailyReferenceSchedule.enabled && dailyReferenceSchedule.runtimeStatus !== 'running' ? <div className="mt-2 rounded border border-amber-500/15 bg-amber-500/[0.05] px-2 py-1.5 text-[10px] leading-relaxed text-amber-200">PostgreSQL 中保存了启用配置，但当前后端进程没有在线调度任务；配置时间不会自动执行。</div> : null}
+                  {dailyReferenceSchedule.lastRun && (
+                    <div className="mt-2 space-y-1 border-t border-blue-500/15 pt-2 text-[10px] text-gray-500">
+                      <div>最近 {dailyReferenceSchedule.lastRun.tradeDate} · <span className={dailyReferenceSchedule.lastRun.status === 'sealed' ? 'text-emerald-300' : dailyReferenceSchedule.lastRun.status === 'not_trading_day' ? 'text-amber-300' : 'text-red-300'}>{dailyReferenceSchedule.lastRun.status}</span> · 第 {dailyReferenceSchedule.lastRun.attemptCount} 次 · 完成 {compactDate(dailyReferenceSchedule.lastRun.finishedAt)}</div>
+                      <div>数据快照 <span className="font-mono text-gray-300">{dailyReferenceSchedule.lastRun.snapshotId ?? lastPublication?.snapshot?.id ?? '--'}</span> · 实际来源 <span className="font-mono text-gray-300">{lastPublication?.actual_source || '--'}</span>{lastPublication?.fallback_reason ? <span className="text-amber-300"> · 兜底 {lastPublication.fallback_reason}</span> : null}</div>
+                      <div>因子 <span className={lastFactorSchedule?.status === 'sealed' ? 'text-emerald-300' : lastFactorSchedule?.status ? 'text-amber-300' : 'text-gray-600'}>{lastFactorSchedule?.status || '--'}</span> · 因子快照 <span className="font-mono text-gray-300">{lastFactorSchedule?.factor_snapshot?.id ?? lastFactorSchedule?.factor_snapshot_id ?? '--'}</span> · 市场证据 <span className="text-gray-300">{lastRunResult?.marketEvidence?.status || '--'}</span></div>
+                    </div>
+                  )}
+                </>
+              ) : <div className="mt-2 text-[10px] text-gray-600">日终计划状态暂不可用。</div>}
+            </div>
+            <div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold text-white">最近封存清单</span></div>
+            {researchSnapshots.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-crypto-border bg-crypto-bg/40 p-3 text-xs leading-relaxed text-gray-500">尚无可用的数据快照，请先完成日线同步与质量检查。</div>
+            ) : (
+              <div className="space-y-2">
+                {researchSnapshots.slice(0, 6).map((snapshot) => (
+                  <div key={snapshot.id} className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-2.5">
+                    <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[11px] text-gray-200">{snapshot.name}</span><span className={clsx('rounded border px-1.5 py-0.5 text-[10px]', snapshot.status === 'sealed' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-gray-600 text-gray-400')}>{snapshot.status === 'sealed' ? '已封存' : snapshot.status}</span></div>
+                    <div className="mt-1 text-[10px] text-gray-600">{snapshot.partition_count || 0} 分区 · 截止 {compactDate(snapshot.knowledge_cutoff_at)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -679,7 +1018,7 @@ export function DataCenter() {
                       </td>
                       <td className="px-4 py-3 text-gray-300">
                         <div>{job.job_name || `任务 ${job.id}`}</div>
-                        <div className="mt-0.5 text-[10px] text-gray-600">AkShare · 日线</div>
+                        <div className="mt-0.5 text-[10px] text-gray-600">TuShare 优先 · 实际来源见快照分区</div>
                       </td>
                       <td className="px-4 py-3">{job.start_date || '--'} 至 {job.end_date || '--'}</td>
                       <td className="px-4 py-3">
@@ -706,7 +1045,7 @@ export function DataCenter() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-4 py-3">
           <div>
             <h2 className="text-base font-semibold text-white">数据表统计</h2>
-            <p className="mt-1 text-xs text-gray-500">按表、标的和周期核对 PostgreSQL K线存储规模。</p>
+            <p className="mt-1 text-xs text-gray-500">按表、标的和周期核对 K 线存储规模。</p>
           </div>
           <div className="flex items-center gap-2 text-xs">
             <span className="rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 py-1.5 font-semibold text-blue-200">
@@ -760,7 +1099,7 @@ export function DataCenter() {
           <div>
             <div className="text-[11px] font-black uppercase tracking-wider text-blue-300">A股数据维护面板</div>
             <h2 className="text-base font-semibold text-white">同步覆盖矩阵</h2>
-            <p className="mt-1 text-xs text-gray-500">按标的聚合 PG 历史 K 线，展开后可按周期查看起止日期、覆盖率和同步入口。</p>
+            <p className="mt-1 text-xs text-gray-500">按标的聚合历史 K 线，展开后可按周期查看起止日期、覆盖率和同步入口。</p>
           </div>
           <span className="rounded-lg border border-crypto-border bg-crypto-bg px-3 py-1.5 text-xs text-gray-400">历史数据存储：kline_history</span>
         </div>
@@ -1196,7 +1535,7 @@ export function DataCenter() {
             <div className="flex items-center justify-between border-b border-purple-500/25 px-6 py-4">
               <div>
                 <div className="text-base font-semibold text-white">同步配置 · 自定义同步</div>
-                <div className="mt-0.5 text-xs text-gray-500">设置股票池和历史区间，提交后写入 PostgreSQL。</div>
+                <div className="mt-0.5 text-xs text-gray-500">设置股票池和历史区间后开始同步。</div>
               </div>
               <button onClick={() => setShowSyncDialog(false)} className="rounded-lg border border-crypto-border p-2 text-gray-500 hover:text-white" aria-label="关闭同步配置">
                 <X className="h-4 w-4" />

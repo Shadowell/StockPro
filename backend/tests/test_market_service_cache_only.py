@@ -76,26 +76,20 @@ class HotConceptFallbackTests(unittest.TestCase):
     def tearDown(self):
         MarketService._get_cached_hot_concepts.clear_cache()
 
-    def test_hot_concepts_fetches_and_persists_external_rows_when_pg_cache_is_empty(self):
+    def test_hot_concepts_remains_read_only_when_pg_cache_is_empty(self):
         fake_db = Mock()
         fake_db.get_hot_concepts_realtime.return_value = []
         fake_db.get_hot_concepts_history.return_value = []
-        external_rows = [
-            {"rank": 1, "name": "存储芯片", "change_percent": 3.12, "inflow": 10.0, "outflow": 3.0, "net_inflow": 7.0},
-            {"rank": 2, "name": "中芯国际概念", "change_percent": 2.8, "inflow": 8.0, "outflow": 9.0, "net_inflow": -1.0},
-        ]
-
         with (
             patch("app.services.market_service.db", fake_db),
             patch.object(settings, "ENABLE_EXTERNAL_MARKET_FETCH", True),
-            patch.object(MarketService, "_get_cached_hot_concepts", return_value=external_rows) as external_fetch,
+            patch.object(MarketService, "_get_cached_hot_concepts", side_effect=AssertionError("external fetch")),
         ):
             result = MarketService.get_hot_concepts(limit=1)
 
-        self.assertEqual(external_rows[:1], result)
-        external_fetch.assert_called_once()
-        fake_db.update_hot_concepts_realtime.assert_called_once_with(external_rows)
-        fake_db.insert_hot_concepts_history.assert_called_once()
+        self.assertEqual([], result)
+        fake_db.update_hot_concepts_realtime.assert_not_called()
+        fake_db.insert_hot_concepts_history.assert_not_called()
 
     def test_hot_concepts_returns_empty_when_pg_cache_is_empty_and_external_fetch_is_disabled(self):
         fake_db = Mock()
@@ -110,3 +104,38 @@ class HotConceptFallbackTests(unittest.TestCase):
             result = MarketService.get_hot_concepts(limit=10)
 
         self.assertEqual([], result)
+
+
+class ShortLineEvidenceFallbackTests(unittest.TestCase):
+    def test_stale_realtime_cache_falls_back_to_latest_sealed_evidence(self):
+        fake_db = Mock()
+        fake_db.get_short_line_indices_realtime.return_value = [
+            {"code": "ZT", "name": "涨停数", "price": 9, "updated_at": "2025-01-02T15:00:00"}
+        ]
+        research = Mock()
+        research.list_snapshots.return_value = [{
+            "id": 7,
+            "trade_date": "2025-01-02",
+            "captured_at": "2026-07-16T14:15:08+00:00",
+            "available_at": "2026-07-16T14:15:08+00:00",
+        }]
+        research.sentiment.return_value = {
+            "metrics": [
+                {"metric_code": "limit_up_count", "label": "涨停数", "value": 58, "unit": "stocks", "source_label": "tushare_limit_list_derived", "definition": "涨停池去重证券数"},
+                {"metric_code": "highest_board", "label": "最高板", "value": 6, "unit": "boards", "source_label": "tushare_limit_list_derived", "definition": "最大连续涨停天数"},
+            ]
+        }
+
+        with (
+            patch("app.services.market_service.db", fake_db),
+            patch("app.services.market_service.MarketResearchService", return_value=research),
+        ):
+            result = MarketService.get_short_line_indices()
+
+        self.assertEqual(["limit_up_count", "highest_board"], [item["code"] for item in result])
+        self.assertEqual(58, result[0]["price"])
+        self.assertEqual("sealed_snapshot", result[0]["data_state"])
+        self.assertEqual("2025-01-02", result[0]["trade_date"])
+        self.assertEqual(7, result[0]["snapshot_id"])
+        research.list_snapshots.assert_called_once_with(market_scope="all_a", limit=1)
+        research.sentiment.assert_called_once_with(7)

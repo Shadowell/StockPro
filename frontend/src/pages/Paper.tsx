@@ -1,862 +1,1096 @@
-import { useEffect, useMemo, useState } from 'react';
-import clsx from 'clsx';
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import ReactECharts from "echarts-for-react";
 import {
   Activity,
-  ArrowDown,
-  ArrowDownUp,
-  ArrowUp,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  FlaskConical,
-  Plus,
+  BarChart3,
+  CircleDollarSign,
+  Database,
+  Filter,
+  Pause,
+  Play,
   RefreshCw,
-  Rocket,
+  Search,
   ShieldCheck,
-  SlidersHorizontal,
-  X,
-} from 'lucide-react';
+  Square,
+  WalletCards,
+} from "lucide-react";
 import {
-  getStrategies,
-  listPaperAccounts,
-  refreshPaperAccount,
-  runPaperTrading,
-  stopPaperAccount,
-} from '../api/client';
-import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
-import { PaperInstanceDetailPanel } from '../components/BitProDetailPanels';
-import { formatSymbolLabel, normalizeSymbolCode } from '../utils/symbolDisplay';
-import type { PaperAccount, Strategy } from '../types';
+  createPaperInstance,
+  getPaperInstance,
+  listBacktestRuns,
+  listPaperInstances,
+  paperInstanceAction,
+  processPaperCycle,
+} from "../api/client";
+import type { BacktestRun, PaperRuntimeInstance } from "../types";
 
-type AssetFilter = 'all' | 'ashare';
-type SortField = 'created' | 'return';
-type SortDirection = 'asc' | 'desc';
-type SortMode =
-  | 'created_desc'
-  | 'created_asc'
-  | 'return_desc'
-  | 'return_asc';
+const TABS = [
+  ["instances", "实例"],
+  ["signals", "信号"],
+  ["orders", "订单"],
+  ["positions", "持仓"],
+  ["trades", "成交"],
+  ["account", "账户"],
+  ["events", "事件"],
+] as const;
+type Tab = (typeof TABS)[number][0];
+type StatusFilter = "all" | PaperRuntimeInstance["status"] | "stale";
+const panel = "rounded-xl border border-crypto-border bg-crypto-card";
+const input =
+  "h-10 rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-slate-200 outline-none focus:border-blue-500/60";
+const value = (current: unknown, digits = 2) =>
+  current === null || current === undefined || current === ""
+    ? "--"
+    : Number.isFinite(Number(current))
+      ? Number(current).toLocaleString("zh-CN", {
+          maximumFractionDigits: digits,
+        })
+      : String(current);
+const currency = (current: unknown) =>
+  current === null || current === undefined || current === ""
+    ? "--"
+    : `¥${value(current)}`;
+const percent = (current: unknown) =>
+  current === null || current === undefined || !Number.isFinite(Number(current))
+    ? "--"
+    : `${(Number(current) * 100).toFixed(2)}%`;
+const time = (current: unknown) =>
+  current
+    ? new Date(String(current)).toLocaleString("zh-CN", { hour12: false })
+    : "--";
+const feedSourceLabel = (current: unknown) =>
+  current === "sealed_pg_snapshot" ? "历史数据快照" : value(current);
+const feedModeLabel = (current: unknown) =>
+  current === "recorded_replay" ? "历史回放" : value(current);
+const PAPER_HEARTBEAT_SLA_MS = 15 * 60 * 1000;
 
-const wizardSteps = [
-  { title: '选择策略', subtitle: '策略可独立运行' },
-  { title: '运行参数', subtitle: '资金与启动' },
-  { title: '飞行检查', subtitle: '注册与预检' },
-  { title: '运行监控', subtitle: '启动后可查看' },
-];
-
-const compactNumber = (value?: number | null, digits = 0) =>
-  value == null || !Number.isFinite(value)
-    ? '--'
-    : Number(value).toLocaleString('zh-CN', {
-        maximumFractionDigits: digits,
-        minimumFractionDigits: digits,
-      });
-
-const formatSignedCny = (value?: number | null) => {
-  if (value == null || !Number.isFinite(value)) return '--';
-  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
-  return `${sign}¥${Math.abs(value).toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+const runtimePresentation = (
+  instance: PaperRuntimeInstance,
+  nowMs = Date.now(),
+) => {
+  if (instance.status !== "running")
+    return { state: instance.status, label: instance.status, stale: false };
+  const heartbeatMs = instance.heartbeat_at
+    ? new Date(instance.heartbeat_at).getTime()
+    : Number.NaN;
+  const stale =
+    !Number.isFinite(heartbeatMs) ||
+    nowMs - heartbeatMs > PAPER_HEARTBEAT_SLA_MS;
+  if (!stale) return { state: "running", label: "running", stale: false };
+  return {
+    state: "stale",
+    label:
+      instance.feed_config?.mode === "recorded_replay"
+        ? "回放心跳陈旧"
+        : "运行心跳陈旧",
+    stale: true,
+  };
 };
 
-const formatSignedPercent = (value?: number | null) => {
-  if (value == null || !Number.isFinite(value)) return '--';
-  return `${value.toFixed(2)}%`;
-};
+const statusTone = (status: string) =>
+  status === "running" || status === "success"
+    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+    : status === "failed" || status === "blocked" || status === "stale"
+      ? "border-red-500/25 bg-red-500/10 text-red-300"
+      : "border-amber-500/25 bg-amber-500/10 text-amber-300";
 
-const formatRatio = (value?: number | null) =>
-  value != null && Number.isFinite(value) && value >= 0 ? value.toFixed(2) : '--';
-
-const mergePaperAccount = (base: PaperAccount | null | undefined, update: PaperAccount): PaperAccount => ({
-  ...(base || {}),
-  ...update,
-  account_id: update.account_id ?? base?.account_id ?? 0,
-  strategy_id: update.strategy_id ?? base?.strategy_id ?? 0,
-  strategy_name: update.strategy_name ?? base?.strategy_name,
-  name: update.name ?? base?.name ?? 'A股模拟盘',
-  initial_capital: update.initial_capital ?? base?.initial_capital ?? 100000,
-  cash: update.cash ?? base?.cash ?? 0,
-  equity: update.equity ?? base?.equity ?? 0,
-  status: update.status ?? base?.status ?? 'unknown',
-  created_at: update.created_at ?? base?.created_at ?? '',
-  updated_at: update.updated_at ?? base?.updated_at,
-  orders: update.orders ?? base?.orders,
-  positions: update.positions ?? base?.positions,
-  equity_curve: update.equity_curve ?? base?.equity_curve,
-  events: update.events ?? base?.events,
-});
-
-const accountPnl = (account: PaperAccount) => account.equity - account.initial_capital;
-
-const accountReturnPct = (account: PaperAccount) =>
-  account.initial_capital > 0 ? (accountPnl(account) / account.initial_capital) * 100 : null;
-
-const accountWinRate = (account: PaperAccount) => {
-  const positions = account.positions || [];
-  if (positions.length === 0) return null;
-  return (positions.filter((item) => item.pnl >= 0).length / positions.length) * 100;
-};
-
-const accountProfitFactor = (account: PaperAccount) => {
-  const positions = account.positions || [];
-  if (positions.length === 0) return null;
-  const grossProfit = positions.reduce((sum, item) => sum + Math.max(item.pnl, 0), 0);
-  const grossLoss = positions.reduce((sum, item) => sum + Math.abs(Math.min(item.pnl, 0)), 0);
-  if (grossProfit <= 0) return null;
-  if (grossLoss === 0) return grossProfit > 0 ? grossProfit / 1000 : null;
-  return grossProfit / grossLoss;
-};
-
-const accountTradeCount = (account: PaperAccount) => account.orders?.length ?? 0;
-
-const accountSymbols = (account: PaperAccount) => {
-  const names = new Map<string, string>();
-  const symbolSet = new Set<string>();
-  for (const item of account.positions || []) {
-    const code = normalizeSymbolCode(item.symbol);
-    if (code) symbolSet.add(code);
-    if (code && item.name) names.set(code, item.name);
-  }
-  for (const item of account.orders || []) {
-    const code = normalizeSymbolCode(item.symbol);
-    if (code) symbolSet.add(code);
-    if (code && item.name && !names.has(code)) names.set(code, item.name);
-  }
-  const symbols = [...symbolSet];
-  return symbols.length > 0 ? symbols.map((symbol) => formatSymbolLabel(symbol, names.get(symbol))).join(' / ') : 'A股多股组合';
-};
-
-const sortDirectionFor = (sortMode: SortMode, field: SortField): SortDirection | null => {
-  if (field === 'created') {
-    if (sortMode === 'created_asc') return 'asc';
-    if (sortMode === 'created_desc') return 'desc';
-    return null;
-  }
-  if (field === 'return') {
-    if (sortMode === 'return_asc') return 'asc';
-    if (sortMode === 'return_desc') return 'desc';
-    return null;
-  }
-  return null;
-};
-
-const nextSortMode = (sortMode: SortMode, field: SortField): SortMode => {
-  const currentDirection = sortDirectionFor(sortMode, field);
-  if (field === 'created') return currentDirection === 'desc' ? 'created_asc' : 'created_desc';
-  return currentDirection === 'desc' ? 'return_asc' : 'return_desc';
-};
-
-function SortArrow({ direction }: { direction: SortDirection | null }) {
-  if (direction === 'asc') return <ArrowUp className="h-3.5 w-3.5" />;
-  if (direction === 'desc') return <ArrowDown className="h-3.5 w-3.5" />;
-  return <ArrowDownUp className="h-3.5 w-3.5 opacity-60" />;
+function Status({ instance }: { instance: PaperRuntimeInstance }) {
+  const presentation = runtimePresentation(instance);
+  return (
+    <div className="min-w-0">
+      <span
+        className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone(presentation.state)}`}
+      >
+        {presentation.label}
+      </span>
+      <div
+        className={`mt-1 truncate text-[10px] ${presentation.stale ? "text-red-300" : "text-slate-600"}`}
+      >
+        心跳 {time(instance.heartbeat_at)}
+      </div>
+    </div>
+  );
 }
 
-function statusLabel(status: string) {
-  const normalized = status.toLowerCase();
-  if (normalized === 'running') return '运行中';
-  if (normalized === 'stopped') return '已停止';
-  return status || '--';
+function DataTable({
+  rows,
+  columns,
+  empty,
+}: {
+  rows: Array<Record<string, unknown>>;
+  columns: Array<[string, string]>;
+  empty: string;
+}) {
+  return (
+    <div className={`${panel} overflow-hidden`}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] text-sm">
+          <thead>
+            <tr className="border-b border-crypto-border text-left text-xs text-slate-500">
+              {columns.map(([key, label]) => (
+                <th key={key} className="px-4 py-3 font-medium">
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr
+                key={String(row.id ?? index)}
+                className="border-b border-white/[0.04] hover:bg-white/[0.02]"
+              >
+                {columns.map(([key]) => (
+                  <td
+                    key={key}
+                    className="max-w-[320px] truncate px-4 py-3 font-mono text-xs text-slate-300"
+                  >
+                    {key.includes("_at") || key === "signal_time"
+                      ? time(row[key])
+                      : typeof row[key] === "object"
+                        ? JSON.stringify(row[key])
+                        : value(row[key])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length === 0 ? (
+        <div className="p-12 text-center text-sm text-slate-600">{empty}</div>
+      ) : null}
+    </div>
+  );
 }
 
-function statusClass(status: string) {
-  const normalized = status.toLowerCase();
-  if (normalized === 'running') return 'bg-emerald-500/20 text-emerald-300';
-  if (normalized === 'stopped') return 'bg-gray-700/50 text-gray-400';
-  return 'bg-yellow-500/20 text-yellow-300';
+function Metric({
+  label,
+  current,
+  note,
+  tone = "text-white",
+}: {
+  label: string;
+  current: string;
+  note?: string;
+  tone?: string;
+}) {
+  return (
+    <div className={`${panel} p-4`}>
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className={`mt-2 text-xl font-bold ${tone}`}>{current}</div>
+      {note ? (
+        <div className="mt-1 truncate text-[10px] text-slate-600">{note}</div>
+      ) : null}
+    </div>
+  );
 }
 
 export function Paper() {
-  const [strategies, setStrategies] = useState<Strategy[]>([]);
-  const [strategyId, setStrategyId] = useState<number | ''>('');
-  const [accounts, setAccounts] = useState<PaperAccount[]>([]);
-  const [selected, setSelected] = useState<PaperAccount | null>(null);
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [assetFilter, setAssetFilter] = useState<AssetFilter>('all');
-  const [sortMode, setSortMode] = useState<SortMode>('return_desc');
-  const [view, setView] = useState<'console' | 'detail'>('console');
-  const [showCreateWizard, setShowCreateWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState(0);
-  const [draftInitialCapital, setDraftInitialCapital] = useState(100000);
-  const [draftPositionPct, setDraftPositionPct] = useState(0.3);
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("tab") as Tab | null;
+  const tab: Tab = TABS.some(([key]) => key === requested)
+    ? requested!
+    : "instances";
+  const [instances, setInstances] = useState<PaperRuntimeInstance[]>([]);
+  const [selected, setSelected] = useState<PaperRuntimeInstance | null>(null);
+  const [runs, setRuns] = useState<BacktestRun[]>([]);
+  const [runId, setRunId] = useState("");
+  const [name, setName] = useState("");
+  const [initialCash, setInitialCash] = useState(1_000_000);
+  const [cycleDate, setCycleDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
-  const load = async () => {
-    const [strategyData, accountData] = await Promise.all([getStrategies(), listPaperAccounts()]);
-    setStrategies(strategyData);
-    setAccounts(accountData.accounts);
-    setStrategyId((current) => current || strategyData[0]?.id || '');
-    setSelected((current) => current || accountData.accounts[0] || null);
+  const eligible = useMemo(
+    () =>
+      runs.filter(
+        (item) =>
+          item.status === "success" &&
+          item.run_mode === "full" &&
+          item.promotion_status === "paper_eligible" &&
+          item.factor_snapshot_id &&
+          item.pool_snapshot_id &&
+          item.research_protocol_id,
+      ),
+    [runs],
+  );
+  const selectedRun = eligible.find((item) => item.id === runId);
+  const visibleInstances = useMemo(
+    () =>
+      instances.filter((item) => {
+        const presentation = runtimePresentation(item);
+        if (
+          statusFilter !== "all" &&
+          statusFilter !== presentation.state &&
+          statusFilter !== item.status
+        )
+          return false;
+        return `${item.name} ${item.id}`
+          .toLowerCase()
+          .includes(query.trim().toLowerCase());
+      }),
+    [instances, query, statusFilter],
+  );
+  const summary = useMemo(() => {
+    const validEquity = instances.filter(
+      (item) =>
+        item.equity !== null &&
+        item.equity !== undefined &&
+        item.initial_cash !== null &&
+        item.initial_cash !== undefined,
+    );
+    const totalEquity = validEquity.length
+      ? validEquity.reduce((sum, item) => sum + Number(item.equity), 0)
+      : null;
+    const totalPnl = validEquity.length
+      ? validEquity.reduce(
+          (sum, item) => sum + Number(item.equity) - Number(item.initial_cash),
+          0,
+        )
+      : null;
+    return {
+      running: instances.filter(
+        (item) => item.status === "running" && !runtimePresentation(item).stale,
+      ).length,
+      stale: instances.filter((item) => runtimePresentation(item).stale).length,
+      trades: instances.reduce((sum, item) => sum + (item.trade_count ?? 0), 0),
+      totalEquity,
+      totalPnl,
+    };
+  }, [instances]);
+
+  const load = async (keepId?: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      const [paper, backtests] = await Promise.all([
+        listPaperInstances(),
+        listBacktestRuns(200),
+      ]);
+      setInstances(paper.items);
+      setRuns(backtests.items);
+      const id =
+        keepId ?? selected?.id ?? params.get("instance") ?? paper.items[0]?.id;
+      setSelected(id ? await getPaperInstance(id) : null);
+      if (!runId)
+        setRunId(
+          backtests.items.find(
+            (item) =>
+              item.promotion_status === "paper_eligible" &&
+              item.factor_snapshot_id &&
+              item.pool_snapshot_id,
+          )?.id ?? "",
+        );
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Paper 工作台加载失败",
+      );
+    } finally {
+      setBusy(false);
+      setLoaded(true);
+    }
   };
-
   useEffect(() => {
     void load();
   }, []);
 
-  const mergedAccounts = useMemo(() => {
-    const byId = new Map<number, PaperAccount>();
-    for (const account of accounts) {
-      byId.set(account.account_id, account);
-    }
-    if (selected) {
-      byId.set(selected.account_id, mergePaperAccount(byId.get(selected.account_id), selected));
-    }
-    return Array.from(byId.values());
-  }, [accounts, selected]);
-
-  const visibleAccounts = useMemo(() => {
-    const filtered = mergedAccounts.filter(() => assetFilter === 'all' || assetFilter === 'ashare');
-
-    return [...filtered].sort((a, b) => {
-      if (sortMode.startsWith('return')) {
-        const diff = (accountReturnPct(b) ?? -Infinity) - (accountReturnPct(a) ?? -Infinity);
-        return sortMode === 'return_asc' ? -diff : diff;
-      }
-      const diff = Date.parse(b.created_at || '') - Date.parse(a.created_at || '');
-      return sortMode === 'created_asc' ? -diff : diff;
-    });
-  }, [assetFilter, mergedAccounts, sortMode]);
-
-  const overview = useMemo(() => {
-    const totalEquity = mergedAccounts.reduce((sum, account) => sum + Number(account.equity || 0), 0);
-    const totalPnl = mergedAccounts.reduce((sum, account) => sum + accountPnl(account), 0);
-    const runningCount = mergedAccounts.filter((account) => account.status.toLowerCase() === 'running').length;
-    const totalTrades = mergedAccounts.reduce((sum, account) => sum + accountTradeCount(account), 0);
-    const latestTimestamp = mergedAccounts
-      .map((account) => Date.parse(account.updated_at || account.created_at || ''))
-      .filter((time) => Number.isFinite(time))
-      .sort((a, b) => b - a)[0];
-
-    return {
-      totalEquity,
-      totalPnl,
-      runningCount,
-      totalTrades,
-      latestUpdatedAt: latestTimestamp ? new Date(latestTimestamp).toLocaleString('zh-CN', { hour12: false }) : '--',
-    };
-  }, [mergedAccounts]);
-
-  const assetCounts: Record<AssetFilter, number> = {
-    all: mergedAccounts.length,
-    ashare: mergedAccounts.length,
-  };
-
-  const selectedStrategy = useMemo(
-    () => strategies.find((strategy) => strategy.id === Number(strategyId)) || strategies[0],
-    [strategies, strategyId],
-  );
-
-  const updateAccount = (account: PaperAccount) => {
-    setAccounts((prev) => {
-      const current = prev.find((item) => item.account_id === account.account_id);
-      const merged = mergePaperAccount(current, account);
-      return [merged, ...prev.filter((item) => item.account_id !== account.account_id)];
-    });
-    setSelected((current) => mergePaperAccount(current?.account_id === account.account_id ? current : null, account));
-  };
-
-  const openCreateWizard = () => {
-    setStrategyId((current) => current || strategies[0]?.id || '');
-    setWizardStep(0);
-    setShowCreateWizard(true);
-  };
-
-  const closeCreateWizard = () => {
-    if (loading) return;
-    setShowCreateWizard(false);
-    setWizardStep(0);
-  };
-
-  const start = async () => {
-    const nextStrategyId = strategyId || strategies[0]?.id;
-    if (!nextStrategyId) return;
-    setLoading(true);
-    setMessage('');
+  const chooseInstance = async (id: string) => {
+    setBusy(true);
+    setError("");
     try {
-      const account = await runPaperTrading(Number(nextStrategyId), {
-        symbols: ['SH_600000', 'SZ_000001'],
-        initial_capital: draftInitialCapital,
-        position_pct: draftPositionPct,
-      });
-      updateAccount(account);
-      setMessage('模拟盘已启动');
-      setShowCreateWizard(false);
-      setWizardStep(0);
+      setSelected(await getPaperInstance(id));
+      setParams({ tab, instance: id });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "实例详情加载失败");
     } finally {
-      setLoading(false);
+      setBusy(false);
+    }
+  };
+  const create = async () => {
+    const run = eligible.find((item) => item.id === runId);
+    if (
+      !run ||
+      !run.factor_snapshot_id ||
+      !run.pool_snapshot_id ||
+      !run.research_protocol_id
+    )
+      return setError("请选择固定因子与股票池的 Paper Eligible 完整回测");
+    setBusy(true);
+    setError("");
+    try {
+      const created = await createPaperInstance({
+        name: name || `${run.strategy_name ?? run.name} / Paper`,
+        strategy_version_id: run.strategy_version_id,
+        dataset_snapshot_id: run.dataset_snapshot_id,
+        factor_snapshot_id: run.factor_snapshot_id,
+        universe_snapshot_id: run.universe_snapshot_id,
+        pool_snapshot_id: run.pool_snapshot_id,
+        research_protocol_id: run.research_protocol_id,
+        qualifying_backtest_run_id: run.id,
+        initial_cash: initialCash,
+      });
+      setName("");
+      await load(created.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "创建失败");
+      setBusy(false);
+    }
+  };
+  const action = async (next: "start" | "pause" | "resume" | "stop") => {
+    if (!selected) return;
+    setBusy(true);
+    setError("");
+    try {
+      await paperInstanceAction(selected.id, next);
+      await load(selected.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "状态操作失败");
+      setBusy(false);
+    }
+  };
+  const replay = async () => {
+    if (!selected || !cycleDate) return setError("请选择回放交易日");
+    setBusy(true);
+    setError("");
+    try {
+      await processPaperCycle(selected.id, {
+        trade_date: cycleDate,
+        data_available_at: `${cycleDate}T15:00:00+08:00`,
+        observed_at: `${cycleDate}T15:01:00+08:00`,
+      });
+      await load(selected.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "周期处理失败");
+      setBusy(false);
     }
   };
 
-  const refresh = async (account: PaperAccount) => {
-    const refreshed = await refreshPaperAccount(account.account_id);
-    const merged = mergePaperAccount(account, refreshed);
-    updateAccount(merged);
-    setMessage(merged.events?.at(-1)?.message || '手动刷新完成');
-  };
-
-  const stop = async (account: PaperAccount) => {
-    const stopped = await stopPaperAccount(account.account_id);
-    const merged = mergePaperAccount(account, stopped);
-    updateAccount(merged);
-    setMessage(merged.events?.at(-1)?.message || '模拟盘已停止');
-  };
-
-  const sortControls: Array<{ field: SortField; label: string }> = [
-    { field: 'return', label: '收益率' },
-    { field: 'created', label: '创建时间' },
-  ];
-
-  const finalWizardStep = wizardSteps.length - 1;
-  const nextWizardLabel =
-    wizardStep === 0 ? '下一步 · 运行参数' : wizardStep === 1 ? '下一步 · 飞行检查' : '下一步 · 运行监控';
-
-  if (view === 'detail' && selected) {
-    return (
-      <div className="min-h-full bg-crypto-bg p-6">
-        <PaperInstanceDetailPanel
-          account={selected}
-          onBack={() => setView('console')}
-          onRefresh={(account) => refresh(account)}
-          onStop={(account) => stop(account)}
-        />
-      </div>
-    );
-  }
+  const pnl =
+    selected?.equity === null || selected?.equity === undefined
+      ? null
+      : Number(selected.equity) - Number(selected.initial_cash);
+  const returnRate =
+    pnl === null || Number(selected?.initial_cash) <= 0
+      ? null
+      : pnl / Number(selected?.initial_cash);
+  const latestEquity = selected?.equity_snapshots?.at(-1);
+  const equityOption = useMemo(
+    () => ({
+      backgroundColor: "transparent",
+      animation: false,
+      tooltip: {
+        trigger: "axis",
+        backgroundColor: "#111827",
+        borderColor: "#334155",
+        textStyle: { color: "#e5e7eb" },
+      },
+      grid: { left: 58, right: 18, top: 24, bottom: 32 },
+      xAxis: {
+        type: "category",
+        data: (selected?.equity_snapshots ?? []).map((item) => item.trade_date),
+        axisLabel: { color: "#64748b" },
+        axisLine: { lineStyle: { color: "#334155" } },
+      },
+      yAxis: {
+        type: "value",
+        scale: true,
+        axisLabel: { color: "#64748b" },
+        splitLine: { lineStyle: { color: "rgba(51,65,85,.4)" } },
+      },
+      series: [
+        {
+          name: "账户权益",
+          type: "line",
+          showSymbol: true,
+          data: (selected?.equity_snapshots ?? []).map((item) =>
+            Number(item.equity),
+          ),
+          lineStyle: { color: "#3b82f6", width: 2 },
+          itemStyle: { color: "#3b82f6" },
+          areaStyle: { color: "rgba(59,130,246,.08)" },
+        },
+      ],
+    }),
+    [selected],
+  );
+  const rows = selected
+    ? ((tab === "signals"
+        ? selected.signals
+        : tab === "orders"
+          ? selected.orders
+          : tab === "positions"
+            ? selected.positions
+            : tab === "trades"
+              ? selected.trades
+              : tab === "events"
+                ? selected.events
+                : []) ?? [])
+    : [];
 
   return (
-    <div className="min-h-full bg-crypto-bg p-6">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex w-fit items-center gap-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-2.5 text-sm font-semibold text-yellow-300">
-            <FlaskConical className="h-4 w-4" />
-            模拟盘
+    <div
+      className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8"
+      data-testid="paper-runtime-workbench"
+    >
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <WalletCards className="h-7 w-7 text-blue-400" />
+            <h1 className="text-2xl font-black text-white">模拟交易控制台</h1>
+            <span className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-xs text-blue-300">
+              模拟交易
+            </span>
+            <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
+              无真实券商连接
+            </span>
           </div>
-          <p className="max-w-lg text-[11px] leading-snug text-gray-500">
-            模拟：只做 PaperBroker / 模拟成交，不触碰真实资金。
+          <p className="mt-2 text-sm text-slate-500">
+            策略实例、风险控制、订单成交与账户权益。
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void load(selected?.id)}
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400"
+        >
+          <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+          刷新
+        </button>
+      </header>
+
+      <section
+        className={`${panel} mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-xs`}
+      >
+        <span className="font-semibold text-slate-300">当前模式：模拟交易</span>
+        <span className="text-slate-500">
+          数据源：
+          {selected
+            ? feedSourceLabel(selected.feed_config?.provider ?? "未声明")
+            : "实例未选择"}
+        </span>
+        <span className="text-slate-500">
+          回放模式：
+          {selected ? feedModeLabel(selected.feed_config?.mode ?? "未声明") : "--"}
+        </span>
+        <span className={summary.stale ? "text-red-300" : "text-slate-500"}>
+          陈旧实例：{summary.stale}
+        </span>
+      </section>
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <Metric
+          label="模拟实例"
+          current={value(instances.length, 0)}
+          note={loaded ? "运行记录" : "加载中"}
+        />
+        <Metric
+          label="健康运行"
+          current={loaded ? value(summary.running, 0) : "--"}
+          note="状态 + 心跳 SLA"
+          tone="text-emerald-300"
+        />
+        <Metric
+          label="心跳陈旧"
+          current={loaded ? value(summary.stale, 0) : "--"}
+          note="超过 15 分钟降级"
+          tone={summary.stale ? "text-red-300" : "text-white"}
+        />
+        <Metric
+          label="组合权益"
+          current={currency(summary.totalEquity)}
+          note="仅汇总有权益记录的实例"
+        />
+        <Metric
+          label="累计盈亏"
+          current={currency(summary.totalPnl)}
+          note="权益 - 初始资金"
+          tone={
+            summary.totalPnl !== null && summary.totalPnl < 0
+              ? "text-red-300"
+              : "text-emerald-300"
+          }
+        />
+        <Metric
+          label="成交记录"
+          current={loaded ? value(summary.trades, 0) : "--"}
+          note="模拟成交"
+        />
+      </div>
+
+      <div className="mb-5 grid gap-3 md:grid-cols-3">
+        <div className={`${panel} p-4`}>
+          <ShieldCheck className="h-5 w-5 text-emerald-400" />
+          <div className="mt-3 text-sm font-semibold text-slate-200">
+            实盘前置约束
+          </div>
+          <p className="mt-1 text-xs text-slate-600">
+            样本外、容量、数据和固定快照全部通过才可创建。
+          </p>
+        </div>
+        <div className={`${panel} p-4`}>
+          <Database className="h-5 w-5 text-blue-400" />
+          <div className="mt-3 text-sm font-semibold text-slate-200">
+            T+1 / 100股
+          </div>
+          <p className="mt-1 text-xs text-slate-600">
+            收盘信号最早下一交易日成交，买入当日不可卖。
+          </p>
+        </div>
+        <div className={`${panel} p-4`}>
+          <Activity className="h-5 w-5 text-amber-400" />
+          <div className="mt-3 text-sm font-semibold text-slate-200">
+            逐周期审计
+          </div>
+          <p className="mt-1 text-xs text-slate-600">
+            signal → risk → order → trade → ledger 全链路可追溯。
           </p>
         </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="flex items-center gap-2 text-xl font-bold text-white">
-              <Activity className="h-6 w-6 text-blue-400" />
-              策略实例控制台
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              管理多路模拟实例；通过模拟盘验证后可在「实盘」入口晋级。
-            </p>
-          </div>
+      <nav
+        className="mb-5 flex overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1"
+        aria-label="Paper 二级导航"
+      >
+        {TABS.map(([key, label]) => (
           <button
+            data-testid={`paper-tab-${key}`}
             type="button"
-            onClick={openCreateWizard}
-            disabled={loading || (!strategyId && strategies.length === 0)}
-            className="inline-flex w-auto shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/20 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            key={key}
+            onClick={() =>
+              setParams({
+                tab: key,
+                ...(selected ? { instance: selected.id } : {}),
+              })
+            }
+            className={`min-w-max flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${tab === key ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-800/60 hover:text-white"}`}
           >
-            <Plus className="h-4 w-4" />
-            创建新模拟实例
+            {label}
           </button>
+        ))}
+      </nav>
+      {error ? (
+        <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
+          <strong>加载或操作失败：</strong>
+          {error}；缺失数据未显示为 0。
         </div>
-
-        {message && (
-          <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300">
-            {message}
-          </div>
-        )}
-
-        <AshareGuardrailStrip
-          title="实盘前置约束"
-          description="模拟盘是实盘前的最后验收层，所有成交和风控都按 A 股制度做预检查。"
-          items={[
-            { label: 'T+1 / 100股', detail: '卖出、买入数量和持仓可用量必须先过交易制度校验。' },
-            { label: '涨跌停风险', detail: '接近涨跌停、停牌和异常波动标的进入高风险提示。' },
-            { label: 'PaperBroker隔离', detail: '当前只写模拟账户，不触碰真实资金或券商接口。' },
-          ]}
-        />
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex h-11 items-center rounded-xl border border-crypto-border bg-crypto-card p-1">
-            {[
-              { value: 'all' as const, label: '全部' },
-              { value: 'ashare' as const, label: 'A股' },
-            ].map((option) => {
-              const active = assetFilter === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setAssetFilter(option.value)}
-                  className={clsx(
-                    'inline-flex h-9 min-w-20 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors',
-                    active
-                      ? 'bg-blue-500/20 text-blue-300'
-                      : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
-                  )}
-                >
-                  <span>{option.label}</span>
-                  <span
-                    className={clsx(
-                      'rounded-md px-1.5 py-0.5 text-[10px]',
-                      active ? 'bg-blue-400/15 text-blue-200' : 'bg-crypto-bg text-gray-500',
-                    )}
-                  >
-                    {assetCounts[option.value]}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="inline-flex h-11 items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card/80 p-1">
-            {sortControls.map((control) => {
-              const direction = sortDirectionFor(sortMode, control.field);
-              const active = direction !== null;
-              return (
-                <button
-                  key={control.field}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setSortMode(nextSortMode(sortMode, control.field))}
-                  className={clsx(
-                    'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors',
-                    active
-                      ? 'bg-purple-500/20 text-purple-200 ring-1 ring-purple-400/20'
-                      : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
-                  )}
-                >
-                  <span>{control.label}</span>
-                  <SortArrow direction={direction} />
-                </button>
-              );
-            })}
-          </div>
+      ) : null}
+      {!loaded && !error ? (
+        <div className={`${panel} p-16 text-center text-sm text-slate-500`}>
+          <RefreshCw className="mx-auto mb-3 h-5 w-5 animate-spin" />
+          正在读取 Paper 运行记录…
         </div>
+      ) : null}
 
-        <section className="grid gap-3 rounded-xl border border-crypto-border bg-crypto-card/70 p-4 shadow-sm shadow-black/20 lg:grid-cols-[1.2fr_repeat(4,minmax(0,1fr))]">
-          <div className="flex min-w-0 flex-col justify-center">
-            <div className="flex items-center gap-2 text-sm font-bold text-white">
-              <ShieldCheck className="h-4 w-4 text-yellow-300" />
-              模拟账户概览
-            </div>
-            <p className="mt-1 text-xs leading-5 text-gray-500">
-              汇总当前 PaperBroker 实例的状态、资金和最近刷新时间。
-            </p>
-          </div>
-          {[
-            ['运行中账户', `${overview.runningCount}/${mergedAccounts.length}`, 'text-emerald-300', '当前仍在接收刷新指令的账户'],
-            ['账户总权益', `¥${compactNumber(overview.totalEquity, 2)}`, 'text-blue-300', '全部模拟账户权益合计'],
-            ['总盈亏', formatSignedCny(overview.totalPnl), overview.totalPnl >= 0 ? 'text-up' : 'text-down', '按初始资金口径汇总'],
-            ['总交易数', String(overview.totalTrades), 'text-purple-200', `最近更新 ${overview.latestUpdatedAt}`],
-          ].map(([label, value, tone, caption]) => (
-            <div key={label} className="min-h-20 rounded-lg border border-crypto-border bg-crypto-bg/65 px-3 py-3">
-              <div className="text-[10px] font-semibold text-gray-500">{label}</div>
-              <div className={clsx('mt-2 truncate text-lg font-bold tabular-nums', tone)}>{value}</div>
-              <div className="mt-1 truncate text-[10px] text-gray-600">{caption}</div>
-            </div>
-          ))}
-        </section>
-
-        <div data-testid="paper-instance-grid" className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-          {visibleAccounts.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center rounded-xl border border-dashed border-crypto-border py-16 text-sm text-gray-500">
-              <Rocket className="mb-3 h-10 w-10 opacity-40" />
-              暂无模拟实例。点击「创建新模拟实例」启动策略。
-            </div>
-          )}
-
-          {visibleAccounts.map((account) => {
-            const pnl = accountPnl(account);
-            const returnPct = accountReturnPct(account);
-            const winRate = accountWinRate(account);
-            const profitFactor = accountProfitFactor(account);
-            const tradeCount = accountTradeCount(account);
-            return (
-              <div
-                key={account.account_id}
-                data-testid="paper-instance-card"
-                data-account-id={account.account_id}
-                className="flex flex-col gap-3 rounded-xl border border-crypto-border bg-crypto-card p-3 transition-colors hover:border-gray-600"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div
-                      title={account.name}
-                      aria-label={`策略名称：${account.name}`}
-                      className="min-w-0 truncate text-sm font-semibold text-[#FFAB73]"
-                    >
-                      {account.name}
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <span className="inline-flex h-5 items-center rounded-full border border-blue-500/30 bg-blue-500/10 px-2 text-[10px] font-bold uppercase tracking-normal text-blue-300">
-                        1D
-                      </span>
-                      <span className="inline-flex h-5 items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 text-[10px] font-bold uppercase tracking-normal text-emerald-300">
-                        {compactNumber(account.initial_capital / 10000, 0)}万
-                      </span>
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-gray-500">{accountSymbols(account)}</div>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span
-                      className={clsx(
-                        'inline-flex min-w-12 justify-center rounded-full px-2 py-0.5 text-[10px] font-bold',
-                        statusClass(account.status),
-                      )}
-                    >
-                      {statusLabel(account.status)}
-                    </span>
-                    <button
-                      type="button"
-                      data-testid="paper-card-primary-action"
-                      onClick={() => {
-                        setSelected(account);
-                        setView('detail');
-                      }}
-                      className="inline-flex h-6 min-w-14 items-center justify-center rounded-full bg-blue-500/20 px-3 text-[10px] font-bold text-blue-200 transition-colors hover:bg-blue-500/30"
-                    >
-                      详情
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="grid min-w-0 grid-cols-2 items-end gap-2">
-                    <div className="flex min-w-0 flex-col gap-1">
-                      <span className="text-[10px] font-semibold text-gray-400">收益金额</span>
-                      <div
-                        className={clsx(
-                          'whitespace-nowrap text-[clamp(0.8125rem,0.72vw,1rem)] font-bold tabular-nums leading-tight',
-                          pnl >= 0 ? 'text-up' : 'text-down',
-                        )}
-                      >
-                        {formatSignedCny(pnl)}
-                      </div>
-                    </div>
-                    <div className="flex min-w-0 flex-col items-end gap-1 text-right">
-                      <span className="text-[10px] font-semibold text-gray-400">收益率</span>
-                      <div
-                        className={clsx(
-                          'whitespace-nowrap text-[clamp(0.8125rem,0.72vw,1rem)] font-bold tabular-nums leading-tight',
-                          returnPct == null ? 'text-gray-500' : returnPct >= 0 ? 'text-up' : 'text-down',
-                        )}
-                      >
-                        {formatSignedPercent(returnPct)}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="min-w-0">
-                      <div
-                        className={clsx(
-                          'whitespace-nowrap text-xs font-bold tabular-nums',
-                          winRate == null ? 'text-gray-500' : 'text-white',
-                        )}
-                      >
-                        {winRate == null ? '--' : `${winRate.toFixed(1)}%`}
-                      </div>
-                      <div className="mt-1 text-[10px] font-semibold text-gray-400">胜率</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div
-                        className={clsx(
-                          'whitespace-nowrap text-xs font-bold tabular-nums',
-                          profitFactor == null ? 'text-gray-500' : 'text-white',
-                        )}
-                      >
-                        {formatRatio(profitFactor)}
-                      </div>
-                      <div className="mt-1 text-[10px] font-semibold text-gray-400">盈亏比</div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="whitespace-nowrap text-xs font-bold tabular-nums text-blue-300">
-                        {tradeCount}
-                      </div>
-                      <div className="mt-1 text-[10px] font-semibold text-gray-400">交易次数</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-auto" />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {showCreateWizard && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-6 backdrop-blur-sm">
-          <section
-            data-testid="paper-create-wizard"
-            className="w-full max-w-7xl overflow-hidden rounded-xl border border-crypto-border bg-crypto-card shadow-2xl shadow-black/50"
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-crypto-border px-5 py-4">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
-                  <FlaskConical className="h-4 w-4 text-yellow-300" />
-                  创建向导
-                </div>
-                <h2 className="mt-1 text-lg font-bold text-white">创建新模拟实例</h2>
-              </div>
-              <button
-                type="button"
-                onClick={closeCreateWizard}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-crypto-border text-gray-500 transition-colors hover:text-white"
-                aria-label="关闭创建向导"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
+      {loaded && tab === "instances" ? (
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.55fr)]">
+          <section className={`${panel} overflow-hidden`}>
             <div className="border-b border-crypto-border px-5 py-4">
-              <div className="rounded-xl border border-crypto-border bg-crypto-bg px-6 py-4">
-                <div className="grid grid-cols-[minmax(0,1fr)_88px_minmax(0,1fr)_88px_minmax(0,1fr)_88px_minmax(0,1fr)] items-center gap-3">
-                  {wizardSteps.map((step, index) => {
-                    const active = wizardStep === index;
-                    const done = wizardStep > index;
-                    return (
-                      <div key={step.title} className="contents">
-                        <div className="flex min-w-0 flex-col items-center text-center">
-                          <div
-                            className={clsx(
-                              'flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold transition-colors',
-                              active
-                                ? 'border-blue-400 bg-blue-500/20 text-blue-100 shadow-[0_0_18px_rgba(59,130,246,0.35)]'
-                                : done
-                                  ? 'border-emerald-400/45 bg-emerald-500/15 text-emerald-200'
-                                  : 'border-crypto-border bg-crypto-card text-gray-500',
-                            )}
-                          >
-                            {done ? <CheckCircle2 className="h-5 w-5" /> : index + 1}
-                          </div>
-                          <div
-                            data-testid={`paper-wizard-step-${index + 1}`}
-                            className={clsx('mt-2 truncate text-xs font-semibold', active ? 'text-white' : 'text-gray-500')}
-                          >
-                            {step.title}
-                          </div>
-                          <div className="mt-0.5 truncate text-[10px] text-gray-600">{step.subtitle}</div>
-                        </div>
-                        {index < wizardSteps.length - 1 && <div className="h-px bg-crypto-border" />}
-                      </div>
-                    );
-                  })}
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold text-white">Paper 实例</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    状态机、游标、现金与审计计数统一展示；running
+                    必须同时满足心跳 SLA。
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <label className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-600" />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="搜索实例"
+                      className={`${input} w-48 pl-9`}
+                    />
+                  </label>
+                  <label className="relative">
+                    <Filter className="absolute left-3 top-3 h-4 w-4 text-slate-600" />
+                    <select
+                      value={statusFilter}
+                      onChange={(event) =>
+                        setStatusFilter(event.target.value as StatusFilter)
+                      }
+                      className={`${input} pl-9`}
+                    >
+                      <option value="all">全部状态</option>
+                      <option value="running">健康运行</option>
+                      <option value="stale">心跳陈旧</option>
+                      <option value="draft">草稿</option>
+                      <option value="paused">暂停</option>
+                      <option value="stopped">已停止</option>
+                      <option value="failed">失败</option>
+                    </select>
+                  </label>
                 </div>
               </div>
             </div>
-
-            <div className="min-h-[420px] px-5 py-5">
-              {wizardStep === 0 && (
-                <div>
-                  <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-                    <div>
-                      <h3 className="flex items-center gap-2 text-lg font-bold text-white">
-                        <Rocket className="h-5 w-5 text-blue-400" />
-                        选择交易策略
-                      </h3>
-                      <p className="mt-1 text-xs text-gray-500">仅显示可用于模拟的 A 股策略；运行中的策略不会重复创建同名模拟实例。</p>
+            <div
+              data-testid="paper-instance-grid"
+              className="divide-y divide-white/[0.04]"
+            >
+              {visibleInstances.map((item) => (
+                <button
+                  data-testid="paper-instance-card"
+                  type="button"
+                  key={item.id}
+                  onClick={() => void chooseInstance(item.id)}
+                  className={`grid w-full gap-3 p-4 text-left sm:grid-cols-[minmax(0,1fr)_150px_120px_130px_90px] ${selected?.id === item.id ? "bg-blue-500/[0.06]" : "hover:bg-white/[0.02]"}`}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold text-slate-200">
+                      {item.name}
                     </div>
-                    <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-200">
-                      {strategies.length} 个策略
-                    </span>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {strategies.map((strategy) => {
-                      const selectedStrategy = Number(strategyId) === strategy.id;
-                      return (
-                        <button
-                          key={strategy.id}
-                          type="button"
-                          onClick={() => setStrategyId(strategy.id)}
-                          className={clsx(
-                            'min-h-24 rounded-xl border p-4 text-left transition-colors',
-                            selectedStrategy
-                              ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_0_1px_rgba(59,130,246,0.22)]'
-                              : 'border-crypto-border bg-crypto-bg hover:border-gray-600',
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className={clsx('truncate text-sm font-bold', selectedStrategy ? 'text-[#FFAB73]' : 'text-gray-100')}>
-                                {strategy.name}
-                              </div>
-                              <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-500">{strategy.description || '暂无策略描述'}</p>
-                            </div>
-                            {selectedStrategy && <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-300" />}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {wizardStep === 1 && (
-                <div>
-                  <div className="mb-4">
-                    <h3 className="flex items-center gap-2 text-lg font-bold text-white">
-                      <SlidersHorizontal className="h-5 w-5 text-purple-300" />
-                      运行参数确认
-                    </h3>
-                    <p className="mt-1 text-xs text-gray-500">V1 复用 Backtrader 和 PaperBroker 资金口径，日线优先。</p>
-                  </div>
-                  <div className="grid gap-4 lg:grid-cols-3">
-                    <label className="rounded-xl border border-crypto-border bg-crypto-bg p-4">
-                      <span className="text-xs font-semibold text-gray-500">初始资金</span>
-                      <input
-                        type="number"
-                        min={10000}
-                        step={10000}
-                        value={draftInitialCapital}
-                        onChange={(event) => setDraftInitialCapital(Number(event.target.value) || 100000)}
-                        className="mt-3 h-11 w-full rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm font-bold text-white outline-none focus:border-blue-500"
-                      />
-                    </label>
-                    <label className="rounded-xl border border-crypto-border bg-crypto-bg p-4">
-                      <span className="text-xs font-semibold text-gray-500">单次仓位</span>
-                      <input
-                        type="number"
-                        min={0.05}
-                        max={1}
-                        step={0.05}
-                        value={draftPositionPct}
-                        onChange={(event) => setDraftPositionPct(Number(event.target.value) || 0.3)}
-                        className="mt-3 h-11 w-full rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm font-bold text-white outline-none focus:border-blue-500"
-                      />
-                    </label>
-                    <div className="rounded-xl border border-crypto-border bg-crypto-bg p-4">
-                      <span className="text-xs font-semibold text-gray-500">标的池</span>
-                      <div className="mt-3 flex h-11 items-center rounded-lg border border-blue-500/25 bg-blue-500/10 px-3 text-sm font-bold text-blue-200">
-                        SH_600000 / SZ_000001
-                      </div>
+                    {item.data_purpose !== "user" && item.data_purpose ? (
+                      <span className="mt-1 inline-block rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-300">
+                        {item.data_purpose === "acceptance"
+                          ? "验收数据"
+                          : "种子数据"}
+                      </span>
+                    ) : null}
+                    <div className="mt-1 truncate font-mono text-[10px] text-slate-600">
+                      {item.id}
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-600">
+                      最后交易日 {item.last_processed_trade_date ?? "--"}
                     </div>
                   </div>
-                </div>
-              )}
-
-              {wizardStep === 2 && (
-                <div>
-                  <div className="mb-4">
-                    <h3 className="flex items-center gap-2 text-lg font-bold text-white">
-                      <ShieldCheck className="h-5 w-5 text-emerald-300" />
-                      飞行检查
-                    </h3>
-                    <p className="mt-1 text-xs text-gray-500">模拟盘只写入 PaperBroker 账户，不触碰真实资金。</p>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {[
-                      ['PaperBroker', '模拟成交账户已就绪'],
-                      ['A股约束', '只做多 / 100 股一手 / T+1'],
-                      ['PG 数据缓存', 'K线与策略结果写入 PostgreSQL'],
-                    ].map(([title, subtitle]) => (
-                      <div key={title} className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4">
-                        <div className="flex items-center gap-2 text-sm font-bold text-emerald-200">
-                          <CheckCircle2 className="h-4 w-4" />
-                          {title}
-                        </div>
-                        <div className="mt-2 text-xs text-emerald-100/70">{subtitle}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {wizardStep === 3 && (
-                <div>
-                  <div className="mb-4">
-                    <h3 className="flex items-center gap-2 text-lg font-bold text-white">
-                      <Activity className="h-5 w-5 text-blue-300" />
-                      运行监控预览
-                    </h3>
-                    <p className="mt-1 text-xs text-gray-500">启动后进入实例详情页，查看权益曲线、成交事件和风控状态。</p>
-                  </div>
-                  <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                    <div className="rounded-xl border border-blue-500/25 bg-blue-500/10 p-4">
-                      <div className="text-xs font-semibold text-blue-200">即将启动</div>
-                      <div className="mt-2 truncate text-lg font-bold text-white">{selectedStrategy?.name || 'A股模拟盘'}</div>
-                      <div className="mt-3 grid gap-2 text-xs text-gray-300 sm:grid-cols-3">
-                        <div className="rounded-lg bg-crypto-bg/70 p-3">
-                          <div className="text-gray-500">初始资金</div>
-                          <div className="mt-1 font-bold text-blue-200">¥{compactNumber(draftInitialCapital, 0)}</div>
-                        </div>
-                        <div className="rounded-lg bg-crypto-bg/70 p-3">
-                          <div className="text-gray-500">单次仓位</div>
-                          <div className="mt-1 font-bold text-purple-200">{Math.round(draftPositionPct * 100)}%</div>
-                        </div>
-                        <div className="rounded-lg bg-crypto-bg/70 p-3">
-                          <div className="text-gray-500">周期</div>
-                          <div className="mt-1 font-bold text-emerald-200">1D</div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-crypto-border bg-crypto-bg p-4">
-                      <div className="flex items-center gap-2 text-sm font-bold text-white">
-                        <RefreshCw className="h-4 w-4 text-blue-300" />
-                        启动后监控项
-                      </div>
-                      <div className="mt-3 space-y-2 text-xs text-gray-400">
-                        {['账户权益和现金变化', '成交明细与系统事件', '买卖点 K 线复盘', '熔断、仓位和资金约束'].map((item) => (
-                          <div key={item} className="flex items-center gap-2 rounded-lg bg-crypto-card/70 px-3 py-2">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
-                            {item}
-                          </div>
-                        ))}
-                      </div>
+                  <Status instance={item} />
+                  <div>
+                    <div className="text-[10px] text-slate-600">权益</div>
+                    <div className="mt-1 font-mono text-slate-300">
+                      {currency(item.equity)}
                     </div>
                   </div>
+                  <div>
+                    <div className="text-[10px] text-slate-600">
+                      信号 / 订单 / 成交
+                    </div>
+                    <div className="mt-1 font-mono text-slate-300">
+                      {value(item.signal_count, 0)} /{" "}
+                      {value(item.order_count, 0)} /{" "}
+                      {value(item.trade_count, 0)}
+                    </div>
+                  </div>
+                  <div className="text-right text-xs font-semibold text-blue-300">
+                    监控详情
+                  </div>
+                </button>
+              ))}
+              {visibleInstances.length === 0 ? (
+                <div className="p-12 text-center text-sm text-slate-600">
+                  {instances.length
+                    ? "当前筛选下无实例"
+                    : "尚无 Paper 实例；右侧仅在存在晋级回测时可创建。"}
                 </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-crypto-border px-5 py-4">
-              <button
-                type="button"
-                onClick={closeCreateWizard}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-crypto-border px-4 text-sm font-semibold text-gray-400 transition-colors hover:text-gray-200"
-              >
-                返回控制台
-              </button>
-              <div className="flex items-center gap-2">
-                {wizardStep > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setWizardStep((step) => Math.max(0, step - 1))}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-crypto-border px-4 text-sm font-semibold text-gray-300 transition-colors hover:text-white"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    上一步
-                  </button>
-                )}
-                {wizardStep < finalWizardStep ? (
-                  <button
-                    type="button"
-                    onClick={() => setWizardStep((step) => Math.min(finalWizardStep, step + 1))}
-                    disabled={!strategyId}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {nextWizardLabel}
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={start}
-                    disabled={loading || !strategyId}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
-                    启动模拟实例
-                  </button>
-                )}
-              </div>
+              ) : null}
             </div>
           </section>
+          <section data-testid="paper-create-wizard" className={`${panel} p-5`}>
+            <h2 className="font-semibold text-white">创建固定实例</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              仅列出满足数据、风控与样本外要求的完整回测。
+            </p>
+            <div className="mt-5 grid grid-cols-3 gap-1 text-center text-[10px]">
+              <span className="rounded bg-blue-500/15 px-2 py-2 text-blue-300">
+                1 晋级回测
+              </span>
+              <span className="rounded bg-crypto-bg px-2 py-2 text-slate-500">
+                2 A股风控
+              </span>
+              <span className="rounded bg-crypto-bg px-2 py-2 text-slate-500">
+                3 Paper 草稿
+              </span>
+            </div>
+            <label className="mt-5 block text-xs text-slate-500">
+              晋级回测
+              <select
+                value={runId}
+                onChange={(event) => setRunId(event.target.value)}
+                className={`${input} mt-2 w-full`}
+              >
+                <option value="">请选择</option>
+                {eligible.map((run) => (
+                  <option key={run.id} value={run.id}>
+                    {run.data_purpose !== "user" && run.data_purpose
+                      ? `[${run.data_purpose === "acceptance" ? "验收" : "种子"}] `
+                      : ""}
+                    {run.name} · Pool #{run.pool_snapshot_id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedRun ? (
+              <dl className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-crypto-border bg-crypto-bg p-3 text-[10px] text-slate-500">
+                <div>
+                  策略版本
+                  <div className="mt-1 truncate text-slate-300">
+                    {selectedRun.strategy_version_id.slice(0, 8)}
+                  </div>
+                </div>
+                <div>
+                  数据快照
+                  <div className="mt-1 text-slate-300">
+                    #{selectedRun.dataset_snapshot_id}
+                  </div>
+                </div>
+                <div>
+                  因子 / 股票池
+                  <div className="mt-1 text-slate-300">
+                    #{selectedRun.factor_snapshot_id} / #
+                    {selectedRun.pool_snapshot_id}
+                  </div>
+                </div>
+                <div>
+                  成本 / 协议
+                  <div className="mt-1 truncate text-slate-300">
+                    {selectedRun.cost_model_name ?? selectedRun.cost_model_id}
+                  </div>
+                </div>
+              </dl>
+            ) : null}
+            <label className="mt-4 block text-xs text-slate-500">
+              实例名
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="自动使用策略名"
+                className={`${input} mt-2 w-full`}
+              />
+            </label>
+            <label className="mt-4 block text-xs text-slate-500">
+              初始资金
+              <input
+                type="number"
+                min={10000}
+                step={10000}
+                value={initialCash}
+                onChange={(event) => setInitialCash(Number(event.target.value))}
+                className={`${input} mt-2 w-full`}
+              />
+            </label>
+            <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-3 text-[11px] leading-5 text-amber-200/70">
+              新实例使用历史数据回放，不连接真实账户。
+            </div>
+            <button
+              type="button"
+              onClick={() => void create()}
+              disabled={busy || !runId}
+              className="mt-5 h-11 w-full rounded-lg bg-blue-600 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              创建 Paper 草稿
+            </button>
+          </section>
         </div>
-      )}
+      ) : null}
+
+      {selected && tab !== "instances" ? (
+        <>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-crypto-border bg-crypto-card p-4">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <strong className="text-slate-100">{selected.name}</strong>
+                <Status instance={selected} />
+                <span className="rounded border border-crypto-border px-2 py-0.5 text-[10px] text-slate-500">
+                  交易日 {selected.last_processed_trade_date ?? "--"}
+                </span>
+              </div>
+              <div className="mt-1 font-mono text-[10px] text-slate-600">
+                {selected.id}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {selected.status === "draft" || selected.status === "stopped" ? (
+                <button
+                  type="button"
+                  onClick={() => void action("start")}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  启动
+                </button>
+              ) : null}
+              {selected.status === "running" ? (
+                <button
+                  type="button"
+                  onClick={() => void action("pause")}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-slate-300"
+                >
+                  <Pause className="h-3.5 w-3.5" />
+                  暂停
+                </button>
+              ) : null}
+              {selected.status === "paused" ? (
+                <button
+                  type="button"
+                  onClick={() => void action("resume")}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3 text-xs text-white"
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  恢复
+                </button>
+              ) : null}
+              {["running", "paused", "failed"].includes(selected.status) ? (
+                <button
+                  type="button"
+                  onClick={() => void action("stop")}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-500/30 px-3 text-xs text-red-300"
+                >
+                  <Square className="h-3.5 w-3.5" />
+                  停止
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <Metric
+              label="账户权益"
+              current={currency(selected.equity)}
+              note={`快照 ${latestEquity?.trade_date ?? "--"}`}
+            />
+            <Metric
+              label="累计盈亏"
+              current={currency(pnl)}
+              tone={
+                pnl !== null && pnl < 0 ? "text-red-300" : "text-emerald-300"
+              }
+            />
+            <Metric
+              label="累计收益"
+              current={percent(returnRate)}
+              tone={
+                returnRate !== null && returnRate < 0
+                  ? "text-red-300"
+                  : "text-emerald-300"
+              }
+            />
+            <Metric
+              label="可用现金"
+              current={currency(selected.cash_balance)}
+            />
+            <Metric
+              label="持仓 / 可卖"
+              current={`${value(selected.positions?.length ?? 0, 0)} / ${value(selected.positions?.reduce((sum, item) => sum + Number(item.available_quantity ?? 0), 0) ?? 0, 0)}`}
+              note="T+1 可卖数量"
+            />
+            <Metric
+              label="信号 / 订单 / 成交"
+              current={`${value(selected.signal_count, 0)} / ${value(selected.order_count, 0)} / ${value(selected.trade_count, 0)}`}
+            />
+          </div>
+        </>
+      ) : null}
+
+      {selected && tab === "signals" ? (
+        <DataTable
+          rows={rows}
+          empty="尚无策略信号；这不是 0 信号结论，仅表示当前实例无持久化记录。"
+          columns={[
+            ["signal_time", "信号时间"],
+            ["symbol", "证券"],
+            ["signal_type", "方向"],
+            ["strength", "强度"],
+            ["status", "状态"],
+            ["reason", "原因"],
+          ]}
+        />
+      ) : null}
+      {selected && tab === "orders" ? (
+        <DataTable
+          rows={rows}
+          empty="尚无订单"
+          columns={[
+            ["created_at", "创建时间"],
+            ["symbol", "证券"],
+            ["side", "方向"],
+            ["quantity", "数量"],
+            ["price", "价格"],
+            ["status", "状态"],
+            ["risk_event_id", "风险证据"],
+          ]}
+        />
+      ) : null}
+      {selected && tab === "positions" ? (
+        <DataTable
+          rows={rows}
+          empty="当前无持仓"
+          columns={[
+            ["symbol", "证券"],
+            ["quantity", "数量"],
+            ["available_quantity", "可卖"],
+            ["avg_cost", "成本"],
+            ["last_price", "现价"],
+            ["market_value", "市值"],
+            ["updated_at", "更新时间"],
+          ]}
+        />
+      ) : null}
+      {selected && tab === "trades" ? (
+        <DataTable
+          rows={rows}
+          empty="尚无成交记录"
+          columns={[
+            ["traded_at", "成交时间"],
+            ["symbol", "证券"],
+            ["side", "方向"],
+            ["quantity", "数量"],
+            ["price", "价格"],
+            ["amount", "金额"],
+            ["commission", "佣金"],
+            ["earliest_fill_at", "最早可成交"],
+          ]}
+        />
+      ) : null}
+      {selected && tab === "events" ? (
+        <DataTable
+          rows={rows}
+          empty="尚无审计事件"
+          columns={[
+            ["occurred_at", "时间"],
+            ["event_type", "类型"],
+            ["level", "级别"],
+            ["message", "消息"],
+            ["cycle_id", "周期"],
+          ]}
+        />
+      ) : null}
+      {selected && tab === "account" ? (
+        <div className="space-y-5">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.7fr)]">
+            <section className={`${panel} p-5`}>
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-blue-400" />
+                <h2 className="font-semibold text-white">Paper 权益曲线</h2>
+              </div>
+              {selected.equity_snapshots?.length ? (
+                <ReactECharts option={equityOption} style={{ height: 330 }} />
+              ) : (
+                <div className="flex h-[330px] items-center justify-center text-sm text-slate-600">
+                  尚无权益快照，未绘制零值曲线
+                </div>
+              )}
+            </section>
+            <section className={`${panel} p-5`}>
+              <h2 className="font-semibold text-white">运行证据与风控</h2>
+              <dl className="mt-4 space-y-2 text-xs">
+                {[
+                  ["策略版本", selected.strategy_version_id],
+                  [
+                    "数据 / Universe",
+                    `#${selected.dataset_snapshot_id} / #${selected.universe_snapshot_id}`,
+                  ],
+                  [
+                    "因子 / 股票池",
+                    `#${selected.factor_snapshot_id} / #${selected.pool_snapshot_id}`,
+                  ],
+                  ["晋级回测", selected.qualifying_backtest_run_id],
+                  ["研究协议", selected.research_protocol_id],
+                  [
+                    "数据源",
+                    feedSourceLabel(selected.feed_config?.provider ?? "未声明"),
+                  ],
+                  [
+                    "回放模式",
+                    feedModeLabel(selected.feed_config?.mode ?? "未声明"),
+                  ],
+                ].map(([label, current]) => (
+                  <div
+                    key={label}
+                    className="flex justify-between gap-3 border-b border-white/[0.04] py-2"
+                  >
+                    <dt className="text-slate-500">{label}</dt>
+                    <dd className="max-w-[190px] truncate font-mono text-slate-300">
+                      {current}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {[
+                  [
+                    "现金底线",
+                    percent(selected.capacity_limits?.cash_floor_ratio),
+                  ],
+                  [
+                    "单票上限",
+                    percent(selected.capacity_limits?.max_single_symbol_weight),
+                  ],
+                  [
+                    "参与率上限",
+                    percent(selected.capacity_limits?.max_participation_ratio),
+                  ],
+                  ["回撤上限", percent(selected.capacity_limits?.max_drawdown)],
+                  [
+                    "日换手上限",
+                    percent(selected.capacity_limits?.max_daily_turnover),
+                  ],
+                ].map(([label, current]) => (
+                  <div
+                    key={label}
+                    className="rounded-lg border border-crypto-border bg-crypto-bg p-2"
+                  >
+                    <div className="text-[10px] text-slate-600">{label}</div>
+                    <div className="mt-1 text-xs font-semibold text-slate-300">
+                      {current}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+          <section className={`${panel} p-5`}>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="text-xs text-slate-500">
+                记录回放交易日
+                <input
+                  type="date"
+                  value={cycleDate}
+                  onChange={(event) => setCycleDate(event.target.value)}
+                  className={`${input} mt-2 block`}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void replay()}
+                disabled={selected.status !== "running" || busy}
+                className="h-10 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                处理收盘周期
+              </button>
+              <span className="text-xs text-slate-600">
+                按所选交易日处理模拟交易周期
+              </span>
+            </div>
+          </section>
+          <DataTable
+            rows={
+              (selected.cycles ?? []) as unknown as Array<
+                Record<string, unknown>
+              >
+            }
+            empty="尚无运行周期"
+            columns={[
+              ["trade_date", "交易日"],
+              ["cycle_key", "周期键"],
+              ["status", "状态"],
+              ["signal_count", "信号"],
+              ["order_count", "订单"],
+              ["trade_count", "成交"],
+              ["ledger_difference", "账本差"],
+            ]}
+          />
+        </div>
+      ) : null}
+      {!selected && loaded && tab !== "instances" ? (
+        <div className={`${panel} p-16 text-center text-slate-600`}>
+          <CircleDollarSign className="mx-auto mb-3 h-8 w-8" />
+          请先创建或选择 Paper 实例
+        </div>
+      ) : null}
     </div>
   );
 }
