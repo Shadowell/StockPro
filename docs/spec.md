@@ -225,6 +225,24 @@ Sprint 00-08 is complete. Sprint 09 continues the local data-integrity remediati
 
 The runtime is Postgres-only. New and migrated modules must use Postgres migrations plus repository/adapter methods; do not add local file database fallbacks or versioned API prefixes.
 
+### Paper Runtime Observation And Health
+
+- Watch reads Paper signals, orders, trades, positions, risk decisions, runtime
+  events, alerts and stock-pool snapshots from PostgreSQL. It is read-only and
+  links each execution or risk record back to its Paper instance.
+- Monitor reports health per Paper instance, including lifecycle state,
+  heartbeat age, last processed trade date, latest cycle/error, equity, drawdown,
+  ledger difference, order/trade counts and rejected risk decisions.
+- `source_updated_at` is computed from persisted evidence.
+  `response_generated_at` only records API response generation and cannot make
+  stale evidence fresh.
+- Missing prices, heartbeats, cycles, equity and drawdown remain null. Only
+  explicit database counts may be zero.
+- A running instance with a missing or older-than-36-hour heartbeat is critical;
+  stopped and acceptance/seed records are labelled rather than presented as live.
+- Watch and Monitor never expose real-broker controls. Broker integration remains
+  subject to a separate contract and safety review.
+
 ## Constraints
 
 - Do not commit production secrets, `.env`, database files, private keys, or broker credentials.

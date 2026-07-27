@@ -1,5 +1,40 @@
 # Progress Log
 
+## BitPro-parity Runtime Evidence (2026-07-27)
+
+1. Expanded the PostgreSQL Watch context from signals and alerts to the complete
+   Paper evidence path: orders, trades, positions, risk decisions and runtime
+   events, with instance links and bounded coverage counts.
+2. Added per-instance Monitor health with heartbeat freshness, last cycle and
+   errors, latest equity/drawdown, ledger difference, order/trade/risk counts and
+   acceptance/seed/user purpose labels.
+3. Separated persisted `source_updated_at` from `response_generated_at`; missing
+   financial values stay unavailable while SQL counts remain truthful.
+4. Added Watch order/trade/position/risk tables and Monitor strategy-health/risk
+   detail panels without adding trading controls or provider requests.
+5. Promoted Watch and Monitor in `stockpro-workflow-v1` only after the complete
+   runtime evidence model and UI were verified.
+
+Verification:
+
+- Existing PostgreSQL evidence was read without running a Paper cycle or provider
+  sync: 3 instances, 3 orders, 2 trades, 2 positions, 12 risk events and 105
+  runtime events.
+- Real Watch returned `stale` with latest persisted evidence at
+  `2026-07-17T02:42:47.409905Z`.
+- Real Monitor returned `critical`: two acceptance instances still marked
+  running have stale heartbeats from 2024-12-23 and 2025-01-02; the stopped
+  acceptance instance remains explicitly stopped.
+- Focused backend API tests passed 13/13; focused mocked Playwright verified the
+  execution-evidence and per-instance health workspaces.
+- `./scripts/check.sh` passed the production build, lint with 7 existing warnings
+  and 0 errors, deploy shell syntax, all 287 backend tests and Python compilation.
+- Full mocked Playwright passed 33/33 applicable tests; 11 real-backend cases
+  remained intentionally skipped without the explicit real-suite environment.
+
+Next Sprint: daily PostgreSQL orchestration, freshness publication and final
+cross-page BitPro-parity acceptance without enabling real-broker execution.
+
 ## StockPro Agent Tool Interface (2026-07-27)
 
 1. Added the stable `stockpro-mcp-v1` local stdio interface with 20 PostgreSQL-backed read tools and three asynchronous backtest mutation tools.
