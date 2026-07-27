@@ -35,6 +35,7 @@ import {
   type FactorValueRow,
   type ResearchFactor,
 } from '@/api/client';
+import { statusLabel } from '@/utils/presentation';
 
 type Workspace = 'library' | 'runs' | 'single' | 'multi' | 'correlation' | 'values';
 
@@ -55,9 +56,9 @@ const metricNames: Record<string, string> = {
   std: '标准差',
   skewness: '偏度',
   kurtosis: '峰度',
-  ic: 'IC',
-  rank_ic: 'RankIC',
-  icir: 'ICIR',
+  ic: '收益相关性',
+  rank_ic: '排序相关性',
+  icir: '相关性稳定度',
   quantile_returns: '分位收益',
   long_short_return: '多空收益',
   turnover: '换手',
@@ -274,7 +275,7 @@ export const FactorLibrary = () => {
 
   const runDaily = async () => {
     if (!latestFactor?.last_trade_date || !latestFactor.dataset_snapshot_id || !latestFactor.universe_snapshot_id) {
-      setError('尚无可复用的 dataset / Universe 快照');
+      setError('尚无可复用的数据快照或股票范围快照');
       return;
     }
     setRunning(true);
@@ -377,7 +378,7 @@ export const FactorLibrary = () => {
             <CircleGauge className={`h-5 w-5 ${evaluatedCount > 0 ? 'text-blue-400' : 'text-amber-400'}`} />
           </div>
           <p className="mt-3 text-[11px] leading-5 text-slate-500">
-            {evaluatedCount > 0 ? '已有 RankIC、ICIR、多空或换手证据' : '未来收益窗口尚未成熟，不用 0 填充'}
+            {evaluatedCount > 0 ? '已有排序相关性、稳定度、多空收益或换手证据' : '未来收益窗口尚未成熟，不用 0 填充'}
           </p>
           <div className="mt-3 flex items-center justify-between border-t border-white/[0.05] pt-3 text-[10px]">
             <span className="text-slate-600">最新计算运行</span>
@@ -400,11 +401,11 @@ export const FactorLibrary = () => {
             </div>
             <div>
               <dt className="text-[10px] text-slate-600">数据快照</dt>
-              <dd className="mt-1.5 font-mono text-sm text-slate-200">{latestFactor?.dataset_snapshot_id ? `DS #${latestFactor.dataset_snapshot_id}` : '--'}</dd>
+              <dd className="mt-1.5 tabular-nums text-sm text-slate-200">{latestFactor?.dataset_snapshot_id ? `第 ${latestFactor.dataset_snapshot_id} 版` : '--'}</dd>
             </div>
             <div>
               <dt className="text-[10px] text-slate-600">历史成分域</dt>
-              <dd className="mt-1.5 font-mono text-sm text-slate-200">{latestFactor?.universe_snapshot_id ? `Universe #${latestFactor.universe_snapshot_id}` : '--'}</dd>
+              <dd className="mt-1.5 tabular-nums text-sm text-slate-200">{latestFactor?.universe_snapshot_id ? `第 ${latestFactor.universe_snapshot_id} 版` : '--'}</dd>
             </div>
             <div>
               <dt className="text-[10px] text-slate-600">知识截止</dt>
@@ -457,7 +458,7 @@ export const FactorLibrary = () => {
               <thead className="sticky top-0 bg-crypto-card text-[10px] uppercase tracking-wide text-gray-600">
                 <tr className="border-b border-crypto-border">
                   <th className="px-3 py-2">因子</th><th className="px-3 py-2">分类</th><th className="px-3 py-2">版本</th><th className="px-3 py-2">最后计算</th>
-                  <th className="px-3 py-2 text-right">覆盖率</th><th className="px-3 py-2 text-right">RankIC</th><th className="px-3 py-2 text-right">ICIR</th>
+                  <th className="px-3 py-2 text-right">覆盖率</th><th className="px-3 py-2 text-right">排序相关性</th><th className="px-3 py-2 text-right">稳定度</th>
                   <th className="px-3 py-2 text-right">多空收益</th><th className="px-3 py-2 text-right">换手</th><th className="px-3 py-2">研究状态</th><th className="px-3 py-2">发布</th>
                 </tr>
               </thead>
@@ -469,7 +470,7 @@ export const FactorLibrary = () => {
                     <td className="px-3 py-2.5 text-right font-mono">{percentageText(item.coverage)}</td><td className="px-3 py-2.5 text-right font-mono">{numberText(item.rank_ic)}</td><td className="px-3 py-2.5 text-right font-mono">{numberText(item.icir)}</td>
                     <td className="px-3 py-2.5 text-right font-mono">{percentageText(item.long_short_return)}</td><td className="px-3 py-2.5 text-right font-mono">{percentageText(item.turnover)}</td>
                     <td className="px-3 py-2.5"><span className="rounded border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-300">{researchStatusNames[item.research_status] ?? item.research_status}</span></td>
-                    <td className="px-3 py-2.5"><span className={`rounded border px-2 py-1 text-[10px] ${statusStyle(item.publication_state)}`}>{item.publication_state ?? '未计算'}</span></td>
+                    <td className="px-3 py-2.5"><span className={`rounded border px-2 py-1 text-[10px] ${statusStyle(item.publication_state)}`}>{statusLabel(item.publication_state, '未计算')}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -484,8 +485,8 @@ export const FactorLibrary = () => {
           <div className="border-b border-crypto-border px-3 py-2 text-xs font-medium text-gray-200">计算记录与研究输入</div>
           <div className="overflow-auto max-h-[620px]">
             <table className="min-w-[1050px] w-full text-left text-xs">
-              <thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2">Run</th><th className="px-3 py-2">因子 / 版本</th><th className="px-3 py-2">交易日</th><th className="px-3 py-2">数据 / Universe</th><th className="px-3 py-2">知识截止</th><th className="px-3 py-2 text-right">输入</th><th className="px-3 py-2 text-right">输出</th><th className="px-3 py-2 text-right">缺失</th><th className="px-3 py-2">状态</th><th className="px-3 py-2">Hash</th></tr></thead>
-              <tbody>{runs.map((item) => <tr key={item.id} className="border-b border-crypto-border/70 text-gray-300"><td className="px-3 py-2 font-mono">#{item.id}</td><td className="px-3 py-2"><div className="text-white">{item.factor_name}</div><div className="text-[10px] text-gray-600">{item.factor_code} · v{item.version_no}</div></td><td className="px-3 py-2">{item.trade_date}</td><td className="px-3 py-2">DS #{item.dataset_snapshot_id} / U #{item.universe_snapshot_id}</td><td className="px-3 py-2 text-[11px]">{new Date(item.knowledge_cutoff_at).toLocaleString('zh-CN', { hour12: false })}</td><td className="px-3 py-2 text-right">{item.input_count}</td><td className="px-3 py-2 text-right">{item.output_count}</td><td className="px-3 py-2 text-right">{item.missing_count}</td><td className="px-3 py-2"><span className={`rounded border px-2 py-1 text-[10px] ${statusStyle(item.status)}`}>{item.status}</span></td><td className="px-3 py-2 font-mono text-[10px] text-gray-600">{item.value_hash?.slice(0, 10) ?? '-'}</td></tr>)}</tbody>
+              <thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2">运行编号</th><th className="px-3 py-2">因子 / 版本</th><th className="px-3 py-2">交易日</th><th className="px-3 py-2">数据 / 股票范围</th><th className="px-3 py-2">知识截止</th><th className="px-3 py-2 text-right">输入</th><th className="px-3 py-2 text-right">输出</th><th className="px-3 py-2 text-right">缺失</th><th className="px-3 py-2">状态</th><th className="px-3 py-2">校验摘要</th></tr></thead>
+              <tbody>{runs.map((item) => <tr key={item.id} className="border-b border-crypto-border/70 text-gray-300"><td className="px-3 py-2 tabular-nums">第 {item.id} 次</td><td className="px-3 py-2"><div className="text-white">{item.factor_name}</div><div className="text-[10px] text-gray-600">{item.factor_code} · v{item.version_no}</div></td><td className="px-3 py-2">{item.trade_date}</td><td className="px-3 py-2">数据第 {item.dataset_snapshot_id} 版 / 范围第 {item.universe_snapshot_id} 版</td><td className="px-3 py-2 text-[11px]">{new Date(item.knowledge_cutoff_at).toLocaleString('zh-CN', { hour12: false })}</td><td className="px-3 py-2 text-right">{item.input_count}</td><td className="px-3 py-2 text-right">{item.output_count}</td><td className="px-3 py-2 text-right">{item.missing_count}</td><td className="px-3 py-2"><span className={`rounded border px-2 py-1 text-[10px] ${statusStyle(item.status)}`}>{statusLabel(item.status)}</span></td><td className="px-3 py-2 text-[10px] text-gray-600">{item.value_hash?.slice(0, 10) ?? '-'}</td></tr>)}</tbody>
             </table>
             {!loading && runs.length === 0 && <div className="grid min-h-40 place-items-center px-6 text-center text-xs text-slate-600">暂无计算运行；不会用示例运行填充</div>}
           </div>
@@ -500,10 +501,10 @@ export const FactorLibrary = () => {
           </aside>
           <div className="space-y-3">
             <div className="rounded border border-crypto-border bg-crypto-card p-3">
-              <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-sm font-semibold text-white">{selected.factor_name} <span className="ml-2 font-mono text-xs font-normal text-blue-400">{selected.factor_code}</span></div><p className="mt-1 text-xs text-gray-500">{selected.description}</p><div className="mt-2 text-[10px] text-blue-300">研究协议：{researchStatusNames[selected.research_status] ?? selected.research_status}</div></div><div className="flex flex-wrap gap-1 text-[10px]"><span className="rounded border border-crypto-border px-2 py-1">v{selected.version_no}</span><span className="rounded border border-crypto-border px-2 py-1">DS #{selected.dataset_snapshot_id}</span><span className="rounded border border-crypto-border px-2 py-1">U #{selected.universe_snapshot_id}</span><span className={`rounded border px-2 py-1 ${statusStyle(selected.publication_state)}`}>{selected.publication_state}</span></div></div>
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-sm font-semibold text-white">{selected.factor_name} <span className="ml-2 text-xs font-normal text-blue-400">{selected.factor_code}</span></div><p className="mt-1 text-xs text-gray-500">{selected.description}</p><div className="mt-2 text-[10px] text-blue-300">研究协议：{researchStatusNames[selected.research_status] ?? selected.research_status}</div></div><div className="flex flex-wrap gap-1 text-[10px]"><span className="rounded border border-crypto-border px-2 py-1">版本 {selected.version_no}</span><span className="rounded border border-crypto-border px-2 py-1">数据第 {selected.dataset_snapshot_id} 版</span><span className="rounded border border-crypto-border px-2 py-1">范围第 {selected.universe_snapshot_id} 版</span><span className={`rounded border px-2 py-1 ${statusStyle(selected.publication_state)}`}>{statusLabel(selected.publication_state)}</span></div></div>
             </div>
             <div className="grid grid-cols-2 gap-px overflow-hidden rounded border border-crypto-border bg-crypto-border md:grid-cols-6">{[
-              ['覆盖率', percentageText(metric('coverage')?.metric_value)], ['IC(1D)', numberText(metric('ic', 1)?.metric_value)], ['RankIC(1D)', numberText(metric('rank_ic', 1)?.metric_value)], ['ICIR', numberText(metric('icir', 20)?.metric_value)], ['多空(20D)', percentageText(metric('long_short_return', 20)?.metric_value)], ['换手', percentageText(metric('turnover')?.metric_value)],
+              ['覆盖率', percentageText(metric('coverage')?.metric_value)], ['1日收益相关', numberText(metric('ic', 1)?.metric_value)], ['1日排序相关', numberText(metric('rank_ic', 1)?.metric_value)], ['20日稳定度', numberText(metric('icir', 20)?.metric_value)], ['20日多空收益', percentageText(metric('long_short_return', 20)?.metric_value)], ['换手', percentageText(metric('turnover')?.metric_value)],
             ].map(([label, value]) => <div key={label} className="bg-crypto-card p-3"><div className="text-[10px] text-gray-600">{label}</div><div className="mt-1 text-base font-semibold text-white">{value}</div></div>)}</div>
             <div className="grid gap-3 xl:grid-cols-2">
               <div className="rounded border border-crypto-border bg-crypto-card"><div className="border-b border-crypto-border px-3 py-2 text-xs font-medium text-gray-300">分布与数据质量</div><div className="grid grid-cols-2 gap-px bg-crypto-border">{['mean', 'std', 'skewness', 'kurtosis', 'missing_rate', 'outlier_rate'].map((code) => <div key={code} className="bg-crypto-card px-3 py-2"><div className="text-[10px] text-gray-600">{metricNames[code]}</div><div className="mt-1 font-mono text-sm text-gray-200">{code.endsWith('_rate') ? percentageText(metric(code)?.metric_value) : numberText(metric(code)?.metric_value)}</div></div>)}</div></div>
@@ -516,14 +517,14 @@ export const FactorLibrary = () => {
 
       {workspace === 'multi' && (
         <section className="overflow-hidden rounded border border-crypto-border bg-crypto-card">
-          <div className="border-b border-crypto-border px-3 py-2"><div className="text-xs font-medium text-gray-200">多因子稳定性对比</div><div className="mt-0.5 text-[10px] text-gray-600">仅展示已发布 PG 证据，未成熟指标不用 0 填充</div></div>
-          <div className="overflow-auto"><table className="min-w-[900px] w-full text-xs"><thead className="text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2 text-left">因子</th><th className="px-3 py-2 text-right">覆盖</th><th className="px-3 py-2 text-right">RankIC</th><th className="px-3 py-2 text-right">ICIR</th><th className="px-3 py-2 text-right">多空</th><th className="px-3 py-2 text-right">换手</th><th className="px-3 py-2">版本 / 输入</th></tr></thead><tbody>{factors.map((item) => <tr key={item.id} onClick={() => selectFactor(item)} className="cursor-pointer border-b border-crypto-border/70 text-gray-300 hover:bg-white/[0.025]"><td className="px-3 py-2"><div className="text-white">{item.factor_name}</div><div className="font-mono text-[10px] text-gray-600">{item.factor_code}</div></td><td className="px-3 py-2 text-right font-mono">{percentageText(item.coverage)}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.rank_ic)}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.icir)}</td><td className="px-3 py-2 text-right font-mono">{percentageText(item.long_short_return)}</td><td className="px-3 py-2 text-right font-mono">{percentageText(item.turnover)}</td><td className="px-3 py-2 text-[10px] text-gray-500">v{item.version_no} · DS #{item.dataset_snapshot_id} · U #{item.universe_snapshot_id}</td></tr>)}</tbody></table></div>
+          <div className="border-b border-crypto-border px-3 py-2"><div className="text-xs font-medium text-gray-200">多因子稳定性对比</div><div className="mt-0.5 text-[10px] text-gray-600">仅展示已发布的本地证据，未成熟指标不用 0 填充</div></div>
+          <div className="overflow-auto"><table className="min-w-[900px] w-full text-xs"><thead className="text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2 text-left">因子</th><th className="px-3 py-2 text-right">覆盖</th><th className="px-3 py-2 text-right">排序相关性</th><th className="px-3 py-2 text-right">稳定度</th><th className="px-3 py-2 text-right">多空</th><th className="px-3 py-2 text-right">换手</th><th className="px-3 py-2">版本 / 输入</th></tr></thead><tbody>{factors.map((item) => <tr key={item.id} onClick={() => selectFactor(item)} className="cursor-pointer border-b border-crypto-border/70 text-gray-300 hover:bg-white/[0.025]"><td className="px-3 py-2"><div className="text-white">{item.factor_name}</div><div className="text-[10px] text-gray-600">{item.factor_code}</div></td><td className="px-3 py-2 text-right tabular-nums">{percentageText(item.coverage)}</td><td className="px-3 py-2 text-right tabular-nums">{numberText(item.rank_ic)}</td><td className="px-3 py-2 text-right tabular-nums">{numberText(item.icir)}</td><td className="px-3 py-2 text-right tabular-nums">{percentageText(item.long_short_return)}</td><td className="px-3 py-2 text-right tabular-nums">{percentageText(item.turnover)}</td><td className="px-3 py-2 text-[10px] text-gray-500">版本 {item.version_no} · 数据第 {item.dataset_snapshot_id} 版 · 范围第 {item.universe_snapshot_id} 版</td></tr>)}</tbody></table></div>
         </section>
       )}
 
       {workspace === 'correlation' && (
         <section className="overflow-hidden rounded border border-crypto-border bg-crypto-card">
-          <div className="border-b border-crypto-border px-3 py-2"><div className="text-xs font-medium text-gray-200">因子相关矩阵</div><div className="mt-0.5 text-[10px] text-gray-600">{correlations[0]?.trade_date ?? '-'} · Universe #{correlations[0]?.universe_snapshot_id ?? '-'}</div></div>
+          <div className="border-b border-crypto-border px-3 py-2"><div className="text-xs font-medium text-gray-200">因子相关矩阵</div><div className="mt-0.5 text-[10px] text-gray-600">{correlations[0]?.trade_date ?? '-'} · 股票范围第 {correlations[0]?.universe_snapshot_id ?? '-'} 版</div></div>
           <div className="overflow-auto max-h-[650px]"><table className="text-[10px]"><thead className="sticky top-0 bg-crypto-card"><tr><th className="sticky left-0 bg-crypto-card px-2 py-2 text-left text-gray-600">因子</th>{correlationCodes.map((code) => <th key={code} className="min-w-24 px-2 py-2 text-center font-mono text-gray-600">{code}</th>)}</tr></thead><tbody>{correlationCodes.map((left) => <tr key={left} className="border-t border-crypto-border/60"><th className="sticky left-0 bg-crypto-card px-2 py-2 text-left font-mono text-gray-500">{left}</th>{correlationCodes.map((right) => { const value = correlationMap.get(`${left}:${right}`); const intensity = typeof value === 'number' ? Math.abs(value) : 0; return <td key={right} className="px-2 py-2 text-center font-mono text-gray-300" style={{ backgroundColor: `rgba(59,130,246,${intensity * 0.22})` }}>{numberText(value, 2)}</td>; })}</tr>)}</tbody></table></div>
           {!loading && correlations.length === 0 && <div className="grid min-h-40 place-items-center px-6 text-center text-xs text-slate-600">暂无同批次因子相关性证据</div>}
         </section>
@@ -531,7 +532,7 @@ export const FactorLibrary = () => {
 
       {workspace === 'values' && selected && (
         <section className="overflow-hidden rounded border border-crypto-border bg-crypto-card">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crypto-border px-3 py-2"><div><span className="text-xs font-medium text-gray-200">{selected.factor_name} · 点时因子值</span><span className="ml-2 font-mono text-[10px] text-blue-400">{selected.factor_code}</span></div><div className="text-[10px] text-gray-600">DS #{selected.dataset_snapshot_id} · U #{selected.universe_snapshot_id} · v{selected.version_no}</div></div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crypto-border px-3 py-2"><div><span className="text-xs font-medium text-gray-200">{selected.factor_name} · 点时因子值</span><span className="ml-2 text-[10px] text-blue-400">{selected.factor_code}</span></div><div className="text-[10px] text-gray-600">数据第 {selected.dataset_snapshot_id} 版 · 范围第 {selected.universe_snapshot_id} 版 · 版本 {selected.version_no}</div></div>
           <div className="overflow-auto max-h-[650px]"><table className="min-w-[900px] w-full text-xs"><thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2 text-left">排名</th><th className="px-3 py-2 text-left">证券</th><th className="px-3 py-2 text-right">原始值</th><th className="px-3 py-2 text-right">处理值</th><th className="px-3 py-2 text-right">百分位</th><th className="px-3 py-2 text-right">分位组</th><th className="px-3 py-2">日期 / 运行</th><th className="px-3 py-2">质量</th></tr></thead><tbody>{values.map((item) => <tr key={`${item.compute_run_id}-${item.symbol}`} className="border-b border-crypto-border/70 text-gray-300"><td className="px-3 py-2 font-mono">{item.rank ?? '-'}</td><td className="px-3 py-2 font-mono text-white">{item.symbol}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.raw_value, 5)}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.processed_value, 4)}</td><td className="px-3 py-2 text-right font-mono">{percentageText(item.percentile)}</td><td className="px-3 py-2 text-right">Q{item.quantile ?? '-'}</td><td className="px-3 py-2 text-[10px] text-gray-500">{item.trade_date} · #{item.compute_run_id}</td><td className="px-3 py-2">{item.quality_flags?.missing ? <span className="text-amber-300">缺失</span> : <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 size={11} />可用</span>}</td></tr>)}</tbody></table></div>
           {!loading && values.length === 0 && <div className="grid min-h-40 place-items-center px-6 text-center text-xs text-slate-600">所选因子暂无已发布因子值</div>}
         </section>

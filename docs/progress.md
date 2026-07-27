@@ -1,5 +1,28 @@
 # Progress Log
 
+## Cross-page Chinese Presentation Cleanup (2026-07-27)
+
+1. Replaced raw market source-map keys, provider table names, snapshot types and
+   publication states with concise Chinese business labels.
+2. Added shared presentation mappings for runtime status, source, category,
+   snapshot type, trade direction and order type; Market, Review, Monitor, Watch,
+   Backtest, Factors and Data Hub now reuse them.
+3. Normalized ordinary `font-mono` content to the Chinese-first operator font
+   stack while retaining tabular numerals; code blocks and editors remain
+   monospaced.
+4. Removed visible evidence references, content hashes and English snapshot
+   abbreviations from the market, factor, stock-pool and backtest workspaces.
+
+Verification:
+
+- Real authenticated desktop and 390px browser inspection confirmed the market
+  snapshot renders Chinese source labels and no raw `tushare_*`, evidence-ref,
+  content-hash, `Universe`, `DS #` or `U #` strings.
+- `./scripts/check.sh` passed production build, lint with 7 existing warnings and
+  0 errors, deploy shell syntax, all 289 backend tests and Python compilation.
+- Local frontend/backend are listening on `127.0.0.1:4444` and `:4445`; backend
+  health reports `healthy`. No remote deployment or provider synchronization ran.
+
 ## BitPro-parity Final Local Acceptance (2026-07-27)
 
 1. Re-audited the existing PostgreSQL daily publication chain: persisted cron,

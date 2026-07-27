@@ -21,6 +21,7 @@ import {
   sealDailyReview,
 } from "../api/client";
 import type { DailyReviewContext, DailyReviewItem } from "../types";
+import { categoryLabel, statusLabel } from "../utils/presentation";
 
 const TABS = [
   ["market", "市场复盘"],
@@ -85,7 +86,7 @@ function Timeline({
                   {item.title}
                 </h3>
                 <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-slate-500">
-                  {item.category}
+                  {categoryLabel(item.category)}
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-500">
@@ -101,7 +102,7 @@ function Timeline({
               </Link>
             ) : (
               <span className="self-center text-right text-xs text-amber-400">
-                {item.resolution_status}
+                {statusLabel(item.resolution_status, "待处理")}
               </span>
             )}
           </article>
@@ -231,7 +232,9 @@ export function DailyReview() {
     ? "加载失败"
     : busy && !context
       ? "读取中"
-      : (context?.status ?? "未加载");
+      : context
+        ? statusLabel(context.status)
+        : "未加载";
   const reviewStatusTone = error
     ? "border-red-500/25 bg-red-500/10 text-red-300"
     : context?.status === "sealed"

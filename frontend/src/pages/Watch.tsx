@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { acknowledgeRuntimeAlert, getWatchContext } from "../api/client";
 import type { RuntimeAlert, WatchContext } from "../types";
+import { orderTypeLabel, sideLabel, sourceLabel, statusLabel } from "../utils/presentation";
 
 const TABS = [
   ["signals", "策略信号"],
@@ -154,13 +155,13 @@ export function Watch() {
         </span>
         <span>
           最新观察{" "}
-          <strong className="font-mono text-slate-300">
+          <strong className="tabular-nums text-slate-300">
             {context?.source_updated_at ??
               (latestObservedAt === "--" ? "--" : latestObservedAt)}
           </strong>
         </span>
         <span>
-          来源 <strong className="font-medium text-slate-300">{context?.source_label ?? "--"}</strong>
+          来源 <strong className="font-medium text-slate-300">{sourceLabel(context?.source_label)}</strong>
         </span>
       </div>
       <nav className="mb-5 flex overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1">
@@ -268,7 +269,7 @@ export function Watch() {
             <div className="border-b border-crypto-border px-5 py-4">
               <div className="flex items-center gap-2">
                 <ClipboardList className="h-5 w-5 text-blue-400" />
-                <h2 className="font-semibold text-white">Paper 订单</h2>
+                <h2 className="font-semibold text-white">模拟订单</h2>
               </div>
               <p className="mt-1 text-xs text-slate-500">
                 价格缺失表示订单没有可用限价证据，不显示为 0。
@@ -284,12 +285,12 @@ export function Watch() {
                     <tr key={text(row.id)} className="border-b border-white/[0.04] text-slate-300">
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{text(row.created_at)}</td>
                       <td className="px-4 py-3 font-semibold">{text(row.symbol)}</td>
-                      <td className="px-4 py-3">{text(row.side)}</td>
-                      <td className="px-4 py-3">{text(row.order_type)}</td>
+                      <td className="px-4 py-3">{sideLabel(row.side)}</td>
+                      <td className="px-4 py-3">{orderTypeLabel(row.order_type)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.price)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.quantity)} / {text(row.filled_quantity)}</td>
                       <td className="px-4 py-3">
-                        <span className={text(row.status) === "rejected" ? "text-red-300" : text(row.status) === "filled" ? "text-emerald-300" : "text-amber-300"}>{text(row.status)}</span>
+                        <span className={text(row.status) === "rejected" ? "text-red-300" : text(row.status) === "filled" ? "text-emerald-300" : "text-amber-300"}>{statusLabel(row.status)}</span>
                         {row.message ? <div className="mt-1 text-xs text-red-300">{text(row.message)}</div> : null}
                       </td>
                       <td className="px-4 py-3"><Link to={`/paper?tab=orders&instance=${text(row.paper_instance_id)}`} className="text-xs text-blue-300">{text(row.instance_name)}</Link></td>
@@ -298,12 +299,12 @@ export function Watch() {
                 </tbody>
               </table>
             </div>
-            {!scoped.orders.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有 Paper 订单证据")}</div> : null}
+            {!scoped.orders.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有模拟订单证据")}</div> : null}
           </section>
           <section className={`${panel} overflow-hidden`}>
             <div className="border-b border-crypto-border px-5 py-4">
-              <h2 className="font-semibold text-white">Paper 成交</h2>
-              <p className="mt-1 text-xs text-slate-500">成交时间、价格、数量、金额与费用均来自 PostgreSQL 成交记录。</p>
+              <h2 className="font-semibold text-white">模拟成交</h2>
+              <p className="mt-1 text-xs text-slate-500">成交时间、价格、数量、金额与费用均来自本地成交记录。</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] text-sm">
@@ -315,7 +316,7 @@ export function Watch() {
                     <tr key={text(row.id)} className="border-b border-white/[0.04] text-slate-300">
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{text(row.traded_at)}</td>
                       <td className="px-4 py-3 font-semibold">{text(row.symbol)}</td>
-                      <td className="px-4 py-3">{text(row.side)}</td>
+                      <td className="px-4 py-3">{sideLabel(row.side)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.price)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.quantity)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.amount)}</td>
@@ -326,7 +327,7 @@ export function Watch() {
                 </tbody>
               </table>
             </div>
-            {!scoped.trades.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有 Paper 成交证据")}</div> : null}
+            {!scoped.trades.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有模拟成交证据")}</div> : null}
           </section>
           <section className={`${panel} overflow-hidden`}>
             <div className="border-b border-crypto-border px-5 py-4">
@@ -468,15 +469,15 @@ export function Watch() {
                       <span
                         className={`rounded-full border px-2 py-0.5 text-[10px] ${tone(alert.severity)}`}
                       >
-                        {alert.severity}
+                        {statusLabel(alert.severity)}
                       </span>
                     </div>
                     <p className="mt-2 text-sm text-slate-400">
                       {alert.message}
                     </p>
-                    <div className="mt-2 font-mono text-[10px] text-slate-600">
-                      {alert.source_object_type}:{alert.source_object_id} ·{" "}
-                      {alert.id}
+                    <div className="mt-2 text-[10px] text-slate-600">
+                      关联记录 {alert.source_object_id.slice(0, 8)} · 告警编号{" "}
+                      {alert.id.slice(0, 8)}
                     </div>
                   </div>
                 </div>
