@@ -29,6 +29,7 @@ import {
   Play,
 } from 'lucide-react';
 import { formatSymbolLabel } from '../utils/symbolDisplay';
+import { marketAdverseMetricColor, marketMetricColor, marketToneClass } from '../utils/marketColors';
 import type { PaperAccount, Strategy, StrategyBacktestResult, StrategyValidationReport, StrategyVersion } from '../types';
 
 const formatNumber = (value?: number | null, digits = 2) =>
@@ -87,7 +88,7 @@ function MetricCard({
   label: string;
   value: string;
   icon: React.ReactNode;
-  color: 'blue' | 'green' | 'red' | 'yellow' | 'gray' | 'up' | 'down';
+  color: 'blue' | 'green' | 'red' | 'yellow' | 'gray' | 'neutral' | 'up' | 'down';
 }) {
   const colorMap: Record<string, string> = {
     blue: 'text-blue-400',
@@ -95,6 +96,7 @@ function MetricCard({
     red: 'text-red-400',
     yellow: 'text-yellow-400',
     gray: 'text-gray-400',
+    neutral: 'text-gray-400',
     up: 'text-up',
     down: 'text-down',
   };
@@ -372,7 +374,7 @@ export function BacktestDetailPanel({ result, onBack }: { result: StrategyBackte
   const profitFactor = result.profit_factor ?? null;
   const valueTone = (value?: number | null) => (value == null || !Number.isFinite(value) ? 'muted' : value >= 0 ? 'up' : 'down');
   const metricTiles = [
-    { label: '累计收益', value: signedPercent(result.total_return), tone: result.total_return >= 0 ? 'up' : 'down' },
+    { label: '累计收益', value: signedPercent(result.total_return), tone: marketMetricColor(result.total_return) },
     { label: '年化收益率', value: result.annual_return == null ? '-' : `${formatNumber(result.annual_return)}%`, tone: valueTone(result.annual_return) },
     { label: '基准收益率', value: '-', tone: 'muted' },
     { label: '阿尔法', value: '-', tone: 'muted' },
@@ -473,7 +475,7 @@ export function BacktestDetailPanel({ result, onBack }: { result: StrategyBackte
                   'text-[26px] font-bold leading-tight tabular-nums',
                   metric.tone === 'up' && 'text-up',
                   metric.tone === 'down' && 'text-down',
-                  metric.tone === 'muted' && 'text-gray-400',
+                  (metric.tone === 'muted' || metric.tone === 'neutral') && 'text-gray-400',
                 )}
               >
                 {metric.value}
@@ -506,7 +508,7 @@ export function BacktestDetailPanel({ result, onBack }: { result: StrategyBackte
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-8 text-lg">
-              <span className="text-gray-500">区间收益 <strong className={result.total_return >= 0 ? 'text-up' : 'text-down'}>{signedPercent(result.total_return)}</strong></span>
+              <span className="text-gray-500">区间收益 <strong className={marketToneClass(result.total_return)}>{signedPercent(result.total_return)}</strong></span>
               <span className="text-gray-500">区间最大回撤 <strong className="text-down">{formatNumber(result.max_drawdown)}%</strong></span>
             </div>
           </div>
@@ -552,7 +554,7 @@ export function BacktestDetailPanel({ result, onBack }: { result: StrategyBackte
             <div className="space-y-3 text-base">
               {[
                 ['初始资金', `¥${formatNumber(result.initial_capital)}`, 'text-gray-200'],
-                ['最终资金', `¥${formatNumber(result.final_capital)}`, result.final_capital >= result.initial_capital ? 'text-up' : 'text-down'],
+                ['最终资金', `¥${formatNumber(result.final_capital)}`, marketToneClass(result.final_capital - result.initial_capital)],
                 ['总手续费', `¥${formatNumber(totalFees)}`, 'text-gray-200'],
                 ['最大回撤', `${formatNumber(result.max_drawdown)}%`, 'text-down'],
               ].map(([label, value, color]) => (
@@ -599,8 +601,8 @@ export function BacktestDetailPanel({ result, onBack }: { result: StrategyBackte
                     <td className="py-3 text-right text-sm text-white">{trade.quantity}</td>
                     <td className="py-3 text-right text-sm text-gray-300">¥{formatNumber(trade.amount)}</td>
                     <td className="py-3 text-right text-sm text-gray-300">¥{formatNumber(trade.fee)}</td>
-                    <td className={clsx('py-3 text-right text-sm font-semibold', trade.pnl >= 0 ? 'text-up' : 'text-down')}>
-                      {trade.pnl >= 0 ? '+' : ''}{formatNumber(trade.pnl)}
+                    <td className={clsx('py-3 text-right text-sm font-semibold', marketToneClass(trade.pnl))}>
+                      {trade.pnl > 0 ? '+' : ''}{formatNumber(trade.pnl)}
                     </td>
                   </tr>
                 ))}
@@ -766,12 +768,12 @@ export function PaperInstanceDetailPanel({
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
         <MetricCard label="账户总额" value={`¥${formatNumber(account.equity)}`} icon={<DollarSign className="h-4 w-4" />} color="blue" />
-        <MetricCard label="总盈亏" value={signedMoney(pnl)} icon={pnl >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={pnl >= 0 ? 'up' : 'down'} />
-        <MetricCard label="收益率" value={signedPercent(returnPct)} icon={returnPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={returnPct >= 0 ? 'up' : 'down'} />
+        <MetricCard label="总盈亏" value={signedMoney(pnl)} icon={pnl >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={marketMetricColor(pnl)} />
+        <MetricCard label="收益率" value={signedPercent(returnPct)} icon={returnPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={marketMetricColor(returnPct)} />
         <MetricCard label="胜率" value={`${winRate.toFixed(1)}%`} icon={<Activity className="h-4 w-4" />} color="blue" />
         <MetricCard label="盈亏比" value={formatNumber(profitFactor)} icon={<Zap className="h-4 w-4" />} color="blue" />
         <MetricCard label="总交易" value={String(orders.length)} icon={<Activity className="h-4 w-4" />} color="blue" />
-        <MetricCard label="最大回撤" value={`${maxDrawdown.toFixed(1)}%`} icon={<TrendingDown className="h-4 w-4" />} color="red" />
+        <MetricCard label="最大回撤" value={`${maxDrawdown.toFixed(1)}%`} icon={<TrendingDown className="h-4 w-4" />} color={marketAdverseMetricColor(maxDrawdown)} />
         <MetricCard label="运行时间" value={paperRuntime(account)} icon={<Activity className="h-4 w-4" />} color="gray" />
       </div>
 
@@ -808,7 +810,7 @@ export function PaperInstanceDetailPanel({
         >
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
             <span className="text-xs text-gray-500">未实现盈亏（汇总）</span>
-            <span className={clsx('text-sm font-bold tabular-nums', pnl >= 0 ? 'text-up' : 'text-down')}>{signedMoney(pnl)}</span>
+            <span className={clsx('text-sm font-bold tabular-nums', marketToneClass(pnl))}>{signedMoney(pnl)}</span>
           </div>
           {positions.length === 0 ? (
             <div className="rounded-lg border border-dashed border-crypto-border bg-crypto-bg/50 py-10 text-center text-xs text-gray-500">当前无持仓</div>
@@ -833,7 +835,7 @@ export function PaperInstanceDetailPanel({
                       <td className="py-2 pr-2 text-right tabular-nums">{formatNumber(position.market_value)}</td>
                       <td className="py-2 pr-2 text-right tabular-nums">{formatNumber(position.avg_price)}</td>
                       <td className="py-2 pr-2 text-right tabular-nums">{formatNumber(position.last_price)}</td>
-                      <td className={clsx('py-2 pr-2 text-right font-medium tabular-nums', position.pnl >= 0 ? 'text-up' : 'text-down')}>{signedMoney(position.pnl)}</td>
+                      <td className={clsx('py-2 pr-2 text-right font-medium tabular-nums', marketToneClass(position.pnl))}>{signedMoney(position.pnl)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1053,7 +1055,7 @@ export function MarketDetailHeader({
         </div>
         <div className="flex items-baseline gap-3">
           <span className="text-3xl font-bold text-white">¥{formatNumber(price)}</span>
-          <span className={clsx('text-sm font-semibold', (changePercent || 0) >= 0 ? 'text-up' : 'text-down')}>
+          <span className={clsx('text-sm font-semibold', marketToneClass(changePercent))}>
             {signedPercent(changePercent)}
           </span>
         </div>

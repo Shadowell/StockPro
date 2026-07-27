@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { useStore } from '../stores/useStore';
 import { getTranslation, TranslationKey } from '../lib/i18n';
+import { COLOR_SCHEMES, useSettingsStore } from '../stores/useSettingsStore';
+import { marketToneClass } from '../utils/marketColors';
 
 type ChartPanelMode = 'both' | 'daily' | 'intraday';
 type ChartPanelOrder = 'intraday_first' | 'daily_first';
@@ -10,6 +12,8 @@ type AxisPointerLabelParam = { value: number };
 
 export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrder }> = ({ mode = 'both', order = 'intraday_first' }) => {
   const { selectedStock, dailyData, intradayData, isLoadingCharts, fundamentals, language } = useStore();
+  const colorScheme = useSettingsStore((state) => state.colorScheme);
+  const { upColor, downColor } = COLOR_SCHEMES[colorScheme];
   const t = (key: TranslationKey) => getTranslation(language, key);
 
   // 获取分时数据对应的交易日期
@@ -228,10 +232,10 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
           type: 'candlestick',
           data: data,
           itemStyle: {
-            color: '#ef232a',
-            color0: '#14b143',
-            borderColor: '#ef232a',
-            borderColor0: '#14b143'
+            color: upColor,
+            color0: downColor,
+            borderColor: upColor,
+            borderColor0: downColor
           },
           barWidth: '70%'
         },
@@ -276,14 +280,14 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
           itemStyle: {
            color: (params: { dataIndex: number }) => {
                 const isUp = volumes[params.dataIndex][2] > 0;
-                return isUp ? '#ef232a' : '#14b143';
+                return isUp ? upColor : downColor;
             }
           },
           barWidth: '70%'
         }
       ]
     };
-  }, [dailyData]);
+  }, [dailyData, downColor, upColor]);
 
   const intradayOption = useMemo(() => {
     if (!intradayData || intradayData.length === 0) return null;
@@ -295,7 +299,7 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
     // Calculate color for price line based on comparison with preClose
     const lastPrice = prices[prices.length - 1];
     const isUp = preClose ? lastPrice >= preClose : prices[prices.length - 1] >= prices[0];
-    const lineColor = isUp ? '#ef232a' : '#14b143';
+    const lineColor = isUp ? upColor : downColor;
 
     // Calculate limit prices based on preClose
     let limitPercent = 0.1;
@@ -362,7 +366,7 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
           const price = prices[dataIndex];
           const volume = volumes[dataIndex];
           const changePercent = preClose ? getChangePercent(price) : '';
-          const changeColor = price >= (preClose || price) ? '#ef232a' : '#14b143';
+          const changeColor = price > (preClose || price) ? upColor : price < (preClose || price) ? downColor : '#94a3b8';
           
           return [
             `<div style="font-weight:bold;margin-bottom:4px">${time}</div>`,
@@ -409,8 +413,8 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
             interval: limitPercentValue / 2, // 分成4格：涨停、涨停/2、0、跌停/2、跌停
             axisLabel: { 
               color: (value: number) => {
-                if (value > 0) return '#ef232a';
-                if (value < 0) return '#14b143';
+                if (value > 0) return upColor;
+                if (value < 0) return downColor;
                 return '#fbbf24';
               },
               fontSize: 10,
@@ -517,12 +521,12 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
                 label: { 
                   formatter: preClose ? `涨停 ${(preClose * (1 + limitPercent)).toFixed(2)}` : `+${limitPercentValue}%`, 
                   position: 'insideEndTop', 
-                  color: '#ef232a',
+                  color: upColor,
                   fontSize: 10,
                   backgroundColor: 'rgba(239, 35, 42, 0.2)',
                   padding: [2, 4]
                 },
-                lineStyle: { type: 'solid', color: '#ef232a', width: 1.5 }
+                lineStyle: { type: 'solid', color: upColor, width: 1.5 }
               },
               // 跌停线
               {
@@ -530,12 +534,12 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
                 label: { 
                   formatter: preClose ? `跌停 ${(preClose * (1 - limitPercent)).toFixed(2)}` : `-${limitPercentValue}%`, 
                   position: 'insideEndBottom', 
-                  color: '#14b143',
+                  color: downColor,
                   fontSize: 10,
                   backgroundColor: 'rgba(20, 177, 67, 0.2)',
                   padding: [2, 4]
                 },
-                lineStyle: { type: 'solid', color: '#14b143', width: 1.5 }
+                lineStyle: { type: 'solid', color: downColor, width: 1.5 }
               }
             ]
           },
@@ -563,7 +567,7 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
         }
       ]
     };
-  }, [intradayData, preClose, selectedStock, fundamentals]);
+  }, [downColor, fundamentals, intradayData, preClose, selectedStock, upColor]);
 
   if (!selectedStock) {
     return (
@@ -576,7 +580,7 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
   // 计算涨跌幅
   const currentPrice = intradayData && intradayData.length > 0 ? intradayData[intradayData.length - 1].price : null;
   const changePercent = currentPrice && preClose ? ((currentPrice - preClose) / preClose * 100) : null;
-  const changeColor = changePercent !== null ? (changePercent >= 0 ? 'text-red-500' : 'text-green-500') : 'text-white';
+  const changeColor = changePercent !== null ? marketToneClass(changePercent, 'text-gray-300') : 'text-white';
 
   const items: Array<{ key: ChartPanelMode; node: React.ReactNode }> = [];
   if (mode === 'both' || mode === 'intraday') {

@@ -6,6 +6,7 @@ import { MetricCard, StatusBadge } from '@bitpro/ui';
 import { getHotConcepts, getMarketOverview, getShortLineIndices, getThsHot } from '../api/client';
 import type { HotConceptItem, MarketOverview, ThsHotItem } from '../types';
 import { evaluateFreshness, formatFreshnessTime, latestTimestamp } from '../utils/dataFreshness';
+import { marketMetricColor, marketToneClass } from '../utils/marketColors';
 
 type ShortLineIndex = {
   code: string;
@@ -43,7 +44,7 @@ const formatCompact = (value?: number | null) => {
 };
 
 const Pct = ({ value }: { value?: number | null }) => (
-  <span className={clsx(value === null || value === undefined ? 'text-gray-500' : value >= 0 ? 'text-up' : 'text-down')}>
+  <span className={marketToneClass(value, 'text-gray-500')}>
     {value === null || value === undefined ? '' : value >= 0 ? '+' : ''}
     {value === null || value === undefined ? '--' : formatNumber(value, 2)}{value === null || value === undefined ? '' : '%'}
   </span>
@@ -62,8 +63,8 @@ const shortLineUnit = (unit?: string | null) => {
 };
 
 const shortLineTone = (code: string) => {
-  if (['limit_up_count', 'rise_count', 'ZT', 'LIMIT_UP'].includes(code)) return 'border-red-500/30 bg-red-500/[0.045]';
-  if (['limit_down_count', 'fall_count', 'LIMIT_DOWN'].includes(code)) return 'border-emerald-500/30 bg-emerald-500/[0.045]';
+  if (['limit_up_count', 'rise_count', 'ZT', 'LIMIT_UP'].includes(code)) return 'border-up bg-up';
+  if (['limit_down_count', 'fall_count', 'LIMIT_DOWN'].includes(code)) return 'border-down bg-down';
   if (['broken_board_count', 'highest_board'].includes(code)) return 'border-amber-500/30 bg-amber-500/[0.045]';
   return 'border-blue-500/25 bg-blue-500/[0.035]';
 };
@@ -152,12 +153,12 @@ function RealtimeMarketModule({
             <MetricCard
               key={index.name}
               label={index.name}
-              color={(index.change_percent ?? 0) >= 0 ? 'up' : 'down'}
+              color={marketMetricColor(index.change_percent)}
               value={formatNumber(index.price)}
               detail={<div className="flex flex-wrap items-center gap-2 text-xs font-semibold tabular-nums">
                 <Pct value={index.change_percent} />
-                <span className={clsx((index.change_amount || 0) >= 0 ? 'text-up' : 'text-down')}>
-                  {(index.change_amount || 0) >= 0 ? '+' : ''}
+                <span className={marketToneClass(index.change_amount)}>
+                  {(index.change_amount || 0) > 0 ? '+' : ''}
                   {formatNumber(index.change_amount)}
                 </span>
               </div>}

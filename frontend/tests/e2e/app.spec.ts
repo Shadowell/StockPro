@@ -491,7 +491,7 @@ async function mockApi(page: Page) {
     if (method === 'GET' && path === '/backtest/runs') return route.fulfill(json({ items: [mockBacktestRun], total: 1 }));
     if (method === 'GET' && path === `/backtest/runs/${mockBacktestRun.id}`) return route.fulfill(json({ ...mockBacktestRun, core_metrics: mockMetrics }));
     if (method === 'GET' && path === `/backtest/runs/${mockBacktestRun.id}/metrics`) return route.fulfill(json({ items: mockMetrics }));
-    if (method === 'GET' && path === `/backtest/runs/${mockBacktestRun.id}/series`) return route.fulfill(json({ daily: [{ trade_date: '2025-01-01', strategy_nav: 1, benchmark_nav: 1, excess_nav: 1, equity: 1000000, cash: 1000000, market_value: 0, gross_exposure: 0, position_count: 0, drawdown: 0 }, { trade_date: '2025-01-02', strategy_nav: 1.12, benchmark_nav: 1.04, excess_nav: 1.0769, equity: 1120000, cash: 100000, market_value: 1020000, gross_exposure: 0.91, position_count: 1, drawdown: 0 }], custom_records: [], monthly_returns: [{ month: '2025-01', return: 0.12 }] }));
+    if (method === 'GET' && path === `/backtest/runs/${mockBacktestRun.id}/series`) return route.fulfill(json({ daily: [{ trade_date: '2025-01-01', strategy_nav: 1, benchmark_nav: 1, excess_nav: 1, equity: 1000000, cash: 1000000, market_value: 0, gross_exposure: 0, position_count: 0, drawdown: 0 }, { trade_date: '2025-01-02', strategy_nav: 1.12, benchmark_nav: 1.04, excess_nav: 1.0769, equity: 1120000, cash: 100000, market_value: 1020000, gross_exposure: 0.91, position_count: 1, drawdown: 0 }], custom_records: [], monthly_returns: [{ month: '2025-01', return: 0.12 }, { month: '2025-02', return: -0.04 }, { month: '2025-03', return: 0 }] }));
     if (method === 'GET' && new RegExp(`^/backtest/runs/${mockBacktestRun.id}/(positions|orders|trades|logs|attribution)$`).test(path)) return route.fulfill(json({ items: [] }));
     if (method === 'POST' && path === '/backtest/runs') return route.fulfill(json(mockBacktestRun));
 
@@ -800,6 +800,32 @@ test('backtest result exposes six core cards and eight evidence tabs', async ({ 
   await expect(page.getByText('策略代码 · v1')).toBeVisible();
 });
 
+test('configured market colors apply to gains, losses and neutral values', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.addInitScript(() => {
+    if (!window.localStorage.getItem('stockpro_settings')) {
+      window.localStorage.setItem('stockpro_settings', JSON.stringify({ colorScheme: 'redUpGreenDown' }));
+    }
+  });
+  await page.goto('/backtest/66666666-6666-6666-6666-666666666666');
+
+  const monthlyReturns = page.getByRole('heading', { name: '月度收益' }).locator('xpath=parent::*');
+  const gain = monthlyReturns.getByText('12.00%', { exact: true });
+  const loss = monthlyReturns.getByText('-4.00%', { exact: true });
+  const neutral = monthlyReturns.getByText('0.00%', { exact: true });
+  await expect(gain).toHaveCSS('color', 'rgb(255, 23, 68)');
+  await expect(loss).toHaveCSS('color', 'rgb(0, 200, 83)');
+  await expect(neutral).toHaveCSS('color', 'rgb(185, 195, 207)');
+
+  await page.evaluate(() => {
+    window.localStorage.setItem('stockpro_settings', JSON.stringify({ colorScheme: 'greenUpRedDown' }));
+  });
+  await page.reload();
+  await expect(monthlyReturns.getByText('12.00%', { exact: true })).toHaveCSS('color', 'rgb(0, 200, 83)');
+  await expect(monthlyReturns.getByText('-4.00%', { exact: true })).toHaveCSS('color', 'rgb(255, 23, 68)');
+  await expect(monthlyReturns.getByText('0.00%', { exact: true })).toHaveCSS('color', 'rgb(185, 195, 207)');
+});
+
 test('market research exposes exactly six evidence workspaces and legacy redirects', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/research/overview');
@@ -807,8 +833,8 @@ test('market research exposes exactly six evidence workspaces and legacy redirec
   await expect(page.getByRole('heading', { name: '行情' })).toBeVisible();
   await expect(page.getByTestId('market-headline-rise_count')).toContainText('3,200');
   await expect(page.getByTestId('market-headline-rise_count')).not.toContainText('stocks');
-  await expect(page.getByTestId('market-headline-rise_count').locator('.bp-metric-card')).toHaveClass(/border-red-500/);
-  await expect(page.getByTestId('market-headline-fall_count').locator('.bp-metric-card')).toHaveClass(/border-emerald-500/);
+  await expect(page.getByTestId('market-headline-rise_count').locator('.bp-metric-card')).toHaveClass(/border-up/);
+  await expect(page.getByTestId('market-headline-fall_count').locator('.bp-metric-card')).toHaveClass(/border-down/);
   await expect(page.getByTestId('market-headline-seal_rate')).toContainText('86.15%');
   for (const label of ['市场结构', '板块轮动', '情绪 / 涨停', '事件', '交易日历', '个股研究']) {
     await expect(page.getByRole('button', { name: label })).toBeVisible();

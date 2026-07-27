@@ -1068,6 +1068,18 @@ Verification:
   page-level horizontal overflow, browser console errors or failed API
   responses.
 
+24. Configurable market-color consistency
+- Removed hard-coded red/green gain and loss colors from the active dashboard,
+  market research, stock charts, backtest, Paper runtime and shared detail
+  components, including legacy routes that can still be reached through
+  redirects or embedded panels.
+- Routed text, metric cards, candlesticks, volume bars, intraday lines and
+  market-flow charts through the persisted `redUpGreenDown` /
+  `greenUpRedDown` setting. Zero and missing directional values now use a
+  neutral tone instead of being classified as gains.
+- Added browser regression coverage that verifies positive, negative and zero
+  monthly backtest returns under both color schemes.
+
 ## Verification Evidence
 
 - `python3 -m py_compile app/services/scheduler_service.py app/db/postgres_db.py app/api/endpoints/data_dev.py` (pass)
@@ -1081,6 +1093,12 @@ Verification:
 - `./scripts/check.sh` after full-workspace readability closeout (pass:
   frontend build/lint with 5 existing Hook warnings, 289 backend tests, Python
   compilation)
+- `./scripts/check.sh` after configurable market-color consistency (pass:
+  frontend build/lint with 5 existing Hook warnings, 289 backend tests, Python
+  compilation)
+- Focused mocked Playwright market-color and market-research checks (2/2 pass)
+- Real-browser Backtest detail verification under both color schemes: positive
+  and negative values swap colors as configured; zero stays neutral (pass)
 - Playwright primary-route sweep at desktop and 390px (13/13 pass; no visible
   UUID/task/account/snapshot keys and no page-level horizontal overflow)
 - Playwright secondary/detail sweep (30 query-addressable tabs, 5 factor

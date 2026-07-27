@@ -28,6 +28,7 @@ import {
 import type { BacktestRun, PaperRuntimeInstance } from "../types";
 import { PaperInstanceDashboard } from "../components/PaperInstanceDashboard";
 import { PaperRuntimeInstanceDetail } from "../components/PaperRuntimeInstanceDetail";
+import { marketToneClass } from "../utils/marketColors";
 
 const TABS = [
   ["instances", "实例"],
@@ -1038,18 +1039,12 @@ export function Paper() {
             <Metric
               label="累计盈亏"
               current={currency(pnl)}
-              tone={
-                pnl !== null && pnl < 0 ? "text-red-300" : "text-emerald-300"
-              }
+              tone={marketToneClass(pnl)}
             />
             <Metric
               label="累计收益"
               current={percent(returnRate)}
-              tone={
-                returnRate !== null && returnRate < 0
-                  ? "text-red-300"
-                  : "text-emerald-300"
-              }
+              tone={marketToneClass(returnRate)}
             />
             <Metric
               label="可用现金"

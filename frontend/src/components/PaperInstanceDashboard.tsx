@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import type { PaperRuntimeInstance } from "../types";
+import { marketToneClass } from "../utils/marketColors";
 
 type DataScope = "business" | "test";
 type ListView = "preferred" | "all";
@@ -542,11 +543,7 @@ export function PaperInstanceDashboard({
                     <div
                       className={clsx(
                         "mt-1 font-mono text-lg font-bold",
-                        pnl === null
-                          ? "text-slate-500"
-                          : pnl >= 0
-                            ? "text-up"
-                            : "text-down",
+                        marketToneClass(pnl, "text-slate-500"),
                       )}
                     >
                       {signedMoney(pnl)}
@@ -557,11 +554,7 @@ export function PaperInstanceDashboard({
                     <div
                       className={clsx(
                         "mt-1 font-mono text-lg font-bold",
-                        returnRate === null
-                          ? "text-slate-500"
-                          : returnRate >= 0
-                            ? "text-up"
-                            : "text-down",
+                        marketToneClass(returnRate, "text-slate-500"),
                       )}
                     >
                       {signedPercent(returnRate)}

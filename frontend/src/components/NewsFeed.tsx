@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { getMessageStream, syncNewsStream } from "@/api/client";
 import { MessageStreamResponse, MessageStreamItem, AbnormalStockItem } from "@/types";
 import { RefreshCw, AlertTriangle, ThumbsUp, ThumbsDown, GitMerge, Newspaper, Play, Pause, Database } from "lucide-react";
+import { marketToneClass } from "@/utils/marketColors";
 
 type TabKey = "abnormal" | "mergers" | "good" | "bad" | "cailian" | "xueqiu" | "eastmoney";
 
@@ -96,7 +97,7 @@ export const NewsFeed: React.FC = () => {
 
     const renderStockRow = (item: AbnormalStockItem) => {
       const sign = item.change_percent > 0 ? "+" : "";
-      const color = item.change_percent >= 0 ? "text-red-500" : "text-green-500";
+      const color = marketToneClass(item.change_percent);
       return (
         <div
           key={`${item.code}-${item.rule_id}-${item.direction}`}

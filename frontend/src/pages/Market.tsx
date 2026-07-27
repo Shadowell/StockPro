@@ -10,15 +10,13 @@ import {
   getThsHot,
 } from '../api/client';
 import type { ConceptLeaderStock, DailyChartData, StockFundamentals, ThsHotItem } from '../types';
+import { COLOR_SCHEMES, useSettingsStore } from '../stores/useSettingsStore';
+import { marketToneClass } from '../utils/marketColors';
 
 const MIN_KLINES_TO_RENDER = 1;
 
 const pctClass = (value?: number | null) =>
-  value === null || value === undefined || Number.isNaN(value)
-    ? 'text-gray-500'
-    : value >= 0
-      ? 'text-up'
-      : 'text-down';
+  marketToneClass(value, 'text-gray-500');
 const format = (value?: number | null, digits = 2) =>
   value === null || value === undefined || Number.isNaN(value)
     ? '--'
@@ -30,7 +28,7 @@ const format = (value?: number | null, digits = 2) =>
 const signedPct = (value?: number | null) =>
   value === null || value === undefined || Number.isNaN(value)
     ? '--'
-    : `${value >= 0 ? '+' : ''}${format(value)}%`;
+    : `${value > 0 ? '+' : ''}${format(value)}%`;
 
 const publicSymbol = (value: string) => {
   const match = /^([A-Z]{2})_(\d{6})$/.exec(value);
@@ -61,6 +59,8 @@ type MarketProps = {
 };
 
 export function Market({ asOfDate }: MarketProps = {}) {
+  const colorScheme = useSettingsStore((state) => state.colorScheme);
+  const { upColor, downColor } = COLOR_SCHEMES[colorScheme];
   const [thsHot, setThsHot] = useState<ThsHotItem[]>([]);
   const [selectedConcept, setSelectedConcept] = useState('');
   const [leaders, setLeaders] = useState<ConceptLeaderStock[]>([]);
@@ -205,7 +205,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
     const candleRows = visibleDaily.map((item) => [item.open, item.close, item.low, item.high]);
     const volumeRows = visibleDaily.map((item, index) => ({
       value: item.volume,
-      itemStyle: { color: item.close >= item.open ? '#F6465D66' : '#00C85366' },
+      itemStyle: { color: item.close > item.open ? `${upColor}66` : item.close < item.open ? `${downColor}66` : '#94a3b866' },
       date: dates[index],
     }));
     const ema5 = ema(visibleDaily, 5);
@@ -268,10 +268,10 @@ export function Market({ asOfDate }: MarketProps = {}) {
           type: 'candlestick',
           data: candleRows,
           itemStyle: {
-            color: '#F6465D',
-            color0: '#00C853',
-            borderColor: '#F6465D',
-            borderColor0: '#00C853',
+            color: upColor,
+            color0: downColor,
+            borderColor: upColor,
+            borderColor0: downColor,
           },
         },
         { name: 'EMA5', type: 'line', data: ema5, smooth: true, symbol: 'none', lineStyle: { color: '#FFE600', width: 1.2 } },
@@ -281,7 +281,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
         { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: volumeRows, barWidth: '60%' },
       ],
     };
-  }, [visibleDaily]);
+  }, [downColor, upColor, visibleDaily]);
 
   const lastClose = latestDaily?.close ?? selectedPrice ?? null;
   const lastUpdateLabel = latestDaily?.date || (!asOfDate ? fundamentals?.updated_at?.slice(0, 10) : null) || '待同步';

@@ -76,6 +76,14 @@ body {
   background-color: var(--color-down-bg);
 }
 
+.border-up {
+  border-color: color-mix(in srgb, var(--color-up) 34%, transparent);
+}
+
+.border-down {
+  border-color: color-mix(in srgb, var(--color-down) 34%, transparent);
+}
+
 .rounded-2xl {
   border-radius: 12px;
 }

@@ -5,6 +5,8 @@ import { getHotConcepts, getThsHot, getLianbanLadder, getShortLineIndices } from
 import { HotConceptItem, ThsHotItem, LianbanLadderResponse } from '@/types';
 import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
+import { COLOR_SCHEMES, useSettingsStore } from '@/stores/useSettingsStore';
+import { marketToneClass } from '@/utils/marketColors';
 
 // 短线指标类型
 interface ShortLineIndex {
@@ -109,6 +111,8 @@ const StatCard: React.FC<{
 
 export const SentimentAnalysisContent: React.FC = () => {
   const { marketOverview } = useStore();
+  const colorScheme = useSettingsStore((state) => state.colorScheme);
+  const { upColor, downColor } = COLOR_SCHEMES[colorScheme];
 
   const [isLoading, setIsLoading] = useState(false);
   const [hotConcepts, setHotConcepts] = useState<HotConceptItem[]>([]);
@@ -194,7 +198,7 @@ export const SentimentAnalysisContent: React.FC = () => {
         type: 'bar',
         data: top10.map(c => ({
           value: c.change_percent,
-          itemStyle: { color: c.change_percent >= 0 ? '#ef4444' : '#22c55e' }
+          itemStyle: { color: c.change_percent > 0 ? upColor : c.change_percent < 0 ? downColor : '#94a3b8' }
         })).reverse(),
         barWidth: 16,
         label: {
@@ -206,7 +210,7 @@ export const SentimentAnalysisContent: React.FC = () => {
         }
       }]
     };
-  }, [hotConcepts]);
+  }, [downColor, hotConcepts, upColor]);
 
   // 资金流向图
   const flowChartOption = React.useMemo(() => {
@@ -228,7 +232,7 @@ export const SentimentAnalysisContent: React.FC = () => {
           data: inflow.map(c => ({
             name: c.name,
             value: (c.net_inflow / 100000000).toFixed(2),
-            itemStyle: { color: '#ef4444' }
+            itemStyle: { color: upColor }
           }))
         },
         {
@@ -240,12 +244,12 @@ export const SentimentAnalysisContent: React.FC = () => {
           data: outflow.map(c => ({
             name: c.name,
             value: Math.abs(c.net_inflow / 100000000).toFixed(2),
-            itemStyle: { color: '#22c55e' }
+            itemStyle: { color: downColor }
           }))
         }
       ]
     };
-  }, [hotConcepts]);
+  }, [downColor, hotConcepts, upColor]);
 
   return (
     <div className="flex flex-col gap-6 h-full overflow-auto custom-scrollbar">
@@ -392,7 +396,7 @@ export const SentimentAnalysisContent: React.FC = () => {
                           <span className="text-gray-200 font-medium">{stock.name}</span>
                           <span className={clsx(
                             "font-mono",
-                            stock.change_percent >= 0 ? "text-red-400" : "text-green-400"
+                            marketToneClass(stock.change_percent)
                           )}>
                             {stock.change_percent >= 0 ? '+' : ''}{stock.change_percent.toFixed(2)}%
                           </span>
@@ -465,7 +469,7 @@ export const SentimentAnalysisContent: React.FC = () => {
                     </td>
                     <td className={clsx(
                       "px-4 py-3 text-right font-bold font-mono",
-                      stock.change_percent >= 0 ? "text-red-400" : "text-green-400"
+                      marketToneClass(stock.change_percent)
                     )}>
                       {stock.change_percent >= 0 ? '+' : ''}{stock.change_percent?.toFixed(2) || '0.00'}%
                     </td>
