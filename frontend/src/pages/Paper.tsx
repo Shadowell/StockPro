@@ -3,10 +3,12 @@ import { useSearchParams } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
 import {
   Activity,
+  ArrowLeft,
   BarChart3,
   CircleDollarSign,
   Database,
   Filter,
+  FlaskConical,
   Pause,
   Play,
   RefreshCw,
@@ -24,6 +26,7 @@ import {
   processPaperCycle,
 } from "../api/client";
 import type { BacktestRun, PaperRuntimeInstance } from "../types";
+import { PaperInstanceDashboard } from "../components/PaperInstanceDashboard";
 
 const TABS = [
   ["instances", "实例"],
@@ -37,6 +40,7 @@ const TABS = [
 type Tab = (typeof TABS)[number][0];
 type StatusFilter = "all" | PaperRuntimeInstance["status"] | "stale";
 type DataScope = "business" | "test";
+type PageView = "dashboard" | "create" | "detail";
 const panel = "rounded-xl border border-crypto-border bg-crypto-card";
 const input =
   "h-10 rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-slate-200 outline-none focus:border-blue-500/60";
@@ -194,6 +198,11 @@ export function Paper() {
   const tab: Tab = TABS.some(([key]) => key === requested)
     ? requested!
     : "instances";
+  const requestedView = params.get("view") as PageView | null;
+  const pageView: PageView =
+    requestedView === "create" || requestedView === "detail"
+      ? requestedView
+      : "dashboard";
   const [instances, setInstances] = useState<PaperRuntimeInstance[]>([]);
   const [selected, setSelected] = useState<PaperRuntimeInstance | null>(null);
   const [runs, setRuns] = useState<BacktestRun[]>([]);
@@ -361,12 +370,18 @@ export function Paper() {
     setError("");
     try {
       setSelected(await getPaperInstance(id));
-      setParams({ tab, instance: id });
+      setParams({ view: "detail", tab: tab === "instances" ? "account" : tab, instance: id });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "实例详情加载失败");
     } finally {
       setBusy(false);
     }
+  };
+  const openCreate = () => {
+    setParams({ view: "create" });
+  };
+  const backToDashboard = () => {
+    setParams({});
   };
   const create = async () => {
     const run = eligible.find((item) => item.id === runId);
@@ -393,6 +408,7 @@ export function Paper() {
       });
       setName("");
       await load(created.id);
+      setParams({ view: "detail", tab: "account", instance: created.id });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "创建失败");
       setBusy(false);
@@ -405,6 +421,21 @@ export function Paper() {
     try {
       await paperInstanceAction(selected.id, next);
       await load(selected.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "状态操作失败");
+      setBusy(false);
+    }
+  };
+  const actionFor = async (
+    instance: PaperRuntimeInstance,
+    next: "start" | "pause" | "resume" | "stop",
+  ) => {
+    setSelected(instance);
+    setBusy(true);
+    setError("");
+    try {
+      await paperInstanceAction(instance.id, next);
+      await load(instance.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "状态操作失败");
       setBusy(false);
@@ -494,36 +525,81 @@ export function Paper() {
       className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8"
       data-testid="paper-runtime-workbench"
     >
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="inline-flex items-center gap-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-2.5 text-sm font-semibold text-yellow-300">
+            <FlaskConical className="h-4 w-4" />
+            模拟盘
+          </h1>
+          <p className="mt-1.5 text-[11px] text-slate-500">
+            模拟：只处理 PostgreSQL Paper 记录与模拟成交，不触碰真实资金。
+          </p>
+        </div>
+        {pageView !== "dashboard" ? (
+          <span className="rounded-lg border border-crypto-border bg-crypto-card px-2 py-1 text-xs text-slate-400">
+            {pageView === "create" ? "创建向导" : "实例监控"}
+          </span>
+        ) : null}
+      </div>
+
+      {pageView === "dashboard" ? (
+        <PaperInstanceDashboard
+          instances={scopedInstances}
+          allInstances={instances}
+          dataScope={dataScope}
+          loaded={loaded}
+          busy={busy}
+          onScopeChange={setDataScope}
+          onCreate={openCreate}
+          onOpenDetail={(instance) => void chooseInstance(instance.id)}
+          onAction={(instance, next) => void actionFor(instance, next)}
+        />
+      ) : null}
+
+      <header className={`${pageView === "dashboard" ? "hidden" : "mb-5 flex"} flex-wrap items-start justify-between gap-4`}>
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <WalletCards className="h-7 w-7 text-blue-400" />
-            <h1 className="text-2xl font-black text-white">模拟盘</h1>
+            <h1 className="text-2xl font-black text-white">
+              {pageView === "create" ? "创建模拟实例" : selected?.name ?? "实例监控"}
+            </h1>
             <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-xs text-amber-300">
               无真实券商连接
             </span>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            管理模拟策略实例、风险控制、订单成交与账户权益。
+            {pageView === "create"
+              ? "选择已通过晋级门槛的完整回测，确认固定快照与模拟资金后创建实例。"
+              : "查看账户、信号、订单、持仓、成交和运行审计证据。"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load(selected?.id)}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400"
-        >
-          <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
-          刷新
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={backToDashboard}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-300"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            返回控制台
+          </button>
+          <button
+            type="button"
+            onClick={() => void load(selected?.id)}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400"
+          >
+            <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+            刷新
+          </button>
+        </div>
       </header>
 
       <section
-        className={`${panel} mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-xs`}
+        className="hidden"
       >
         <div className="flex rounded-lg border border-crypto-border bg-crypto-bg p-1">
           <button
             type="button"
-            data-testid="paper-scope-business"
+            data-testid="paper-legacy-scope-business"
             onClick={() => setDataScope("business")}
             className={`rounded-md px-3 py-1.5 font-semibold ${dataScope === "business" ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-200"}`}
           >
@@ -531,7 +607,7 @@ export function Paper() {
           </button>
           <button
             type="button"
-            data-testid="paper-scope-test"
+            data-testid="paper-legacy-scope-test"
             onClick={() => setDataScope("test")}
             className={`rounded-md px-3 py-1.5 font-semibold ${dataScope === "test" ? "bg-amber-500/15 text-amber-200" : "text-slate-500 hover:text-slate-200"}`}
           >
@@ -554,12 +630,12 @@ export function Paper() {
         </span>
       </section>
       {dataScope === "test" ? (
-        <div className="mb-5 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs text-amber-200/80" role="status">
+        <div className="hidden" role="status">
           当前仅查看自动化验收与种子实例；其权益、盈亏、心跳和成交不会计入默认模拟盘统计。
         </div>
       ) : null}
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="hidden">
         <Metric
           label="模拟实例"
           current={value(scopedInstances.length, 0)}
@@ -599,7 +675,7 @@ export function Paper() {
         />
       </div>
 
-      <div className="mb-5 grid gap-3 md:grid-cols-3">
+      <div className="hidden">
         <div className={`${panel} p-4`}>
           <ShieldCheck className="h-5 w-5 text-emerald-400" />
           <div className="mt-3 text-sm font-semibold text-slate-200">
@@ -630,16 +706,17 @@ export function Paper() {
       </div>
 
       <nav
-        className="mb-5 flex overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1"
+        className={`${pageView === "detail" ? "mb-5 flex" : "hidden"} overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1`}
         aria-label="Paper 二级导航"
       >
-        {TABS.map(([key, label]) => (
+        {TABS.filter(([key]) => key !== "instances").map(([key, label]) => (
           <button
             data-testid={`paper-tab-${key}`}
             type="button"
             key={key}
             onClick={() =>
               setParams({
+                view: "detail",
                 tab: key,
                 ...(selected ? { instance: selected.id } : {}),
               })
@@ -663,9 +740,9 @@ export function Paper() {
         </div>
       ) : null}
 
-      {loaded && tab === "instances" ? (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.55fr)]">
-          <section className={`${panel} overflow-hidden`}>
+      {loaded && pageView === "create" ? (
+        <div className="mx-auto grid max-w-4xl gap-5">
+          <section className="hidden">
             <div className="border-b border-crypto-border px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -768,19 +845,22 @@ export function Paper() {
             </div>
           </section>
           <section data-testid="paper-create-wizard" className={`${panel} p-5`}>
-            <h2 className="font-semibold text-white">创建固定实例</h2>
+            <h2 className="font-semibold text-white">创建模拟实例</h2>
             <p className="mt-1 text-xs text-slate-500">
-              仅列出满足数据、风控与样本外要求的完整回测。
+              从已晋级回测创建可审计实例，不连接真实券商账户。
             </p>
-            <div className="mt-5 grid grid-cols-3 gap-1 text-center text-[10px]">
+            <div className="mt-5 grid grid-cols-4 gap-1 text-center text-[10px]">
               <span className="rounded bg-blue-500/15 px-2 py-2 text-blue-300">
-                1 晋级回测
+                1 选择策略
               </span>
               <span className="rounded bg-crypto-bg px-2 py-2 text-slate-500">
-                2 A股风控
+                2 运行参数
               </span>
               <span className="rounded bg-crypto-bg px-2 py-2 text-slate-500">
-                3 Paper 草稿
+                3 飞行检查
+              </span>
+              <span className="rounded bg-crypto-bg px-2 py-2 text-slate-500">
+                4 运行监控
               </span>
             </div>
             <label className="mt-5 block text-xs text-slate-500">
@@ -865,7 +945,7 @@ export function Paper() {
         </div>
       ) : null}
 
-      {selected && tab !== "instances" ? (
+      {pageView === "detail" && selected && tab !== "instances" ? (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-crypto-border bg-crypto-card p-4">
             <div>
@@ -962,7 +1042,7 @@ export function Paper() {
         </>
       ) : null}
 
-      {selected && tab === "signals" ? (
+      {pageView === "detail" && selected && tab === "signals" ? (
         <DataTable
           rows={rows}
           empty="尚无策略信号；这不是 0 信号结论，仅表示当前实例无持久化记录。"
@@ -976,7 +1056,7 @@ export function Paper() {
           ]}
         />
       ) : null}
-      {selected && tab === "orders" ? (
+      {pageView === "detail" && selected && tab === "orders" ? (
         <DataTable
           rows={rows}
           empty="尚无订单"
@@ -991,7 +1071,7 @@ export function Paper() {
           ]}
         />
       ) : null}
-      {selected && tab === "positions" ? (
+      {pageView === "detail" && selected && tab === "positions" ? (
         <DataTable
           rows={rows}
           empty="当前无持仓"
@@ -1006,7 +1086,7 @@ export function Paper() {
           ]}
         />
       ) : null}
-      {selected && tab === "trades" ? (
+      {pageView === "detail" && selected && tab === "trades" ? (
         <DataTable
           rows={rows}
           empty="尚无成交记录"
@@ -1022,7 +1102,7 @@ export function Paper() {
           ]}
         />
       ) : null}
-      {selected && tab === "events" ? (
+      {pageView === "detail" && selected && tab === "events" ? (
         <DataTable
           rows={rows}
           empty="尚无审计事件"
@@ -1035,7 +1115,7 @@ export function Paper() {
           ]}
         />
       ) : null}
-      {selected && tab === "account" ? (
+      {pageView === "detail" && selected && tab === "account" ? (
         <div className="space-y-5">
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.7fr)]">
             <section className={`${panel} p-5`}>
@@ -1162,7 +1242,7 @@ export function Paper() {
           />
         </div>
       ) : null}
-      {!selected && loaded && tab !== "instances" ? (
+      {pageView === "detail" && !selected && loaded && tab !== "instances" ? (
         <div className={`${panel} p-16 text-center text-slate-600`}>
           <CircleDollarSign className="mx-auto mb-3 h-8 w-8" />
           请先创建或选择 Paper 实例

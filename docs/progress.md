@@ -958,6 +958,22 @@ Verification:
 - Updated browser acceptance for the flat BitPro navigation, page-owned headers and explicit test scopes.
 - Increased sidebar contrast after visual review: near-black navigation canvas, stronger inactive labels/icons, a deeper blue selected block and a clear active-edge marker.
 
+20. BitPro subpage parity — Paper and AI research
+- Replaced the Paper global-tab landing page with the BitPro object workflow:
+  strategy instance dashboard, preferred/all partitions, business/test scope,
+  market/strategy/capital/status filters, sorting, dense instance cards, a
+  separate creation page and a separate instance-monitor page.
+- Added honest Paper card evidence for PnL, return, trade count, symbol scope and
+  heartbeat time. Metrics not returned by the Paper API are labelled
+  `未计算` with the reason instead of being rendered as zero.
+- Reworked AI Research into the BitPro three-workspace structure:
+  `AI自主交易`, `新策略研发` and `现有策略优化`.
+- Added the four-stage research flow and integrated persisted strategy/backtest
+  candidate evidence. Autonomous AI runtime actions stay visibly unavailable
+  until StockPro has durable instance, decision-log and hard-risk APIs.
+- Retained the existing Strategy and Backtest object flows because they already
+  provide catalogue cards, staged creation and record-level detail evidence.
+
 ## Verification Evidence
 
 - `python3 -m py_compile app/services/scheduler_service.py app/db/postgres_db.py app/api/endpoints/data_dev.py` (pass)

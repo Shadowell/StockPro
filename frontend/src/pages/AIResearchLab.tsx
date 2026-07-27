@@ -1,80 +1,116 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
+  Activity,
+  ArrowRight,
   Beaker,
   Bot,
   BrainCircuit,
+  CheckCircle2,
+  Clock3,
+  Cpu,
+  FlaskConical,
+  Play,
   RefreshCw,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
 import { getAICapabilities, getStrategies, listBacktestRuns } from "../api/client";
 import type { AICapabilities, BacktestRun, Strategy } from "../types";
 
 const TABS = [
-  ["assistant", "策略助手"],
-  ["new", "新策略研发"],
-  ["optimize", "策略优化"],
-  ["candidates", "候选版本"],
+  ["autonomous", "AI自主交易", "模拟实例与硬风控"],
+  ["research", "新策略研发", "提议、回测与准入"],
+  ["optimize", "现有策略优化", "诊断与候选版本"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
+type DataScope = "business" | "test";
 const panel = "rounded-xl border border-crypto-border bg-crypto-card";
+
+const dateTime = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "暂无记录";
+
+const purposeMatches = (
+  item: { data_purpose?: string | null },
+  scope: DataScope,
+) =>
+  scope === "business"
+    ? !item.data_purpose || item.data_purpose === "user"
+    : Boolean(item.data_purpose && item.data_purpose !== "user");
 
 export function AIResearchLab() {
   const [params, setParams] = useSearchParams();
   const requested = params.get("tab") as Tab | null;
   const tab: Tab = TABS.some(([key]) => key === requested)
     ? requested!
-    : "assistant";
+    : "autonomous";
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [runs, setRuns] = useState<BacktestRun[]>([]);
   const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [capabilities, setCapabilities] = useState<AICapabilities | null>(null);
   const [capabilityError, setCapabilityError] = useState("");
-  const [dataScope, setDataScope] = useState<"business" | "test">("business");
-  const scopedStrategies = strategies.filter((item) =>
-    dataScope === "business"
-      ? !item.data_purpose || item.data_purpose === "user"
-      : Boolean(item.data_purpose && item.data_purpose !== "user"),
+  const [dataScope, setDataScope] = useState<DataScope>("business");
+
+  const scopedStrategies = useMemo(
+    () => strategies.filter((item) => purposeMatches(item, dataScope)),
+    [strategies, dataScope],
   );
-  const scopedRuns = runs.filter((item) =>
-    dataScope === "business"
-      ? !item.data_purpose || item.data_purpose === "user"
-      : Boolean(item.data_purpose && item.data_purpose !== "user"),
+  const scopedRuns = useMemo(
+    () => runs.filter((item) => purposeMatches(item, dataScope)),
+    [runs, dataScope],
   );
+  const fullRuns = scopedRuns.filter((run) => run.run_mode === "full");
+  const eligibleRuns = fullRuns.filter(
+    (run) => run.promotion_status === "paper_eligible",
+  );
+  const latestEvidence =
+    scopedRuns[0]?.finished_at ??
+    scopedRuns[0]?.created_at ??
+    scopedStrategies[0]?.updated_at;
+
   const load = async () => {
     setBusy(true);
     setError("");
     try {
-      const [strategyResult, runResult, capabilityResult] = await Promise.allSettled([
-        getStrategies(),
-        listBacktestRuns(100),
-        getAICapabilities(),
-      ]);
-      setStrategies(strategyResult.status === "fulfilled" ? strategyResult.value : []);
-      setRuns(runResult.status === "fulfilled" ? runResult.value.items : []);
+      const [strategyResult, runResult, capabilityResult] =
+        await Promise.allSettled([
+          getStrategies(),
+          listBacktestRuns(100),
+          getAICapabilities(),
+        ]);
+      setStrategies(
+        strategyResult.status === "fulfilled" ? strategyResult.value : [],
+      );
+      setRuns(
+        runResult.status === "fulfilled" ? runResult.value.items : [],
+      );
       if (capabilityResult.status === "fulfilled") {
         setCapabilities(capabilityResult.value);
         setCapabilityError("");
       } else {
         setCapabilities(null);
-        setCapabilityError("AI 能力状态读取失败");
+        setCapabilityError("AI 能力状态接口读取失败");
       }
-      const evidenceFailures = [
+      const failures = [
         strategyResult.status === "rejected" ? "策略版本" : "",
         runResult.status === "rejected" ? "回测记录" : "",
       ].filter(Boolean);
-      setError(evidenceFailures.length ? `${evidenceFailures.join("、")}加载失败` : "");
+      setError(failures.length ? `${failures.join("、")}加载失败` : "");
     } catch {
       setError("AI 研发证据加载失败");
     } finally {
       setBusy(false);
+      setLoaded(true);
     }
   };
+
   useEffect(() => {
     void load();
   }, []);
+
   return (
     <div
       className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8"
@@ -85,96 +121,93 @@ export function AIResearchLab() {
           <div className="flex items-center gap-3">
             <BrainCircuit className="h-7 w-7 text-cyan-400" />
             <h1 className="text-2xl font-black text-white">AI研发</h1>
+            <span className="rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold text-cyan-200">
+              RESEARCH ONLY
+            </span>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            用 AI 提出研究假设、解释证据并生成候选策略；候选仍需完成验证、回测和模拟盘准入。
+            自动交易 Agent、受控策略研发和既有策略优化统一入口；所有结果先经过回测与模拟准入。
           </p>
         </div>
         <button
           type="button"
           onClick={() => void load()}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400"
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-300"
         >
           <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
-          刷新候选
+          刷新
         </button>
       </header>
-      <div
-        className={`mb-5 rounded-lg border p-4 text-sm ${
-          capabilities?.configured
-            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
-            : "border-amber-500/25 bg-amber-500/10 text-amber-100"
-        }`}
-      >
-        <strong>
-          {capabilities?.configured
-            ? `AI 可用 · Qwen ${capabilities.model || ""}`
-            : "AI 生成不可用"}
-        </strong>
-        <span className="ml-2 text-xs opacity-80">
-          {capabilities?.configured
-            ? `能力检查 ${capabilities.checked_at}`
-            : capabilityError || capabilities?.reason || "能力状态读取中"}
-        </span>
-        <div className="mt-1 text-xs opacity-75">
-          策略与回测证据仍可只读浏览；“自动开发”当前是确定性模板，不属于 AI 生成。
-        </div>
-      </div>
-      <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border border-crypto-border bg-crypto-card px-4 py-3 text-xs text-slate-500">
-        <span>
-          数据{" "}
-          <strong className="font-medium text-slate-300">
-            策略版本 / 回测记录
-          </strong>
-        </span>
-        <span>
-          状态{" "}
-          <strong
-            className={
-              error
-                ? "text-red-300"
-                : busy
-                  ? "text-blue-300"
-                  : "text-emerald-300"
-            }
-          >
-            {error ? "加载失败" : busy ? "读取中" : "已读取"}
-          </strong>
-        </span>
-        <span>
-          最新更新{" "}
-          <strong className="font-mono text-slate-300">
-            {runs[0]?.finished_at ??
-              runs[0]?.created_at ??
-              strategies[0]?.updated_at ??
-              "--"}
-          </strong>
-        </span>
-      </div>
+
+      <section className="mb-5 grid gap-px overflow-hidden rounded-xl border border-crypto-border bg-crypto-border md:grid-cols-4">
+        {[
+          ["AI连接", capabilities?.configured ? "可用" : "不可用", capabilities?.model || capabilityError || capabilities?.reason || "状态读取中"],
+          ["策略版本", loaded ? String(scopedStrategies.length) : "读取中", "PostgreSQL 版本记录"],
+          ["完整回测", loaded ? String(fullRuns.length) : "读取中", "仅 full 运行"],
+          ["最新证据", dateTime(latestEvidence), latestEvidence ? "策略或回测更新时间" : "当前范围暂无记录"],
+        ].map(([label, value, note], index) => (
+          <div key={label} className="bg-crypto-card px-4 py-3">
+            <div className="text-[10px] text-slate-600">{label}</div>
+            <div
+              className={`mt-1 truncate text-sm font-semibold ${
+                index === 0
+                  ? capabilities?.configured
+                    ? "text-emerald-300"
+                    : "text-amber-300"
+                  : "text-slate-200"
+              }`}
+              title={value}
+            >
+              {value}
+            </div>
+            <div className="mt-1 truncate text-[10px] text-slate-600" title={note}>
+              {note}
+            </div>
+          </div>
+        ))}
+      </section>
+
       {error ? (
         <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
-          {error}
+          <strong>证据加载失败：</strong>
+          {error}。受影响指标保持不可用，不回退为 0。
         </div>
       ) : null}
-      <nav className="mb-5 flex overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1">
-        {TABS.map(([key, label]) => (
+
+      <nav
+        className="mb-5 grid gap-1 rounded-xl border border-crypto-border bg-crypto-card p-1 md:grid-cols-3"
+        aria-label="AI研发工作台"
+      >
+        {TABS.map(([key, label, description]) => (
           <button
             type="button"
             key={key}
             onClick={() => setParams({ tab: key })}
-            className={`min-w-max flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${tab === key ? "bg-cyan-600 text-white" : "text-slate-500 hover:bg-slate-800/60 hover:text-white"}`}
+            className={`rounded-lg px-4 py-3 text-left ${
+              tab === key
+                ? "bg-cyan-600 text-white"
+                : "text-slate-500 hover:bg-slate-800/60 hover:text-white"
+            }`}
           >
-            {label}
+            <span className="block text-sm font-semibold">{label}</span>
+            <span className="mt-0.5 block text-[10px] opacity-65">
+              {description}
+            </span>
           </button>
         ))}
       </nav>
-      <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border border-crypto-border bg-crypto-card px-4 py-3 text-xs text-slate-500">
-        <div className="flex rounded-md border border-crypto-border bg-crypto-bg p-1">
+
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex rounded-lg border border-crypto-border bg-crypto-card p-1 text-xs">
           <button
             type="button"
             data-testid="ai-scope-business"
             onClick={() => setDataScope("business")}
-            className={`rounded px-2.5 py-1 font-semibold ${dataScope === "business" ? "bg-cyan-600 text-white" : "text-slate-500"}`}
+            className={`rounded-md px-3 py-1.5 font-semibold ${
+              dataScope === "business"
+                ? "bg-cyan-600 text-white"
+                : "text-slate-500"
+            }`}
           >
             我的研发
           </button>
@@ -182,157 +215,241 @@ export function AIResearchLab() {
             type="button"
             data-testid="ai-scope-test"
             onClick={() => setDataScope("test")}
-            className={`rounded px-2.5 py-1 font-semibold ${dataScope === "test" ? "bg-amber-500/15 text-amber-200" : "text-slate-500"}`}
+            className={`rounded-md px-3 py-1.5 font-semibold ${
+              dataScope === "test"
+                ? "bg-amber-500/15 text-amber-200"
+                : "text-slate-500"
+            }`}
           >
             测试与验收
           </button>
         </div>
-        <span>
-          当前范围
-          <strong className="ml-1 font-medium text-slate-300">
-            {scopedStrategies.length} 个策略版本 · {scopedRuns.length} 条回测
-          </strong>
+        <span className="text-xs text-slate-600">
+          当前范围 {scopedStrategies.length} 个策略版本 · {scopedRuns.length} 条回测
         </span>
       </div>
+
       {dataScope === "test" ? (
         <div className="mb-5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
           当前仅查看测试与验收证据，不代表可投入业务运行。
         </div>
       ) : null}
-      {tab === "assistant" ? (
-        <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
+
+      {tab === "autonomous" ? (
+        <div className="grid gap-5 xl:grid-cols-[1fr_0.72fr]">
           <section className={`${panel} p-5`}>
-            <div className="flex items-center gap-2">
-              <Bot className="h-5 w-5 text-cyan-400" />
-              <h2 className="font-semibold text-white">研究问题模板</h2>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Bot className="h-5 w-5 text-cyan-400" />
+                  <h2 className="font-semibold text-white">AI自主交易控制台</h2>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  仅允许在模拟资金和人工硬风控信封内产生决策。
+                </p>
+              </div>
+              <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200">
+                PAPER ONLY
+              </span>
             </div>
-            <div className="mt-5 space-y-3">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                "这个因子的收益是否只来自某个行业暴露？",
-                "策略在样本外和不同成本假设下是否稳定？",
-                "当前股票池成员变化由哪些封存证据驱动？",
-                "Paper 拒单来自容量、现金还是数据陈旧？",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-lg border border-crypto-border bg-crypto-bg p-4 text-sm text-slate-300"
-                >
-                  {item}
+                [Cpu, "AI提供方", capabilities?.configured ? `Qwen · ${capabilities.model || "默认模型"}` : "未配置"],
+                [ShieldCheck, "风险信封", "人工约束 · 不可绕过"],
+                [Activity, "运行实例", "未接入实例接口"],
+                [Clock3, "最近决策", "暂无运行记录"],
+              ].map(([Icon, label, value]) => {
+                const MetricIcon = Icon as typeof Cpu;
+                return (
+                  <div key={String(label)} className="rounded-lg border border-crypto-border bg-crypto-bg p-3">
+                    <MetricIcon className="h-4 w-4 text-slate-500" />
+                    <div className="mt-3 text-[10px] text-slate-600">{String(label)}</div>
+                    <div className="mt-1 text-xs font-semibold text-slate-300">{String(value)}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-5 rounded-xl border border-dashed border-crypto-border bg-crypto-bg p-10 text-center">
+              <Bot className="mx-auto h-8 w-8 text-slate-700" />
+              <div className="mt-3 text-sm font-semibold text-slate-300">
+                暂无 AI 自主交易实例
+              </div>
+              <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-slate-600">
+                StockPro 当前没有持久化的 AI 决策实例与运行日志接口，因此这里不展示模拟实例、收益或“运行中”占位数据。
+              </p>
+              <button
+                type="button"
+                disabled
+                title="需要先接入 AI 实例、决策日志与硬风控接口"
+                className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-cyan-600 px-4 text-sm font-semibold text-white opacity-40"
+              >
+                <Play className="h-4 w-4" />
+                启动 AI 模拟实例
+              </button>
+            </div>
+          </section>
+          <section className={`${panel} p-5`}>
+            <SlidersHorizontal className="h-5 w-5 text-amber-400" />
+            <h2 className="mt-3 font-semibold text-white">硬风控边界</h2>
+            <div className="mt-4 space-y-3 text-xs">
+              {[
+                ["账户", "模拟资金，不连接券商"],
+                ["交易制度", "A 股 T+1 / 100 股整数手"],
+                ["数据", "仅使用已封存 PG 快照"],
+                ["自动晋级", "禁止，必须人工复核"],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between gap-4 border-b border-white/[0.05] pb-3">
+                  <span className="text-slate-600">{label}</span>
+                  <span className="text-right text-slate-300">{value}</span>
                 </div>
               ))}
             </div>
           </section>
+        </div>
+      ) : null}
+
+      {tab === "research" ? (
+        <div className="space-y-5">
           <section className={`${panel} p-5`}>
-            <ShieldCheck className="h-5 w-5 text-emerald-400" />
-            <h2 className="mt-3 font-semibold text-white">受控边界</h2>
-            <ul className="mt-4 space-y-3 text-xs leading-5 text-slate-500">
-              <li>只使用已确认的研究数据，并明确标记缺失状态。</li>
-              <li>生成代码必须先通过策略校验。</li>
-              <li>AI 候选不会自动进入模拟交易。</li>
-            </ul>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-cyan-400" />
+                  <h2 className="font-semibold text-white">新策略研发流水线</h2>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  提议方向 → 研究回测 → 结果审阅 → 模拟盘决策。
+                </p>
+              </div>
+              <Link
+                to="/strategy?view=create"
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-cyan-600 px-4 text-sm font-semibold text-white"
+              >
+                提交研究提议
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+            <div className="mt-6 grid gap-3 lg:grid-cols-4">
+              {[
+                ["01", "提议方向", scopedStrategies.length, "策略草案与不可变版本"],
+                ["02", "研究回测", fullRuns.length, "完整回测与固定快照"],
+                ["03", "回测结果", eligibleRuns.length, "通过模拟准入门槛"],
+                ["04", "模拟盘决策", null, "需在模拟盘人工创建"],
+              ].map(([step, label, count, note], index) => (
+                <div key={String(step)} className="relative rounded-xl border border-crypto-border bg-crypto-bg p-4">
+                  <div className="text-[10px] font-bold text-cyan-400">{String(step)}</div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <strong className="text-sm text-slate-200">{String(label)}</strong>
+                    {count === null ? (
+                      <span className="text-xs text-slate-600">未接入</span>
+                    ) : (
+                      <span className="font-mono text-lg font-bold text-white">{String(count)}</span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-[10px] text-slate-600">{String(note)}</p>
+                  {index < 3 ? (
+                    <ArrowRight className="absolute -right-3 top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 text-slate-700 lg:block" />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className={`${panel} overflow-hidden`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">
+              <div>
+                <h2 className="font-semibold text-white">候选与验证证据</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  只显示 PostgreSQL 中已有策略和回测记录，不生成演示候选。
+                </p>
+              </div>
+              <span className="text-xs text-slate-600">{eligibleRuns.length} 个可进入模拟评审</span>
+            </div>
+            <div className="divide-y divide-white/[0.04]">
+              {fullRuns.slice(0, 12).map((run) => (
+                <div key={run.id} className="grid gap-3 px-5 py-4 text-xs md:grid-cols-[minmax(0,1fr)_140px_140px_100px] md:items-center">
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold text-slate-200">{run.name}</div>
+                    <div className="mt-1 truncate font-mono text-[10px] text-slate-600">{run.id}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-600">研究窗口</div>
+                    <div className="mt-1 text-slate-400">{run.start_date} → {run.end_date}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-600">准入结论</div>
+                    <div className={`mt-1 font-semibold ${run.promotion_status === "paper_eligible" ? "text-emerald-300" : "text-amber-300"}`}>
+                      {run.promotion_status || "未记录"}
+                    </div>
+                  </div>
+                  <Link to={`/backtest/${run.id}`} className="inline-flex items-center justify-end gap-1 text-blue-300">
+                    查看证据
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              ))}
+              {loaded && !error && fullRuns.length === 0 ? (
+                <div className="p-12 text-center text-sm text-slate-600">
+                  当前范围暂无完整回测候选；先提交研究提议并完成回测。
+                </div>
+              ) : null}
+            </div>
           </section>
         </div>
       ) : null}
-      {tab === "new" ? (
-        <section className={`${panel} p-5`}>
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-cyan-400" />
-            <h2 className="font-semibold text-white">普通 Python 策略起点</h2>
-          </div>
-          <pre className="mt-5 overflow-x-auto rounded-lg border border-crypto-border bg-crypto-bg p-5 text-sm leading-6 text-slate-300">{`def initialize(context):\n    context.security = context.universe[0]\n\ndef handle_data(context, data):\n    # 在这里编写研究与交易逻辑\n    pass`}</pre>
-          <Link
-            to="/strategy?tab=code"
-            className="mt-4 inline-block rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white"
-          >
-            进入策略编辑器
-          </Link>
-        </section>
-      ) : null}
+
       {tab === "optimize" ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {scopedRuns
-            .filter((run) => run.run_mode === "full")
-            .slice(0, 12)
-            .map((run) => (
-              <article key={run.id} className={`${panel} p-5`}>
-                <Beaker className="h-5 w-5 text-violet-400" />
-                <h2 className="mt-3 truncate font-semibold text-slate-100">
-                  {run.name}
-                </h2>
-                {run.data_purpose !== "user" && run.data_purpose ? (
-                  <span className="mt-2 inline-block rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-300">
-                    {run.data_purpose === "acceptance" ? "验收数据" : "种子数据"}
-                  </span>
-                ) : null}
-                <p className="mt-2 text-xs text-slate-500">
-                  {run.start_date} → {run.end_date}
+        <div className="space-y-5">
+          <section className={`${panel} p-5`}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Beaker className="h-5 w-5 text-violet-400" />
+                  <h2 className="font-semibold text-white">现有策略优化</h2>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  从完整回测证据识别待复核策略；不会自动改写版本或启动模拟盘。
                 </p>
-                <div className="mt-4 flex items-center justify-between text-xs">
-                  <span
-                    className={
-                      run.promotion_status === "paper_eligible"
-                        ? "text-emerald-300"
-                        : "text-amber-300"
-                    }
-                  >
-                    {run.promotion_status}
-                  </span>
-                  <Link to={`/backtest/${run.id}`} className="text-blue-300">
-                    查看证据 →
-                  </Link>
-                </div>
-              </article>
-            ))}
-          {!busy &&
-          !error &&
-          scopedRuns.filter((run) => run.run_mode === "full").length === 0 ? (
-            <div
-              className={`${panel} p-12 text-center text-sm text-slate-600 md:col-span-2 xl:col-span-3`}
-            >
-              暂无完整回测候选
+              </div>
+              <span className="rounded-md border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-[10px] text-violet-200">
+                HUMAN REVIEW
+              </span>
             </div>
-          ) : null}
-        </div>
-      ) : null}
-      {tab === "candidates" ? (
-        <section className={`${panel} overflow-hidden`}>
-          <div className="border-b border-crypto-border px-5 py-4">
-            <h2 className="font-semibold text-white">候选策略版本</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              仅展示已有版本；候选状态不代表投资适用性。
-            </p>
-          </div>
-          <div className="divide-y divide-white/[0.04]">
-            {scopedStrategies.slice(0, 30).map((strategy) => (
-              <div
-                key={strategy.id}
-                className="flex items-center justify-between gap-4 px-5 py-4"
-              >
-                <div>
-                  <div className="font-semibold text-slate-200">
-                    {strategy.name}
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {fullRuns.slice(0, 12).map((run) => (
+                <article key={run.id} className="rounded-xl border border-crypto-border bg-crypto-bg p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="line-clamp-2 text-sm font-semibold text-slate-100">{run.name}</h3>
+                    {run.promotion_status === "paper_eligible" ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+                    ) : (
+                      <FlaskConical className="h-4 w-4 shrink-0 text-amber-400" />
+                    )}
                   </div>
-                  {strategy.data_purpose !== "user" && strategy.data_purpose ? (
-                    <div className="mt-1 text-[10px] text-amber-300">
-                      {strategy.data_purpose === "acceptance" ? "验收数据" : "种子数据"}
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                    <div className="rounded-lg border border-crypto-border p-2">
+                      <div className="text-slate-600">数据快照</div>
+                      <div className="mt-1 truncate text-slate-300">#{run.dataset_snapshot_id ?? "未绑定"}</div>
                     </div>
-                  ) : null}
-                  <div className="mt-1 text-xs text-slate-600">
-                    Strategy #{strategy.id}
+                    <div className="rounded-lg border border-crypto-border p-2">
+                      <div className="text-slate-600">策略版本</div>
+                      <div className="mt-1 truncate text-slate-300">{run.strategy_version_id || "未绑定"}</div>
+                    </div>
                   </div>
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-600">{dateTime(run.finished_at ?? run.created_at)}</span>
+                    <Link to={`/backtest/${run.id}`} className="text-xs font-semibold text-blue-300">诊断证据 →</Link>
+                  </div>
+                </article>
+              ))}
+              {loaded && !error && fullRuns.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-crypto-border p-12 text-center text-sm text-slate-600 md:col-span-2 xl:col-span-3">
+                  暂无可诊断的完整回测记录。
                 </div>
-                <Link to="/strategy" className="text-xs text-blue-300">
-                  研究版本 →
-                </Link>
-              </div>
-            ))}
-            {!busy && !error && scopedStrategies.length === 0 ? (
-              <div className="p-12 text-center text-sm text-slate-600">
-                暂无候选策略版本
-              </div>
-            ) : null}
-          </div>
-        </section>
+              ) : null}
+            </div>
+          </section>
+        </div>
       ) : null}
     </div>
   );
