@@ -38,6 +38,8 @@ import type {
   PaperRuntimeInstance,
 } from "../types";
 import { formatSymbolLabel } from "../utils/symbolDisplay";
+import { marketAdverseToneClass, marketToneClass } from "../utils/marketColors";
+import { COLOR_SCHEMES, useSettingsStore } from "../stores/useSettingsStore";
 
 type Row = Record<string, unknown>;
 type Action = "start" | "pause" | "resume" | "stop";
@@ -263,6 +265,8 @@ export function PaperRuntimeInstanceDetail({
   onAction: (action: Action) => void | Promise<void>;
   onRunCycle: (tradeDate: string) => void | Promise<void>;
 }) {
+  const colorScheme = useSettingsStore((state) => state.colorScheme);
+  const { upColor, downColor } = COLOR_SCHEMES[colorScheme];
   const [recordTab, setRecordTab] = useState<"trades" | "events">("trades");
   const [symbol, setSymbol] = useState("");
   const [kline, setKline] = useState<PaperKlineSnapshot | null>(null);
@@ -394,16 +398,16 @@ export function PaperRuntimeInstanceDetail({
             asNumber(item.high),
           ]),
           itemStyle: {
-            color: "#ef4444",
-            color0: "#22c55e",
-            borderColor: "#ef4444",
-            borderColor0: "#22c55e",
+            color: upColor,
+            color0: downColor,
+            borderColor: upColor,
+            borderColor0: downColor,
           },
           markPoint: { symbolSize: 36, data: markers },
         },
       ],
     };
-  }, [kline, symbol, trades]);
+  }, [downColor, kline, symbol, trades, upColor]);
 
   const equityOption = useMemo(
     () => ({
@@ -569,13 +573,13 @@ export function PaperRuntimeInstanceDetail({
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-9">
         <Metric label="账户总额" value={equity === null ? "--" : `¥${number(equity)}`} note={equity === null ? "尚无权益快照" : `快照 ${latestEquity?.trade_date ?? "--"}`} tone="text-blue-300" icon={<CircleDollarSign className="h-4 w-4" />} />
-        <Metric label="总盈亏" value={money(pnl)} note={pnl === null ? "缺少初始资金或权益" : "权益 - 初始资金"} tone={pnl !== null && pnl < 0 ? "text-red-300" : "text-emerald-300"} icon={<TrendingUp className="h-4 w-4" />} />
-        <Metric label="收益率" value={pct(returnPct)} note={returnPct === null ? "当前不可计算" : "模拟账户收益"} tone={returnPct !== null && returnPct < 0 ? "text-red-300" : "text-emerald-300"} icon={<BarChart3 className="h-4 w-4" />} />
+        <Metric label="总盈亏" value={money(pnl)} note={pnl === null ? "缺少初始资金或权益" : "权益 - 初始资金"} tone={marketToneClass(pnl)} icon={<TrendingUp className="h-4 w-4" />} />
+        <Metric label="收益率" value={pct(returnPct)} note={returnPct === null ? "当前不可计算" : "模拟账户收益"} tone={marketToneClass(returnPct)} icon={<BarChart3 className="h-4 w-4" />} />
         <Metric label="Sharpe" value="--" note="Paper API 尚无日收益序列统计" icon={<Gauge className="h-4 w-4" />} />
         <Metric label="胜率" value={pct(winRate, 1)} note={winRate === null ? "尚无可识别的已平仓盈亏" : `${closedPnls.length} 笔已平仓样本`} icon={<Activity className="h-4 w-4" />} />
         <Metric label="盈亏因子" value={profitFactor === null ? "--" : number(profitFactor)} note={profitFactor === null ? "尚无完整盈利/亏损样本" : "毛利 / 毛损"} icon={<TrendingUp className="h-4 w-4" />} />
         <Metric label="成交数" value={String(tradeCount)} note="PG 模拟成交记录" tone="text-blue-300" icon={<ListTree className="h-4 w-4" />} />
-        <Metric label="最大回撤" value={drawdown === null ? "--" : pct(drawdown * 100)} note={drawdown === null ? "尚无回撤快照" : "Paper 权益快照"} tone="text-red-300" icon={<TrendingDown className="h-4 w-4" />} />
+        <Metric label="最大回撤" value={drawdown === null ? "--" : pct(drawdown * 100)} note={drawdown === null ? "尚无回撤快照" : "Paper 权益快照"} tone={marketAdverseToneClass(drawdown)} icon={<TrendingDown className="h-4 w-4" />} />
         <Metric label="运行时长" value={runtimeDuration(instance)} note="实例开始至最后心跳" icon={<Clock3 className="h-4 w-4" />} />
       </div>
 
@@ -619,7 +623,7 @@ export function PaperRuntimeInstanceDetail({
                 <thead><tr className="border-b border-crypto-border text-left text-slate-500"><th className="py-2">股票</th><th className="py-2 text-right">数量</th><th className="py-2 text-right">可用</th><th className="py-2 text-right">成本</th><th className="py-2 text-right">最新价</th><th className="py-2 text-right">市值</th><th className="py-2 text-right">浮动盈亏</th></tr></thead>
                 <tbody>{positions.map((row, index) => {
                   const unrealized = asNumber(row.unrealized_pnl ?? row.pnl);
-                  return <tr key={text(row.id, `${row.symbol}-${index}`)} className="border-b border-white/[0.04] text-slate-300"><td className="py-2.5 font-mono">{formatSymbolLabel(text(row.symbol), text(row.name, ""))}</td><td className="py-2.5 text-right">{number(row.quantity, 0)}</td><td className="py-2.5 text-right">{number(row.available_quantity ?? row.sellable_quantity, 0)}</td><td className="py-2.5 text-right">{number(row.avg_price ?? row.cost_price)}</td><td className="py-2.5 text-right">{number(row.last_price)}</td><td className="py-2.5 text-right">{number(row.market_value)}</td><td className={clsx("py-2.5 text-right font-semibold", unrealized !== null && unrealized < 0 ? "text-red-300" : "text-emerald-300")}>{money(unrealized)}</td></tr>;
+                  return <tr key={text(row.id, `${row.symbol}-${index}`)} className="border-b border-white/[0.04] text-slate-300"><td className="py-2.5 font-mono">{formatSymbolLabel(text(row.symbol), text(row.name, ""))}</td><td className="py-2.5 text-right">{number(row.quantity, 0)}</td><td className="py-2.5 text-right">{number(row.available_quantity ?? row.sellable_quantity, 0)}</td><td className="py-2.5 text-right">{number(row.avg_price ?? row.cost_price)}</td><td className="py-2.5 text-right">{number(row.last_price)}</td><td className="py-2.5 text-right">{number(row.market_value)}</td><td className={clsx("py-2.5 text-right font-semibold", marketToneClass(unrealized))}>{money(unrealized)}</td></tr>;
                 })}</tbody>
               </table>
             </div>

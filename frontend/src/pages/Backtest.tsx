@@ -52,6 +52,7 @@ import type {
   BacktestRunRequestV1,
 } from '../types';
 import { orderTypeLabel, sideLabel, statusLabel } from '../utils/presentation';
+import { marketAdverseToneClass, marketToneClass } from '../utils/marketColors';
 
 const panel = 'rounded-2xl border border-crypto-border bg-crypto-card';
 const input = 'h-11 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-gray-200 outline-none transition focus:border-blue-500/70';
@@ -175,7 +176,7 @@ function BacktestDetail({ runId }: { runId: string }) {
       </div>
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {core.map((code) => { const item = metricMap[code]; return <div key={code} className={`${panel} p-4`}><div className="text-xs text-gray-500">{metricLabels[code]}</div><div className={`mt-2 text-xl font-bold ${code === 'maximum_drawdown' ? 'text-red-300' : 'text-white'}`}>{formatValue(item?.metric_value, item?.unit)}</div>{item?.metric_value == null ? <div className="mt-2 text-[11px] text-amber-500/80">{item?.null_reason ?? '未定义'}</div> : <div className="mt-2 text-[11px] text-gray-600">{item.calculation_version}</div>}</div>; })}
+        {core.map((code) => { const item = metricMap[code]; const directional = ['strategy_return', 'annualized_return', 'benchmark_return', 'excess_return'].includes(code); const tone = code === 'maximum_drawdown' ? marketAdverseToneClass(item?.metric_value) : directional ? marketToneClass(item?.metric_value, 'text-gray-400') : 'text-white'; return <div key={code} className={`${panel} p-4`}><div className="text-xs text-gray-500">{metricLabels[code]}</div><div className={`mt-2 text-xl font-bold ${tone}`}>{formatValue(item?.metric_value, item?.unit)}</div>{item?.metric_value == null ? <div className="mt-2 text-[11px] text-amber-500/80">{item?.null_reason ?? '未定义'}</div> : <div className="mt-2 text-[11px] text-gray-600">{item.calculation_version}</div>}</div>; })}
       </div>
 
       <div className={`${panel} mb-5 flex overflow-x-auto px-2`} role="tablist">
@@ -187,7 +188,7 @@ function BacktestDetail({ runId }: { runId: string }) {
         <section className={`${panel} p-5`}><h2 className="text-base font-semibold text-white">可复现实验凭证</h2><dl className="mt-5 space-y-4 text-sm">{[
           ['研究数据', data.run.dataset_snapshot_id ? '已绑定封存快照' : '未绑定'], ['股票范围', data.run.universe_snapshot_id ? '已绑定固定范围' : '未绑定'], ['因子输入', data.run.factor_snapshot_id ? '已绑定封存因子' : '未绑定'], ['成本模型', data.run.cost_model_name ?? '未绑定'], ['研究协议', data.run.protocol_name ?? '未绑定'], ['基准', data.run.benchmark_code], ['频率', '日频 / A股收盘信号次日成交'],
         ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-4 border-b border-white/[0.04] pb-3"><dt className="text-gray-500">{label}</dt><dd className="text-right font-medium text-gray-300">{value}</dd></div>)}</dl></section>
-        <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2><div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 text-sm font-semibold ${item.return === null || item.return === undefined ? 'text-gray-500' : item.return >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div></section>
+        <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2><div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 text-sm font-semibold ${marketToneClass(item.return, 'text-gray-400')}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div></section>
       </div>}
 
       {tab === '收益分析' && <section className={`${panel} overflow-hidden`}><GenericTable rows={data.metrics as unknown as Array<Record<string, unknown>>} columns={[["metric_code", "指标"], ["metric_value", "数值"], ["unit", "单位"], ["calculation_version", "计算版本"], ["input_frequency", "频率"], ["null_reason", "未定义原因"]]} /></section>}
@@ -604,9 +605,9 @@ export function Backtest() {
                   </div>
                   <div className="grid grid-cols-5 gap-2">
                     {[
-                      ['收益', formatValue(runMetric(run, 'strategy_return'), 'ratio'), 'text-emerald-300'],
+                      ['收益', formatValue(runMetric(run, 'strategy_return'), 'ratio'), marketToneClass(runMetric(run, 'strategy_return'))],
                       ['夏普', formatValue(runMetric(run, 'sharpe')), 'text-gray-200'],
-                      ['回撤', formatValue(runMetric(run, 'maximum_drawdown'), 'ratio'), 'text-red-300'],
+                      ['回撤', formatValue(runMetric(run, 'maximum_drawdown'), 'ratio'), marketAdverseToneClass(runMetric(run, 'maximum_drawdown'))],
                       ['胜率', formatValue(runMetric(run, 'win_rate'), 'ratio'), 'text-gray-200'],
                       ['交易', formatValue(tradeCount(run), 'count'), 'text-blue-300'],
                     ].map(([label, value, tone]) => <div key={label} className="min-w-0 text-center"><div className={`truncate font-mono text-sm font-semibold ${tone}`}>{value}</div><div className="mt-1 text-[10px] text-gray-600">{label}</div></div>)}

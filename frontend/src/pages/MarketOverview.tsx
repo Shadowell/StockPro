@@ -17,6 +17,8 @@ import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
 import { useStore } from '../stores/useStore';
 import { getTranslation, TranslationKey } from '../lib/i18n';
+import { COLOR_SCHEMES, useSettingsStore } from '../stores/useSettingsStore';
+import { marketToneClass } from '../utils/marketColors';
 
 // Filter options for concept list
 type ConceptFilterOption = 'all' | '1' | '2' | '3' | '5' | '8';
@@ -70,6 +72,8 @@ const getCacheTTL = (): number => {
 
 export const MarketOverviewContent: React.FC<MarketOverviewContentProps> = ({ embedded = false }) => {
   const { selectStock, selectedStock, language, setLanguage } = useStore();
+  const colorScheme = useSettingsStore((state) => state.colorScheme);
+  const { upColor, downColor } = COLOR_SCHEMES[colorScheme];
   const t = useCallback((key: TranslationKey) => getTranslation(language, key), [language]);
 
   const today = useMemo(() => {
@@ -427,7 +431,7 @@ export const MarketOverviewContent: React.FC<MarketOverviewContentProps> = ({ em
           name: 'K',
           type: 'candlestick',
           data: ohlc,
-          itemStyle: { color: '#ef232a', color0: '#14b143', borderColor: '#ef232a', borderColor0: '#14b143' },
+          itemStyle: { color: upColor, color0: downColor, borderColor: upColor, borderColor0: downColor },
         },
         {
           name: 'Volume',
@@ -438,13 +442,13 @@ export const MarketOverviewContent: React.FC<MarketOverviewContentProps> = ({ em
           itemStyle: {
             color: (params: { dataIndex: number }) => {
               const isUp = volumes[params.dataIndex][2] > 0;
-              return isUp ? '#ef232a' : '#14b143';
+              return isUp ? upColor : downColor;
             },
           },
         },
       ],
     };
-  }, [conceptIntraday, t]);
+  }, [conceptIntraday, downColor, t, upColor]);
 
   const ladderMeta = useMemo(() => {
     if (!ladder?.date) return null;
@@ -709,10 +713,10 @@ export const MarketOverviewContent: React.FC<MarketOverviewContentProps> = ({ em
                           >
                             <td className="px-4 py-3 text-gray-500 font-mono text-xs min-w-[60px]">{c.rank}</td>
                             <td className="px-4 py-3 font-bold text-gray-100 group-hover:text-blue-400 transition-colors min-w-[120px]">{c.name}</td>
-                            <td className={clsx("px-4 py-3 text-right font-mono font-black min-w-[80px]", c.change_percent >= 0 ? "text-[#ef4444]" : "text-[#10b981]")}>
+                            <td className={clsx("px-4 py-3 text-right font-mono font-black min-w-[80px]", marketToneClass(c.change_percent))}>
                               {c.change_percent > 0 ? '+' : ''}{c.change_percent.toFixed(2)}%
                             </td>
-                            <td className={clsx("px-4 py-3 text-right font-mono text-xs min-w-[80px]", c.net_inflow >= 0 ? "text-red-400" : "text-green-400")}>
+                            <td className={clsx("px-4 py-3 text-right font-mono text-xs min-w-[80px]", marketToneClass(c.net_inflow))}>
                               {formatFlowYi(c.net_inflow)}
                             </td>
                           </tr>
@@ -866,7 +870,7 @@ export const MarketOverviewContent: React.FC<MarketOverviewContentProps> = ({ em
                                         </div>
                                       </td>
                                       <td className="px-4 py-3 text-right font-bold text-gray-200 min-w-[70px]">{Number(s.price || 0).toFixed(2)}</td>
-                                      <td className={clsx("px-4 py-3 text-right font-black min-w-[70px]", Number(s.change_percent || 0) >= 0 ? "text-[#ef4444]" : "text-[#10b981]")}>
+                                      <td className={clsx("px-4 py-3 text-right font-black min-w-[70px]", marketToneClass(s.change_percent))}>
                                         {Number(s.change_percent || 0) > 0 ? '+' : ''}{Number(s.change_percent || 0).toFixed(2)}%
                                       </td>
                                       <td className="px-4 py-3 text-right text-gray-400 min-w-[80px]">{formatFlowYi(Number(s.amount || 0) / 100000000)}</td>
@@ -946,7 +950,7 @@ export const MarketOverviewContent: React.FC<MarketOverviewContentProps> = ({ em
                             <td className="px-4 py-3 text-gray-500 font-mono text-xs min-w-[60px]">{s.rank}</td>
                             <td className="px-4 py-3 font-bold text-gray-100 group-hover:text-blue-400 transition-colors min-w-[120px]">{s.name}</td>
                             <td className="px-4 py-3 text-right font-mono text-xs text-orange-400 min-w-[60px]">{Number(s.hot || 0).toFixed(0)}</td>
-                            <td className={clsx("px-4 py-3 text-right font-mono font-black min-w-[80px]", Number(s.change_percent || 0) >= 0 ? "text-[#ef4444]" : "text-[#10b981]")}>
+                            <td className={clsx("px-4 py-3 text-right font-mono font-black min-w-[80px]", marketToneClass(s.change_percent))}>
                               {Number(s.change_percent || 0) > 0 ? '+' : ''}{Number(s.change_percent || 0).toFixed(2)}%
                             </td>
                           </tr>
@@ -1040,7 +1044,7 @@ export const MarketOverviewContent: React.FC<MarketOverviewContentProps> = ({ em
                             <div className="text-right">
                               <div className={clsx(
                                 "text-sm font-black",
-                                it.change_percent >= 0 ? "text-red-500" : "text-green-500"
+                                marketToneClass(it.change_percent)
                               )}>
                                 {it.change_percent > 0 ? '+' : ''}{it.change_percent.toFixed(2)}%
                               </div>

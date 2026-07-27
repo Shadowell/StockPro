@@ -5,6 +5,7 @@ import { analyzeStockByAI, getDailyChart, getIntradayChart, searchStocks, getSto
 import { AIStockAnalyzeResponse, DailyChartData, IntradayChartData, StockCandidate, StockFundamentals } from '@/types';
 import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
+import { COLOR_SCHEMES, useSettingsStore } from '@/stores/useSettingsStore';
 
 type TooltipAxisParam = { dataIndex?: number };
 type RecordValue = Record<string, unknown>;
@@ -19,9 +20,9 @@ const asStringArray = (value: unknown): string[] => (
 // 评分等级组件
 const RatingBadge: React.FC<{ rating: 'buy' | 'hold' | 'sell' | 'neutral' }> = ({ rating }) => {
   const configs = {
-    buy: { color: 'bg-red-500/20 text-red-400 border-red-500/30', icon: ArrowUpRight, label: '建议买入' },
+    buy: { color: 'bg-up text-up border-up', icon: ArrowUpRight, label: '建议买入' },
     hold: { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', icon: Minus, label: '建议持有' },
-    sell: { color: 'bg-green-500/20 text-green-400 border-green-500/30', icon: ArrowDownRight, label: '建议卖出' },
+    sell: { color: 'bg-down text-down border-down', icon: ArrowDownRight, label: '建议卖出' },
     neutral: { color: 'bg-gray-500/20 text-gray-400 border-gray-500/30', icon: HelpCircle, label: '观望' },
   };
   const config = configs[rating];
@@ -114,6 +115,8 @@ const AnalysisDimension: React.FC<{
 
 export const AIStockAnalysis: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const colorScheme = useSettingsStore((state) => state.colorScheme);
+  const { upColor, downColor } = COLOR_SCHEMES[colorScheme];
 
   const [symbol, setSymbol] = useState(searchParams.get('symbol') || '');
   const [loading, setLoading] = useState(false);
@@ -344,7 +347,7 @@ export const AIStockAnalysis: React.FC = () => {
       ],
       dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], start: 50, end: 100 }],
       series: [
-        { name: 'K线', type: 'candlestick', data, itemStyle: { color: '#ef4444', color0: '#22c55e', borderColor: '#ef4444', borderColor0: '#22c55e' } },
+        { name: 'K线', type: 'candlestick', data, itemStyle: { color: upColor, color0: downColor, borderColor: upColor, borderColor0: downColor } },
         {
           name: 'MA5',
           type: 'line',
@@ -383,11 +386,11 @@ export const AIStockAnalysis: React.FC = () => {
           xAxisIndex: 1,
           yAxisIndex: 1,
           data: volumes.map(v => v[1]),
-          itemStyle: { color: (params: { dataIndex: number }) => volumes[params.dataIndex][2] > 0 ? 'rgba(239, 68, 68, 0.5)' : 'rgba(34, 197, 94, 0.5)' },
+          itemStyle: { color: (params: { dataIndex: number }) => volumes[params.dataIndex][2] > 0 ? upColor : downColor },
         },
       ],
     };
-  }, [dailyData]);
+  }, [dailyData, downColor, upColor]);
 
   // 分时图配置
   const intradayOption = useMemo(() => {
@@ -401,7 +404,7 @@ export const AIStockAnalysis: React.FC = () => {
     const prices = intradayData.map(it => it.price);
     const preClose = prices[0];
     const isUp = prices[prices.length - 1] >= preClose;
-    const lineColor = isUp ? '#ef4444' : '#22c55e';
+    const lineColor = isUp ? upColor : downColor;
 
     return {
       tooltip: { trigger: 'axis' },
@@ -435,7 +438,7 @@ export const AIStockAnalysis: React.FC = () => {
         },
       }],
     };
-  }, [intradayData]);
+  }, [downColor, intradayData, upColor]);
 
   return (
     <div className="flex flex-col gap-4 h-full">
