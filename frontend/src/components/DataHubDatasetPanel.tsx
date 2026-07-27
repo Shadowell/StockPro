@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Database, RefreshCw, Link2, KeyRound, Clock3, AlertTriangle, CheckCircle2, Play } from 'lucide-react';
 import { DataHubDataset, DataHubDatasetFreshness, createDataHubJob, getDataHubDatasets, getDataHubDatasetFreshness } from '@/api/client';
+import { statusLabel as runtimeStatusLabel } from '@/utils/presentation';
 
 const statusBadgeClass = (status: string): string => {
   if (status === 'green') return 'bg-green-500/20 text-green-400 border-green-500/30';
@@ -344,14 +345,14 @@ export const DataHubDatasetPanel: React.FC = () => {
                     {freshness.recent_jobs.map((job) => (
                       <div key={job.job_key} className="rounded border border-slate-800 bg-slate-900/60 px-3 py-2">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs text-slate-400">{job.job_key}</div>
+                          <div className="text-xs text-slate-400">任务编号 {job.job_key.slice(0, 12)}</div>
                           <span className={`px-2 py-0.5 rounded border text-[11px] font-bold ${statusBadgeClass(job.status.includes('success') ? 'green' : job.status.includes('fail') ? 'red' : 'yellow')}`}>
-                            {job.status}
+                            {runtimeStatusLabel(job.status)}
                           </span>
                         </div>
                         <div className="text-xs text-slate-300 mt-1">{job.message || '-'}</div>
                         <div className="text-[11px] text-slate-500 mt-1">
-                          progress: {Math.round(job.progress || 0)}% · created: {job.created_at || '-'}
+                          进度：{Math.round(job.progress || 0)}% · 创建时间：{job.created_at || '-'}
                         </div>
                       </div>
                     ))}

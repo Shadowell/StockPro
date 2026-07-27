@@ -225,7 +225,7 @@ export function StockPools() {
         ?? config.dataset_snapshots[0];
     const marketSnapshot = needsMarket && market?.snapshot?.trade_date === tradeDate ? market.snapshot : null;
     let reason = "";
-    if (!datasetSnapshot || !universeSnapshot || !tradeDate) reason = "缺少兼容的数据或 Universe 快照";
+    if (!datasetSnapshot || !universeSnapshot || !tradeDate) reason = "缺少兼容的数据或股票范围快照";
     else if (needsFactor && !factorSnapshot) reason = "缺少已封存因子快照";
     else if (needsMarket && !marketSnapshot) reason = "缺少同交易日市场证据快照";
     return {
@@ -678,7 +678,7 @@ export function StockPools() {
               {creationType === "screener" ? (
                 <>
                   <label className="text-xs text-slate-500 md:col-span-2">
-                    基础候选证券（留空则扫描历史 Universe）
+                    基础候选证券（留空则扫描历史股票范围）
                     <input
                       value={symbols}
                       onChange={(event) => setSymbols(event.target.value)}
@@ -778,18 +778,18 @@ export function StockPools() {
                   selectedPool?.latest_trade_date ?? "--",
                 ],
                 [
-                  "数据 / Universe",
+                  "数据 / 股票范围",
                   selectedPool?.latest_dataset_snapshot_id && selectedPool.latest_universe_snapshot_id
-                    ? `DS #${selectedPool.latest_dataset_snapshot_id} / U #${selectedPool.latest_universe_snapshot_id}`
+                    ? `数据第 ${selectedPool.latest_dataset_snapshot_id} 版 / 范围第 ${selectedPool.latest_universe_snapshot_id} 版`
                     : "--",
                 ],
                 [
                   selectedPool?.pool_type === "factor" ? "因子快照" : ["sector", "event"].includes(selectedPool?.pool_type ?? "") ? "市场证据" : "候选来源",
                   selectedPool?.pool_type === "factor"
-                    ? selectedPool.latest_factor_snapshot_id ? `Factor #${selectedPool.latest_factor_snapshot_id}` : "未绑定"
+                    ? selectedPool.latest_factor_snapshot_id ? `因子第 ${selectedPool.latest_factor_snapshot_id} 版` : "未绑定"
                     : ["sector", "event"].includes(selectedPool?.pool_type ?? "")
-                      ? selectedPool?.latest_market_evidence_snapshot_id ? `Market #${selectedPool.latest_market_evidence_snapshot_id}` : "未绑定"
-                      : "规则候选 / 历史 Universe",
+                      ? selectedPool?.latest_market_evidence_snapshot_id ? `市场证据第 ${selectedPool.latest_market_evidence_snapshot_id} 版` : "未绑定"
+                      : "规则候选 / 历史股票范围",
                 ],
               ].map(([label, value]) => (
                 <div
@@ -909,9 +909,9 @@ export function StockPools() {
                       {snapshot.member_count}
                     </td>
                     <td className="px-4 py-4 text-xs text-slate-500">
-                      数据 #{snapshot.dataset_snapshot_id}
+                      数据第 {snapshot.dataset_snapshot_id} 版
                       <br />
-                      Universe #{snapshot.universe_snapshot_id}
+                      股票范围第 {snapshot.universe_snapshot_id} 版
                       <br />
                       {snapshot.factor_snapshot_id
                         ? `因子 #${snapshot.factor_snapshot_id}`

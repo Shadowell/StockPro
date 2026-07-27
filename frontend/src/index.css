@@ -296,6 +296,10 @@ body {
   font-variant-numeric: tabular-nums slashed-zero;
 }
 
+.stockpro-page-viewport .font-mono:not(pre):not(code):not(textarea) {
+  font-family: inherit;
+}
+
 .stockpro-page-viewport .space-y-5 > :not([hidden]) ~ :not([hidden]) {
   margin-top: 14px;
 }

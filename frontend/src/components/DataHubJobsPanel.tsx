@@ -11,6 +11,7 @@ import {
   DataDevTask,
 } from '@/api/client';
 import { Play, RefreshCw, RotateCcw, StopCircle, AlertCircle, CheckCircle2, Clock3, X } from 'lucide-react';
+import { statusLabel } from '@/utils/presentation';
 
 type JobAction =
   | 'import_daily_data'
@@ -522,15 +523,15 @@ export const DataHubJobsPanel: React.FC = () => {
                 <div key={job.job_key} className="rounded border border-slate-800 bg-slate-900/60 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <div className="text-xs text-slate-500">{job.job_key}</div>
+                      <div className="text-xs text-slate-500">任务编号 {job.job_key.slice(0, 12)}</div>
                       <div className="text-sm text-slate-200">{actionLabel[job.action as JobAction] || job.action}</div>
                     </div>
                     <span className={`px-2 py-0.5 rounded border text-[11px] font-bold ${badgeClass(job.status)}`}>
-                      {job.status}
+                      {statusLabel(job.status)}
                     </span>
                   </div>
                   <div className="mt-2 text-xs text-slate-400">
-                    progress {Math.round(job.progress || 0)}% · {job.message || '-'}
+                    进度 {Math.round(job.progress || 0)}% · {job.message || '-'}
                   </div>
                   {extractJobDatasets(job).length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">

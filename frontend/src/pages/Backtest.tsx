@@ -51,6 +51,7 @@ import type {
   BacktestRun,
   BacktestRunRequestV1,
 } from '../types';
+import { orderTypeLabel, sideLabel, statusLabel } from '../utils/presentation';
 
 const panel = 'rounded-2xl border border-crypto-border bg-crypto-card';
 const input = 'h-11 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-gray-200 outline-none transition focus:border-blue-500/70';
@@ -80,7 +81,7 @@ function StatusBadge({ run }: { run: BacktestRun }) {
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${success ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : run.status === 'failed' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
       {success ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
-      {run.run_mode === 'quick' ? '快速预检' : '完整回测'} · {run.status}
+      {run.run_mode === 'quick' ? '快速预检' : '完整回测'} · {statusLabel(run.status)}
       {run.data_purpose !== 'user' && run.data_purpose
         ? ` · ${run.data_purpose === 'acceptance' ? '验收数据' : '种子数据'}`
         : ''}
@@ -94,11 +95,17 @@ function Field({ label, children, hint }: { label: string; children: React.React
 
 function GenericTable({ rows, columns }: { rows: Array<Record<string, unknown>>; columns: Array<[string, string]> }) {
   if (!rows.length) return <div className="flex min-h-48 items-center justify-center text-sm text-gray-600">暂无记录</div>;
+  const displayValue = (key: string, current: unknown) => {
+    if (key === 'status' || key === 'level') return statusLabel(current);
+    if (key === 'side') return sideLabel(current);
+    if (key === 'order_type' || key === 'intent_type') return orderTypeLabel(current);
+    return typeof current === 'object' ? JSON.stringify(current) : String(current ?? '--');
+  };
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[820px] text-left text-sm">
         <thead><tr className="border-b border-crypto-border text-xs uppercase tracking-wider text-gray-500">{columns.map(([key, label]) => <th key={key} className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead>
-        <tbody>{rows.map((row, index) => <tr key={String(row.id ?? `${index}`)} className="border-b border-white/[0.04] text-gray-300 hover:bg-white/[0.02]">{columns.map(([key]) => <td key={key} className="max-w-[360px] px-4 py-3 font-mono text-xs"><span className="line-clamp-2">{typeof row[key] === 'object' ? JSON.stringify(row[key]) : String(row[key] ?? '--')}</span></td>)}</tr>)}</tbody>
+        <tbody>{rows.map((row, index) => <tr key={String(row.id ?? `${index}`)} className="border-b border-white/[0.04] text-gray-300 hover:bg-white/[0.02]">{columns.map(([key]) => <td key={key} className="max-w-[360px] px-4 py-3 text-xs"><span className="line-clamp-2">{displayValue(key, row[key])}</span></td>)}</tr>)}</tbody>
       </table>
     </div>
   );
@@ -178,7 +185,7 @@ function BacktestDetail({ runId }: { runId: string }) {
       {tab === '总览' && <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
         <section className={`${panel} p-5`}><div className="mb-3 flex items-center gap-2 text-base font-semibold text-white"><BarChart3 className="h-5 w-5 text-blue-400" />净值与基准</div><ReactECharts option={chartOption} style={{ height: 420 }} /></section>
         <section className={`${panel} p-5`}><h2 className="text-base font-semibold text-white">可复现实验凭证</h2><dl className="mt-5 space-y-4 text-sm">{[
-          ['数据快照', `#${data.run.dataset_snapshot_id}`], ['Universe', `#${data.run.universe_snapshot_id}`], ['因子快照', data.run.factor_snapshot_id ? `#${data.run.factor_snapshot_id}` : '未绑定'], ['成本模型', data.run.cost_model_name ?? data.run.cost_model_id], ['研究协议', data.run.protocol_name ?? '未绑定'], ['基准', data.run.benchmark_code], ['频率', '1d / A股收盘信号次日成交'],
+          ['数据快照', `第 ${data.run.dataset_snapshot_id} 版`], ['股票范围', `第 ${data.run.universe_snapshot_id} 版`], ['因子快照', data.run.factor_snapshot_id ? `第 ${data.run.factor_snapshot_id} 版` : '未绑定'], ['成本模型', data.run.cost_model_name ?? data.run.cost_model_id], ['研究协议', data.run.protocol_name ?? '未绑定'], ['基准', data.run.benchmark_code], ['频率', '日频 / A股收盘信号次日成交'],
         ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-4 border-b border-white/[0.04] pb-3"><dt className="text-gray-500">{label}</dt><dd className="text-right font-medium text-gray-300">{value}</dd></div>)}</dl></section>
         <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2><div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 text-sm font-semibold ${item.return === null || item.return === undefined ? 'text-gray-500' : item.return >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div></section>
       </div>}
@@ -501,7 +508,7 @@ export function Backtest() {
       </div>
       {dataScope === 'test' ? (
         <div className="mb-5 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs text-amber-200/80" role="status">
-          当前仅查看自动化验收与种子回测；这些记录不参与默认业务统计或 Paper 晋级入口。
+          当前仅查看自动化验收与种子回测；这些记录不参与默认业务统计或模拟盘晋级入口。
         </div>
       ) : null}
 
@@ -513,7 +520,7 @@ export function Backtest() {
               <h2 className="font-semibold text-white">任务队列</h2>
               <span className="text-xs text-gray-600">{visibleJobs.length} 个持久化任务</span>
             </div>
-            <p className="mt-1 text-[11px] text-gray-600">PostgreSQL 状态与增量日志；页面关闭后仍可追踪，后端重启会标记为已中断。</p>
+            <p className="mt-1 text-[11px] text-gray-600">本地持久化状态与增量日志；页面关闭后仍可追踪，后端重启会标记为已中断。</p>
           </div>
           <button type="button" onClick={() => void load()} className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-400 hover:text-white">
             <RefreshCw className="h-3.5 w-3.5" />刷新任务
@@ -535,9 +542,9 @@ export function Backtest() {
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${statusTone}`}>{job.status}</span>
+                      <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${statusTone}`}>{statusLabel(job.status)}</span>
                       <span className="text-xs font-semibold text-gray-300">{job.run_mode === 'quick' ? '快速预检' : '完整回测'} · 第 {job.attempt} 次</span>
-                      <span className="font-mono text-[10px] text-gray-700">{job.job_id.slice(0, 12)}</span>
+                      <span className="text-[10px] text-gray-700">任务 {job.job_id.slice(0, 8)}</span>
                     </div>
                     <p className="mt-2 text-xs text-gray-500">{job.message || job.phase}</p>
                     {job.error_message ? <p className="mt-1 text-xs text-red-300">{job.error_message}</p> : null}
@@ -592,7 +599,7 @@ export function Backtest() {
                       <span className="rounded border border-blue-500/25 bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-300">A股</span>
                       <StatusBadge run={run} />
                     </div>
-                    <p className="mt-2 text-xs text-gray-600">{run.start_date} 至 {run.end_date} · 数据快照 #{run.dataset_snapshot_id} · Universe #{run.universe_snapshot_id}</p>
+                    <p className="mt-2 text-xs text-gray-600">{run.start_date} 至 {run.end_date} · 数据第 {run.dataset_snapshot_id} 版 · 股票范围第 {run.universe_snapshot_id} 版</p>
                     <p className="mt-1 truncate text-[10px] text-gray-700">{run.name} · {run.id}</p>
                   </div>
                   <div className="grid grid-cols-5 gap-2">
@@ -640,8 +647,8 @@ export function Backtest() {
             </div> : null}
             {createStep === 2 ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <Field label="数据快照"><select className={input} value={datasetSnapshotId} onChange={(event) => setDatasetSnapshotId(Number(event.target.value))}>{config.dataset_snapshots.map((item) => <option key={item.id} value={item.id}>#{item.id} {item.name}</option>)}</select></Field>
-              <Field label="Universe"><select className={input} value={universeSnapshotId} onChange={(event) => setUniverseSnapshotId(Number(event.target.value))}>{config.universe_snapshots.map((item) => <option key={item.id} value={item.id}>#{item.id} {item.code} · {item.member_count}只</option>)}</select></Field>
-              <Field label="因子快照" hint="可选，且须与数据及 Universe 兼容"><select className={input} value={factorSnapshotId} onChange={(event) => setFactorSnapshotId(Number(event.target.value))}><option value={0}>不绑定</option>{config.factor_snapshots.map((item) => <option key={item.id} value={item.id}>#{item.id} {item.name}</option>)}</select></Field>
+              <Field label="股票范围"><select className={input} value={universeSnapshotId} onChange={(event) => setUniverseSnapshotId(Number(event.target.value))}>{config.universe_snapshots.map((item) => <option key={item.id} value={item.id}>第 {item.id} 版 · {item.code} · {item.member_count}只</option>)}</select></Field>
+              <Field label="因子快照" hint="可选，且须与数据及股票范围兼容"><select className={input} value={factorSnapshotId} onChange={(event) => setFactorSnapshotId(Number(event.target.value))}><option value={0}>不绑定</option>{config.factor_snapshots.map((item) => <option key={item.id} value={item.id}>第 {item.id} 版 · {item.name}</option>)}</select></Field>
               <Field label="股票池快照"><select className={input} value={poolSnapshotId} onChange={(event) => { const id = Number(event.target.value); setPoolSnapshotId(id); const pool = config.pool_snapshots.find((item) => item.id === id); if (pool) { setDatasetSnapshotId(pool.dataset_snapshot_id); setUniverseSnapshotId(pool.universe_snapshot_id); setFactorSnapshotId(pool.factor_snapshot_id ?? 0); setSymbols(''); } }}><option value={0}>不绑定</option>{config.pool_snapshots.map((item) => <option key={item.id} value={item.id}>#{item.id} {item.pool_name} · {item.member_count}只</option>)}</select></Field>
               <Field label="成本模型"><select className={input} value={costModelId} onChange={(event) => setCostModelId(event.target.value)}>{config.cost_models.map((item) => <option key={item.id} value={item.id}>{item.name} · v{item.version}</option>)}</select></Field>
               <Field label="研究协议" hint="不绑定则不能晋级模拟盘"><select className={input} value={protocolId} onChange={(event) => setProtocolId(event.target.value)}><option value="">不绑定</option>{config.protocols.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
