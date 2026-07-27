@@ -8,6 +8,7 @@ import { useSettingsStore, type ColorScheme } from '../stores/useSettingsStore';
 import { useStore } from '../stores/useStore';
 import type { MarketIndex } from '../types';
 import { Navigation } from './Navigation';
+import { WorkflowRail } from './WorkflowRail';
 
 interface MainLayoutProps {
   children?: ReactNode;
@@ -30,7 +31,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/strategy/, '策略开发'],
   [/^\/backtest/, '回测中心'],
   [/^\/review/, '复盘中心'],
-  [/^\/paper/, '模拟/实盘交易'],
+  [/^\/paper/, '模拟交易'],
   [/^\/watch/, '观察台'],
   [/^\/monitor/, '运行风控'],
   [/^\/data\/processing/, '管理后台'],
@@ -208,8 +209,8 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-hidden bg-crypto-bg">
-        <div className="hidden h-[48px] items-center justify-between border-b border-crypto-border bg-crypto-panel px-4 lg:flex" data-testid="stockpro-ai-topbar">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-crypto-bg">
+        <div className="hidden h-[48px] shrink-0 items-center justify-between border-b border-crypto-border bg-crypto-panel px-4 lg:flex" data-testid="stockpro-ai-topbar">
           <h1 className="shrink-0 text-sm font-bold tracking-tight text-slate-100">{pageTitle}</h1>
           <div className="ml-4 flex min-w-0 items-center gap-3">
             <TopTicker indices={indices} />
@@ -250,7 +251,7 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
           </div>
         </div>
 
-        <div className="sticky top-0 z-30 border-b border-crypto-border bg-crypto-card/95 px-4 py-3 backdrop-blur lg:hidden">
+        <div className="sticky top-0 z-30 shrink-0 border-b border-crypto-border bg-crypto-card/95 px-4 py-3 backdrop-blur lg:hidden">
           <div className="mb-3 flex items-center justify-between">
             <StockProLogo />
             <div className="flex items-center gap-1">
@@ -275,7 +276,9 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
           <Navigation orientation="horizontal" />
         </div>
 
-        <div className="stockpro-page-viewport h-full overflow-auto" data-operator-surface="page">
+        <WorkflowRail />
+
+        <div className="stockpro-page-viewport min-h-0 flex-1 overflow-auto" data-operator-surface="page">
           <Suspense fallback={<PageContentFallback />}>
             {children || <Outlet />}
           </Suspense>

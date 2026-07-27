@@ -66,7 +66,7 @@ export const NAV_GROUPS: NavGroup[] = [
     titleZh: '执行风控',
     titleEn: 'Risk Control',
     items: [
-      { id: 'paper', to: '/paper', labelZh: '模拟/实盘交易', labelEn: 'Paper / Live', Icon: WalletCards },
+      { id: 'paper', to: '/paper', labelZh: '模拟交易', labelEn: 'Paper', Icon: WalletCards },
       { id: 'watch', to: '/watch', labelZh: '观察台', labelEn: 'Watch', Icon: Eye },
       { id: 'monitor', to: '/monitor', labelZh: '运行风控', labelEn: 'Runtime Risk', Icon: Shield },
       { id: 'review', to: '/review', labelZh: '复盘中心', labelEn: 'Review Center', Icon: NotebookPen },

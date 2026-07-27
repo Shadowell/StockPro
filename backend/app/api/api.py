@@ -27,6 +27,7 @@ from app.api.endpoints import (
     strategy,
     strategy_runtime,
     watch,
+    workflow,
 )
 from app.core.admin_auth import require_admin
 
@@ -56,6 +57,7 @@ def create_api_router() -> APIRouter:
     protected.include_router(backtest.router, prefix="/backtest", tags=["backtest"])
     protected.include_router(paper.router, prefix="/paper", tags=["paper"])
     protected.include_router(watch.router, prefix="/watch", tags=["watch"])
+    protected.include_router(workflow.router, prefix="/workflow", tags=["workflow"])
     protected.include_router(monitor_runtime.router, prefix="/monitor", tags=["monitor"])
     protected.include_router(review.router, prefix="/review", tags=["review"])
     protected.include_router(factors.router, prefix="/factors", tags=["factors"])

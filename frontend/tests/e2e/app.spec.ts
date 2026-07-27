@@ -106,6 +106,32 @@ async function mockApi(page: Page) {
       return route.fulfill(json({ username: 'admin' }));
     }
 
+    if (method === 'GET' && path === '/workflow/capabilities') {
+      return route.fulfill(json({
+        contract_version: 'stockpro-workflow-v1',
+        behavioral_baseline: 'bitpro',
+        execution_scope: 'paper_only',
+        checked_at: now,
+        auth_modes: [
+          { id: 'admin', status: 'available', write_access: true },
+          { id: 'guest', status: 'not_implemented', write_access: false },
+          { id: 'agent', status: 'not_implemented', write_access: false },
+        ],
+        feature_gates: {
+          real_broker: { status: 'not_implemented', enabled: false },
+        },
+        domain_guardrails: ['A股交易日历', 'T+1 可卖约束', '100 股整数手'],
+        stages: [
+          { id: 'strategy', label: '策略', route: '/strategy', status: 'available', requires: [], evidence: [] },
+          { id: 'backtest', label: '回测', route: '/backtest', status: 'partial', requires: [], evidence: [] },
+          { id: 'paper', label: '模拟', route: '/paper', status: 'available', requires: [], evidence: [] },
+          { id: 'watch', label: '观察', route: '/watch', status: 'partial', requires: [], evidence: [] },
+          { id: 'monitor', label: '监控', route: '/monitor', status: 'partial', requires: [], evidence: [] },
+          { id: 'review', label: '复盘', route: '/review', status: 'available', requires: [], evidence: [] },
+        ],
+      }));
+    }
+
     if (method === 'GET' && path === '/market/overview') {
       return route.fulfill(json({
         indices: [
@@ -877,7 +903,7 @@ test('primary pages expose usable A-share research workflow anchors', async ({ p
     { path: '/backtest', title: '回测中心', anchors: ['回测实例控制台', '创建回测实例', '回测实例'] },
     { path: '/ai-lab', title: 'AI 研发', anchors: ['AI 研发实验室', 'AI 生成不可用', '策略助手', '受控边界'] },
     { path: '/review', title: '复盘中心', anchors: ['今日盘面复盘', '板块轮动', '连板梯队'] },
-    { path: '/paper', title: '模拟/实盘交易', anchors: ['策略实例、风险控制、订单成交与账户权益。', '实盘前置约束', 'T+1 / 100股'] },
+    { path: '/paper', title: '模拟交易', anchors: ['策略实例、风险控制、订单成交与账户权益。', '实盘前置约束', 'T+1 / 100股'] },
     { path: '/watch', title: '观察台', anchors: ['观察台', '集中观察策略信号', '最新策略信号'] },
     { path: '/monitor', title: '运行风控', anchors: ['监控中心', '运行风控检查', '涨跌停风险'] },
     { path: '/data', title: '管理后台', anchors: ['数据管理中心', '同步覆盖矩阵', 'A股数据维护面板'] },
@@ -950,6 +976,24 @@ test('strategy backtest and paper expose the A-share operator workflow without i
   await expect(page.getByRole('heading', { name: 'Paper 权益曲线' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '运行证据与风控' })).toBeVisible();
   await expect(page.getByText('历史数据快照', { exact: true }).first()).toBeVisible();
+});
+
+test('strategy lifecycle uses one capabilities-first rail and does not imply live trading', async ({ page }) => {
+  await loginAsAdmin(page);
+
+  for (const path of ['/strategy', '/backtest', '/paper', '/watch', '/monitor', '/review']) {
+    await page.goto(path);
+    const rail = page.getByTestId('workflow-rail');
+    await expect(rail).toBeVisible();
+    await expect(rail.getByText('仅模拟盘')).toBeVisible();
+    await expect(rail.getByText('实盘未接入')).toBeVisible();
+    for (const label of ['策略', '回测', '模拟', '观察', '监控', '复盘']) {
+      await expect(rail.getByRole('link', { name: label, exact: true })).toBeVisible();
+    }
+  }
+
+  await expect(page.getByRole('link', { name: '模拟交易', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '模拟/实盘交易', exact: true })).toHaveCount(0);
 });
 
 test('paper running state is downgraded when the recorded replay heartbeat is missing', async ({ page }) => {

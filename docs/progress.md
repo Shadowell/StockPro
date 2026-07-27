@@ -1,5 +1,24 @@
 # Progress Log
 
+## BitPro-parity Workflow Foundation (2026-07-27)
+
+1. Added the authenticated, read-only `stockpro-workflow-v1` capability contract with the canonical Strategy -> Backtest -> Paper -> Watch -> Monitor -> Review stage order.
+2. Separated code capability from runtime/data availability and exposed truthful `available`, `partial`, `disabled` and `not_implemented` states for authentication, scheduler, provider access, asynchronous backtests and broker execution.
+3. Added one shared lifecycle rail across Strategy, Backtest, AI Lab, Paper, Watch, Monitor and Review. The rail has stable loading/error states and links every stage through the same workflow vocabulary.
+4. Renamed the first-level Paper entry to `模拟交易` and permanently labels the current execution scope as `仅模拟盘 / 实盘未接入`; no page shell implies that a real broker is connected.
+5. Preserved the A-share domain boundary: calendar/session, long-only, T+1, 100-share lots, price limits, suspension/ST, corporate actions and A-share cost semantics remain explicit.
+
+Verification:
+
+- Clean frontend/backend restart completed; ports `4444` and `4445` listened and `/api/health/health` returned healthy.
+- Authenticated `GET /api/workflow/capabilities` returned the six canonical stages, `paper_only`, broker disabled and scheduler disabled; unauthenticated access returned `401`.
+- Focused backend contract/router tests passed 4/4 and focused mocked Playwright passed 1/1.
+- Authenticated real-backend desktop Strategy and 390×844 Paper checks showed the same lifecycle rail, truthful execution badges and no application console error.
+- `./scripts/check.sh` passed production build, lint with 7 existing warnings and 0 errors, deploy shell syntax, 274 backend tests and Python compilation.
+- BitPro HTTP health remained available, but the supplied external administrator credentials returned `401`; authenticated BitPro data/action inspection remains pending valid access.
+
+Next Sprint: admin/guest/agent capability-based access and guest backtest quotas.
+
 ## Research Workshop Page Hardening — BitPro Backtest Console (2026-07-27)
 
 1. Reworked the Backtest landing page against the local BitPro backtest module: compact instance-console header, create action, mode/status counters, global sorting, list-local search, refresh/compare actions, and dense instance cards with return, Sharpe, drawdown, win rate, trade count, status, detail, and log actions.
