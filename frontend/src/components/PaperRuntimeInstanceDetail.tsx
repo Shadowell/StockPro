@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import clsx from "clsx";
 import {
+  DataPanel,
+  LogStream,
+  MetricCard,
+  StatusBadge,
+  type LogStreamItem,
+} from "@bitpro/ui";
+import {
   Activity,
   ArrowLeft,
   BarChart3,
@@ -35,8 +42,6 @@ import { formatSymbolLabel } from "../utils/symbolDisplay";
 type Row = Record<string, unknown>;
 type Action = "start" | "pause" | "resume" | "stop";
 
-const panel =
-  "overflow-hidden rounded-xl border border-crypto-border bg-crypto-card shadow-lg shadow-black/20";
 const asNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
@@ -77,6 +82,12 @@ const statusLabel: Record<string, string> = {
   failed: "故障",
   success: "成功",
   blocked: "已阻断",
+  critical: "严重",
+  error: "错误",
+  info: "提示",
+  warning: "警告",
+  lifecycle: "生命周期",
+  runtime: "运行",
 };
 
 function Section({
@@ -96,36 +107,27 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className={panel}>
-      <div className="flex items-center gap-2 px-5 py-4 hover:bg-white/[0.025]">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((current) => !current)}
-          className="flex min-w-0 flex-1 items-start justify-between gap-4 text-left"
-        >
-          <span className="flex min-w-0 items-start gap-3">
-            {icon}
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold text-white">{title}</span>
-              {subtitle ? (
-                <span className="mt-1 block text-xs leading-5 text-slate-500">
-                  {subtitle}
-                </span>
-              ) : null}
-            </span>
-          </span>
-          <ChevronDown
-            className={clsx(
-              "h-4 w-4 text-slate-500 transition-transform",
-              open && "rotate-180",
-            )}
-          />
-        </button>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      {open ? <div className="border-t border-crypto-border p-5">{children}</div> : null}
-    </section>
+    <DataPanel
+      className="shadow-lg shadow-black/20"
+      title={<span className="inline-flex items-start gap-2">{icon}<span>{title}</span></span>}
+      subtitle={subtitle}
+      actions={(
+        <>
+          {action}
+          <button
+            type="button"
+            aria-label={`${open ? "收起" : "展开"}${title}`}
+            aria-expanded={open}
+            onClick={() => setOpen((current) => !current)}
+            className="rounded-md p-1.5 text-slate-500 transition-colors hover:bg-white/[0.04] hover:text-slate-200"
+          >
+            <ChevronDown className={clsx("h-4 w-4 transition-transform", open && "rotate-180")} />
+          </button>
+        </>
+      )}
+    >
+      {open ? <div className="p-5">{children}</div> : null}
+    </DataPanel>
   );
 }
 
@@ -142,15 +144,15 @@ function Metric({
   tone?: string;
   icon: React.ReactNode;
 }) {
+  const color = tone.includes("red")
+    ? "red"
+    : tone.includes("emerald")
+      ? "green"
+      : tone.includes("blue")
+        ? "blue"
+        : "neutral";
   return (
-    <div className="rounded-xl border border-crypto-border bg-crypto-card p-3.5">
-      <div className="flex items-center gap-2 text-[10px] font-medium text-slate-500">
-        <span className={tone}>{icon}</span>
-        {label}
-      </div>
-      <div className={clsx("mt-2 text-lg font-bold tabular-nums", tone)}>{value}</div>
-      <div className="mt-1 min-h-7 text-[10px] leading-4 text-slate-600">{note}</div>
-    </div>
+    <MetricCard label={label} value={value} detail={note} icon={icon} color={color} className="min-h-[104px]" />
   );
 }
 
@@ -412,6 +414,49 @@ export function PaperRuntimeInstanceDetail({
   const tradingLogic =
     text(strategyVersion?.dependency_manifest?.trading_logic, "") ||
     `${logicDescription} 信号在收盘周期生成，按 A 股 T+1、100 股整手和容量约束执行。`;
+  const diagnosticItems = ([
+    ...(cycles as unknown as Row[]).map((row) => ({
+      ...row,
+      _kind: "cycle",
+      _time: row.finished_at ?? row.trade_date,
+    })),
+    ...events.map((row) => ({
+      ...row,
+      _kind: "event",
+      _time: row.occurred_at,
+    })),
+  ] as Row[])
+    .sort((a, b) => String(b._time ?? "").localeCompare(String(a._time ?? "")))
+    .map((row, index): LogStreamItem => {
+      const failed =
+        row.status === "failed" ||
+        row.status === "blocked" ||
+        row.level === "error";
+      const isCycle = row._kind === "cycle";
+      return {
+        id: text(row.id, String(index)),
+        time: dateTime(row._time),
+        label: isCycle
+          ? statusLabel[text(row.status)] ?? text(row.status)
+          : statusLabel[text(row.category ?? row.level)] ?? text(row.category ?? row.level),
+        message: text(
+          row.message,
+          isCycle
+            ? `交易日 ${text(row.trade_date)} · 信号 ${text(row.signal_count, "--")} · 订单 ${text(row.order_count, "--")} · 成交 ${text(row.trade_count, "--")}`
+            : "事件未提供说明",
+        ),
+        tone: failed ? "red" : isCycle ? "blue" : "neutral",
+        meta: isCycle ? `cycle · ${text(row.trade_date)}` : `event · ${text(row.level)}`,
+      };
+    });
+  const eventLogItems = events.map((row, index): LogStreamItem => ({
+    id: text(row.id, String(index)),
+    time: dateTime(row.occurred_at),
+    label: statusLabel[text(row.category ?? row.level)] ?? text(row.category ?? row.level),
+    message: text(row.message, "事件未提供说明"),
+    tone: row.level === "error" ? "red" : row.level === "warning" ? "amber" : "neutral",
+    meta: `event · ${text(row.level)}`,
+  }));
 
   return (
     <div className="space-y-5" data-testid="paper-instance-monitor">
@@ -428,10 +473,10 @@ export function PaperRuntimeInstanceDetail({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-2xl font-bold text-white">{instance.name}</h1>
-              <span className="rounded-full border border-yellow-500/35 bg-yellow-500/10 px-2 py-1 text-[10px] font-bold text-yellow-300">
+              <StatusBadge tone="amber">
                 <FlaskConical className="mr-1 inline h-3 w-3" />
                 模拟盘
-              </span>
+              </StatusBadge>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
               <span className="inline-flex items-center gap-1.5 font-semibold text-slate-200">
@@ -479,7 +524,7 @@ export function PaperRuntimeInstanceDetail({
       </header>
 
       <div className="grid gap-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.055] p-3 text-[11px] text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
-        <div><Database className="mr-1 inline h-3.5 w-3.5 text-blue-400" />数据源：{text(feed.provider)}</div>
+        <div><Database className="mr-1 inline h-3.5 w-3.5 text-blue-400" />数据源：{text(feed.provider) === "postgresql" ? "本地数据库" : text(feed.provider)}</div>
         <div>模式：{isReplay ? "封存历史回放" : text(feed.mode)}</div>
         <div>数据快照：#{instance.dataset_snapshot_id} · 因子 #{instance.factor_snapshot_id}</div>
         <div>心跳：{dateTime(instance.heartbeat_at)}</div>
@@ -529,28 +574,8 @@ export function PaperRuntimeInstanceDetail({
         </div>
       </Section>
 
-      <Section title="策略运行诊断日志" subtitle="来自 PostgreSQL 运行周期与实例事件，不依赖临时前端日志。" icon={<Terminal className="mt-0.5 h-5 w-5 text-cyan-400" />} action={<span className="rounded-full border border-crypto-border bg-crypto-bg px-2 py-1 text-[10px] text-slate-500">{cycles.length + events.length} 条证据</span>}>
-        <div className="max-h-[360px] space-y-2 overflow-y-auto">
-          {cycles.length === 0 && events.length === 0 ? <Empty>尚无诊断记录；实例启动并处理周期后生成。</Empty> : null}
-          {([
-            ...(cycles as unknown as Row[]).map((row) => ({
-              ...row,
-              _kind: "cycle",
-              _time: row.finished_at ?? row.trade_date,
-            })),
-            ...events.map((row) => ({
-              ...row,
-              _kind: "event",
-              _time: row.occurred_at,
-            })),
-          ] as Row[]).sort((a, b) => String(b._time ?? "").localeCompare(String(a._time ?? ""))).map((row, index) => (
-            <div key={text(row.id, String(index))} className="grid gap-2 rounded-lg border border-crypto-border bg-crypto-bg/60 px-3 py-2.5 sm:grid-cols-[150px_90px_1fr]">
-              <span className="font-mono text-[10px] text-slate-600">{dateTime(row._time)}</span>
-              <span className={clsx("text-[10px] font-semibold", row.status === "failed" || row.status === "blocked" || row.level === "error" ? "text-red-300" : "text-blue-300")}>{row._kind === "cycle" ? statusLabel[text(row.status)] ?? text(row.status) : text(row.category ?? row.level)}</span>
-              <span className="text-xs text-slate-300">{text(row.message, row._kind === "cycle" ? `交易日 ${text(row.trade_date)} · 信号 ${text(row.signal_count, "--")} · 订单 ${text(row.order_count, "--")} · 成交 ${text(row.trade_count, "--")}` : "事件未提供说明")}</span>
-            </div>
-          ))}
-        </div>
+      <Section title="策略运行诊断日志" subtitle="来自 PostgreSQL 运行周期与实例事件，不依赖临时前端日志。" icon={<Terminal className="mt-0.5 h-5 w-5 text-cyan-400" />} action={<StatusBadge tone={diagnosticItems.length ? "blue" : "neutral"}>{diagnosticItems.length} 条证据</StatusBadge>}>
+        <LogStream items={diagnosticItems} emptyText="尚无诊断记录；实例启动并处理周期后生成。" />
       </Section>
 
       <div className="grid gap-5 2xl:grid-cols-[1.05fr_1fr]">
@@ -571,7 +596,7 @@ export function PaperRuntimeInstanceDetail({
         <Section title="成交与事件" icon={<ListTree className="mt-0.5 h-5 w-5 text-blue-400" />} action={<span className="flex gap-1" onClick={(event) => event.stopPropagation()}>{(["trades", "events"] as const).map((key) => <button key={key} type="button" onClick={() => setRecordTab(key)} className={clsx("rounded-md px-2.5 py-1 text-[10px] font-semibold", recordTab === key ? "bg-blue-500/20 text-blue-300" : "text-slate-500")}>{key === "trades" ? `成交 ${trades.length}` : `事件 ${events.length}`}</button>)}</span>}>
           {recordTab === "trades" ? (
             trades.length === 0 ? <Empty>暂无模拟成交。信号、订单与成交不会相互冒充。</Empty> : <div className="max-h-[360px] overflow-auto"><table className="w-full min-w-[780px] text-xs"><thead><tr className="border-b border-crypto-border text-left text-slate-500"><th className="py-2">时间</th><th>方向</th><th>股票</th><th className="text-right">价格</th><th className="text-right">数量</th><th className="text-right">金额</th><th className="text-right">费用</th></tr></thead><tbody>{trades.map((row, index) => <tr key={text(row.id, String(index))} className="border-b border-white/[0.04] text-slate-300"><td className="py-2.5 text-[10px]">{dateTime(row.traded_at)}</td><td className={text(row.side).toLowerCase() === "buy" ? "text-emerald-300" : "text-red-300"}>{text(row.side).toLowerCase() === "buy" ? "买入" : "卖出"}</td><td className="font-mono">{formatSymbolLabel(text(row.symbol), text(row.name, ""))}</td><td className="text-right">{number(row.price)}</td><td className="text-right">{number(row.quantity, 0)}</td><td className="text-right">{number(row.amount)}</td><td className="text-right">{number(row.fee, 4)}</td></tr>)}</tbody></table></div>
-          ) : events.length === 0 ? <Empty>暂无系统事件。</Empty> : <div className="max-h-[360px] space-y-2 overflow-y-auto">{events.map((row, index) => <div key={text(row.id, String(index))} className="rounded-lg border border-crypto-border bg-crypto-bg/60 p-3"><div className="flex items-center justify-between gap-3"><span className="text-xs font-semibold text-slate-200">{text(row.message)}</span><span className="text-[10px] text-slate-600">{dateTime(row.occurred_at)}</span></div><div className="mt-1 text-[10px] text-slate-500">{text(row.category)} · {text(row.level)}</div></div>)}</div>}
+          ) : <LogStream items={eventLogItems} emptyText="暂无系统事件。" />}
         </Section>
       </div>
 

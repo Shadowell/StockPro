@@ -69,3 +69,8 @@ filter controls, detail views and operator-state semantics.
   decision flow and integrates persisted candidate evidence.
 - Strategy and backtest already satisfy the object catalogue, staged creation
   and detail-report contract and were retained rather than rewritten.
+- Strategy detail and Paper instance detail now share the actual `@bitpro/ui`
+  `DataPanel`, `MetricCard`, `StatusBadge` and `LogStream` primitives. Strategy
+  detail exposes persisted version, validation, dependency, runtime-limit and
+  source-code evidence; Paper diagnostics and system events use one continuous
+  terminal timeline instead of per-entry cards.

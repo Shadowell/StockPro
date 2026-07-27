@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import clsx from 'clsx';
+import { DataPanel, StatusBadge } from '@bitpro/ui';
 import {
   Activity,
   ArrowLeft,
@@ -23,9 +24,12 @@ import {
   TrendingUp,
   Wallet,
   Zap,
+  Braces,
+  Database,
+  Play,
 } from 'lucide-react';
 import { formatSymbolLabel } from '../utils/symbolDisplay';
-import type { PaperAccount, Strategy, StrategyBacktestResult } from '../types';
+import type { PaperAccount, Strategy, StrategyBacktestResult, StrategyValidationReport, StrategyVersion } from '../types';
 
 const formatNumber = (value?: number | null, digits = 2) =>
   value == null || !Number.isFinite(value)
@@ -66,7 +70,7 @@ function BackButton({ label = '返回控制台', onBack }: { label?: string; onB
     <button
       type="button"
       onClick={onBack}
-      className="inline-flex items-center gap-2 rounded-lg border border-crypto-border px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
+      className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-crypto-border px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
     >
       <ArrowLeft className="h-4 w-4" />
       {label}
@@ -192,45 +196,112 @@ function CollapsibleSection({
   );
 }
 
-export function StrategyDetailPanel({ strategy, onBack, onEdit }: { strategy: Strategy; onBack: () => void; onEdit?: () => void }) {
+const evidenceValue = (value: unknown) =>
+  value === null || value === undefined || value === '' ? '未提供' : String(value);
+
+const strategyStatusLabel = (value?: string | null) => {
+  const labels: Record<string, string> = {
+    active: '已启用',
+    draft: '草稿',
+    failed: '失败',
+    published: '已发布',
+    sealed: '已封存',
+    valid: '校验通过',
+  };
+  return value ? labels[value] ?? value : '未提供';
+};
+
+const evidenceEntries = (value?: Record<string, unknown> | null) =>
+  Object.entries(value ?? {}).filter(([, item]) => item !== undefined);
+
+export function StrategyDetailPanel({
+  strategy,
+  version,
+  validation,
+  onBack,
+  onEdit,
+  onBacktest,
+  onPaper,
+}: {
+  strategy: Strategy;
+  version?: StrategyVersion | null;
+  validation?: StrategyValidationReport | null;
+  onBack: () => void;
+  onEdit?: () => void;
+  onBacktest?: () => void;
+  onPaper?: () => void;
+}) {
   const symbols = parseSymbols(strategy);
+  const parameters = evidenceEntries(version?.parameter_schema);
+  const runtimeLimits = evidenceEntries(version?.runtime_limits);
+  const dependencies = version?.data_dependencies ?? validation?.dependencies ?? [];
+  const isValid = validation?.valid ?? version?.validation_status === 'valid';
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div className="flex min-w-0 items-center gap-3">
+    <div className="space-y-4" data-testid="strategy-detail-workspace">
+      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
           <BackButton label="返回" onBack={onBack} />
           <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-2">
-              <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-300">A股</span>
-              <span className="text-xs text-gray-500">1D</span>
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <StatusBadge tone="amber">A股</StatusBadge>
+              <StatusBadge tone="blue">1D</StatusBadge>
+              <StatusBadge tone={strategy.is_running ? 'green' : 'neutral'}>
+                {strategy.is_running ? '运行中' : '未启动'}
+              </StatusBadge>
             </div>
-            <h1 className="truncate text-2xl font-bold text-[#FFAB73]">{strategy.name}</h1>
+            <h1 className="text-xl font-bold leading-tight text-white sm:text-2xl">{strategy.name}</h1>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+              <span>策略 ID {strategy.id}</span>
+              <span>当前版本 {version ? `v${version.version}` : '未绑定'}</span>
+              <span>更新于 {strategy.updated_at ? new Date(strategy.updated_at).toLocaleString('zh-CN', { hour12: false }) : '未提供'}</span>
+            </div>
           </div>
         </div>
-        {onEdit && (
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
-          >
-            <Edit3 className="h-4 w-4" />
-            编辑策略
-          </button>
-        )}
-      </div>
-
-      <LogicSummarySection
-        selection="基于全 A 股票池、指数环境、板块热度与日线数据生成候选标的，并支持 ST、行业、概念和指数成分过滤。"
-        trading="以 Backtrader Strategy 类为执行核心，统一复用 A 股只做多、100 股一手、T+1、佣金、印花税、滑点和最低佣金约束。"
-      />
-
-      <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <div className="rounded-xl border border-crypto-border bg-crypto-card p-5">
-          <h2 className="mb-3 text-sm font-semibold text-white">策略描述</h2>
-          <p className="text-sm leading-6 text-gray-400">{strategy.description || '暂无描述'}</p>
+        <div className="flex flex-wrap gap-2 xl:justify-end">
+          {onBacktest ? (
+            <button type="button" onClick={onBacktest} className="inline-flex h-10 items-center gap-2 rounded-lg border border-purple-500/35 bg-purple-500/10 px-4 text-xs font-semibold text-purple-200 hover:bg-purple-500/15">
+              <FlaskConical className="h-4 w-4" />进入回测
+            </button>
+          ) : null}
+          {onPaper ? (
+            <button type="button" onClick={onPaper} className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-4 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/15">
+              <Play className="h-4 w-4" />进入模拟盘
+            </button>
+          ) : null}
+          {onEdit ? (
+            <button type="button" onClick={onEdit} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition-colors hover:bg-blue-700">
+              <Edit3 className="h-4 w-4" />编辑策略
+            </button>
+          ) : null}
         </div>
-        <div className="rounded-xl border border-crypto-border bg-crypto-card p-5">
-          <h2 className="mb-3 text-sm font-semibold text-white">交易范围</h2>
+      </header>
+
+      <DataPanel
+        title={<span className="inline-flex items-center gap-2"><BookOpen className="h-4 w-4 text-blue-400" />核心选股与交易逻辑</span>}
+        subtitle="策略定义中的可解释逻辑；进入回测或模拟前先核对信号、交易与风控边界。"
+      >
+        <div className="grid gap-5 p-4 lg:grid-cols-2">
+          <div className="border-l-2 border-blue-500/45 pl-4">
+            <div className="text-xs font-semibold text-blue-300">核心选股</div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              {evidenceValue(version?.dependency_manifest?.selection_logic ?? '基于全 A 股票池、指数环境、板块热度与日线数据生成候选标的，并支持 ST、行业、概念和指数成分过滤。')}
+            </p>
+          </div>
+          <div className="border-l-2 border-emerald-500/45 pl-4">
+            <div className="text-xs font-semibold text-emerald-300">交易与风控逻辑</div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              {evidenceValue(version?.dependency_manifest?.trading_logic ?? '以策略运行时为执行核心，统一遵循 A 股只做多、100 股一手、T+1、佣金、印花税、滑点和最低佣金约束。')}
+            </p>
+          </div>
+        </div>
+      </DataPanel>
+
+      <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+        <DataPanel title="策略描述" subtitle="来自策略注册表，不使用自动生成的营销文案。">
+          <p className="p-4 text-sm leading-6 text-slate-300">{strategy.description || '暂无描述'}</p>
+        </DataPanel>
+        <DataPanel title="交易范围" subtitle="运行时仍以绑定股票池或快照为准。">
+          <div className="p-4">
           {symbols.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {symbols.map((symbol) => (
@@ -242,8 +313,57 @@ export function StrategyDetailPanel({ strategy, onBack, onEdit }: { strategy: St
           ) : (
             <p className="text-sm text-gray-500">多股组合 / 全 A 可扩展股票池</p>
           )}
-        </div>
-      </section>
+          </div>
+        </DataPanel>
+      </div>
+
+      <DataPanel
+        title={<span className="inline-flex items-center gap-2"><Database className="h-4 w-4 text-cyan-400" />版本与运行证据</span>}
+        subtitle="版本、内容哈希、API 合同和校验状态来自 PostgreSQL 策略版本记录。"
+        actions={<StatusBadge tone={!version ? 'amber' : isValid ? 'green' : 'red'}>{!version ? '未绑定版本' : isValid ? '校验通过' : '校验未通过'}</StatusBadge>}
+      >
+        <dl className="grid gap-px bg-crypto-border sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            ['版本', version ? `v${version.version}` : '未提供'],
+            ['内容哈希', version?.content_hash ? version.content_hash.slice(0, 12) : '未提供'],
+            ['策略 API', version?.strategy_api_version ?? validation?.api_version ?? '未提供'],
+            ['状态', strategyStatusLabel(version?.status ?? version?.validation_status)],
+            ['数据快照', version?.dataset_snapshot_id ? `#${version.dataset_snapshot_id}` : '未绑定'],
+          ].map(([label, value]) => (
+            <div key={label} className="min-w-0 bg-crypto-card px-4 py-3">
+              <dt className="text-[10px] text-slate-500">{label}</dt>
+              <dd className="mt-1 truncate text-xs font-semibold tabular-nums text-slate-200" title={value}>{value}</dd>
+            </div>
+          ))}
+        </dl>
+        {validation?.issues?.length ? (
+          <div className="border-t border-crypto-border bg-red-500/[0.045] px-4 py-3 text-xs text-red-200">
+            {validation.issues.map((issue) => `${issue.code}: ${issue.message}`).join('；')}
+          </div>
+        ) : null}
+      </DataPanel>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <DataPanel title={<span className="inline-flex items-center gap-2"><Braces className="h-4 w-4 text-purple-400" />参数与运行边界</span>} subtitle="只展示当前版本已持久化的参数模式与运行限制。">
+          <div className="grid gap-px bg-crypto-border sm:grid-cols-2">
+            {[...parameters, ...runtimeLimits].length ? [...parameters, ...runtimeLimits].map(([label, value]) => (
+              <div key={label} className="min-w-0 bg-crypto-card px-4 py-3">
+                <div className="text-[10px] text-slate-500">{label}</div>
+                <div className="mt-1 break-all text-xs font-semibold text-slate-300">{typeof value === 'object' ? JSON.stringify(value) : evidenceValue(value)}</div>
+              </div>
+            )) : <div className="col-span-full bg-crypto-card px-4 py-10 text-center text-xs text-slate-500">当前版本未提供结构化参数；不能将缺失参数显示为默认值。</div>}
+          </div>
+        </DataPanel>
+        <DataPanel title="数据依赖" subtitle="策略执行前需要满足的数据与运行时依赖。">
+          <div className="p-4">
+            {dependencies.length ? <div className="flex flex-wrap gap-2">{dependencies.map((item) => <StatusBadge key={item} tone="blue">{item}</StatusBadge>)}</div> : <div className="py-6 text-center text-xs text-slate-500">当前版本未声明数据依赖。</div>}
+          </div>
+        </DataPanel>
+      </div>
+
+      <DataPanel title={<span className="inline-flex items-center gap-2"><Terminal className="h-4 w-4 text-cyan-400" />策略源码</span>} subtitle="当前注册策略源码，只读展示；修改需进入编辑策略并生成新版本。">
+        <pre className="max-h-[420px] overflow-auto bg-[#090d12] p-4 text-[11px] leading-5 text-slate-300"><code>{strategy.script_content || '当前策略没有可展示源码。'}</code></pre>
+      </DataPanel>
     </div>
   );
 }

@@ -1021,6 +1021,13 @@ Verification:
 - Raised the global operator typography contrast for legacy gray/slate text
   tiers, table headers and placeholders, and introduced a Chinese-first
   `SF Pro` / `PingFang SC` system font stack across all primary pages.
+- Rebuilt Strategy detail and Paper instance detail on shared `@bitpro/ui`
+  primitives. Strategy detail now includes version/validation, snapshot,
+  dependency, runtime-limit and read-only source evidence plus lifecycle
+  actions; Paper KPI, status and collapsible modules use the same primitives.
+- Replaced Paper diagnostic/event entry cards with the shared BitPro terminal
+  `LogStream`: one bounded console, stable time/level/message columns, compact
+  mobile reflow and explicit empty state.
 
 ## Verification Evidence
 
