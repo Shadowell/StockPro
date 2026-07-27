@@ -789,7 +789,7 @@ export function PaperInstanceDetailPanel({
           <ChevronDown className="-rotate-90 h-4 w-4 shrink-0 text-gray-500" />
           <Terminal className="h-4 w-4 shrink-0 text-cyan-400" />
           <span className="min-w-0 truncate text-sm font-semibold text-white">策略运行诊断日志</span>
-          <span className="shrink-0 text-xs text-gray-500">PaperBroker · #{account.account_id}</span>
+          <span className="shrink-0 text-xs text-gray-500">模拟账户 · 运行诊断</span>
           <span className="hidden truncate text-xs text-gray-500 md:inline">{account.updated_at || '--'}</span>
           <span className={clsx('hidden shrink-0 text-xs font-semibold lg:inline', running ? 'text-emerald-400' : 'text-purple-400')}>
             {running ? '运行态连接' : '已停止 · 状态缓存'}

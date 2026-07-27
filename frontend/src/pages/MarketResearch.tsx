@@ -30,9 +30,8 @@ const EVIDENCE_FIELD_LABELS: Record<string, string> = {
 };
 const evidenceReferenceLabel = (reference: string) => {
   const parts = reference.split(':');
-  const version = parts.find((part) => /^\d+$/.test(part));
   const field = parts.at(-1) ?? '';
-  return `${version ? `快照第 ${version} 版` : '封存快照'} · ${EVIDENCE_FIELD_LABELS[field] ?? '市场证据'}`;
+  return `封存快照 · ${EVIDENCE_FIELD_LABELS[field] ?? '市场证据'}`;
 };
 
 const HEADLINE_METRICS = [
@@ -65,7 +64,7 @@ function Structure({ context }: { context: MarketResearchContext }) {
         return <div key={metric.code} data-testid={`market-headline-${metric.code}`}><MetricCard label={item?.label ?? metric.detail} value={headlineValue(metric.code, item?.value)} icon={<Icon className="h-3.5 w-3.5" />} color={metric.color} detail={item?.definition ?? metric.detail} className={metric.cardClass} /></div>;
       })}
     </div>
-    <section className={`${panel} p-5`}><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold text-white">市场数据快照</h2><p className="mt-1 text-xs text-slate-500">按交易日查看市场结构、来源与数据状态。</p></div><StatePill state={snapshot?.freshness ?? context.publication_state} /></div><dl className="mt-5 grid gap-4 text-sm sm:grid-cols-3">{[['快照', snapshot ? `第 ${snapshot.id} 版` : '--'], ['交易日', snapshot?.trade_date ?? '--'], ['时段', snapshot?.session_label ?? snapshotTypeLabel(snapshot?.snapshot_type)]].map(([label, value]) => <div key={label} className="rounded-lg border border-crypto-border bg-crypto-bg p-3"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 tabular-nums text-slate-300">{value}</dd></div>)}</dl><div className="mt-4 flex flex-wrap gap-2">{Object.entries(snapshot?.source_map ?? {}).map(([kind, source]) => <span key={kind} className="rounded-md border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-xs text-blue-200">{sourceKindLabel(kind)} · {sourceLabel(source)}</span>)}</div></section>
+    <section className={`${panel} p-5`}><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold text-white">市场数据快照</h2><p className="mt-1 text-xs text-slate-500">按交易日查看市场结构、来源与数据状态。</p></div><StatePill state={snapshot?.freshness ?? context.publication_state} /></div><dl className="mt-5 grid gap-4 text-sm sm:grid-cols-3">{[['快照状态', snapshot ? '已封存校验' : '未绑定'], ['交易日', snapshot?.trade_date ?? '--'], ['时段', snapshot?.session_label ?? snapshotTypeLabel(snapshot?.snapshot_type)]].map(([label, value]) => <div key={label} className="rounded-lg border border-crypto-border bg-crypto-bg p-3"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 tabular-nums text-slate-300">{value}</dd></div>)}</dl><div className="mt-4 flex flex-wrap gap-2">{Object.entries(snapshot?.source_map ?? {}).map(([kind, source]) => <span key={kind} className="rounded-md border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-xs text-blue-200">{sourceKindLabel(kind)} · {sourceLabel(source)}</span>)}</div></section>
     <div className="grid gap-5 xl:grid-cols-[1.2fr_1fr]"><section className={`${panel} p-5`}><h2 className="font-semibold text-white">市场广度比较</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">{(context.comparisons ?? []).map((item, index) => <div key={index} className="rounded-lg border border-crypto-border bg-crypto-bg p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-slate-300">{String(item.label ?? '--')}</span><StatePill state={String(item.publication_state ?? '')} /></div><div className="mt-2 text-[11px] text-slate-600">{item.reason ? String(item.reason) : `已发布 ${Object.keys((item.deltas as Record<string, unknown>) ?? {}).length} 个差值`}</div></div>)}</div></section><section className={`${panel} p-5`}><h2 className="font-semibold text-white">智能证据摘要</h2><p className="mt-1 text-xs text-slate-500">事实与推断分栏，引用封存对象。</p><div className="mt-4 space-y-3">{context.evidence_summary?.facts.map((fact) => <div key={fact.evidence_ref} className="rounded-lg border border-emerald-500/15 bg-emerald-500/5 p-3"><div className="text-sm text-slate-200">事实 · {fact.text}</div><div className="mt-1 text-[10px] text-emerald-400/70">{evidenceReferenceLabel(fact.evidence_ref)}</div></div>)}{context.evidence_summary?.inferences.map((item, index) => <div key={index} className="rounded-lg border border-amber-500/15 bg-amber-500/5 p-3"><div className="text-sm text-amber-100">推断 · {item.text}</div><div className="mt-1 text-[10px] text-amber-500/60">{item.basis}</div></div>)}</div></section></div>
   </div>;
 }
@@ -160,7 +159,7 @@ export function MarketResearch() {
     {context && tab === 'events' ? <Events messages={messages} context={context} /> : null}
     {context && tab === 'calendar' ? <Calendar items={calendar} /> : null}
     {tab === 'stock' ? <div className="-mx-5 -mb-6 -mt-2 2xl:-mx-8"><StockTerminal asOfDate={tradeDate || context?.snapshot?.trade_date} /></div> : null}
-    {context?.snapshot ? <footer className="mt-5 flex flex-wrap items-center gap-4 text-[11px] text-slate-600"><Database className="h-3.5 w-3.5" />证据快照第 {context.snapshot.id} 版<Layers3 className="h-3.5 w-3.5" />已封存校验<Newspaper className="h-3.5 w-3.5" />资讯仅展示缓存<CalendarDays className="h-3.5 w-3.5" />交易日 {context.snapshot.trade_date}</footer> : null}
+    {context?.snapshot ? <footer className="mt-5 flex flex-wrap items-center gap-4 text-[11px] text-slate-600"><Database className="h-3.5 w-3.5" />市场证据已绑定<Layers3 className="h-3.5 w-3.5" />已封存校验<Newspaper className="h-3.5 w-3.5" />资讯仅展示缓存<CalendarDays className="h-3.5 w-3.5" />交易日 {context.snapshot.trade_date}</footer> : null}
   </div>;
 }
 

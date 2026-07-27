@@ -345,7 +345,7 @@ export const DataHubDatasetPanel: React.FC = () => {
                     {freshness.recent_jobs.map((job) => (
                       <div key={job.job_key} className="rounded border border-slate-800 bg-slate-900/60 px-3 py-2">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs text-slate-400">任务编号 {job.job_key.slice(0, 12)}</div>
+                          <div className="text-xs text-slate-400">{job.created_at || '创建时间未记录'}</div>
                           <span className={`px-2 py-0.5 rounded border text-[11px] font-bold ${statusBadgeClass(job.status.includes('success') ? 'green' : job.status.includes('fail') ? 'red' : 'yellow')}`}>
                             {runtimeStatusLabel(job.status)}
                           </span>

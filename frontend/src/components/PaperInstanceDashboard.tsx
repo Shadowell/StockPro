@@ -436,6 +436,8 @@ export function PaperInstanceDashboard({
         >
           {visible.map((instance) => {
             const runtime = heartbeatState(instance);
+            const running = instance.status === "running";
+            const heartbeatStale = runtime === "stale";
             const { pnl, returnRate } = metrics(instance);
             const symbols = symbolsFor(instance);
             const autoPreferred = returnRate !== null && returnRate > 0.05;
@@ -452,61 +454,74 @@ export function PaperInstanceDashboard({
                     onClick={() => onOpenDetail(instance)}
                     className="min-w-0 text-left"
                   >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={clsx(
-                          "h-2.5 w-2.5 shrink-0 rounded-full",
-                          runtime === "running"
-                            ? "animate-pulse bg-emerald-400"
-                            : runtime === "stale" || runtime === "failed"
-                              ? "bg-red-400"
-                              : "bg-amber-400",
-                        )}
-                      />
-                      <h2 className="line-clamp-2 text-sm font-semibold text-yellow-200">
-                        {instance.name}
-                      </h2>
-                    </div>
+                    <h2 className="line-clamp-2 text-sm font-semibold text-yellow-200">
+                      {instance.name}
+                    </h2>
                     <div className="mt-1 text-[10px] text-slate-500">A股模拟策略</div>
                   </button>
-                  <button
-                    type="button"
-                    aria-label={favorite ? "取消优选" : "加入优选"}
-                    title={
-                      autoPreferred
-                        ? "收益率 > 5%，已自动进入优选"
-                        : favorite
-                          ? "取消手动优选"
-                          : "加入优选"
-                    }
-                    disabled={autoPreferred}
-                    onClick={() => toggleFavorite(instance)}
-                    className={clsx(
-                      "rounded-lg p-1.5",
-                      autoPreferred || favorite
-                        ? "text-yellow-300"
-                        : "text-slate-600 hover:bg-white/5 hover:text-yellow-200",
-                    )}
-                  >
-                    <Star
+                  <div className="flex shrink-0 items-start gap-2">
+                    <button
+                      type="button"
+                      aria-label={favorite ? "取消优选" : "加入优选"}
+                      title={
+                        autoPreferred
+                          ? "收益率 > 5%，已自动进入优选"
+                          : favorite
+                            ? "取消手动优选"
+                            : "加入优选"
+                      }
+                      disabled={autoPreferred}
+                      onClick={() => toggleFavorite(instance)}
                       className={clsx(
-                        "h-4 w-4",
-                        (autoPreferred || favorite) && "fill-current",
+                        "rounded-lg p-1.5",
+                        autoPreferred || favorite
+                          ? "text-yellow-300"
+                          : "text-slate-600 hover:bg-white/5 hover:text-yellow-200",
                       )}
-                    />
-                  </button>
+                    >
+                      <Star
+                        className={clsx(
+                          "h-4 w-4",
+                          (autoPreferred || favorite) && "fill-current",
+                        )}
+                      />
+                    </button>
+                    {running ? (
+                      <span
+                        className="relative mt-1 flex h-4 w-4 items-center justify-center"
+                        title="运行中"
+                        aria-label="运行中"
+                      >
+                        <span className="absolute h-4 w-4 animate-ping rounded-full bg-emerald-400/40" />
+                        <span className="relative h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.85)]" />
+                      </span>
+                    ) : (
+                      <span className={clsx(
+                        "inline-flex min-w-12 justify-center rounded-full px-2 py-0.5 text-[10px] font-bold",
+                        instance.status === "paused"
+                          ? "bg-yellow-500/20 text-yellow-300"
+                          : instance.status === "failed"
+                            ? "bg-red-500/20 text-red-300"
+                            : "bg-gray-700/50 text-gray-400",
+                      )}>
+                        {statusLabel[instance.status] ?? instance.status}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]">
-                  <span className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                    {statusLabel[runtime] ?? runtime}
-                  </span>
                   <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-slate-400">
                     {timeframe(instance) || "周期未记录"}
                   </span>
                   <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-slate-400">
                     {money(instance.initial_cash)}
                   </span>
+                  {heartbeatStale ? (
+                    <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-amber-300">
+                      心跳待更新
+                    </span>
+                  ) : null}
                 </div>
 
                 <div

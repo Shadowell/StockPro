@@ -1048,6 +1048,26 @@ Verification:
   `paper_eligible` values are replaced by localized strategy versions,
   verification states, binding states, research periods and data cutoffs.
 
+23. BitPro full-workspace readability and state parity closeout
+- Matched the Paper instance-card runtime indicator to BitPro: a running
+  strategy now uses a green breathing light. A delayed heartbeat is shown as a
+  separate amber warning and no longer turns the running state red.
+- Removed the remaining user-facing UUIDs, numeric database keys, task keys,
+  snapshot keys, account IDs and content hashes from Watch, Monitor, Backtest,
+  Stock Pools, Factors, AI Research, Data and shared detail panels. Internal
+  keys remain in routes, API requests and persisted audit records.
+- Replaced Monitor's raw dataset and market JSON dumps with readable snapshot
+  status, trade date, cutoff, availability and integrity rows. Risk tables now
+  identify the related strategy by name instead of a source-object key.
+- Localized AI research admission states and version bindings; backtest and
+  factor workspaces now describe sealed data and fixed universes without
+  presenting database IDs as product versions.
+- Completed read-only browser acceptance for all 13 primary routes, 30
+  query-addressable secondary tabs, all five factor analysis workspaces,
+  Backtest detail and Paper instance detail. Desktop and 390px layouts had no
+  page-level horizontal overflow, browser console errors or failed API
+  responses.
+
 ## Verification Evidence
 
 - `python3 -m py_compile app/services/scheduler_service.py app/db/postgres_db.py app/api/endpoints/data_dev.py` (pass)
@@ -1058,6 +1078,14 @@ Verification:
 - `npm run lint` (pass)
 - `npm run check` (pass)
 - `npm run build` (pass)
+- `./scripts/check.sh` after full-workspace readability closeout (pass:
+  frontend build/lint with 5 existing Hook warnings, 289 backend tests, Python
+  compilation)
+- Playwright primary-route sweep at desktop and 390px (13/13 pass; no visible
+  UUID/task/account/snapshot keys and no page-level horizontal overflow)
+- Playwright secondary/detail sweep (30 query-addressable tabs, 5 factor
+  workspaces, Backtest detail and Paper detail pass; no console errors or
+  failed API responses)
 - `./scripts/check.sh` after BitPro page parity (pass: frontend build/lint, 287 backend tests, Python compilation)
 - `backend/venv/bin/python -m pytest tests/test_paper_runtime_api.py` (pass, 13/13)
 - Real-backend read-only browser gate for all twelve primary routes (pass, 1/1)

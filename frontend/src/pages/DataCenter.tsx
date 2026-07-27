@@ -1461,7 +1461,7 @@ export function DataCenter() {
               <div className="rounded-xl border border-crypto-border bg-crypto-bg/45 p-3 text-xs text-gray-500">
                 <div className="font-semibold text-gray-300">同步范围</div>
                 <div className="mt-1">全部 A股股票，来源为实时股票池缓存；缓存为空时自动从行情服务刷新。</div>
-                {scheduleConfig?.lastJobId && <div className="mt-2 text-gray-400">最近任务：#{scheduleConfig.lastJobId}</div>}
+                {scheduleConfig?.lastJobId && <div className="mt-2 text-gray-400">最近任务：已有执行记录</div>}
                 {scheduleConfig?.lastError && <div className="mt-2 text-red-300">最近错误：{scheduleConfig.lastError}</div>}
               </div>
             </div>

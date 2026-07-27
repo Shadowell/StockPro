@@ -439,7 +439,7 @@ export const DataHubJobsPanel: React.FC = () => {
                 >
                   {tasks.map((task) => (
                     <option key={task.id} value={task.id}>
-                      #{task.id} {task.name}
+                      {task.name}
                     </option>
                   ))}
                 </select>
@@ -523,8 +523,8 @@ export const DataHubJobsPanel: React.FC = () => {
                 <div key={job.job_key} className="rounded border border-slate-800 bg-slate-900/60 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <div className="text-xs text-slate-500">任务编号 {job.job_key.slice(0, 12)}</div>
-                      <div className="text-sm text-slate-200">{actionLabel[job.action as JobAction] || job.action}</div>
+                      <div className="text-sm font-medium text-slate-200">{actionLabel[job.action as JobAction] || job.action}</div>
+                      <div className="mt-1 text-xs text-slate-500">{job.created_at || '创建时间未记录'}</div>
                     </div>
                     <span className={`px-2 py-0.5 rounded border text-[11px] font-bold ${badgeClass(job.status)}`}>
                       {statusLabel(job.status)}

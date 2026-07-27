@@ -44,8 +44,6 @@ type PoolTypeFilter = "all" | StockPool["pool_type"];
 const panel = "rounded-xl border border-crypto-border bg-crypto-card";
 const input =
   "h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-slate-200 outline-none focus:border-blue-500/60";
-const short = (value?: string | null) =>
-  value ? `${value.slice(0, 12)}…` : "--";
 const publicSymbol = (value: string) => {
   const match = value.toUpperCase().match(/^(SH|SZ|BJ)_([T]?\d{6})$/);
   return match ? `${match[2]}.${match[1]}` : value;
@@ -348,7 +346,7 @@ export function StockPools() {
         lastGenerationId || undefined,
       );
       await load();
-      setMessage(`快照 #${snapshot.id} 已封存，共 ${snapshot.member_count} 只`);
+      setMessage(`${snapshot.pool_name} 已封存，共 ${snapshot.member_count} 只`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "封存失败");
     } finally {
@@ -553,7 +551,7 @@ export function StockPools() {
                     </div>
                     <div className="sm:text-right">
                       <div className="font-mono text-[10px] text-slate-600">
-                        v{item.rule_version} · {short(item.rule_hash)}
+                        v{item.rule_version} · {item.rule_hash ? "规则已校验" : "规则待校验"}
                       </div>
                       <div className="mt-1 text-[11px] font-semibold text-blue-300">
                         查看证据 →
@@ -780,15 +778,15 @@ export function StockPools() {
                 [
                   "数据 / 股票范围",
                   selectedPool?.latest_dataset_snapshot_id && selectedPool.latest_universe_snapshot_id
-                    ? `数据第 ${selectedPool.latest_dataset_snapshot_id} 版 / 范围第 ${selectedPool.latest_universe_snapshot_id} 版`
+                    ? "研究数据与股票范围已封存"
                     : "--",
                 ],
                 [
                   selectedPool?.pool_type === "factor" ? "因子快照" : ["sector", "event"].includes(selectedPool?.pool_type ?? "") ? "市场证据" : "候选来源",
                   selectedPool?.pool_type === "factor"
-                    ? selectedPool.latest_factor_snapshot_id ? `因子第 ${selectedPool.latest_factor_snapshot_id} 版` : "未绑定"
+                    ? selectedPool.latest_factor_snapshot_id ? "因子证据已绑定" : "未绑定"
                     : ["sector", "event"].includes(selectedPool?.pool_type ?? "")
-                      ? selectedPool?.latest_market_evidence_snapshot_id ? `市场证据第 ${selectedPool.latest_market_evidence_snapshot_id} 版` : "未绑定"
+                      ? selectedPool?.latest_market_evidence_snapshot_id ? "市场证据已绑定" : "未绑定"
                       : "规则候选 / 历史股票范围",
                 ],
               ].map(([label, value]) => (
@@ -847,8 +845,8 @@ export function StockPools() {
                         <div>{item.valid_from} → {item.valid_until ?? "--"}</div>
                         {memberIsExpired(item) ? <span className="mt-1 inline-block rounded border border-amber-500/20 bg-amber-500/[0.07] px-1.5 py-0.5 text-[10px] text-amber-300">当前已过期</span> : null}
                       </td>
-                      <td className="px-5 py-4 font-mono text-xs text-slate-600">
-                        {short(item.evidence_hash)}
+                      <td className="px-5 py-4 text-xs text-slate-500">
+                        {item.evidence_hash ? "证据已校验" : "证据待校验"}
                       </td>
                     </tr>
                   ))}
@@ -894,7 +892,7 @@ export function StockPools() {
                     className="border-b border-white/[0.04]"
                   >
                     <td className="px-5 py-4 font-mono text-emerald-300">
-                      #{snapshot.id}
+                      已封存
                     </td>
                     <td className="px-4 py-4">
                       <div className="font-medium text-slate-200">
@@ -909,14 +907,12 @@ export function StockPools() {
                       {snapshot.member_count}
                     </td>
                     <td className="px-4 py-4 text-xs text-slate-500">
-                      数据第 {snapshot.dataset_snapshot_id} 版
-                      <br />
-                      股票范围第 {snapshot.universe_snapshot_id} 版
+                      研究数据与股票范围已绑定
                       <br />
                       {snapshot.factor_snapshot_id
-                        ? `因子 #${snapshot.factor_snapshot_id}`
+                        ? "因子证据已绑定"
                         : snapshot.market_evidence_snapshot_id
-                          ? `市场证据 #${snapshot.market_evidence_snapshot_id}`
+                          ? "市场证据已绑定"
                           : "附加证据未绑定"}
                     </td>
                     <td className="px-5 py-4 text-right">

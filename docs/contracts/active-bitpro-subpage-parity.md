@@ -1,6 +1,6 @@
 # Active Contract: BitPro Subpage Parity
 
-Status: active.
+Status: complete.
 
 ## Goal
 
@@ -13,10 +13,10 @@ filter controls, detail views and operator-state semantics.
 1. [complete] `/paper`: dashboard, preferred/all views, filter bar, instance cards,
    creation wizard and full BitPro-parity instance monitor.
 2. [complete] `/strategy`, `/backtest`, `/ai-lab`: catalogue, experiment and detail flows.
-3. `/watch`, `/monitor`, `/review`: observation, operations and review flows.
-4. `/`, `/market`, `/pools`, `/factors`, `/data`: dashboard, inspection,
+3. [complete] `/watch`, `/monitor`, `/review`: observation, operations and review flows.
+4. [complete] `/`, `/market`, `/pools`, `/factors`, `/data`: dashboard, inspection,
    catalogue, research and maintenance flows.
-5. Cross-page desktop/mobile browser acceptance and documentation closeout.
+5. [complete] Cross-page desktop/mobile browser acceptance and documentation closeout.
 
 ## Adaptation Boundary
 
@@ -83,3 +83,13 @@ filter controls, detail views and operator-state semantics.
   hashes as user-facing facts. They use readable names, version numbers,
   localized workflow states, dates and binding summaries; internal identifiers
   remain available to backend audit and diagnostics only.
+- Running Paper cards use BitPro's green breathing indicator. Heartbeat
+  freshness is a separate amber operational warning and does not overwrite the
+  lifecycle state.
+- Monitor data health uses readable snapshot fields instead of raw JSON; Watch,
+  Backtest, Stock Pools, Factors, AI Research and shared detail panels keep
+  internal identifiers out of the reading layer.
+- Desktop and 390px browser sweeps cover every primary route, all
+  query-addressable secondary tabs, all factor workspaces, Backtest detail and
+  Paper detail without console errors, failed API responses or page-level
+  horizontal overflow.
