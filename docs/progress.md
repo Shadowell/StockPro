@@ -1028,6 +1028,17 @@ Verification:
 - Replaced Paper diagnostic/event entry cards with the shared BitPro terminal
   `LogStream`: one bounded console, stable time/level/message columns, compact
   mobile reflow and explicit empty state.
+
+22. Factor research workspace redesign
+- Aligned `/factors` with the spacing and compact tab structure used by the
+  market and stock-pool workspaces; removed the oversized summary cards.
+- Brought the real 10-factor catalogue into the first viewport with Chinese
+  category filters, research hypotheses, selection direction, coverage,
+  effectiveness evidence and publication state.
+- Replaced engineering-facing hashes and abbreviations with operator labels,
+  added a signed correlation heatmap with Chinese factor names, and limited the
+  factor-value table to the latest compute run so historical runs do not create
+  duplicate securities.
 - Reorganized `/data` around an operator-first hierarchy. The default view now
   states whether research data is usable, surfaces only the highest-priority
   blockers and four decision metrics, while research datasets, market
@@ -1068,6 +1079,8 @@ Verification:
   - `/api/paper/instances/{id}/klines/SZ_002415` (200, 485 sealed bars)
   - target strategy visible in `/api/strategy/list`
   - Playwright desktop + 390px viewport pass; no browser console errors
+  - Factor research Playwright audit across all six tabs at desktop and 390px
+    widths (pass; no browser console errors after clean local restart)
 
 ## Known Gaps
 
