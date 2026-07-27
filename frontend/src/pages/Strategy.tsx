@@ -125,28 +125,36 @@ export function Strategy() {
   const [aiCapabilities, setAiCapabilities] = useState<AICapabilities | null>(null);
 
   const selected = useMemo(() => strategies.find((item) => item.id === selectedId) || null, [selectedId, strategies]);
+  const businessStrategies = useMemo(
+    () => strategies.filter((item) => !item.data_purpose || item.data_purpose === 'user'),
+    [strategies],
+  );
+  const referenceStrategies = useMemo(
+    () => strategies.filter((item) => item.data_purpose && item.data_purpose !== 'user'),
+    [strategies],
+  );
   const statusCounts = useMemo(
     () => ({
-      all: strategies.length,
-      running: strategies.filter((item) => item.is_running).length,
-      not_started: strategies.filter((item) => !item.is_running).length,
+      all: businessStrategies.length,
+      running: businessStrategies.filter((item) => item.is_running).length,
+      not_started: businessStrategies.filter((item) => !item.is_running).length,
     }),
-    [strategies],
+    [businessStrategies],
   );
   const assetCounts = useMemo(
     () => ({
-      all: strategies.length,
-      ashare: strategies.length,
-      strategy_v1: strategies.filter((item) => /def\s+initialize\s*\(|def\s+handle_data\s*\(/.test(item.script_content || '')).length,
+      all: businessStrategies.length,
+      ashare: businessStrategies.length,
+      strategy_v1: businessStrategies.filter((item) => /def\s+initialize\s*\(|def\s+handle_data\s*\(/.test(item.script_content || '')).length,
     }),
-    [strategies],
+    [businessStrategies],
   );
   const visibleStrategies = useMemo(() => {
     const tokens = searchQuery
       .split(/\s+/)
       .map(normalizeText)
       .filter(Boolean);
-    return strategies.filter((strategy) => {
+    return businessStrategies.filter((strategy) => {
       if (statusFilter === 'running' && !strategy.is_running) return false;
       if (statusFilter === 'not_started' && strategy.is_running) return false;
       if (assetFilter === 'strategy_v1' && !/def\s+initialize\s*\(|def\s+handle_data\s*\(/.test(strategy.script_content || '')) return false;
@@ -154,7 +162,7 @@ export function Strategy() {
       if (tokens.length === 0) return true;
       return tokens.every((token) => haystack.includes(token));
     });
-  }, [assetFilter, searchQuery, statusFilter, strategies]);
+  }, [assetFilter, businessStrategies, searchQuery, statusFilter]);
 
   const load = async () => {
     setListState('loading');
@@ -166,7 +174,18 @@ export function Strategy() {
       ]);
       setStrategies(data);
       setAiCapabilities(capabilities);
-      if (!selectedId && data[0]) setSelectedId(data[0].id);
+      const firstBusiness = data.find(
+        (item) => !item.data_purpose || item.data_purpose === 'user',
+      );
+      if (
+        !selectedId ||
+        !data.some(
+          (item) =>
+            item.id === selectedId &&
+            (!item.data_purpose || item.data_purpose === 'user'),
+        )
+      )
+        setSelectedId(firstBusiness?.id ?? null);
       setListState('ready');
     } catch (error) {
       setListState('error');
@@ -519,6 +538,55 @@ export function Strategy() {
 
       {listTab === 'plaza' && listState === 'ready' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {referenceStrategies.map((strategy) => {
+            const copy = productStrategyCopy(strategy);
+            return (
+              <article
+                key={`reference-${strategy.id}`}
+                className="group cursor-pointer overflow-hidden rounded-xl border border-crypto-border bg-crypto-card transition-all hover:border-blue-500/40"
+                onClick={() => {
+                  setSelectedId(null);
+                  setName(copy.name.replace('示例', '策略'));
+                  setDescription(copy.description);
+                  setScript(strategy.script_content || emptyCode);
+                  setActiveVersion(null);
+                  setValidation(null);
+                  setReplayResult(null);
+                  setShowEditor(true);
+                }}
+              >
+                <div className="p-5 pb-3">
+                  <div className="mb-2.5 flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-400">
+                        <Code2 className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm font-semibold text-white">{copy.name}</h3>
+                        <span className="text-[10px] text-gray-500">内置参考模板</span>
+                      </div>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] text-blue-300">
+                      模板
+                    </span>
+                  </div>
+                  <p className="line-clamp-2 min-h-[2.25rem] text-xs leading-relaxed text-gray-400">
+                    {copy.description || 'A 股策略参考模板'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5 px-5 pb-3">
+                  {inferTags(strategy).map((tag) => (
+                    <span key={tag} className="rounded border border-crypto-border bg-crypto-bg px-2 py-0.5 text-[10px] text-gray-500">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <div className="border-t border-crypto-border px-5 py-3 text-center text-xs font-semibold text-blue-300">
+                  基于模板新建策略
+                </div>
+              </article>
+            );
+          })}
           {plazaTemplates.map((template) => {
             const Icon = template.icon;
             return (

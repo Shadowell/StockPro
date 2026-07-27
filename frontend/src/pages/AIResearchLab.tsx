@@ -32,6 +32,17 @@ export function AIResearchLab() {
   const [error, setError] = useState("");
   const [capabilities, setCapabilities] = useState<AICapabilities | null>(null);
   const [capabilityError, setCapabilityError] = useState("");
+  const [dataScope, setDataScope] = useState<"business" | "test">("business");
+  const scopedStrategies = strategies.filter((item) =>
+    dataScope === "business"
+      ? !item.data_purpose || item.data_purpose === "user"
+      : Boolean(item.data_purpose && item.data_purpose !== "user"),
+  );
+  const scopedRuns = runs.filter((item) =>
+    dataScope === "business"
+      ? !item.data_purpose || item.data_purpose === "user"
+      : Boolean(item.data_purpose && item.data_purpose !== "user"),
+  );
   const load = async () => {
     setBusy(true);
     setError("");
@@ -73,14 +84,10 @@ export function AIResearchLab() {
         <div>
           <div className="flex items-center gap-3">
             <BrainCircuit className="h-7 w-7 text-cyan-400" />
-            <h1 className="text-2xl font-black text-white">AI 研发实验室</h1>
-            <span className="rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-300">
-              Evidence First
-            </span>
+            <h1 className="text-2xl font-black text-white">AI研发</h1>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            AI 只辅助提出假设、解释证据和生成候选 Python；不能绕过验证、回测或
-            Paper 晋级门禁。
+            用 AI 提出研究假设、解释证据并生成候选策略；候选仍需完成验证、回测和模拟盘准入。
           </p>
         </div>
         <button
@@ -161,6 +168,37 @@ export function AIResearchLab() {
           </button>
         ))}
       </nav>
+      <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border border-crypto-border bg-crypto-card px-4 py-3 text-xs text-slate-500">
+        <div className="flex rounded-md border border-crypto-border bg-crypto-bg p-1">
+          <button
+            type="button"
+            data-testid="ai-scope-business"
+            onClick={() => setDataScope("business")}
+            className={`rounded px-2.5 py-1 font-semibold ${dataScope === "business" ? "bg-cyan-600 text-white" : "text-slate-500"}`}
+          >
+            我的研发
+          </button>
+          <button
+            type="button"
+            data-testid="ai-scope-test"
+            onClick={() => setDataScope("test")}
+            className={`rounded px-2.5 py-1 font-semibold ${dataScope === "test" ? "bg-amber-500/15 text-amber-200" : "text-slate-500"}`}
+          >
+            测试与验收
+          </button>
+        </div>
+        <span>
+          当前范围
+          <strong className="ml-1 font-medium text-slate-300">
+            {scopedStrategies.length} 个策略版本 · {scopedRuns.length} 条回测
+          </strong>
+        </span>
+      </div>
+      {dataScope === "test" ? (
+        <div className="mb-5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
+          当前仅查看测试与验收证据，不代表可投入业务运行。
+        </div>
+      ) : null}
       {tab === "assistant" ? (
         <div className="grid gap-5 xl:grid-cols-[1fr_0.8fr]">
           <section className={`${panel} p-5`}>
@@ -212,7 +250,7 @@ export function AIResearchLab() {
       ) : null}
       {tab === "optimize" ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {runs
+          {scopedRuns
             .filter((run) => run.run_mode === "full")
             .slice(0, 12)
             .map((run) => (
@@ -247,7 +285,7 @@ export function AIResearchLab() {
             ))}
           {!busy &&
           !error &&
-          runs.filter((run) => run.run_mode === "full").length === 0 ? (
+          scopedRuns.filter((run) => run.run_mode === "full").length === 0 ? (
             <div
               className={`${panel} p-12 text-center text-sm text-slate-600 md:col-span-2 xl:col-span-3`}
             >
@@ -265,7 +303,7 @@ export function AIResearchLab() {
             </p>
           </div>
           <div className="divide-y divide-white/[0.04]">
-            {strategies.slice(0, 30).map((strategy) => (
+            {scopedStrategies.slice(0, 30).map((strategy) => (
               <div
                 key={strategy.id}
                 className="flex items-center justify-between gap-4 px-5 py-4"
@@ -288,7 +326,7 @@ export function AIResearchLab() {
                 </Link>
               </div>
             ))}
-            {!busy && !error && strategies.length === 0 ? (
+            {!busy && !error && scopedStrategies.length === 0 ? (
               <div className="p-12 text-center text-sm text-slate-600">
                 暂无候选策略版本
               </div>

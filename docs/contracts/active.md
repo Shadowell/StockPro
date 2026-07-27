@@ -1,1 +1,1 @@
-/Users/jie.feng/Dev/Github/Private/StockPro/docs/contracts/active-bitpro-final-local-acceptance.md
+active-bitpro-page-parity.md

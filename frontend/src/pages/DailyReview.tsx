@@ -255,7 +255,7 @@ export function DailyReview() {
         <div>
           <div className="flex items-center gap-3">
             <NotebookPen className="h-7 w-7 text-fuchsia-400" />
-            <h1 className="text-2xl font-black text-white">今日盘面复盘</h1>
+            <h1 className="text-2xl font-black text-white">复盘中心</h1>
             <span
               className={`rounded-md border px-2 py-1 text-xs font-semibold ${reviewStatusTone}`}
             >

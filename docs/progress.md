@@ -948,6 +948,15 @@ Verification:
 - Normalized `SH_`/`SZ_`/`BJ_` stock codes are now handled in market volume split calculations, so Shanghai/Shenzhen/Beijing turnover rows no longer show `0` after a successful sync.
 - Dashboard hot sectors now request and render Top 30 instead of the previous small Top 5/8 slice.
 
+19. BitPro twelve-page operator parity
+- Replaced the grouped wide sidebar and global ticker with BitPro's compact 64px single-column navigation; every first-level page now owns its title, controls and status context.
+- Normalized the twelve menu destinations and their page-owned headers: Home, Market, Stock Pools, Factors, Strategy, Backtest, AI Lab, Paper, Watch, Monitor, Review and Data.
+- Reworked Stock Pools into a searchable catalogue with type filters, dense object rows, explicit business empty state and a separate test/acceptance scope.
+- Added business/test isolation to Strategy, Backtest, AI Lab, Paper, Watch and Monitor so Sprint, seed and acceptance objects no longer appear as normal business content.
+- Propagated `data_purpose` from Paper instances into Watch signals, orders, trades, positions, risk/runtime events and alerts; stock-pool movements receive the same derived purpose label.
+- Preserved PostgreSQL snapshot/version evidence and A-share safety rules; no provider sync, Paper runtime cycle, remote deployment or broker operation was triggered.
+- Updated browser acceptance for the flat BitPro navigation, page-owned headers and explicit test scopes.
+
 ## Verification Evidence
 
 - `python3 -m py_compile app/services/scheduler_service.py app/db/postgres_db.py app/api/endpoints/data_dev.py` (pass)
@@ -958,6 +967,9 @@ Verification:
 - `npm run lint` (pass)
 - `npm run check` (pass)
 - `npm run build` (pass)
+- `./scripts/check.sh` after BitPro page parity (pass: frontend build/lint, 287 backend tests, Python compilation)
+- `backend/venv/bin/python -m pytest tests/test_paper_runtime_api.py` (pass, 13/13)
+- Real-backend read-only browser gate for all twelve primary routes (pass, 1/1)
 - `npm run test:e2e` (pass, 2/2)
 - `npm run test:e2e` after dual-mode (pass, 2 passed + 3 skipped)
 - `scripts/backend-health.sh` (pass)

@@ -40,6 +40,7 @@ export function Watch() {
   const [context, setContext] = useState<WatchContext | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dataScope, setDataScope] = useState<"business" | "test">("business");
   const load = async () => {
     setBusy(true);
     setError("");
@@ -58,10 +59,26 @@ export function Watch() {
     () => new Map((context?.instances ?? []).map((item) => [item.id, item])),
     [context],
   );
+  const inScope = (row: Record<string, unknown>) =>
+    dataScope === "business"
+      ? !row.data_purpose || row.data_purpose === "user"
+      : Boolean(row.data_purpose && row.data_purpose !== "user");
+  const scoped = {
+    alerts: (context?.alerts ?? []).filter((row) =>
+      inScope(row as unknown as Record<string, unknown>),
+    ),
+    signals: (context?.signals ?? []).filter(inScope),
+    orders: (context?.orders ?? []).filter(inScope),
+    trades: (context?.trades ?? []).filter(inScope),
+    positions: (context?.positions ?? []).filter(inScope),
+    risk_events: (context?.risk_events ?? []).filter(inScope),
+    runtime_events: (context?.runtime_events ?? []).filter(inScope),
+    pool_moves: (context?.pool_moves ?? []).filter(inScope),
+  };
   const latestObservedAt =
-    context?.alerts?.[0]?.triggered_at ??
+    scoped.alerts[0]?.triggered_at ??
     text(
-      (context?.signals?.[0] as Record<string, unknown> | undefined)
+      (scoped.signals[0] as Record<string, unknown> | undefined)
         ?.signal_time,
     );
   const emptyState = (label: string) =>
@@ -85,13 +102,10 @@ export function Watch() {
         <div>
           <div className="flex items-center gap-3">
             <Eye className="h-7 w-7 text-violet-400" />
-            <h1 className="text-2xl font-black text-white">观察台</h1>
-            <span className="rounded-md border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-xs text-violet-300">
-              Human Attention
-            </span>
+            <h1 className="text-2xl font-black text-white">盯盘</h1>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            集中观察策略信号、订单成交、股票池变化与需人工确认的风险证据。
+            集中查看策略信号、订单成交、股票池变化和待确认风险。
           </p>
         </div>
         <button
@@ -162,6 +176,27 @@ export function Watch() {
           </button>
         ))}
       </nav>
+      <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border border-crypto-border bg-crypto-card px-4 py-3 text-xs text-slate-500">
+        <div className="flex rounded-md border border-crypto-border bg-crypto-bg p-1">
+          <button
+            type="button"
+            data-testid="watch-scope-business"
+            onClick={() => setDataScope("business")}
+            className={`rounded px-2.5 py-1 font-semibold ${dataScope === "business" ? "bg-violet-600 text-white" : "text-slate-500"}`}
+          >
+            业务观察
+          </button>
+          <button
+            type="button"
+            data-testid="watch-scope-test"
+            onClick={() => setDataScope("test")}
+            className={`rounded px-2.5 py-1 font-semibold ${dataScope === "test" ? "bg-amber-500/15 text-amber-200" : "text-slate-500"}`}
+          >
+            测试与验收
+          </button>
+        </div>
+        <span>{dataScope === "business" ? "默认不混入测试运行证据" : "当前仅查看测试运行证据"}</span>
+      </div>
       {error ? (
         <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
           {error}
@@ -176,7 +211,7 @@ export function Watch() {
             </p>
           </div>
           <div className="divide-y divide-white/[0.04]">
-            {(context?.signals ?? []).map((row, index) => (
+            {scoped.signals.map((row, index) => (
               <div
                 key={text(row.id ?? index)}
                 className="grid gap-3 px-5 py-4 sm:grid-cols-[150px_100px_1fr_180px]"
@@ -204,7 +239,7 @@ export function Watch() {
                 </Link>
               </div>
             ))}
-            {!context?.signals.length ? (
+            {!scoped.signals.length ? (
               <div className="p-12 text-center text-sm text-slate-600">
                 {emptyState("当前没有策略信号")}
               </div>
@@ -216,10 +251,10 @@ export function Watch() {
         <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["订单", context?.coverage?.orders],
-              ["成交", context?.coverage?.trades],
-              ["持仓", context?.coverage?.positions],
-              ["风险决策", context?.coverage?.risk_events],
+              ["订单", scoped.orders.length],
+              ["成交", scoped.trades.length],
+              ["持仓", scoped.positions.length],
+              ["风险决策", scoped.risk_events.length],
             ].map(([label, value]) => (
               <div key={String(label)} className={`${panel} p-4`}>
                 <div className="text-xs text-slate-500">{String(label)}</div>
@@ -245,7 +280,7 @@ export function Watch() {
                   {["时间", "证券", "方向", "类型", "价格", "数量 / 成交", "状态", "实例"].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}
                 </tr></thead>
                 <tbody>
-                  {(context?.orders ?? []).map((row) => (
+                  {scoped.orders.map((row) => (
                     <tr key={text(row.id)} className="border-b border-white/[0.04] text-slate-300">
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{text(row.created_at)}</td>
                       <td className="px-4 py-3 font-semibold">{text(row.symbol)}</td>
@@ -263,7 +298,7 @@ export function Watch() {
                 </tbody>
               </table>
             </div>
-            {!context?.orders?.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有 Paper 订单证据")}</div> : null}
+            {!scoped.orders.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有 Paper 订单证据")}</div> : null}
           </section>
           <section className={`${panel} overflow-hidden`}>
             <div className="border-b border-crypto-border px-5 py-4">
@@ -276,7 +311,7 @@ export function Watch() {
                   {["成交时间", "证券", "方向", "价格", "数量", "金额", "费用", "实例"].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}
                 </tr></thead>
                 <tbody>
-                  {(context?.trades ?? []).map((row) => (
+                  {scoped.trades.map((row) => (
                     <tr key={text(row.id)} className="border-b border-white/[0.04] text-slate-300">
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{text(row.traded_at)}</td>
                       <td className="px-4 py-3 font-semibold">{text(row.symbol)}</td>
@@ -291,7 +326,7 @@ export function Watch() {
                 </tbody>
               </table>
             </div>
-            {!context?.trades?.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有 Paper 成交证据")}</div> : null}
+            {!scoped.trades.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有 Paper 成交证据")}</div> : null}
           </section>
           <section className={`${panel} overflow-hidden`}>
             <div className="border-b border-crypto-border px-5 py-4">
@@ -304,7 +339,7 @@ export function Watch() {
                   {["更新时间", "证券", "持仓 / 可用", "成本", "最新价", "市值", "实例"].map((label) => <th key={label} className="px-4 py-3">{label}</th>)}
                 </tr></thead>
                 <tbody>
-                  {(context?.positions ?? []).map((row) => (
+                  {scoped.positions.map((row) => (
                     <tr key={text(row.id)} className="border-b border-white/[0.04] text-slate-300">
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{text(row.updated_at)}</td>
                       <td className="px-4 py-3 font-semibold">{text(row.symbol)}</td>
@@ -318,7 +353,7 @@ export function Watch() {
                 </tbody>
               </table>
             </div>
-            {!context?.positions?.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有持仓证据")}</div> : null}
+            {!scoped.positions.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有持仓证据")}</div> : null}
           </section>
           <section className={`${panel} overflow-hidden`}>
             <div className="border-b border-crypto-border px-5 py-4">
@@ -328,7 +363,7 @@ export function Watch() {
               </div>
             </div>
             <div className="divide-y divide-white/[0.04]">
-              {(context?.risk_events ?? []).map((row) => (
+              {scoped.risk_events.map((row) => (
                 <div key={text(row.id)} className="grid gap-2 px-5 py-4 md:grid-cols-[160px_180px_100px_1fr_180px]">
                   <span className="font-mono text-xs text-slate-500">{text(row.created_at)}</span>
                   <span className="text-sm text-slate-300">{text(row.rule_name)} <span className="text-xs text-slate-600">v{text(row.rule_version)}</span></span>
@@ -338,13 +373,13 @@ export function Watch() {
                 </div>
               ))}
             </div>
-            {!context?.risk_events?.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有风险决策证据")}</div> : null}
+            {!scoped.risk_events.length ? <div className="p-10 text-center text-sm text-slate-600">{emptyState("当前没有风险决策证据")}</div> : null}
           </section>
         </div>
       ) : null}
       {tab === "pools" ? (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          {(context?.pool_moves ?? []).map((row, index) => (
+          {scoped.pool_moves.map((row, index) => (
             <article
               key={text(row.snapshot_id ?? index)}
               className={`${panel} p-5`}
@@ -418,7 +453,7 @@ export function Watch() {
       ) : null}
       {tab === "alerts" ? (
         <section className="space-y-3">
-          {(context?.alerts ?? []).map((alert) => (
+          {scoped.alerts.map((alert) => (
             <article key={alert.id} className={`${panel} p-5`}>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex gap-3">
@@ -470,7 +505,7 @@ export function Watch() {
               </div>
             </article>
           ))}
-          {!context?.alerts.length ? (
+          {!scoped.alerts.length ? (
             <div className={`${panel} p-16 text-center text-slate-600`}>
               {emptyState("当前没有告警")}
             </div>
