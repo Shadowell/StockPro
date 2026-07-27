@@ -974,9 +974,9 @@ test('primary pages expose usable A-share research workflow anchors', async ({ p
     { path: '/factors', anchors: ['因子研究', '因子库', '20日动量'] },
     { path: '/strategy', anchors: ['策略中心', 'A股策略约束', '100股整数手'] },
     { path: '/backtest', anchors: ['回测实例控制台', '创建回测实例', '回测实例'] },
-    { path: '/ai-lab', anchors: ['AI研发', 'AI 生成不可用', '策略助手', '受控边界'] },
+    { path: '/ai-lab', anchors: ['AI研发', 'AI自主交易', 'AI自主交易控制台', '硬风控边界'] },
     { path: '/review', anchors: ['复盘中心', '板块轮动', '连板梯队'] },
-    { path: '/paper', anchors: ['管理模拟策略实例、风险控制、订单成交与账户权益。', '实盘前置约束', 'T+1 / 100股'] },
+    { path: '/paper', anchors: ['模拟盘', '策略实例控制台', '优选策略', '全部策略'] },
     { path: '/watch', anchors: ['盯盘', '集中查看策略信号', '最新策略信号'] },
     { path: '/monitor', anchors: ['监控中心', '运行风控检查', '涨跌停风险'] },
     { path: '/data', anchors: ['数据管理中心', '同步覆盖矩阵', 'A股数据维护面板'] },
@@ -1010,7 +1010,10 @@ test('primary pages expose usable A-share research workflow anchors', async ({ p
 test('paper watch and monitor keep separate operator ownership', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/paper');
-  for (const label of ['实例', '信号', '订单', '持仓', '账户', '事件']) await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '策略实例控制台' })).toBeVisible();
+  await page.getByTestId('paper-scope-test').click();
+  await page.getByTestId('paper-instance-card').first().getByRole('button', { name: '详情' }).click();
+  for (const label of ['信号', '订单', '持仓', '账户', '事件']) await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
   await page.goto('/watch');
   for (const label of ['策略信号', '订单与成交', '股票池变动', '图表联动', '告警']) await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
   await page.getByRole('button', { name: '订单与成交', exact: true }).click();
@@ -1051,8 +1054,9 @@ test('strategy backtest and paper expose the A-share operator workflow without i
 
   await page.goto('/paper');
   await expect(page.getByRole('heading', { name: '模拟盘' })).toBeVisible();
-  await expect(page.getByText('当前模式：模拟交易')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '策略实例控制台' })).toBeVisible();
   await page.getByTestId('paper-scope-test').click();
+  await page.getByTestId('paper-instance-card').first().getByRole('button', { name: '详情' }).click();
   await page.getByRole('button', { name: '成交', exact: true }).click();
   await expect(page.getByText('SH_600519')).toBeVisible();
   await page.getByRole('button', { name: '账户', exact: true }).click();
@@ -1083,8 +1087,9 @@ test('paper running state is downgraded when the recorded replay heartbeat is mi
   await page.goto('/paper');
 
   await page.getByTestId('paper-scope-test').click();
-  await expect(page.getByText('回放心跳陈旧')).toBeVisible();
-  await expect(page.getByText('心跳 --')).toBeVisible();
+  const instanceCard = page.getByTestId('paper-instance-card').first();
+  await expect(instanceCard.getByText('心跳陈旧', { exact: true })).toBeVisible();
+  await expect(instanceCard.getByText('最后心跳 未记录')).toBeVisible();
 });
 
 test('watch separates load failure from a legitimate empty signal set', async ({ page }) => {
@@ -1114,8 +1119,8 @@ test('ai lab exposes research state and a real load error', async ({ page }) => 
   await loginAsAdmin(page);
   await page.goto('/ai-lab');
 
-  await expect(page.getByText('策略版本 / 回测记录')).toBeVisible();
-  await expect(page.getByText('加载失败', { exact: true })).toBeVisible();
+  await expect(page.getByText('PostgreSQL 版本记录')).toBeVisible();
+  await expect(page.getByText(/证据加载失败/)).toBeVisible();
 });
 
 test('daily review exposes five evidence workspaces and a sealed audit timeline', async ({ page }) => {
