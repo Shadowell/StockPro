@@ -11,6 +11,35 @@ const panel = 'rounded-xl border border-crypto-border bg-crypto-card';
 const text = (value: unknown) => value === null || value === undefined || value === '' ? '--' : String(value);
 const tone = (status: string) => status === 'healthy' || status === 'running' ? 'text-emerald-300' : status === 'critical' || status === 'failed' ? 'text-red-300' : 'text-amber-300';
 const purposeLabel = (value: string) => value === 'acceptance' ? '验收数据' : value === 'seed' ? '种子数据' : '用户数据';
+const snapshotLabels: Record<string, string> = {
+  status: '封存状态',
+  knowledge_cutoff_at: '知识截止',
+  trade_date: '交易日',
+  available_at: '可用时间',
+  manifest_hash: '清单校验',
+  content_hash: '内容校验',
+};
+
+function SnapshotPanel({
+  title,
+  toneClass,
+  snapshot,
+}: {
+  title: string;
+  toneClass: string;
+  snapshot?: Record<string, unknown> | null;
+}) {
+  const entries = Object.entries(snapshot ?? {})
+    .filter(([key]) => key !== 'id')
+    .map(([key, value]) => [
+      snapshotLabels[key] ?? key,
+      key.endsWith('_hash') ? (value ? '已校验' : '未校验') : key === 'status' ? statusLabel(value) : text(value),
+    ]);
+  return <section className={`${panel} p-5`}>
+    <div className="flex items-center gap-2"><Database className={`h-5 w-5 ${toneClass}`} /><h2 className="font-semibold text-white">{title}</h2></div>
+    {entries.length ? <dl className="mt-4 space-y-2">{entries.map(([label, value]) => <div key={String(label)} className="flex items-center justify-between gap-4 rounded-lg border border-crypto-border bg-crypto-bg px-4 py-3 text-xs"><dt className="text-slate-500">{String(label)}</dt><dd className="text-right font-medium text-slate-300">{String(value)}</dd></div>)}</dl> : <div className="mt-4 rounded-lg border border-dashed border-crypto-border px-4 py-10 text-center text-sm text-slate-600">暂无可用快照</div>}
+  </section>;
+}
 
 function Rows({ rows, keys }: { rows: Array<Record<string, unknown>>; keys: Array<[string, string]> }) {
   const displayValue = (key: string, current: unknown) => {
@@ -48,7 +77,7 @@ export function Monitor() {
     {tab === 'strategy' ? <div className="space-y-4">
       {scopedStrategyHealth.map((item) => <article key={item.id} className={`${panel} p-5`}>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold text-white">{item.name}</h2><span className={`rounded border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] ${tone(item.health_state)}`}>{statusLabel(item.health_state)}</span><span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] text-slate-400">{purposeLabel(item.data_purpose)}</span></div><div className="mt-2 text-[10px] text-slate-600">实例编号 {item.id.slice(0, 8)}</div></div>
+          <div><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold text-white">{item.name}</h2><span className={`rounded border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] ${tone(item.health_state)}`}>{statusLabel(item.health_state)}</span><span className="rounded border border-slate-700 px-2 py-0.5 text-[10px] text-slate-400">{purposeLabel(item.data_purpose)}</span></div><div className="mt-2 text-[10px] text-slate-500">最近交易日 {text(item.last_processed_trade_date)}</div></div>
           <Link to={`/paper?instance=${item.id}`} className="rounded-lg border border-crypto-border px-3 py-2 text-xs text-blue-300">Paper 证据链</Link>
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -59,8 +88,8 @@ export function Monitor() {
       </article>)}
       {!scopedStrategyHealth.length ? <div className={`${panel} p-12 text-center text-sm text-slate-600`}>{busy ? '正在读取实例健康…' : dataScope === 'business' ? '没有业务 Paper 实例健康证据' : '没有测试实例健康证据'}</div> : null}
     </div> : null}
-    {tab === 'data' ? <div className="grid gap-5 xl:grid-cols-2"><section className={`${panel} p-5`}><div className="flex items-center gap-2"><Database className="h-5 w-5 text-blue-400" /><h2 className="font-semibold text-white">研究数据快照</h2></div><pre className="mt-4 overflow-x-auto rounded-lg border border-crypto-border bg-crypto-bg p-4 text-xs leading-6 text-slate-400">{JSON.stringify(health?.data.dataset ?? null, null, 2)}</pre></section><section className={`${panel} p-5`}><div className="flex items-center gap-2"><Database className="h-5 w-5 text-violet-400" /><h2 className="font-semibold text-white">市场证据快照</h2></div><pre className="mt-4 overflow-x-auto rounded-lg border border-crypto-border bg-crypto-bg p-4 text-xs leading-6 text-slate-400">{JSON.stringify(health?.data.market ?? null, null, 2)}</pre></section><Rows rows={health?.services ?? []} keys={[["service_code","服务"],["status","状态"],["last_success_at","最近成功"],["error_code","错误码"],["message","消息"],["observed_at","观察时间"]]} /></div> : null}
-    {tab === 'risk' ? <div className="space-y-4"><Rows rows={health?.risk_alerts ?? []} keys={[["severity","级别"],["count","活动告警"]]} /><Rows rows={(health?.active_alerts ?? []) as unknown as Array<Record<string, unknown>>} keys={[["triggered_at","触发时间"],["severity","级别"],["category","类别"],["title","告警"],["source_object_type","来源类型"],["source_object_id","来源 ID"]]} /><div className={`${panel} flex items-center justify-between p-5`}><div><h2 className="font-semibold text-white">风险告警证据</h2><p className="mt-1 text-xs text-slate-500">在观察台确认告警，在 Paper 查看对应实例、订单与规则链。</p></div><Link to="/watch?tab=alerts" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">打开观察台</Link></div></div> : null}
+    {tab === 'data' ? <div className="grid gap-5 xl:grid-cols-2"><SnapshotPanel title="研究数据快照" toneClass="text-blue-400" snapshot={health?.data.dataset} /><SnapshotPanel title="市场证据快照" toneClass="text-violet-400" snapshot={health?.data.market} /><div className="xl:col-span-2"><Rows rows={health?.services ?? []} keys={[["service_code","服务"],["status","状态"],["last_success_at","最近成功"],["error_code","错误码"],["message","消息"],["observed_at","观察时间"]]} /></div></div> : null}
+    {tab === 'risk' ? <div className="space-y-4"><Rows rows={health?.risk_alerts ?? []} keys={[["severity","级别"],["count","活动告警"]]} /><Rows rows={(health?.active_alerts ?? []) as unknown as Array<Record<string, unknown>>} keys={[["triggered_at","触发时间"],["severity","级别"],["category","类别"],["title","告警"],["instance_name","关联策略"]]} /><div className={`${panel} flex items-center justify-between p-5`}><div><h2 className="font-semibold text-white">风险告警证据</h2><p className="mt-1 text-xs text-slate-500">在观察台确认告警，在模拟盘查看对应实例、订单与规则链。</p></div><Link to="/watch?tab=alerts" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">打开观察台</Link></div></div> : null}
     {tab === 'notifications' ? <Rows rows={health?.notifications ?? []} keys={[["status","投递状态"],["count","数量"]]} /> : null}
   </div>;
 }

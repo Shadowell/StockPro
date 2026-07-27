@@ -383,7 +383,7 @@ export function DailyReview() {
               <h2 className="font-semibold text-white">固定股票池变动</h2>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              展示成员数量、规则输入与 manifest；回测和 Paper 只消费快照 ID。
+              展示成员数量、规则输入与完整性清单；回测和模拟盘只消费已封存快照。
             </p>
           </section>
           <Timeline

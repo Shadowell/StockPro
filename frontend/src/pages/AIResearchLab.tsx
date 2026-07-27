@@ -370,7 +370,7 @@ export function AIResearchLab() {
                 <div key={run.id} className="grid gap-3 px-5 py-4 text-xs md:grid-cols-[minmax(0,1fr)_140px_140px_100px] md:items-center">
                   <div className="min-w-0">
                     <div className="truncate font-semibold text-slate-200">{run.name}</div>
-                    <div className="mt-1 truncate font-mono text-[10px] text-slate-600">{run.id}</div>
+                    <div className="mt-1 truncate text-[10px] text-slate-500">完整回测 · 证据已持久化</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-slate-600">研究窗口</div>
@@ -379,7 +379,7 @@ export function AIResearchLab() {
                   <div>
                     <div className="text-[10px] text-slate-600">准入结论</div>
                     <div className={`mt-1 font-semibold ${run.promotion_status === "paper_eligible" ? "text-emerald-300" : "text-amber-300"}`}>
-                      {run.promotion_status || "未记录"}
+                      {run.promotion_status === "paper_eligible" ? "符合模拟准入" : run.promotion_status ? "待人工评审" : "未记录"}
                     </div>
                   </div>
                   <Link to={`/backtest/${run.id}`} className="inline-flex items-center justify-end gap-1 text-blue-300">
@@ -429,11 +429,11 @@ export function AIResearchLab() {
                   <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
                     <div className="rounded-lg border border-crypto-border p-2">
                       <div className="text-slate-600">数据快照</div>
-                      <div className="mt-1 truncate text-slate-300">#{run.dataset_snapshot_id ?? "未绑定"}</div>
+                      <div className="mt-1 truncate text-slate-300">{run.dataset_snapshot_id ? "已绑定封存数据" : "未绑定"}</div>
                     </div>
                     <div className="rounded-lg border border-crypto-border p-2">
                       <div className="text-slate-600">策略版本</div>
-                      <div className="mt-1 truncate text-slate-300">{run.strategy_version_id || "未绑定"}</div>
+                      <div className="mt-1 truncate text-slate-300">{run.strategy_version_id ? "已绑定不可变版本" : "未绑定"}</div>
                     </div>
                   </div>
                   <div className="mt-4 flex items-center justify-between">

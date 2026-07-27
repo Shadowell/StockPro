@@ -227,9 +227,7 @@ export function Watch() {
                   <span className="text-sm text-slate-300">
                     {text(row.signal_type)} · {text(row.reason)}
                   </span>
-                  <div className="mt-1 font-mono text-[10px] text-slate-600">
-                    signal:{text(row.id)}
-                  </div>
+                  <div className="mt-1 text-[10px] text-slate-500">策略信号已写入运行证据</div>
                 </div>
                 <Link
                   to={`/paper?tab=signals&instance=${text(row.paper_instance_id)}`}
@@ -387,8 +385,8 @@ export function Watch() {
             >
               <div className="flex items-start justify-between">
                 <Layers3 className="h-5 w-5 text-blue-400" />
-                <span className="font-mono text-xs text-slate-600">
-                  快照 #{text(row.snapshot_id)}
+                <span className="text-xs text-slate-500">
+                  {text(row.trade_date)}
                 </span>
               </div>
               <h2 className="mt-4 font-semibold text-slate-100">
@@ -415,8 +413,7 @@ export function Watch() {
               <h2 className="font-semibold text-white">对象联动</h2>
             </div>
             <p className="mt-2 text-xs leading-5 text-slate-500">
-              从信号跳转时保留证券、实例、股票池与证据
-              ID；行情图只用于观察，不触发交易。
+              从信号跳转时自动保留证券、策略实例与股票池上下文；行情图只用于观察，不触发交易。
             </p>
             <div className="mt-5 space-y-2">
               {(context?.instances ?? []).map((item) => (
@@ -426,8 +423,8 @@ export function Watch() {
                   className="flex items-center justify-between rounded-lg border border-crypto-border bg-crypto-bg p-3 text-sm"
                 >
                   <span className="text-slate-300">{item.name}</span>
-                  <span className="font-mono text-xs text-violet-300">
-                    Pool #{item.pool_snapshot_id}
+                  <span className="text-xs text-violet-300">
+                    打开关联行情 →
                   </span>
                 </Link>
               ))}
@@ -438,7 +435,7 @@ export function Watch() {
             <div className="mt-4 space-y-3 text-xs text-slate-500">
               {[
                 "图表使用相同固定数据快照和证券代码。",
-                "告警回链 source_object_type / source_object_id。",
+                "告警可回到对应策略实例和事件证据。",
                 "任何观察操作都不能直接生成订单或修改运行参数。",
               ].map((item) => (
                 <div
@@ -475,9 +472,11 @@ export function Watch() {
                     <p className="mt-2 text-sm text-slate-400">
                       {alert.message}
                     </p>
-                    <div className="mt-2 text-[10px] text-slate-600">
-                      关联记录 {alert.source_object_id.slice(0, 8)} · 告警编号{" "}
-                      {alert.id.slice(0, 8)}
+                    <div className="mt-2 text-[10px] text-slate-500">
+                      {alert.paper_instance_id && instanceById.get(alert.paper_instance_id)?.name
+                        ? `关联策略 ${instanceById.get(alert.paper_instance_id)?.name} · `
+                        : ""}
+                      触发时间 {text(alert.triggered_at)}
                     </div>
                   </div>
                 </div>

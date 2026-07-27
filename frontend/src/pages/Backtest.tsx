@@ -170,7 +170,7 @@ function BacktestDetail({ runId }: { runId: string }) {
         <div>
           <button type="button" onClick={() => navigate('/backtest')} className="mb-4 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-blue-300"><ArrowLeft className="h-4 w-4" />返回回测工作台</button>
           <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold text-white">{data.run.name}</h1><StatusBadge run={data.run} /></div>
-          <p className="mt-2 text-sm text-gray-500">{data.run.start_date} — {data.run.end_date} · {data.run.strategy_name} v{data.run.strategy_version} · ID {data.run.id}</p>
+          <p className="mt-2 text-sm text-gray-500">{data.run.start_date} — {data.run.end_date} · {data.run.strategy_name} v{data.run.strategy_version}</p>
         </div>
       </div>
 
@@ -185,7 +185,7 @@ function BacktestDetail({ runId }: { runId: string }) {
       {tab === '总览' && <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
         <section className={`${panel} p-5`}><div className="mb-3 flex items-center gap-2 text-base font-semibold text-white"><BarChart3 className="h-5 w-5 text-blue-400" />净值与基准</div><ReactECharts option={chartOption} style={{ height: 420 }} /></section>
         <section className={`${panel} p-5`}><h2 className="text-base font-semibold text-white">可复现实验凭证</h2><dl className="mt-5 space-y-4 text-sm">{[
-          ['数据快照', `第 ${data.run.dataset_snapshot_id} 版`], ['股票范围', `第 ${data.run.universe_snapshot_id} 版`], ['因子快照', data.run.factor_snapshot_id ? `第 ${data.run.factor_snapshot_id} 版` : '未绑定'], ['成本模型', data.run.cost_model_name ?? data.run.cost_model_id], ['研究协议', data.run.protocol_name ?? '未绑定'], ['基准', data.run.benchmark_code], ['频率', '日频 / A股收盘信号次日成交'],
+          ['研究数据', data.run.dataset_snapshot_id ? '已绑定封存快照' : '未绑定'], ['股票范围', data.run.universe_snapshot_id ? '已绑定固定范围' : '未绑定'], ['因子输入', data.run.factor_snapshot_id ? '已绑定封存因子' : '未绑定'], ['成本模型', data.run.cost_model_name ?? '未绑定'], ['研究协议', data.run.protocol_name ?? '未绑定'], ['基准', data.run.benchmark_code], ['频率', '日频 / A股收盘信号次日成交'],
         ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-4 border-b border-white/[0.04] pb-3"><dt className="text-gray-500">{label}</dt><dd className="text-right font-medium text-gray-300">{value}</dd></div>)}</dl></section>
         <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2><div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 text-sm font-semibold ${item.return === null || item.return === undefined ? 'text-gray-500' : item.return >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div></section>
       </div>}
@@ -544,7 +544,7 @@ export function Backtest() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${statusTone}`}>{statusLabel(job.status)}</span>
                       <span className="text-xs font-semibold text-gray-300">{job.run_mode === 'quick' ? '快速预检' : '完整回测'} · 第 {job.attempt} 次</span>
-                      <span className="text-[10px] text-gray-700">任务 {job.job_id.slice(0, 8)}</span>
+                      <span className="text-[10px] text-gray-600">{job.created_at ? `创建于 ${job.created_at}` : '创建时间未记录'}</span>
                     </div>
                     <p className="mt-2 text-xs text-gray-500">{job.message || job.phase}</p>
                     {job.error_message ? <p className="mt-1 text-xs text-red-300">{job.error_message}</p> : null}
@@ -579,7 +579,7 @@ export function Backtest() {
             <div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-purple-400" /><h2 className="font-semibold text-white">回测实例</h2><span className="text-xs text-gray-600">{visibleRuns.length} / {scopedRuns.length} 个</span></div>
             <label className="relative">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-600" />
-              <input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="搜索策略、运行或 ID" className="h-9 w-64 rounded-lg border border-crypto-border bg-crypto-bg pl-9 pr-3 text-xs text-gray-200 outline-none focus:border-blue-500/60" />
+              <input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="搜索策略或运行名称" className="h-9 w-64 rounded-lg border border-crypto-border bg-crypto-bg pl-9 pr-3 text-xs text-gray-200 outline-none focus:border-blue-500/60" />
             </label>
           </div>
           <div className="flex items-center gap-2">
@@ -599,8 +599,8 @@ export function Backtest() {
                       <span className="rounded border border-blue-500/25 bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-300">A股</span>
                       <StatusBadge run={run} />
                     </div>
-                    <p className="mt-2 text-xs text-gray-600">{run.start_date} 至 {run.end_date} · 数据第 {run.dataset_snapshot_id} 版 · 股票范围第 {run.universe_snapshot_id} 版</p>
-                    <p className="mt-1 truncate text-[10px] text-gray-700">{run.name} · {run.id}</p>
+                    <p className="mt-2 text-xs text-gray-500">{run.start_date} 至 {run.end_date} · 封存数据 · 固定股票范围</p>
+                    <p className="mt-1 truncate text-[10px] text-gray-600">{run.name}</p>
                   </div>
                   <div className="grid grid-cols-5 gap-2">
                     {[
@@ -642,17 +642,17 @@ export function Backtest() {
             {createStep === 1 ? <div>
               <label className="relative block"><Search className="absolute left-3 top-3.5 h-4 w-4 text-gray-600" /><input autoFocus value={strategyQuery} onChange={(event) => setStrategyQuery(event.target.value)} placeholder="搜索策略名称、说明或版本" className={`${input} pl-10`} /></label>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {strategyOptions.map((item) => <button key={item.id} type="button" onClick={() => setStrategyVersionId(item.id)} className={`rounded-xl border p-4 text-left transition ${strategyVersionId === item.id ? 'border-purple-500/50 bg-purple-500/10' : 'border-crypto-border bg-black/10 hover:border-slate-600'}`}><div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-gray-100">{item.name}</div><p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500">{item.description || '未填写策略说明'}</p></div><span className="shrink-0 rounded border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-300">v{item.version}</span></div><p className="mt-3 font-mono text-[10px] text-gray-700">{item.content_hash.slice(0, 16)}</p></button>)}
+                {strategyOptions.map((item) => <button key={item.id} type="button" onClick={() => setStrategyVersionId(item.id)} className={`rounded-xl border p-4 text-left transition ${strategyVersionId === item.id ? 'border-purple-500/50 bg-purple-500/10' : 'border-crypto-border bg-black/10 hover:border-slate-600'}`}><div className="flex items-start justify-between gap-3"><div><div className="font-semibold text-gray-100">{item.name}</div><p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500">{item.description || '未填写策略说明'}</p></div><span className="shrink-0 rounded border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-300">v{item.version}</span></div><p className="mt-3 text-[10px] text-emerald-400/80">{item.content_hash ? '版本内容已校验' : '版本内容待校验'}</p></button>)}
               </div>
             </div> : null}
             {createStep === 2 ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="数据快照"><select className={input} value={datasetSnapshotId} onChange={(event) => setDatasetSnapshotId(Number(event.target.value))}>{config.dataset_snapshots.map((item) => <option key={item.id} value={item.id}>#{item.id} {item.name}</option>)}</select></Field>
-              <Field label="股票范围"><select className={input} value={universeSnapshotId} onChange={(event) => setUniverseSnapshotId(Number(event.target.value))}>{config.universe_snapshots.map((item) => <option key={item.id} value={item.id}>第 {item.id} 版 · {item.code} · {item.member_count}只</option>)}</select></Field>
-              <Field label="因子快照" hint="可选，且须与数据及股票范围兼容"><select className={input} value={factorSnapshotId} onChange={(event) => setFactorSnapshotId(Number(event.target.value))}><option value={0}>不绑定</option>{config.factor_snapshots.map((item) => <option key={item.id} value={item.id}>第 {item.id} 版 · {item.name}</option>)}</select></Field>
-              <Field label="股票池快照"><select className={input} value={poolSnapshotId} onChange={(event) => { const id = Number(event.target.value); setPoolSnapshotId(id); const pool = config.pool_snapshots.find((item) => item.id === id); if (pool) { setDatasetSnapshotId(pool.dataset_snapshot_id); setUniverseSnapshotId(pool.universe_snapshot_id); setFactorSnapshotId(pool.factor_snapshot_id ?? 0); setSymbols(''); } }}><option value={0}>不绑定</option>{config.pool_snapshots.map((item) => <option key={item.id} value={item.id}>#{item.id} {item.pool_name} · {item.member_count}只</option>)}</select></Field>
+              <Field label="数据快照"><select className={input} value={datasetSnapshotId} onChange={(event) => setDatasetSnapshotId(Number(event.target.value))}>{config.dataset_snapshots.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+              <Field label="股票范围"><select className={input} value={universeSnapshotId} onChange={(event) => setUniverseSnapshotId(Number(event.target.value))}>{config.universe_snapshots.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.member_count}只</option>)}</select></Field>
+              <Field label="因子快照" hint="可选，且须与数据及股票范围兼容"><select className={input} value={factorSnapshotId} onChange={(event) => setFactorSnapshotId(Number(event.target.value))}><option value={0}>不绑定</option>{config.factor_snapshots.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+              <Field label="股票池快照"><select className={input} value={poolSnapshotId} onChange={(event) => { const id = Number(event.target.value); setPoolSnapshotId(id); const pool = config.pool_snapshots.find((item) => item.id === id); if (pool) { setDatasetSnapshotId(pool.dataset_snapshot_id); setUniverseSnapshotId(pool.universe_snapshot_id); setFactorSnapshotId(pool.factor_snapshot_id ?? 0); setSymbols(''); } }}><option value={0}>不绑定</option>{config.pool_snapshots.map((item) => <option key={item.id} value={item.id}>{item.pool_name} · {item.member_count}只</option>)}</select></Field>
               <Field label="成本模型"><select className={input} value={costModelId} onChange={(event) => setCostModelId(event.target.value)}>{config.cost_models.map((item) => <option key={item.id} value={item.id}>{item.name} · v{item.version}</option>)}</select></Field>
               <Field label="研究协议" hint="不绑定则不能晋级模拟盘"><select className={input} value={protocolId} onChange={(event) => setProtocolId(event.target.value)}><option value="">不绑定</option>{config.protocols.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
-              <Field label="股票代码" hint={poolSnapshotId ? '由股票池快照提供' : '英文逗号分隔，例如 600519.SH'}><input className={input} value={poolSnapshotId ? `股票池快照 #${poolSnapshotId}` : symbols} readOnly={Boolean(poolSnapshotId)} onChange={(event) => setSymbols(event.target.value)} /></Field>
+              <Field label="股票代码" hint={poolSnapshotId ? '由股票池快照提供' : '英文逗号分隔，例如 600519.SH'}><input className={input} value={poolSnapshotId ? `${selectedPool?.pool_name ?? '已选股票池'} · ${selectedPool?.member_count ?? '--'}只` : symbols} readOnly={Boolean(poolSnapshotId)} onChange={(event) => setSymbols(event.target.value)} /></Field>
               <Field label="开始日期"><input type="date" className={input} value={startDate} onChange={(event) => setStartDate(event.target.value)} /></Field>
               <Field label="结束日期"><input type="date" className={input} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></Field>
               <Field label="初始资金"><input type="number" min={10000} step={10000} className={input} value={initialCash} onChange={(event) => setInitialCash(Number(event.target.value))} /></Field>
@@ -666,8 +666,8 @@ export function Backtest() {
                   ['回测区间', `${startDate} 至 ${endDate}`],
                   ['初始资金', `¥${initialCash.toLocaleString('zh-CN')}`],
                   ['证券范围', selectedPool ? `${selectedPool.pool_name} · ${selectedPool.member_count}只` : symbols || '--'],
-                  ['数据快照', selectedDataset ? `#${selectedDataset.id} ${selectedDataset.name}` : '--'],
-                  ['Universe', selectedUniverse ? `#${selectedUniverse.id} ${selectedUniverse.code}` : '--'],
+                  ['数据快照', selectedDataset?.name ?? '--'],
+                  ['股票范围', selectedUniverse ? `${selectedUniverse.code} · ${selectedUniverse.member_count}只` : '--'],
                   ['成本模型', selectedCostModel ? `${selectedCostModel.name} · v${selectedCostModel.version}` : '--'],
                   ['研究协议', selectedProtocol?.name ?? '未绑定（不可晋级）'],
                 ].map(([label, value]) => <div key={label} className="rounded-lg border border-white/[0.05] bg-white/[0.02] p-3"><dt className="text-gray-600">{label}</dt><dd className="mt-1 font-medium text-gray-300">{value}</dd></div>)}</dl></section>
@@ -683,7 +683,7 @@ export function Backtest() {
         </section>
       </div> : null}
 
-      {compareData ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-5" onMouseDown={() => setCompareData(null)}><section className="max-h-[88vh] w-full max-w-6xl overflow-auto rounded-2xl border border-crypto-border bg-crypto-card shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="sticky top-0 flex items-center justify-between border-b border-crypto-border bg-crypto-card px-6 py-4"><div><h2 className="font-semibold text-white">完整回测对比</h2><p className="mt-1 text-xs text-gray-500">{compareData.runs.length} 个回测结果</p></div><button type="button" onClick={() => setCompareData(null)} className="text-sm text-gray-400">关闭</button></div><div className="p-6"><GenericTable rows={compareData.runs.map((run) => ({ name: run.name, strategy: run.strategy_name, period: `${run.start_date} — ${run.end_date}`, return: formatValue(run.metrics?.strategy_return, 'ratio'), drawdown: formatValue(run.metrics?.maximum_drawdown, 'ratio'), sharpe: formatValue(run.metrics?.sharpe), snapshot: run.dataset_snapshot_id }))} columns={[["name", "运行"], ["strategy", "策略"], ["period", "区间"], ["return", "收益"], ["drawdown", "回撤"], ["sharpe", "Sharpe"], ["snapshot", "快照"]]} /></div></section></div> : null}
+      {compareData ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-5" onMouseDown={() => setCompareData(null)}><section className="max-h-[88vh] w-full max-w-6xl overflow-auto rounded-2xl border border-crypto-border bg-crypto-card shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="sticky top-0 flex items-center justify-between border-b border-crypto-border bg-crypto-card px-6 py-4"><div><h2 className="font-semibold text-white">完整回测对比</h2><p className="mt-1 text-xs text-gray-500">{compareData.runs.length} 个回测结果</p></div><button type="button" onClick={() => setCompareData(null)} className="text-sm text-gray-400">关闭</button></div><div className="p-6"><GenericTable rows={compareData.runs.map((run) => ({ name: run.name, strategy: run.strategy_name, period: `${run.start_date} — ${run.end_date}`, return: formatValue(run.metrics?.strategy_return, 'ratio'), drawdown: formatValue(run.metrics?.maximum_drawdown, 'ratio'), sharpe: formatValue(run.metrics?.sharpe) }))} columns={[["name", "运行"], ["strategy", "策略"], ["period", "区间"], ["return", "收益"], ["drawdown", "回撤"], ["sharpe", "Sharpe"]]} /></div></section></div> : null}
     </div>
   );
 }
