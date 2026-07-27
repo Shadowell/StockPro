@@ -27,6 +27,7 @@ import {
 } from "../api/client";
 import type { BacktestRun, PaperRuntimeInstance } from "../types";
 import { PaperInstanceDashboard } from "../components/PaperInstanceDashboard";
+import { PaperRuntimeInstanceDetail } from "../components/PaperRuntimeInstanceDetail";
 
 const TABS = [
   ["instances", "实例"],
@@ -441,15 +442,15 @@ export function Paper() {
       setBusy(false);
     }
   };
-  const replay = async () => {
-    if (!selected || !cycleDate) return setError("请选择回放交易日");
+  const replay = async (requestedDate = cycleDate) => {
+    if (!selected || !requestedDate) return setError("请选择回放交易日");
     setBusy(true);
     setError("");
     try {
       await processPaperCycle(selected.id, {
-        trade_date: cycleDate,
-        data_available_at: `${cycleDate}T15:00:00+08:00`,
-        observed_at: `${cycleDate}T15:01:00+08:00`,
+        trade_date: requestedDate,
+        data_available_at: `${requestedDate}T15:00:00+08:00`,
+        observed_at: `${requestedDate}T15:01:00+08:00`,
       });
       await load(selected.id);
     } catch (reason) {
@@ -519,6 +520,32 @@ export function Paper() {
                 ? selected.events
                 : []) ?? [])
     : [];
+
+  if (pageView === "detail" && selected) {
+    const qualifyingRun =
+      runs.find((item) => item.id === selected.qualifying_backtest_run_id) ??
+      selected.qualifying_backtest ??
+      null;
+    return (
+      <div className="min-h-full bg-crypto-bg px-4 py-5 sm:px-5 2xl:px-8">
+        {error ? (
+          <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
+            <strong>加载或操作失败：</strong>
+            {error}；缺失数据未显示为 0。
+          </div>
+        ) : null}
+        <PaperRuntimeInstanceDetail
+          instance={selected}
+          qualifyingRun={qualifyingRun}
+          busy={busy}
+          onBack={backToDashboard}
+          onRefresh={() => load(selected.id)}
+          onAction={action}
+          onRunCycle={replay}
+        />
+      </div>
+    );
+  }
 
   return (
     <div

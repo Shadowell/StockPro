@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities } from '../types';
+import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -1171,6 +1171,9 @@ export const listPaperInstances = async (): Promise<{ items: PaperRuntimeInstanc
 
 export const getPaperInstance = async (instanceId: string): Promise<PaperRuntimeInstance> =>
   (await apiClient.get<PaperRuntimeInstance>(`/paper/instances/${instanceId}`)).data;
+
+export const getPaperInstanceKlines = async (instanceId: string, symbol: string): Promise<PaperKlineSnapshot> =>
+  (await apiClient.get<PaperKlineSnapshot>(`/paper/instances/${instanceId}/klines/${encodeURIComponent(symbol)}`)).data;
 
 export const createPaperInstance = async (request: {
   name?: string;

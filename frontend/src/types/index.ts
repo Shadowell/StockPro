@@ -396,6 +396,13 @@ export interface StrategyVersion {
   validation_status: string;
   validation_report: StrategyValidationReport;
   dataset_snapshot_id?: number;
+  parameter_schema?: Record<string, unknown>;
+  data_dependencies?: string[];
+  dependency_manifest?: Record<string, unknown>;
+  runtime_limits?: Record<string, unknown>;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface StrategySaveResponse extends Partial<Strategy> {
@@ -847,6 +854,8 @@ export interface PaperRuntimeCycle {
   trade_count: number;
   ledger_difference?: number | string | null;
   error_message?: string | null;
+  created_at?: string | null;
+  finished_at?: string | null;
 }
 
 export interface PaperRuntimeInstance {
@@ -872,6 +881,16 @@ export interface PaperRuntimeInstance {
   trade_count?: number;
   last_processed_trade_date?: string | null;
   heartbeat_at?: string | null;
+  started_at?: string | null;
+  stopped_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  latest_cycle_id?: string | null;
+  latest_cycle_status?: PaperRuntimeCycle['status'] | null;
+  latest_cycle_trade_date?: string | null;
+  latest_cycle_finished_at?: string | null;
+  latest_cycle_error?: string | null;
+  latest_cycle_ledger_difference?: number | string | null;
   signals?: Array<Record<string, unknown>>;
   orders?: Array<Record<string, unknown>>;
   trades?: Array<Record<string, unknown>>;
@@ -879,9 +898,30 @@ export interface PaperRuntimeInstance {
   cash_ledger?: Array<Record<string, unknown>>;
   equity_snapshots?: Array<Record<string, unknown>>;
   events?: Array<Record<string, unknown>>;
+  risk_events?: Array<Record<string, unknown>>;
+  alerts?: Array<Record<string, unknown>>;
   cycles?: PaperRuntimeCycle[];
+  strategy_version?: StrategyVersion;
+  qualifying_backtest?: BacktestRun;
   reused?: boolean;
   data_purpose?: 'user' | 'acceptance' | 'seed';
+}
+
+export interface PaperKlineSnapshot {
+  items: Array<{
+    date: string;
+    open: number | string | null;
+    high: number | string | null;
+    low: number | string | null;
+    close: number | string | null;
+    volume?: number | string | null;
+  }>;
+  total: number;
+  symbol: string;
+  source_label: string;
+  dataset_snapshot_id: number;
+  knowledge_cutoff_at?: string | null;
+  data_status: 'available' | 'empty';
 }
 
 export interface RuntimeAlert {

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.endpoints import monitor_runtime, paper, watch
+from app.services.paper_runtime_service import PaperRuntimeService
 
 
 class PaperRuntimeApiContractTests(unittest.TestCase):
@@ -61,6 +62,33 @@ class PaperRuntimeApiContractTests(unittest.TestCase):
     def test_events_endpoint_returns_total(self):
         self.paper.events.return_value = [{"id": 1}]
         self.assertEqual(self.client.get("/paper/instances/paper-1/events").json()["total"], 1)
+
+    def test_pinned_kline_endpoint_returns_snapshot_evidence(self):
+        self.paper.get_instance_klines.return_value = {
+            "items": [{"date": "2025-01-02", "close": 10.5}],
+            "total": 1,
+            "dataset_snapshot_id": 10,
+            "source_label": "PostgreSQL 封存数据快照",
+            "data_status": "available",
+        }
+        response = self.client.get("/paper/instances/paper-1/klines/SZ_002415")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["dataset_snapshot_id"], 10)
+        self.paper.get_instance_klines.assert_called_once_with("paper-1", "SZ_002415")
+
+    def test_only_explicit_historical_replay_can_bypass_wall_clock_staleness(self):
+        self.assertTrue(PaperRuntimeService._feed_allows_stale_entries({
+            "mode": "historical_replay",
+            "allow_new_entries_when_stale": True,
+        }))
+        self.assertFalse(PaperRuntimeService._feed_allows_stale_entries({
+            "mode": "realtime",
+            "allow_new_entries_when_stale": True,
+        }))
+        self.assertFalse(PaperRuntimeService._feed_allows_stale_entries({
+            "mode": "recorded_replay",
+            "allow_new_entries_when_stale": False,
+        }))
 
     def test_value_error_is_400(self):
         self.paper.start.side_effect = ValueError("门禁失败")
