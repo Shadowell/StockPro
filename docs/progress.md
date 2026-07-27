@@ -1,5 +1,39 @@
 # Progress Log
 
+## BitPro-parity Final Local Acceptance (2026-07-27)
+
+1. Re-audited the existing PostgreSQL daily publication chain: persisted cron,
+   TuShare trade-calendar gate, advisory lock, required reference partitions,
+   Universe, daily bars, immutable dataset snapshot, optional market evidence and
+   factor scheduling are already implemented and contract-tested.
+2. Added a permanent real-backend read-only browser gate for all twelve primary
+   routes. It checks the authenticated document, shared workflow navigation and
+   browser runtime without creating or mutating research/runtime objects.
+3. Confirmed twelve core read APIs return `200`: workflow, market overview and
+   research context, pools, factors, strategy, backtests, Paper, Watch, Monitor,
+   Review and the daily Data schedule.
+4. Preserved the explicit operations boundary: the PG daily plan is enabled, but
+   `ENABLE_SCHEDULER` is false, no APScheduler job is registered and no effective
+   next run exists. No provider sync, backfill or Paper cycle was started.
+
+Verification:
+
+- Real 12-page read-only Playwright passed 1/1 with the local administrator.
+- Daily plan: configured next run `2026-07-28 17:30 Asia/Shanghai`, runtime
+  `runner_offline`, effective next run unavailable, daily-bars watermark
+  `2025-01-02`.
+- Runtime evidence remains truthful: Watch `stale` with source update
+  `2026-07-17T02:42:47.409905Z`; Monitor `critical` with source update
+  `2026-07-16T14:15:08.518862Z`.
+- `./scripts/check.sh` passed production build, lint with 7 existing warnings and
+  0 errors, deploy shell syntax, 287 backend tests and Python compilation.
+- Full mock browser regression passed 33/33 applicable tests; 12 write-capable or
+  explicit real-suite cases remained skipped by default.
+
+Remaining operator action: enabling the scheduler and any catch-up synchronization
+requires explicit approval because it will call providers and write new market
+data. Real-broker execution remains outside the approved local scope.
+
 ## BitPro-parity Runtime Evidence (2026-07-27)
 
 1. Expanded the PostgreSQL Watch context from signals and alerts to the complete

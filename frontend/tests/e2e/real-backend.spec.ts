@@ -415,6 +415,36 @@ test('真实交易日从市场研究贯穿到封存复盘且所有引用可解�
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 
+test('十二个主要页面通过真实后端只读加载且共享可信状态壳', async ({ page }) => {
+  const token = await login(page.request);
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  await page.setViewportSize({ width: 1440, height: 960 });
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  const pages = [
+    ['/', '实时大盘'],
+    ['/market', '市场概览'],
+    ['/pools', '股票池研究'],
+    ['/factors', '因子研究'],
+    ['/strategy', '策略开发'],
+    ['/backtest', '回测中心'],
+    ['/ai-lab', 'AI 研发'],
+    ['/paper', '模拟交易'],
+    ['/watch', '观察台'],
+    ['/monitor', '运行风控'],
+    ['/review', '复盘中心'],
+    ['/data', '管理后台'],
+  ] as const;
+
+  for (const [path, title] of pages) {
+    const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
+    expect(response?.ok(), `${path} document should load`).toBeTruthy();
+    await expect(page.getByTestId('stockpro-ai-topbar').getByRole('heading', { name: title })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '主工作流' })).toBeVisible();
+  }
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
 test('首页未登录进入登录页', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));

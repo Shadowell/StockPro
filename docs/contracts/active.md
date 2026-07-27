@@ -1,1 +1,1 @@
-/Users/jie.feng/Dev/Github/Private/StockPro/docs/contracts/active-bitpro-runtime-evidence.md
+/Users/jie.feng/Dev/Github/Private/StockPro/docs/contracts/active-bitpro-final-local-acceptance.md
