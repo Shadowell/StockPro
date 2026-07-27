@@ -275,6 +275,9 @@ export function PaperRuntimeInstanceDetail({
   const profitFactor =
     closedPnls.length > 0 && grossLoss > 0 ? grossProfit / grossLoss : null;
   const activeAlerts = alerts.filter((row) => row.status === "active");
+  const actionableAlerts = activeAlerts.filter((row) =>
+    ["warning", "critical"].includes(text(row.severity, "").toLowerCase()),
+  );
   const isReplay = ["recorded_replay", "historical_replay", "paper_replay"].includes(
     text(feed.mode, "").toLowerCase(),
   );
@@ -589,7 +592,7 @@ export function PaperRuntimeInstanceDetail({
             ["运行保护", instance.latest_cycle_status === "failed" || instance.latest_cycle_status === "blocked" ? "异常" : "正常", instance.latest_cycle_status === "failed" || instance.latest_cycle_status === "blocked"],
             ["回撤监控", drawdown === null ? "未计算" : pct(drawdown * 100), drawdown !== null && asNumber(capacity.max_drawdown) !== null && drawdown > Number(capacity.max_drawdown)],
             ["仓位边界", `${positions.length} 个持仓`, false],
-            ["活动告警", `${activeAlerts.length} 条`, activeAlerts.length > 0],
+            ["风险告警", `${actionableAlerts.length} 条`, actionableAlerts.length > 0],
             ["T+1 约束", "启用", false],
             ["100股整手", "启用", false],
             ["账本差额", instance.latest_cycle_ledger_difference === null || instance.latest_cycle_ledger_difference === undefined ? "未提供" : number(instance.latest_cycle_ledger_difference, 4), asNumber(instance.latest_cycle_ledger_difference) !== null && Math.abs(Number(instance.latest_cycle_ledger_difference)) > 0.01],
