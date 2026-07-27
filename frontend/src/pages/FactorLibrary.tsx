@@ -6,9 +6,7 @@ import {
   AlertCircle,
   BarChart3,
   Braces,
-  CalendarDays,
   CheckCircle2,
-  CircleGauge,
   Clock3,
   Database,
   GitCompareArrows,
@@ -78,13 +76,20 @@ const categoryNames: Record<string, string> = {
   technical: '技术',
 };
 
+const categoryOrder = ['momentum', 'reversal', 'value', 'size', 'volatility', 'liquidity', 'technical'];
+
 const researchStatusNames: Record<string, string> = {
-  exploratory: '探索性 · 未绑定协议',
+  exploratory: '探索研究',
   validated: '已验证',
   rejected: '已拒绝',
   paper_eligible: '模拟盘候选',
   deprecated: '已弃用',
   failed: '失败',
+};
+
+const directionNames: Record<number, string> = {
+  1: '高值优先',
+  [-1]: '低值优先',
 };
 
 const defaultFactorCode = `FACTOR_META = {
@@ -110,12 +115,10 @@ const percentageText = (value: unknown) => {
   return `${(value * 100).toFixed(1)}%`;
 };
 
-const dateTimeText = (value?: string | null) => {
-  if (!value) return '--';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString('zh-CN', { hour12: false });
-};
+const factorDescriptionText = (value?: string | null) => (value || '暂无研究假设')
+  .replace(/TuShare daily_basic/g, '行情基础数据')
+  .replace(/PE_TTM 的倒数/g, '滚动市盈率的倒数')
+  .replace(/PB 的倒数/g, '市净率的倒数');
 
 const researchAgeDays = (tradeDate?: string | null) => {
   if (!tradeDate) return null;
@@ -241,9 +244,20 @@ export const FactorLibrary = () => {
   const filteredFactors = useMemo(() => factors.filter((item) => {
     const text = `${item.factor_code} ${item.factor_name} ${item.description ?? ''}`.toLowerCase();
     return (category === 'all' || item.category === category) && text.includes(query.trim().toLowerCase());
+  }).sort((left, right) => {
+    const categoryDifference = categoryOrder.indexOf(left.category) - categoryOrder.indexOf(right.category);
+    return categoryDifference || left.factor_name.localeCompare(right.factor_name, 'zh-CN', { numeric: true });
   }), [category, factors, query]);
 
-  const categories = useMemo(() => Array.from(new Set(factors.map((item) => item.category))).sort(), [factors]);
+  const categories = useMemo(() => Array.from(new Set(factors.map((item) => item.category))).sort((left, right) => {
+    const leftOrder = categoryOrder.indexOf(left);
+    const rightOrder = categoryOrder.indexOf(right);
+    return (leftOrder < 0 ? categoryOrder.length : leftOrder) - (rightOrder < 0 ? categoryOrder.length : rightOrder);
+  }), [factors]);
+  const categoryCounts = useMemo(() => factors.reduce<Record<string, number>>((result, item) => {
+    result[item.category] = (result[item.category] ?? 0) + 1;
+    return result;
+  }, {}), [factors]);
   const latestFactor = useMemo(() => factors
     .filter((item) => item.dataset_snapshot_id && item.universe_snapshot_id && item.last_trade_date)
     .sort((left, right) => {
@@ -264,7 +278,6 @@ export const FactorLibrary = () => {
     ? coverageValues[Math.floor((coverageValues.length - 1) / 2)]
     : null;
   const sampleAge = researchAgeDays(latestFactor?.last_trade_date);
-  const sampleTone = sampleAge !== null && sampleAge <= 5 ? 'green' : 'amber';
   const latestRun = runs.reduce<FactorComputeRun | null>((current, item) => !current || item.id > current.id ? item : current, null);
 
   const selectFactor = (item: ResearchFactor, nextWorkspace: Workspace = 'single') => {
@@ -315,162 +328,120 @@ export const FactorLibrary = () => {
   const pendingRows = latestMetrics.filter((item) => item.pending_reason);
   const industryExposure = metric('industry_exposure')?.metric_payload ?? {};
   const correlationCodes = factors.map((item) => item.factor_code);
+  const factorNameByCode = new Map(factors.map((item) => [item.factor_code, item.factor_name]));
   const correlationMap = new Map<string, number | null | undefined>();
   correlations.forEach((item) => {
     correlationMap.set(`${item.factor_code_a}:${item.factor_code_b}`, item.correlation);
     correlationMap.set(`${item.factor_code_b}:${item.factor_code_a}`, item.correlation);
   });
+  const latestValueRunId = Math.max(0, ...values.map((item) => item.compute_run_id));
+  const latestValues = values.filter((item) => item.compute_run_id === latestValueRunId);
 
   return (
-    <div className="flex min-h-0 flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-testid="factor-research-workbench">
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <Braces size={24} className="text-blue-400" />
-            <h1 className="text-2xl font-bold text-white">因子研究</h1>
+          <div className="flex items-center gap-3">
+            <BarChart3 className="h-7 w-7 text-blue-400" />
+            <h1 className="text-2xl font-black text-white">因子研究</h1>
+            <StatusBadge tone={loading ? 'amber' : error ? 'red' : 'green'}>
+              {loading ? '读取中' : error ? '部分不可用' : `${factors.length} 个因子`}
+            </StatusBadge>
           </div>
-          <p className="mt-1 text-xs text-gray-500">管理因子版本、计算记录、分析结果和点时快照。</p>
+          <p className="mt-2 text-sm text-slate-500">管理因子定义、计算证据与有效性评价，支持从单因子检验到组合研究。</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setAuthorOpen(true)} className="inline-flex h-9 items-center gap-2 rounded border border-crypto-border bg-crypto-card px-3 text-xs text-gray-200 hover:border-blue-500/50">
-            <Plus size={14} /> 新建 Python 因子
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setAuthorOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-300 hover:border-blue-500/50 hover:text-white">
+            <Plus size={15} /> 新建自定义因子
           </button>
-          <button onClick={runDaily} disabled={running || loading} className="inline-flex h-9 items-center gap-2 rounded bg-blue-600 px-3 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
-            {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} 运行已封存日调度
+          <button onClick={runDaily} disabled={running || loading} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
+            {running ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />} 运行日频计算
           </button>
-          <button aria-label="刷新因子研究" onClick={loadBase} className="grid h-9 w-9 place-items-center rounded border border-crypto-border bg-crypto-card text-gray-400 hover:text-white">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <button aria-label="刷新因子研究" onClick={loadBase} className="grid h-10 w-10 place-items-center rounded-lg border border-crypto-border bg-crypto-card text-slate-400 hover:text-white">
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
-      </div>
+      </header>
 
-      <section data-testid="factor-research-summary" className="grid gap-3 lg:grid-cols-[minmax(200px,0.75fr)_minmax(200px,0.75fr)_minmax(400px,1.5fr)]">
-        <div className="rounded-xl border border-crypto-border bg-crypto-card p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-[11px] font-medium text-slate-500">因子资产</div>
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <strong className="text-3xl font-black tracking-tight text-white tabular-nums">{factors.length}</strong>
-                <span className="text-xs text-slate-500">个版本主线</span>
-              </div>
-            </div>
-            <StatusBadge tone={publishedCount === factors.length && factors.length > 0 ? 'green' : 'amber'}>{publishedCount} 已发布</StatusBadge>
-          </div>
-          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-800">
-            <div className="h-full rounded-full bg-emerald-500" style={{ width: factors.length ? `${publishedCount / factors.length * 100}%` : '0%' }} />
-          </div>
-          <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-white/[0.05] pt-3">
-            <div><dt className="text-[10px] text-slate-600">验证通过</dt><dd className="mt-1 font-mono text-sm text-slate-200">{validCount}</dd></div>
-            <div><dt className="text-[10px] text-slate-600">因子分类</dt><dd className="mt-1 font-mono text-sm text-slate-200">{categories.length}</dd></div>
-            <div><dt className="text-[10px] text-slate-600">中位覆盖</dt><dd className="mt-1 font-mono text-sm text-slate-200">{medianCoverage === null ? '--' : percentageText(medianCoverage)}</dd></div>
-          </dl>
-        </div>
+      <nav className="mb-4 flex overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1" aria-label="因子研究二级导航">
+        {workspaces.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button key={item.id} type="button" onClick={() => setWorkspace(item.id)} className={`inline-flex min-w-max flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${workspace === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/30' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-200'}`}>
+              <Icon size={15} />{item.label}
+            </button>
+          );
+        })}
+      </nav>
 
-        <div className="rounded-xl border border-crypto-border bg-crypto-card p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-[11px] font-medium text-slate-500">评价成熟度</div>
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <strong className="text-3xl font-black tracking-tight text-white tabular-nums">{evaluatedCount}</strong>
-                <span className="text-xs text-slate-500">/ {factors.length}</span>
-              </div>
-            </div>
-            <CircleGauge className={`h-5 w-5 ${evaluatedCount > 0 ? 'text-blue-400' : 'text-amber-400'}`} />
+      <section data-testid="factor-research-summary" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        {[
+          ['因子总数', factors.length, `${categories.length} 个分类`],
+          ['校验通过', `${validCount}/${factors.length}`, validCount === factors.length && factors.length ? '定义可计算' : '存在待处理定义'],
+          ['已发布计算', `${publishedCount}/${factors.length}`, latestRun ? `最新第 ${latestRun.id} 次` : '暂无运行'],
+          ['有效性已评估', `${evaluatedCount}/${factors.length}`, evaluatedCount ? '已有收益证据' : '收益窗口待成熟'],
+          ['中位覆盖率', medianCoverage === null ? '--' : percentageText(medianCoverage), '横截面可用样本'],
+          ['研究交易日', latestFactor?.last_trade_date ?? '--', sampleAge === null ? '暂无研究样本' : sampleAge <= 5 ? '近期样本' : `${sampleAge} 天前样本`],
+        ].map(([label, value, note]) => (
+          <div key={label} className="min-w-0 rounded-lg border border-crypto-border bg-crypto-card px-3 py-2.5">
+            <div className="text-[10px] font-medium text-slate-500">{label}</div>
+            <div className="mt-1 truncate text-lg font-bold text-white tabular-nums" title={String(value)}>{value}</div>
+            <div className="mt-0.5 truncate text-[10px] text-slate-600" title={String(note)}>{note}</div>
           </div>
-          <p className="mt-3 text-[11px] leading-5 text-slate-500">
-            {evaluatedCount > 0 ? '已有排序相关性、稳定度、多空收益或换手证据' : '未来收益窗口尚未成熟，不用 0 填充'}
-          </p>
-          <div className="mt-3 flex items-center justify-between border-t border-white/[0.05] pt-3 text-[10px]">
-            <span className="text-slate-600">最新计算运行</span>
-            <span className="font-mono text-slate-300">{latestRun ? `#${latestRun.id} · ${latestRun.status}` : '暂无运行'}</span>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-crypto-border px-4 py-3">
-            <div>
-              <h2 className="font-semibold text-slate-100">当前研究批次</h2>
-              <p className="mt-1 text-[11px] text-slate-500">快照编号用于追溯；新旧程度以交易日和数据截止时间为准</p>
-            </div>
-            <StatusBadge tone={sampleTone}>{sampleAge === null ? '无研究样本' : sampleAge <= 5 ? '近期样本' : `历史样本 · ${sampleAge} 天`}</StatusBadge>
-          </div>
-          <dl className="grid grid-cols-2 gap-x-5 gap-y-4 p-4 sm:grid-cols-4">
-            <div>
-              <dt className="flex items-center gap-1.5 text-[10px] text-slate-600"><CalendarDays className="h-3 w-3" />研究交易日</dt>
-              <dd className="mt-1.5 font-mono text-sm font-semibold text-slate-100">{latestFactor?.last_trade_date ?? '--'}</dd>
-            </div>
-            <div>
-              <dt className="text-[10px] text-slate-600">数据快照</dt>
-              <dd className="mt-1.5 tabular-nums text-sm text-slate-200">{latestFactor?.dataset_snapshot_id ? `第 ${latestFactor.dataset_snapshot_id} 版` : '--'}</dd>
-            </div>
-            <div>
-              <dt className="text-[10px] text-slate-600">历史成分域</dt>
-              <dd className="mt-1.5 tabular-nums text-sm text-slate-200">{latestFactor?.universe_snapshot_id ? `第 ${latestFactor.universe_snapshot_id} 版` : '--'}</dd>
-            </div>
-            <div>
-              <dt className="text-[10px] text-slate-600">知识截止</dt>
-              <dd className="mt-1.5 truncate font-mono text-xs text-slate-300" title={dateTimeText(latestFactor?.knowledge_cutoff_at)}>{dateTimeText(latestFactor?.knowledge_cutoff_at)}</dd>
-            </div>
-          </dl>
-        </div>
+        ))}
       </section>
 
       {error && (
-        <div className="flex items-center justify-between rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+        <div className="mb-4 flex items-center justify-between rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
           <span className="inline-flex items-center gap-2"><AlertCircle size={14} />{error}</span>
           <button aria-label="关闭错误" onClick={() => setError(null)}><X size={14} /></button>
         </div>
       )}
 
       {partialWarnings.length > 0 && (
-        <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.07] px-3 py-2 text-[11px] leading-5 text-amber-200/80" role="status">
+        <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/[0.07] px-3 py-2 text-[11px] leading-5 text-amber-200/80" role="status">
           <span className="mr-2 font-semibold text-amber-300">部分数据降级</span>
           {partialWarnings.join('；')}。可用模块仍保留展示。
         </div>
       )}
 
-      <div className="flex gap-1 overflow-x-auto border-b border-crypto-border">
-        {workspaces.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button key={item.id} onClick={() => setWorkspace(item.id)} className={`inline-flex h-10 shrink-0 items-center gap-2 border-b-2 px-3 text-xs ${workspace === item.id ? 'border-blue-400 text-blue-300' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
-              <Icon size={14} />{item.label}
-            </button>
-          );
-        })}
-      </div>
-
       {workspace === 'library' && (
-        <section className="overflow-hidden rounded border border-crypto-border bg-crypto-card">
-          <div className="flex flex-wrap items-center gap-2 border-b border-crypto-border p-3">
-            <div className="relative min-w-56 flex-1 max-w-md">
+        <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+          <div className="border-b border-crypto-border px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-white">因子目录与评价证据</h2>
+                <p className="mt-1 text-[11px] text-slate-500">点击因子进入单因子分析；收益指标未成熟时明确显示“待成熟”。</p>
+              </div>
+              <div className="relative w-full sm:w-72">
               <Search size={14} className="absolute left-3 top-2.5 text-gray-600" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索代码、名称或研究假设" className="h-9 w-full rounded border border-crypto-border bg-crypto-bg pl-9 pr-3 text-xs text-gray-200 outline-none focus:border-blue-500/50" />
+              </div>
             </div>
-            <select value={category} onChange={(event) => setCategory(event.target.value)} className="h-9 rounded border border-crypto-border bg-crypto-bg px-3 text-xs text-gray-300 outline-none">
-              <option value="all">全部分类</option>
-              {categories.map((item) => <option key={item} value={item}>{categoryNames[item] ?? item}</option>)}
-            </select>
-            <span className="text-[11px] text-gray-600">{filteredFactors.length} 个版本主线</span>
+            <div className="mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
+              <button type="button" onClick={() => setCategory('all')} className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[11px] ${category === 'all' ? 'border-blue-500/50 bg-blue-500/15 text-blue-200' : 'border-crypto-border bg-crypto-bg text-slate-500 hover:text-slate-300'}`}>全部 {factors.length}</button>
+              {categories.map((item) => <button type="button" key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[11px] ${category === item ? 'border-blue-500/50 bg-blue-500/15 text-blue-200' : 'border-crypto-border bg-crypto-bg text-slate-500 hover:text-slate-300'}`}>{categoryNames[item] ?? item} {categoryCounts[item]}</button>)}
+            </div>
           </div>
           <div className="overflow-auto">
-            <table className="min-w-[1180px] w-full text-left text-xs">
-              <thead className="sticky top-0 bg-crypto-card text-[10px] uppercase tracking-wide text-gray-600">
+            <table className="min-w-[1120px] w-full text-left text-xs">
+              <thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-500">
                 <tr className="border-b border-crypto-border">
-                  <th className="px-3 py-2">因子</th><th className="px-3 py-2">分类</th><th className="px-3 py-2">版本</th><th className="px-3 py-2">最后计算</th>
-                  <th className="px-3 py-2 text-right">覆盖率</th><th className="px-3 py-2 text-right">排序相关性</th><th className="px-3 py-2 text-right">稳定度</th>
-                  <th className="px-3 py-2 text-right">多空收益</th><th className="px-3 py-2 text-right">换手</th><th className="px-3 py-2">研究状态</th><th className="px-3 py-2">发布</th>
+                  <th className="w-[350px] px-4 py-2.5">因子与研究假设</th><th className="px-3 py-2.5">分类</th><th className="px-3 py-2.5">选股方向</th>
+                  <th className="px-3 py-2.5 text-right">覆盖率</th><th className="px-3 py-2.5 text-right">排序相关性</th><th className="px-3 py-2.5 text-right">稳定度</th>
+                  <th className="px-3 py-2.5 text-right">20日多空</th><th className="px-3 py-2.5">研究状态</th><th className="px-3 py-2.5">数据日期</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredFactors.map((item) => (
                   <tr key={item.id} onClick={() => selectFactor(item)} className="cursor-pointer border-b border-crypto-border/70 text-gray-300 hover:bg-white/[0.025]">
-                    <td className="px-3 py-2.5"><div className="font-medium text-white">{item.factor_name}</div><div className="mt-0.5 font-mono text-[10px] text-blue-400">{item.factor_code}</div></td>
-                    <td className="px-3 py-2.5">{categoryNames[item.category] ?? item.category}</td><td className="px-3 py-2.5">v{item.version_no} · {item.content_hash?.slice(0, 8)}</td><td className="px-3 py-2.5">{item.last_trade_date ?? '-'}</td>
+                    <td className="px-4 py-2.5"><div className="flex min-w-0 items-center gap-2"><span className="font-semibold text-white">{item.factor_name}</span><span className="text-[10px] text-blue-400">{item.factor_code} · 版本 {item.version_no}</span></div><div className="mt-1 max-w-[330px] truncate text-[11px] text-slate-500" title={factorDescriptionText(item.description)}>{factorDescriptionText(item.description)}</div></td>
+                    <td className="px-3 py-2.5"><span className="rounded bg-slate-800 px-2 py-1 text-[10px] text-slate-300">{categoryNames[item.category] ?? item.category}</span></td>
+                    <td className="px-3 py-2.5 text-[11px] text-slate-400">{directionNames[item.direction] ?? '中性'}</td>
                     <td className="px-3 py-2.5 text-right font-mono">{percentageText(item.coverage)}</td><td className="px-3 py-2.5 text-right font-mono">{numberText(item.rank_ic)}</td><td className="px-3 py-2.5 text-right font-mono">{numberText(item.icir)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono">{percentageText(item.long_short_return)}</td><td className="px-3 py-2.5 text-right font-mono">{percentageText(item.turnover)}</td>
-                    <td className="px-3 py-2.5"><span className="rounded border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-300">{researchStatusNames[item.research_status] ?? item.research_status}</span></td>
-                    <td className="px-3 py-2.5"><span className={`rounded border px-2 py-1 text-[10px] ${statusStyle(item.publication_state)}`}>{statusLabel(item.publication_state, '未计算')}</span></td>
+                    <td className="px-3 py-2.5 text-right font-mono">{percentageText(item.long_short_return)}</td>
+                    <td className="px-3 py-2.5"><div className="flex flex-col items-start gap-1"><span className="rounded border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-300">{researchStatusNames[item.research_status] ?? item.research_status}</span><span className={`rounded border px-2 py-0.5 text-[10px] ${statusStyle(item.publication_state)}`}>{statusLabel(item.publication_state, '未计算')}</span></div></td>
+                    <td className="px-3 py-2.5"><div className="tabular-nums text-slate-300">{item.last_trade_date ?? '--'}</div><div className="mt-1 text-[10px] text-slate-600">{item.validation_status === 'valid' ? '定义已校验' : '定义待校验'}</div></td>
                   </tr>
                 ))}
               </tbody>
@@ -485,8 +456,8 @@ export const FactorLibrary = () => {
           <div className="border-b border-crypto-border px-3 py-2 text-xs font-medium text-gray-200">计算记录与研究输入</div>
           <div className="overflow-auto max-h-[620px]">
             <table className="min-w-[1050px] w-full text-left text-xs">
-              <thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2">运行编号</th><th className="px-3 py-2">因子 / 版本</th><th className="px-3 py-2">交易日</th><th className="px-3 py-2">数据 / 股票范围</th><th className="px-3 py-2">知识截止</th><th className="px-3 py-2 text-right">输入</th><th className="px-3 py-2 text-right">输出</th><th className="px-3 py-2 text-right">缺失</th><th className="px-3 py-2">状态</th><th className="px-3 py-2">校验摘要</th></tr></thead>
-              <tbody>{runs.map((item) => <tr key={item.id} className="border-b border-crypto-border/70 text-gray-300"><td className="px-3 py-2 tabular-nums">第 {item.id} 次</td><td className="px-3 py-2"><div className="text-white">{item.factor_name}</div><div className="text-[10px] text-gray-600">{item.factor_code} · v{item.version_no}</div></td><td className="px-3 py-2">{item.trade_date}</td><td className="px-3 py-2">数据第 {item.dataset_snapshot_id} 版 / 范围第 {item.universe_snapshot_id} 版</td><td className="px-3 py-2 text-[11px]">{new Date(item.knowledge_cutoff_at).toLocaleString('zh-CN', { hour12: false })}</td><td className="px-3 py-2 text-right">{item.input_count}</td><td className="px-3 py-2 text-right">{item.output_count}</td><td className="px-3 py-2 text-right">{item.missing_count}</td><td className="px-3 py-2"><span className={`rounded border px-2 py-1 text-[10px] ${statusStyle(item.status)}`}>{statusLabel(item.status)}</span></td><td className="px-3 py-2 text-[10px] text-gray-600">{item.value_hash?.slice(0, 10) ?? '-'}</td></tr>)}</tbody>
+              <thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2">运行编号</th><th className="px-3 py-2">因子 / 版本</th><th className="px-3 py-2">交易日</th><th className="px-3 py-2">数据 / 股票范围</th><th className="px-3 py-2">知识截止</th><th className="px-3 py-2 text-right">输入</th><th className="px-3 py-2 text-right">输出</th><th className="px-3 py-2 text-right">缺失</th><th className="px-3 py-2">状态</th><th className="px-3 py-2">完整性</th></tr></thead>
+              <tbody>{runs.map((item) => <tr key={item.id} className="border-b border-crypto-border/70 text-gray-300"><td className="px-3 py-2 tabular-nums">第 {item.id} 次</td><td className="px-3 py-2"><div className="text-white">{item.factor_name}</div><div className="text-[10px] text-gray-600">{item.factor_code} · 版本 {item.version_no}</div></td><td className="px-3 py-2">{item.trade_date}</td><td className="px-3 py-2">数据第 {item.dataset_snapshot_id} 版 / 范围第 {item.universe_snapshot_id} 版</td><td className="px-3 py-2 text-[11px]">{new Date(item.knowledge_cutoff_at).toLocaleString('zh-CN', { hour12: false })}</td><td className="px-3 py-2 text-right">{item.input_count}</td><td className="px-3 py-2 text-right">{item.output_count}</td><td className="px-3 py-2 text-right">{item.missing_count}</td><td className="px-3 py-2"><span className={`rounded border px-2 py-1 text-[10px] ${statusStyle(item.status)}`}>{statusLabel(item.status)}</span></td><td className="px-3 py-2 text-[10px] text-gray-500">{item.value_hash ? '结果已校验' : '待校验'}</td></tr>)}</tbody>
             </table>
             {!loading && runs.length === 0 && <div className="grid min-h-40 place-items-center px-6 text-center text-xs text-slate-600">暂无计算运行；不会用示例运行填充</div>}
           </div>
@@ -497,11 +468,11 @@ export const FactorLibrary = () => {
         <div className="grid min-h-[620px] gap-3 lg:grid-cols-[250px_minmax(0,1fr)]">
           <aside className="overflow-hidden rounded border border-crypto-border bg-crypto-card">
             <div className="border-b border-crypto-border px-3 py-2 text-xs font-medium text-gray-300">选择因子</div>
-            <div className="max-h-56 overflow-auto p-1 lg:max-h-[580px]">{factors.map((item) => <button key={item.id} onClick={() => selectFactor(item)} className={`w-full border-l-2 px-3 py-2 text-left ${selected.id === item.id ? 'border-blue-400 bg-blue-500/10' : 'border-transparent hover:bg-white/[0.025]'}`}><div className="text-xs text-gray-200">{item.factor_name}</div><div className="mt-0.5 font-mono text-[10px] text-gray-600">{item.factor_code} · v{item.version_no}</div></button>)}</div>
+            <div className="max-h-56 overflow-auto p-1 lg:max-h-[580px]">{factors.map((item) => <button key={item.id} onClick={() => selectFactor(item)} className={`w-full border-l-2 px-3 py-2 text-left ${selected.id === item.id ? 'border-blue-400 bg-blue-500/10' : 'border-transparent hover:bg-white/[0.025]'}`}><div className="text-xs text-gray-200">{item.factor_name}</div><div className="mt-0.5 text-[10px] text-gray-600">{item.factor_code} · 版本 {item.version_no}</div></button>)}</div>
           </aside>
           <div className="space-y-3">
             <div className="rounded border border-crypto-border bg-crypto-card p-3">
-              <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-sm font-semibold text-white">{selected.factor_name} <span className="ml-2 text-xs font-normal text-blue-400">{selected.factor_code}</span></div><p className="mt-1 text-xs text-gray-500">{selected.description}</p><div className="mt-2 text-[10px] text-blue-300">研究协议：{researchStatusNames[selected.research_status] ?? selected.research_status}</div></div><div className="flex flex-wrap gap-1 text-[10px]"><span className="rounded border border-crypto-border px-2 py-1">版本 {selected.version_no}</span><span className="rounded border border-crypto-border px-2 py-1">数据第 {selected.dataset_snapshot_id} 版</span><span className="rounded border border-crypto-border px-2 py-1">范围第 {selected.universe_snapshot_id} 版</span><span className={`rounded border px-2 py-1 ${statusStyle(selected.publication_state)}`}>{statusLabel(selected.publication_state)}</span></div></div>
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-sm font-semibold text-white">{selected.factor_name} <span className="ml-2 text-xs font-normal text-blue-400">{selected.factor_code}</span></div><p className="mt-1 text-xs text-gray-500">{factorDescriptionText(selected.description)}</p><div className="mt-2 text-[10px] text-blue-300">研究状态：{researchStatusNames[selected.research_status] ?? selected.research_status}</div></div><div className="flex flex-wrap gap-1 text-[10px]"><span className="rounded border border-crypto-border px-2 py-1">版本 {selected.version_no}</span><span className="rounded border border-crypto-border px-2 py-1">数据第 {selected.dataset_snapshot_id} 版</span><span className="rounded border border-crypto-border px-2 py-1">范围第 {selected.universe_snapshot_id} 版</span><span className={`rounded border px-2 py-1 ${statusStyle(selected.publication_state)}`}>{statusLabel(selected.publication_state)}</span></div></div>
             </div>
             <div className="grid grid-cols-2 gap-px overflow-hidden rounded border border-crypto-border bg-crypto-border md:grid-cols-6">{[
               ['覆盖率', percentageText(metric('coverage')?.metric_value)], ['1日收益相关', numberText(metric('ic', 1)?.metric_value)], ['1日排序相关', numberText(metric('rank_ic', 1)?.metric_value)], ['20日稳定度', numberText(metric('icir', 20)?.metric_value)], ['20日多空收益', percentageText(metric('long_short_return', 20)?.metric_value)], ['换手', percentageText(metric('turnover')?.metric_value)],
@@ -510,7 +481,7 @@ export const FactorLibrary = () => {
               <div className="rounded border border-crypto-border bg-crypto-card"><div className="border-b border-crypto-border px-3 py-2 text-xs font-medium text-gray-300">分布与数据质量</div><div className="grid grid-cols-2 gap-px bg-crypto-border">{['mean', 'std', 'skewness', 'kurtosis', 'missing_rate', 'outlier_rate'].map((code) => <div key={code} className="bg-crypto-card px-3 py-2"><div className="text-[10px] text-gray-600">{metricNames[code]}</div><div className="mt-1 font-mono text-sm text-gray-200">{code.endsWith('_rate') ? percentageText(metric(code)?.metric_value) : numberText(metric(code)?.metric_value)}</div></div>)}</div></div>
               <div className="rounded border border-crypto-border bg-crypto-card"><div className="border-b border-crypto-border px-3 py-2 text-xs font-medium text-gray-300">行业与市值暴露</div><div className="max-h-52 overflow-auto p-3"><div className="mb-3 flex items-center justify-between text-xs"><span className="text-gray-500">市值相关</span><span className="font-mono text-gray-200">{numberText(metric('size_exposure')?.metric_value)}</span></div>{Object.entries(industryExposure).sort((a, b) => Math.abs(Number(b[1])) - Math.abs(Number(a[1]))).slice(0, 12).map(([name, value]) => <div key={name} className="mb-2 grid grid-cols-[90px_1fr_55px] items-center gap-2 text-[10px]"><span className="truncate text-gray-500">{name}</span><div className="h-1.5 bg-gray-800"><div className="h-full bg-blue-500/70" style={{ width: `${Math.min(100, Math.abs(Number(value)) * 100)}%` }} /></div><span className="text-right font-mono text-gray-400">{numberText(value)}</span></div>)}</div></div>
             </div>
-            {pendingRows.length > 0 && <div className="rounded border border-amber-500/20 bg-amber-500/5 p-3"><div className="flex items-center gap-2 text-xs font-medium text-amber-300"><Clock3 size={14} />未来收益评估待成熟</div><p className="mt-1 line-clamp-2 text-[11px] text-amber-200/60">{pendingRows[0].pending_reason}</p><div className="mt-2 flex flex-wrap gap-1">{pendingRows.map((item) => <span key={`${item.metric_code}-${item.horizon}`} className="rounded border border-amber-500/20 px-2 py-1 text-[10px] text-amber-200/70">{metricNames[item.metric_code] ?? item.metric_code}{item.horizon ? ` ${item.horizon}D` : ''}</span>)}</div></div>}
+            {pendingRows.length > 0 && <div className="rounded border border-amber-500/20 bg-amber-500/5 p-3"><div className="flex items-center gap-2 text-xs font-medium text-amber-300"><Clock3 size={14} />未来收益评估待成熟</div><p className="mt-1 line-clamp-2 text-[11px] text-amber-200/60">{pendingRows[0].pending_reason}</p><div className="mt-2 flex flex-wrap gap-1">{pendingRows.map((item) => <span key={`${item.metric_code}-${item.horizon}`} className="rounded border border-amber-500/20 px-2 py-1 text-[10px] text-amber-200/70">{metricNames[item.metric_code] ?? item.metric_code}{item.horizon ? ` ${item.horizon}日` : ''}</span>)}</div></div>}
           </div>
         </div>
       )}
@@ -524,8 +495,8 @@ export const FactorLibrary = () => {
 
       {workspace === 'correlation' && (
         <section className="overflow-hidden rounded border border-crypto-border bg-crypto-card">
-          <div className="border-b border-crypto-border px-3 py-2"><div className="text-xs font-medium text-gray-200">因子相关矩阵</div><div className="mt-0.5 text-[10px] text-gray-600">{correlations[0]?.trade_date ?? '-'} · 股票范围第 {correlations[0]?.universe_snapshot_id ?? '-'} 版</div></div>
-          <div className="overflow-auto max-h-[650px]"><table className="text-[10px]"><thead className="sticky top-0 bg-crypto-card"><tr><th className="sticky left-0 bg-crypto-card px-2 py-2 text-left text-gray-600">因子</th>{correlationCodes.map((code) => <th key={code} className="min-w-24 px-2 py-2 text-center font-mono text-gray-600">{code}</th>)}</tr></thead><tbody>{correlationCodes.map((left) => <tr key={left} className="border-t border-crypto-border/60"><th className="sticky left-0 bg-crypto-card px-2 py-2 text-left font-mono text-gray-500">{left}</th>{correlationCodes.map((right) => { const value = correlationMap.get(`${left}:${right}`); const intensity = typeof value === 'number' ? Math.abs(value) : 0; return <td key={right} className="px-2 py-2 text-center font-mono text-gray-300" style={{ backgroundColor: `rgba(59,130,246,${intensity * 0.22})` }}>{numberText(value, 2)}</td>; })}</tr>)}</tbody></table></div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crypto-border px-3 py-2"><div><div className="text-xs font-medium text-gray-200">因子相关矩阵</div><div className="mt-0.5 text-[10px] text-gray-600">{correlations[0]?.trade_date ?? '-'} · 股票范围第 {correlations[0]?.universe_snapshot_id ?? '-'} 版</div></div><div className="flex items-center gap-3 text-[10px] text-slate-500"><span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-blue-500/60" />正相关</span><span><i className="mr-1 inline-block h-2 w-2 rounded-sm bg-amber-500/60" />负相关</span><span>颜色越深，相关越强</span></div></div>
+          <div className="overflow-auto max-h-[650px]"><table className="text-[10px]"><thead className="sticky top-0 bg-crypto-card"><tr><th className="sticky left-0 bg-crypto-card px-2 py-2 text-left text-gray-600">因子</th>{correlationCodes.map((code) => <th key={code} title={code} className="min-w-24 px-2 py-2 text-center text-gray-500">{factorNameByCode.get(code) ?? code}</th>)}</tr></thead><tbody>{correlationCodes.map((left) => <tr key={left} className="border-t border-crypto-border/60"><th title={left} className="sticky left-0 bg-crypto-card px-2 py-2 text-left text-gray-500">{factorNameByCode.get(left) ?? left}</th>{correlationCodes.map((right) => { const value = correlationMap.get(`${left}:${right}`); const intensity = typeof value === 'number' ? Math.abs(value) : 0; const color = typeof value === 'number' && value < 0 ? `rgba(245,158,11,${intensity * 0.24})` : `rgba(59,130,246,${intensity * 0.24})`; return <td key={right} className="px-2 py-2 text-center font-mono text-gray-200" style={{ backgroundColor: color }}>{numberText(value, 2)}</td>; })}</tr>)}</tbody></table></div>
           {!loading && correlations.length === 0 && <div className="grid min-h-40 place-items-center px-6 text-center text-xs text-slate-600">暂无同批次因子相关性证据</div>}
         </section>
       )}
@@ -533,8 +504,8 @@ export const FactorLibrary = () => {
       {workspace === 'values' && selected && (
         <section className="overflow-hidden rounded border border-crypto-border bg-crypto-card">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crypto-border px-3 py-2"><div><span className="text-xs font-medium text-gray-200">{selected.factor_name} · 点时因子值</span><span className="ml-2 text-[10px] text-blue-400">{selected.factor_code}</span></div><div className="text-[10px] text-gray-600">数据第 {selected.dataset_snapshot_id} 版 · 范围第 {selected.universe_snapshot_id} 版 · 版本 {selected.version_no}</div></div>
-          <div className="overflow-auto max-h-[650px]"><table className="min-w-[900px] w-full text-xs"><thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2 text-left">排名</th><th className="px-3 py-2 text-left">证券</th><th className="px-3 py-2 text-right">原始值</th><th className="px-3 py-2 text-right">处理值</th><th className="px-3 py-2 text-right">百分位</th><th className="px-3 py-2 text-right">分位组</th><th className="px-3 py-2">日期 / 运行</th><th className="px-3 py-2">质量</th></tr></thead><tbody>{values.map((item) => <tr key={`${item.compute_run_id}-${item.symbol}`} className="border-b border-crypto-border/70 text-gray-300"><td className="px-3 py-2 font-mono">{item.rank ?? '-'}</td><td className="px-3 py-2 font-mono text-white">{item.symbol}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.raw_value, 5)}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.processed_value, 4)}</td><td className="px-3 py-2 text-right font-mono">{percentageText(item.percentile)}</td><td className="px-3 py-2 text-right">Q{item.quantile ?? '-'}</td><td className="px-3 py-2 text-[10px] text-gray-500">{item.trade_date} · #{item.compute_run_id}</td><td className="px-3 py-2">{item.quality_flags?.missing ? <span className="text-amber-300">缺失</span> : <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 size={11} />可用</span>}</td></tr>)}</tbody></table></div>
-          {!loading && values.length === 0 && <div className="grid min-h-40 place-items-center px-6 text-center text-xs text-slate-600">所选因子暂无已发布因子值</div>}
+          <div className="overflow-auto max-h-[650px]"><table className="min-w-[900px] w-full text-xs"><thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2 text-left">排名</th><th className="px-3 py-2 text-left">证券</th><th className="px-3 py-2 text-right">原始值</th><th className="px-3 py-2 text-right">处理值</th><th className="px-3 py-2 text-right">百分位</th><th className="px-3 py-2 text-right">分位组</th><th className="px-3 py-2">日期 / 运行</th><th className="px-3 py-2">质量</th></tr></thead><tbody>{latestValues.map((item) => <tr key={`${item.compute_run_id}-${item.symbol}`} className="border-b border-crypto-border/70 text-gray-300"><td className="px-3 py-2 font-mono">{item.rank ?? '-'}</td><td className="px-3 py-2 font-mono text-white">{item.symbol}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.raw_value, 5)}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.processed_value, 4)}</td><td className="px-3 py-2 text-right font-mono">{percentageText(item.percentile)}</td><td className="px-3 py-2 text-right">第 {item.quantile ?? '-'} 组</td><td className="px-3 py-2 text-[10px] text-gray-500">{item.trade_date} · 第 {item.compute_run_id} 次</td><td className="px-3 py-2">{item.quality_flags?.missing ? <span className="text-amber-300">缺失</span> : <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 size={11} />可用</span>}</td></tr>)}</tbody></table></div>
+          {!loading && latestValues.length === 0 && <div className="grid min-h-40 place-items-center px-6 text-center text-xs text-slate-600">所选因子暂无已发布因子值</div>}
         </section>
       )}
 
