@@ -297,7 +297,15 @@ export function Strategy() {
   if (view === 'detail' && selected) {
     return (
       <div className="min-h-full bg-crypto-bg p-6">
-        <StrategyDetailPanel strategy={productStrategyCopy(selected)} onBack={() => setView('editor')} onEdit={() => setShowEditor(true)} />
+        <StrategyDetailPanel
+          strategy={productStrategyCopy(selected)}
+          version={activeVersion}
+          validation={validation}
+          onBack={() => setView('editor')}
+          onEdit={() => setShowEditor(true)}
+          onBacktest={() => navigate('/backtest')}
+          onPaper={() => navigate('/paper')}
+        />
       </div>
     );
   }
