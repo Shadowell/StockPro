@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities } from '../types';
+import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -445,10 +445,12 @@ apiClient.interceptors.request.use((config) => {
   const method = (config.method || 'get').toLowerCase();
   const path = config.url || '';
   const guestBacktestPaths = ['/backtest/quick-runs', '/backtest/runs', '/backtest/run'];
+  const guestJobPath = /^\/backtest\/jobs(?:\/[0-9a-f-]+\/(?:cancel|retry))?$/;
   if (
     profile?.role === 'guest'
     && !['get', 'head', 'options'].includes(method)
     && !guestBacktestPaths.includes(path)
+    && !guestJobPath.test(path)
     && path !== '/auth/guest/login'
   ) {
     return Promise.reject(new Error('访客账号为只读权限，仅允许在配额内运行回测。'));
@@ -1062,6 +1064,27 @@ export const listBacktestRuns = async (limit = 100): Promise<{ items: BacktestRu
 
 export const runBacktestV1 = async (request: BacktestRunRequestV1, mode: 'quick' | 'full'): Promise<BacktestRun> =>
   (await apiClient.post<BacktestRun>(mode === 'quick' ? '/backtest/quick-runs' : '/backtest/runs', request, { timeout: 120000 })).data;
+
+export const createBacktestJob = async (
+  request: BacktestRunRequestV1,
+  mode: 'quick' | 'full',
+): Promise<BacktestJob> =>
+  (await apiClient.post<BacktestJob>('/backtest/jobs', { ...request, run_mode: mode })).data;
+
+export const listBacktestJobs = async (limit = 100): Promise<{ items: BacktestJob[]; total: number }> =>
+  (await apiClient.get<{ items: BacktestJob[]; total: number }>('/backtest/jobs', { params: { limit } })).data;
+
+export const getBacktestJob = async (jobId: string): Promise<BacktestJob> =>
+  (await apiClient.get<BacktestJob>(`/backtest/jobs/${jobId}`)).data;
+
+export const getBacktestJobLogs = async (jobId: string, afterId = 0): Promise<BacktestJobLog[]> =>
+  (await apiClient.get<{ items: BacktestJobLog[] }>(`/backtest/jobs/${jobId}/logs`, { params: { after_id: afterId } })).data.items;
+
+export const cancelBacktestJob = async (jobId: string): Promise<BacktestJob> =>
+  (await apiClient.post<BacktestJob>(`/backtest/jobs/${jobId}/cancel`)).data;
+
+export const retryBacktestJob = async (jobId: string): Promise<BacktestJob> =>
+  (await apiClient.post<BacktestJob>(`/backtest/jobs/${jobId}/retry`)).data;
 
 export const getBacktestRun = async (runId: string): Promise<BacktestRun> =>
   (await apiClient.get<BacktestRun>(`/backtest/runs/${runId}`)).data;

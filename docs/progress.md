@@ -1,5 +1,22 @@
 # Progress Log
 
+## BitPro-parity Asynchronous Backtest Jobs (2026-07-27)
+
+1. Added PostgreSQL-owned backtest jobs and append-only transition logs with owner role/session, guest invitation usage, request payload, attempt lineage and immutable result linkage.
+2. Added bounded local execution with persisted pending/running/cancelling/cancelled/success/failed/interrupted states, progress phases, cooperative cancellation, retry as a new attempt and startup interruption recovery.
+3. Bound guest daily, concurrent and date-range quotas to the asynchronous lifecycle while retaining the existing synchronous routes during migration.
+4. Replaced browser-blocking Backtest execution with `202` job creation and a polling task console that shows progress, status, errors, incremental logs, stop/retry controls and the sealed result entry.
+5. Declared asynchronous jobs and the Backtest workflow stage available only after the PostgreSQL implementation and UI were verified.
+
+Verification:
+
+- Applied the local async-job migration; no provider synchronization or historical backfill ran.
+- A real quick acceptance job returned `202/pending`, completed in about 0.6 seconds, persisted 13 phase logs and linked job `4cb5430f-b503-4af8-a458-6d182fdfbb1b` to sealed run `8fe78fc5-147b-45f2-8dfa-2ee73c063071`.
+- Focused backend tests passed 6/6; TypeScript and focused lint passed; mocked Playwright verified the persisted task console, job logs and result evidence entry.
+- Clean frontend/backend restart completed; ports `4444` and `4445` listened, health returned healthy and startup recovery found no interrupted jobs.
+
+Next Sprint: authenticated `stockpro-mcp-v1` agent interface with capability discovery, read-only research tools and explicitly gated mutations.
+
 ## BitPro-parity Access Control (2026-07-27)
 
 1. Added PostgreSQL-backed invitation codes, guest backtest usage and authentication audit evidence. Invitation plaintext is returned once; only its hash is stored.

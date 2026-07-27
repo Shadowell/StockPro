@@ -56,6 +56,10 @@ class GuestAccessAuthTests(unittest.TestCase):
         def backtest_route(_principal=Depends(admin_auth.require_authenticated)):
             return {"ok": True}
 
+        @app.post("/api/backtest/jobs/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/cancel")
+        def cancel_job_route(_principal=Depends(admin_auth.require_authenticated)):
+            return {"ok": True}
+
         client = TestClient(app)
         headers = {"Authorization": f"Bearer {token}"}
 
@@ -64,6 +68,13 @@ class GuestAccessAuthTests(unittest.TestCase):
         self.assertEqual(403, denied.status_code)
         self.assertIn("只读", denied.json()["detail"])
         self.assertEqual(200, client.post("/api/backtest/runs", headers=headers).status_code)
+        self.assertEqual(
+            200,
+            client.post(
+                "/api/backtest/jobs/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/cancel",
+                headers=headers,
+            ).status_code,
+        )
 
 
 if __name__ == "__main__":

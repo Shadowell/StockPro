@@ -81,6 +81,14 @@ async def startup_event():
     else:
         logger.info("Runtime bootstrap skipped; run backend/bootstrap_runtime.py explicitly")
 
+    try:
+        from app.api.endpoints.backtest import job_service as backtest_job_service
+
+        interrupted = backtest_job_service.recover_interrupted()
+        logger.info("Backtest job recovery completed: %s interrupted job(s)", interrupted)
+    except Exception as exc:
+        logger.warning("Backtest job recovery skipped: %s", exc)
+
     if settings.RUN_PAPER_RECOVERY_ON_STARTUP:
         from app.services.paper_runtime_service import PaperRuntimeService
 

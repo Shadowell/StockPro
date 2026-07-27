@@ -5,7 +5,7 @@ import math
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from app.services.backtest_metrics_service import calculate_backtest_metrics, drawdown_series, monthly_returns
 
@@ -68,7 +68,12 @@ class AShareBacktestEngine:
             if str(item.get("symbol")) == self.benchmark_symbol
         }
 
-    def run(self) -> Dict[str, Any]:
+    def run(
+        self,
+        *,
+        progress_hook: Optional[Callable[[int, int], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+    ) -> Dict[str, Any]:
         if not self.dates:
             raise ValueError("回测区间没有封存日线")
         cash = self.initial_cash
@@ -87,7 +92,13 @@ class AShareBacktestEngine:
         first_benchmark_close: Optional[float] = None
         last_benchmark_nav: Optional[float] = None
 
-        for current_date in self.dates:
+        for date_index, current_date in enumerate(self.dates, start=1):
+            if cancel_check and cancel_check():
+                from app.services.backtest_workbench_service import BacktestCancelled
+
+                raise BacktestCancelled("用户已停止回测")
+            if progress_hook:
+                progress_hook(date_index, len(self.dates))
             for position in positions.values():
                 position["available_quantity"] = position["quantity"]
             cash = self._apply_corporate_actions(current_date, positions, cash, logs)

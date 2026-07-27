@@ -6,6 +6,7 @@ import json
 import secrets
 import time
 from datetime import datetime
+import re
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
@@ -156,6 +157,9 @@ _GUEST_WRITE_PATHS = {
     "/api/backtest/runs",
     "/api/backtest/run",
 }
+_GUEST_JOB_WRITE_PATTERN = re.compile(
+    r"^/api/backtest/jobs(?:/[0-9a-f-]+/(?:cancel|retry))?$"
+)
 
 
 def require_authenticated(
@@ -166,7 +170,10 @@ def require_authenticated(
         raise HTTPException(status_code=401, detail="Login required.")
     principal = verify_access_token(credentials.credentials)
     if principal["role"] == "guest" and request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
-        if request.url.path not in _GUEST_WRITE_PATHS:
+        if (
+            request.url.path not in _GUEST_WRITE_PATHS
+            and not _GUEST_JOB_WRITE_PATTERN.fullmatch(request.url.path)
+        ):
             raise HTTPException(
                 status_code=403,
                 detail="访客账号为只读权限，仅允许在配额内运行回测。",

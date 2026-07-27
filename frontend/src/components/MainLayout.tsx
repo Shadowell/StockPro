@@ -194,7 +194,7 @@ export const MainLayout = ({ children, title }: MainLayoutProps) => {
     if (authProfile?.role !== 'guest' || !shellRef.current) return;
     const root = shellRef.current;
     const writeActionPattern = /新建|创建|保存|删除|撤销|同步|更新|导入|生成|执行|运行|启动|停止|暂停|恢复|重试|提交|批准|拒绝|晋级|发布|封存|检测.*连接|清空|重置/;
-    const allowedBacktestPattern = /启动.*回测|运行.*回测|快速回测|完整回测/;
+    const allowedBacktestPattern = /启动.*回测|运行.*回测|快速回测|完整回测|停止任务|重试任务/;
     const applyGuard = () => {
       root.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
         const label = (button.textContent || button.getAttribute('aria-label') || '').trim();

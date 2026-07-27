@@ -532,6 +532,45 @@ export interface BacktestRun {
   data_purpose?: 'user' | 'acceptance' | 'seed';
 }
 
+export type BacktestJobStatus =
+  | 'pending'
+  | 'running'
+  | 'cancelling'
+  | 'cancelled'
+  | 'success'
+  | 'failed'
+  | 'interrupted';
+
+export interface BacktestJob {
+  job_id: string;
+  request_payload: BacktestRunRequestV1;
+  run_mode: 'quick' | 'full';
+  status: BacktestJobStatus;
+  progress: number;
+  phase: string;
+  message?: string | null;
+  error_message?: string | null;
+  backtest_run_id?: string | null;
+  owner_role: 'admin' | 'guest';
+  parent_job_id?: string | null;
+  attempt: number;
+  created_at: string;
+  started_at?: string | null;
+  updated_at: string;
+  finished_at?: string | null;
+  cancel_requested_at?: string | null;
+}
+
+export interface BacktestJobLog {
+  id: number;
+  job_id: string;
+  level: 'debug' | 'info' | 'warning' | 'error';
+  phase: string;
+  message: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface BacktestConfiguration {
   strategy_versions: Array<{
     id: string;
