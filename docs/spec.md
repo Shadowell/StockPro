@@ -117,6 +117,8 @@ The required lifecycle is:
 - Backtest and Paper remain distinct lifecycle stages but use the exact accepted strategy version and configuration. Every downstream object keeps the strategy/version, dataset, Universe, factor, pool, protocol and cost-model lineage needed to reproduce it.
 - BitPro is a behavioral reference, not a source-copy dependency. Reuse shared `@bitpro/ui` primitives and vocabulary where appropriate, but keep StockPro's A-share domain implementation, API contract and business composition independent.
 - Real broker promotion and order submission are not implied by workflow parity. They remain absent until a separate broker contract, safety review and explicit authorization are complete.
+- Clients discover lifecycle support through the versioned `stockpro-workflow-v1` capability contract before presenting a stage as usable. Code capability, runtime service state and data availability are separate states.
+- The operator shell presents one canonical Strategy -> Backtest -> Paper -> Watch -> Monitor -> Review rail. Until a broker contract is implemented, first-level copy says Paper/模拟交易 and explicitly marks real trading unavailable.
 
 - Strategy authors write ordinary Python functions, following the platform-owned `StockPro Strategy API v1`.
 - The minimum strategy implements `initialize(context)` and `handle_data(context, data)`; optional lifecycle functions include `before_trading_start`, `after_trading_end` and `on_strategy_end`.

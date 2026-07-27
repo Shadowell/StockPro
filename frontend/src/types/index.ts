@@ -9,6 +9,38 @@ export interface Stock {
   updated_at?: string;
 }
 
+export type WorkflowCapabilityStatus = 'available' | 'partial' | 'disabled' | 'not_implemented';
+
+export interface WorkflowStageCapability {
+  id: 'strategy' | 'backtest' | 'paper' | 'watch' | 'monitor' | 'review';
+  label: string;
+  route: string;
+  status: WorkflowCapabilityStatus;
+  requires: string[];
+  evidence: string[];
+  reason?: string;
+}
+
+export interface WorkflowCapabilities {
+  contract_version: string;
+  behavioral_baseline: 'bitpro';
+  execution_scope: 'paper_only';
+  checked_at: string;
+  auth_modes: Array<{
+    id: 'admin' | 'guest' | 'agent';
+    status: WorkflowCapabilityStatus;
+    write_access: boolean;
+    reason?: string;
+  }>;
+  feature_gates: Record<string, {
+    status: WorkflowCapabilityStatus;
+    enabled?: boolean;
+    reason?: string;
+  }>;
+  domain_guardrails: string[];
+  stages: WorkflowStageCapability[];
+}
+
 export interface StockFundamentals {
   code: string;
   name?: string | null;
