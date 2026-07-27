@@ -29,7 +29,7 @@ from app.api.endpoints import (
     watch,
     workflow,
 )
-from app.core.admin_auth import require_admin
+from app.core.admin_auth import require_authenticated
 
 
 def create_api_router() -> APIRouter:
@@ -37,7 +37,7 @@ def create_api_router() -> APIRouter:
     router.include_router(health.router, prefix="/health", tags=["health"])
     router.include_router(auth.router, prefix="/auth", tags=["auth"])
 
-    protected = APIRouter(dependencies=[Depends(require_admin)])
+    protected = APIRouter(dependencies=[Depends(require_authenticated)])
     protected.include_router(admin.router, prefix="/admin", tags=["admin"])
     protected.include_router(acceptance.router, prefix="/acceptance", tags=["local-acceptance"])
     protected.include_router(market.router, prefix="/market", tags=["market"])

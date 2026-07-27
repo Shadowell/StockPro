@@ -3,6 +3,7 @@ import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotIt
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
+const AUTH_PROFILE_STORAGE_KEY = 'stockpro_auth_profile';
 export const ADMIN_AUTH_CHANGED_EVENT = 'stockpro_admin_auth_changed';
 
 // Retry configuration
@@ -24,10 +25,39 @@ export interface AdminLoginResponse {
   token_type: 'bearer';
   expires_in: number;
   username: string;
+  role: 'admin';
+  permissions: string[];
 }
 
-export interface AdminProfile {
-  username: string;
+export interface AuthProfile {
+  role: 'admin' | 'guest';
+  username?: string;
+  permissions: string[];
+  session_id?: string;
+  guest_code_id?: number;
+  expires_at?: string;
+  max_backtests_per_day?: number;
+  max_concurrent_backtests?: number;
+  max_backtest_days?: number;
+}
+
+export interface GuestLoginResponse extends AuthProfile {
+  access_token: string;
+  token_type: 'bearer';
+  expires_in: number;
+}
+
+export interface GuestAccessCode {
+  id: number;
+  code?: string;
+  note: string;
+  expires_at: string;
+  max_backtests_per_day: number;
+  max_concurrent_backtests: number;
+  max_backtest_days: number;
+  created_at: string;
+  last_used_at?: string | null;
+  revoked_at?: string | null;
 }
 
 export const getAdminToken = (): string | null => {
@@ -41,9 +71,26 @@ export const setAdminToken = (token: string): void => {
   window.dispatchEvent(new Event(ADMIN_AUTH_CHANGED_EVENT));
 };
 
+export const setAuthProfile = (profile: AuthProfile): void => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(AUTH_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  window.dispatchEvent(new Event(ADMIN_AUTH_CHANGED_EVENT));
+};
+
+export const getStoredAuthProfile = (): AuthProfile | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(AUTH_PROFILE_STORAGE_KEY);
+    return value ? JSON.parse(value) as AuthProfile : null;
+  } catch {
+    return null;
+  }
+};
+
 export const clearAdminToken = (): void => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  window.localStorage.removeItem(AUTH_PROFILE_STORAGE_KEY);
   window.dispatchEvent(new Event(ADMIN_AUTH_CHANGED_EVENT));
 };
 
@@ -394,6 +441,18 @@ apiClient.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const profile = getStoredAuthProfile();
+  const method = (config.method || 'get').toLowerCase();
+  const path = config.url || '';
+  const guestBacktestPaths = ['/backtest/quick-runs', '/backtest/runs', '/backtest/run'];
+  if (
+    profile?.role === 'guest'
+    && !['get', 'head', 'options'].includes(method)
+    && !guestBacktestPaths.includes(path)
+    && path !== '/auth/guest/login'
+  ) {
+    return Promise.reject(new Error('访客账号为只读权限，仅允许在配额内运行回测。'));
+  }
   return config;
 });
 
@@ -437,12 +496,48 @@ apiClient.interceptors.response.use(
 export const adminLogin = async (username: string, password: string): Promise<AdminLoginResponse> => {
   const response = await apiClient.post<AdminLoginResponse>('/auth/admin/login', { username, password });
   setAdminToken(response.data.access_token);
+  setAuthProfile({ role: 'admin', username: response.data.username, permissions: response.data.permissions });
   return response.data;
 };
 
-export const getAdminProfile = async (): Promise<AdminProfile> => {
-  const response = await apiClient.get<AdminProfile>('/auth/admin/me');
+export const guestLogin = async (code: string): Promise<GuestLoginResponse> => {
+  const response = await apiClient.post<GuestLoginResponse>('/auth/guest/login', { code });
+  setAdminToken(response.data.access_token);
+  setAuthProfile({
+    role: response.data.role,
+    permissions: response.data.permissions,
+    session_id: response.data.session_id,
+    guest_code_id: response.data.guest_code_id,
+    expires_at: response.data.expires_at,
+    max_backtests_per_day: response.data.max_backtests_per_day,
+    max_concurrent_backtests: response.data.max_concurrent_backtests,
+    max_backtest_days: response.data.max_backtest_days,
+  });
   return response.data;
+};
+
+export const getAuthProfile = async (): Promise<AuthProfile> => {
+  const response = await apiClient.get<AuthProfile>('/auth/me');
+  setAuthProfile(response.data);
+  return response.data;
+};
+
+export const getAdminProfile = getAuthProfile;
+
+export const listGuestAccessCodes = async (): Promise<GuestAccessCode[]> =>
+  (await apiClient.get<{ items: GuestAccessCode[] }>('/auth/guest-codes')).data.items;
+
+export const createGuestAccessCode = async (request: {
+  note: string;
+  expires_in_minutes: number;
+  max_backtests_per_day: number;
+  max_concurrent_backtests: number;
+  max_backtest_days: number;
+}): Promise<GuestAccessCode> =>
+  (await apiClient.post<GuestAccessCode>('/auth/guest-codes', request)).data;
+
+export const revokeGuestAccessCode = async (codeId: number): Promise<void> => {
+  await apiClient.delete(`/auth/guest-codes/${codeId}`);
 };
 
 export const getMarketOverview = async (): Promise<MarketOverview> => {

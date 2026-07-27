@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { AlertCircle, KeyRound, Loader2, LogIn, ShieldCheck, User } from 'lucide-react';
-import { adminLogin, clearAdminToken, getAdminProfile, hasAdminToken } from '../api/client';
+import { AlertCircle, KeyRound, Loader2, LogIn, ShieldCheck, Ticket, User } from 'lucide-react';
+import { adminLogin, clearAdminToken, getAuthProfile, guestLogin, hasAdminToken } from '../api/client';
 import { useStore } from '../stores/useStore';
 
 const getRedirectTarget = (search: string): string => {
@@ -19,6 +19,12 @@ export const AdminLogin: React.FC = () => {
 
   const [username, setUsername] = React.useState('admin');
   const [password, setPassword] = React.useState('');
+  const [inviteCode, setInviteCode] = React.useState(
+    () => new URLSearchParams(location.search).get('invite') || '',
+  );
+  const [mode, setMode] = React.useState<'admin' | 'guest'>(
+    () => new URLSearchParams(location.search).has('invite') ? 'guest' : 'admin',
+  );
   const [error, setError] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isCheckingSession, setIsCheckingSession] = React.useState(hasAdminToken());
@@ -31,7 +37,7 @@ export const AdminLogin: React.FC = () => {
       return;
     }
 
-    getAdminProfile()
+    getAuthProfile()
       .then(() => {
         if (!cancelled) navigate(redirectTarget, { replace: true });
       })
@@ -46,7 +52,7 @@ export const AdminLogin: React.FC = () => {
   }, [navigate, redirectTarget]);
 
   const copy = {
-    title: language === 'zh' ? '管理员登录' : 'Admin Sign In',
+    title: language === 'zh' ? '安全访问门禁' : 'Secure Access',
     subtitle: language === 'zh' ? 'StockPro AI 控制台' : 'StockPro AI Console',
     username: language === 'zh' ? '账号' : 'Username',
     password: language === 'zh' ? '密码' : 'Password',
@@ -55,6 +61,7 @@ export const AdminLogin: React.FC = () => {
     checking: language === 'zh' ? '正在校验会话...' : 'Checking session...',
     invalid: language === 'zh' ? '账号或密码不正确' : 'Invalid username or password',
     notConfigured: language === 'zh' ? '管理员密码尚未在服务器配置' : 'Admin password is not configured',
+    invalidInvite: language === 'zh' ? '邀请码无效、已过期或已撤销' : 'Invite code is invalid or expired',
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -63,13 +70,23 @@ export const AdminLogin: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      await adminLogin(username.trim(), password);
+      if (mode === 'admin') {
+        await adminLogin(username.trim(), password);
+      } else {
+        await guestLogin(inviteCode.trim());
+      }
       navigate(redirectTarget, { replace: true });
     } catch (err: unknown) {
       const status = typeof err === 'object' && err !== null && 'response' in err
         ? (err as { response?: { status?: number } }).response?.status
         : undefined;
-      setError(status === 503 ? copy.notConfigured : copy.invalid);
+      setError(
+        status === 503
+          ? copy.notConfigured
+          : mode === 'guest'
+            ? copy.invalidInvite
+            : copy.invalid,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -102,7 +119,29 @@ export const AdminLogin: React.FC = () => {
           </div>
         </div>
 
+        <div className="grid grid-cols-2 border-b border-crypto-border px-6 pt-5">
+          {(['admin', 'guest'] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => {
+                setMode(item);
+                setError('');
+              }}
+              className={`border-b-2 px-3 py-2 text-xs font-bold transition-colors ${
+                mode === item
+                  ? 'border-blue-400 text-blue-200'
+                  : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {item === 'admin' ? '管理员' : '邀请码访客'}
+            </button>
+          ))}
+        </div>
+
         <form className="space-y-4 px-6 py-6" onSubmit={handleSubmit}>
+          {mode === 'admin' ? (
+            <>
           <label className="block">
             <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
               {copy.username}
@@ -135,6 +174,31 @@ export const AdminLogin: React.FC = () => {
               />
             </div>
           </label>
+            </>
+          ) : (
+            <>
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-400">
+                  邀请码
+                </span>
+                <div className="flex items-center gap-2 rounded-lg border border-crypto-border bg-crypto-bg px-3 py-2 focus-within:border-blue-500/60">
+                  <Ticket size={16} className="text-gray-500" />
+                  <input
+                    value={inviteCode}
+                    onChange={(event) => setInviteCode(event.target.value)}
+                    className="min-w-0 flex-1 bg-transparent font-mono text-sm uppercase text-white outline-none placeholder:text-gray-600"
+                    placeholder="SP-XXXXXXXXXXXX"
+                    autoComplete="one-time-code"
+                    required
+                  />
+                </div>
+              </label>
+              <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                访客可只读浏览研究、行情、策略证据和运行记录，并可在邀请码配额内启动回测。
+                数据同步、策略修改、模拟交易控制和系统配置不可写。
+              </div>
+            </>
+          )}
 
           {error && (
             <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
@@ -149,7 +213,7 @@ export const AdminLogin: React.FC = () => {
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />}
-            {isSubmitting ? copy.signingIn : copy.submit}
+            {isSubmitting ? copy.signingIn : mode === 'admin' ? copy.submit : '使用邀请码进入'}
           </button>
         </form>
       </section>
