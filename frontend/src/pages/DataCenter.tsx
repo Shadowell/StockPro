@@ -594,14 +594,14 @@ export function DataCenter() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto bg-crypto-bg p-6">
-      <div className="flex shrink-0 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/20">
+    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto bg-crypto-bg p-4 sm:p-6">
+      <div className="flex shrink-0 flex-col items-stretch gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/20">
             <Database className="h-5 w-5 text-white" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-white">数据管理中心</h1>
+          <div className="min-w-0">
+            <h1 className="whitespace-nowrap text-xl font-bold text-white">数据管理中心</h1>
             <p className="mt-0.5 text-xs text-gray-500">A股 · {format(coverageSymbolCount)} 个覆盖统计样本 · {coverage.length ? syncedTimeframes.length : '--'}/{allTimeframes.length} 周期有数据</p>
             {loading && (
               <div className="mt-1 flex items-center gap-1.5 text-xs text-blue-300">
@@ -611,8 +611,8 @@ export function DataCenter() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="group/data-help relative">
+        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 lg:w-auto lg:pb-0">
+          <div className="group/data-help relative shrink-0">
             <button
               type="button"
               aria-label="查看数据同步说明"
@@ -628,14 +628,14 @@ export function DataCenter() {
               </div>
             </div>
           </div>
-          <button onClick={load} className="flex h-9 items-center gap-1.5 rounded-lg border border-crypto-border bg-gray-800 px-3 text-sm text-gray-400 transition hover:bg-gray-700 hover:text-white">
+          <button onClick={load} className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-crypto-border bg-gray-800 px-3 text-sm text-gray-400 transition hover:bg-gray-700 hover:text-white">
             <RefreshCw className={clsx('h-3.5 w-3.5', loading && 'animate-spin')} />
             刷新
           </button>
           <button
             type="button"
             onClick={openScheduleDialog}
-            className={clsx('flex h-9 items-center gap-1.5 rounded-lg border px-4 text-sm font-medium transition-all', scheduleConfig?.enabled ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200' : isRunning ? 'border-blue-500/35 bg-blue-500/10 text-blue-200' : 'border-crypto-border bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white')}
+            className={clsx('flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-4 text-sm font-medium transition-all', scheduleConfig?.enabled ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200' : isRunning ? 'border-blue-500/35 bg-blue-500/10 text-blue-200' : 'border-crypto-border bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white')}
           >
             <span className="relative flex h-2.5 w-2.5 items-center justify-center">
               {(scheduleConfig?.enabled || isRunning) && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
@@ -644,15 +644,15 @@ export function DataCenter() {
             <Clock className="h-3.5 w-3.5" />
             定时同步
           </button>
-          <button onClick={() => void runSync({ start_date: dateOffset(-7), end_date: dateOffset(0), job_name: `kline-incremental-${Date.now()}` })} disabled={syncing} className="flex h-9 items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 text-sm font-semibold text-blue-300 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => void runSync({ start_date: dateOffset(-7), end_date: dateOffset(0), job_name: `kline-incremental-${Date.now()}` })} disabled={syncing} className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 text-sm font-semibold text-blue-300 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50">
             {syncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             增量更新
           </button>
-          <button onClick={() => setShowSyncDialog(true)} disabled={syncing} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-400/30 bg-purple-500/10 px-4 text-sm font-semibold text-purple-300 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => setShowSyncDialog(true)} disabled={syncing} className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-purple-400/30 bg-purple-500/10 px-4 text-sm font-semibold text-purple-300 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50">
             <Calendar className="h-3.5 w-3.5" />
             自定义同步
           </button>
-          <button onClick={() => void runSync({ start_date: dateOffset(-365), end_date: dateOffset(0), job_name: `kline-full-${Date.now()}` })} disabled={syncing} className="flex h-9 items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => void runSync({ start_date: dateOffset(-365), end_date: dateOffset(0), job_name: `kline-full-${Date.now()}` })} disabled={syncing} className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">
             <Play className="h-3.5 w-3.5" />
             全量同步
           </button>
