@@ -3,10 +3,10 @@ import binascii
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from datetime import datetime
-import re
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
@@ -166,6 +166,23 @@ def require_authenticated(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_BEARER)],
 ) -> dict[str, Any]:
+    agent_token = str(request.headers.get("X-StockPro-MCP-Token") or "").strip()
+    if agent_token:
+        from app.db import db_instance
+        from app.services.mcp_agent_service import McpAgentError, McpAgentService
+
+        try:
+            principal = McpAgentService(db_instance).authenticate(
+                agent_token,
+                method=request.method,
+                path=request.url.path,
+                tool_name=request.headers.get("X-StockPro-MCP-Tool"),
+                idempotency_key=request.headers.get("Idempotency-Key"),
+            )
+        except McpAgentError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        request.state.auth_principal = principal
+        return principal
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Login required.")
     principal = verify_access_token(credentials.credentials)
