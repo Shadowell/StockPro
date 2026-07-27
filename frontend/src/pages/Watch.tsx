@@ -11,6 +11,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { acknowledgeRuntimeAlert, getWatchContext } from "../api/client";
+import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import type { RuntimeAlert, WatchContext } from "../types";
 import { orderTypeLabel, sideLabel, sourceLabel, statusLabel } from "../utils/presentation";
 
@@ -164,19 +165,13 @@ export function Watch() {
           来源 <strong className="font-medium text-slate-300">{sourceLabel(context?.source_label)}</strong>
         </span>
       </div>
-      <nav className="mb-5 flex overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1">
-        {TABS.map(([key, label]) => (
-          <button
-            data-testid={`watch-tab-${key}`}
-            type="button"
-            key={key}
-            onClick={() => setParams({ tab: key })}
-            className={`min-w-max flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${tab === key ? "bg-violet-600 text-white" : "text-slate-500 hover:bg-slate-800/60 hover:text-white"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <WorkspaceTabs
+        className="mb-5"
+        ariaLabel="观察台二级导航"
+        items={TABS.map(([id, label]) => ({ id, label, testId: `watch-tab-${id}` }))}
+        value={tab}
+        onChange={(id) => setParams({ tab: id })}
+      />
       <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border border-crypto-border bg-crypto-card px-4 py-3 text-xs text-slate-500">
         <div className="flex rounded-md border border-crypto-border bg-crypto-bg p-1">
           <button

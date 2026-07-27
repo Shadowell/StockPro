@@ -52,6 +52,7 @@ import {
 import type { StockCandidate } from '../types';
 import { evaluateFreshness } from '../utils/dataFreshness';
 import { formatSymbolLabel } from '../utils/symbolDisplay';
+import { WorkspaceTabs } from '../components/WorkspaceTabs';
 
 type DataStatus = {
   database?: string;
@@ -704,33 +705,18 @@ export function DataCenter() {
       {message && <div className="shrink-0 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300">{message}</div>}
       {loadIssues.length > 0 && <div className="shrink-0 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200" role="alert">部分数据模块加载失败：{loadIssues.join('、')}</div>}
 
-      <nav className="flex shrink-0 gap-1 overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1" aria-label="数据管理分区">
-        {([
-          ['overview', '总览', LayoutDashboard],
-          ['datasets', '研究数据', Database],
-          ['coverage', '行情覆盖', BarChart3],
-          ['jobs', '同步任务', ListChecks],
-          ['providers', '数据源', Zap],
-        ] as const).map(([id, label, Icon]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setActiveSection(id)}
-            className={clsx(
-              'flex h-9 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition',
-              activeSection === id
-                ? 'bg-blue-500/15 text-blue-100 shadow-sm'
-                : 'text-gray-400 hover:bg-white/5 hover:text-gray-200',
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-            {id === 'overview' && attentionItems.length > 0 ? (
-              <span className="rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] text-red-200">{attentionItems.length}</span>
-            ) : null}
-          </button>
-        ))}
-      </nav>
+      <WorkspaceTabs<DataSection>
+        ariaLabel="数据管理分区"
+        items={[
+          { id: 'overview', label: '总览', icon: LayoutDashboard, badge: attentionItems.length || undefined },
+          { id: 'datasets', label: '研究数据', icon: Database },
+          { id: 'coverage', label: '行情覆盖', icon: BarChart3 },
+          { id: 'jobs', label: '同步任务', icon: ListChecks },
+          { id: 'providers', label: '数据源', icon: Zap },
+        ]}
+        value={activeSection}
+        onChange={setActiveSection}
+      />
 
       {activeSection === 'overview' && (
         <>

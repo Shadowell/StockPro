@@ -33,6 +33,7 @@ import {
   type FactorValueRow,
   type ResearchFactor,
 } from '@/api/client';
+import { WorkspaceTabs } from '@/components/WorkspaceTabs';
 import { statusLabel } from '@/utils/presentation';
 
 type Workspace = 'library' | 'runs' | 'single' | 'multi' | 'correlation' | 'values';
@@ -363,16 +364,13 @@ export const FactorLibrary = () => {
         </div>
       </header>
 
-      <nav className="mb-4 flex overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1" aria-label="因子研究二级导航">
-        {workspaces.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button key={item.id} type="button" onClick={() => setWorkspace(item.id)} className={`inline-flex min-w-max flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${workspace === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/30' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-200'}`}>
-              <Icon size={15} />{item.label}
-            </button>
-          );
-        })}
-      </nav>
+      <WorkspaceTabs<Workspace>
+        className="mb-4"
+        ariaLabel="因子研究二级导航"
+        items={workspaces}
+        value={workspace}
+        onChange={setWorkspace}
+      />
 
       <section data-testid="factor-research-summary" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
         {[

@@ -20,6 +20,7 @@ import {
   saveDailyReview,
   sealDailyReview,
 } from "../api/client";
+import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import type { DailyReviewContext, DailyReviewItem } from "../types";
 import { categoryLabel, statusLabel } from "../utils/presentation";
 
@@ -300,19 +301,13 @@ export function DailyReview() {
           </button>
         </div>
       </header>
-      <nav className="mb-5 flex overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1">
-        {TABS.map(([key, label]) => (
-          <button
-            data-testid={`review-tab-${key}`}
-            type="button"
-            key={key}
-            onClick={() => setParams({ tab: key, date: tradeDate })}
-            className={`min-w-max flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${tab === key ? "bg-fuchsia-600 text-white" : "text-slate-500 hover:bg-slate-800/60 hover:text-white"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <WorkspaceTabs
+        className="mb-5"
+        ariaLabel="复盘中心二级导航"
+        items={TABS.map(([id, label]) => ({ id, label, testId: `review-tab-${id}` }))}
+        value={tab}
+        onChange={(id) => setParams({ tab: id, date: tradeDate })}
+      />
       {error ? (
         <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
           {error}

@@ -28,6 +28,7 @@ import {
 import type { BacktestRun, PaperRuntimeInstance } from "../types";
 import { PaperInstanceDashboard } from "../components/PaperInstanceDashboard";
 import { PaperRuntimeInstanceDetail } from "../components/PaperRuntimeInstanceDetail";
+import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { marketToneClass } from "../utils/marketColors";
 
 const TABS = [
@@ -733,28 +734,21 @@ export function Paper() {
         </div>
       </div>
 
-      <nav
-        className={`${pageView === "detail" ? "mb-5 flex" : "hidden"} overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1`}
-        aria-label="Paper 二级导航"
-      >
-        {TABS.filter(([key]) => key !== "instances").map(([key, label]) => (
-          <button
-            data-testid={`paper-tab-${key}`}
-            type="button"
-            key={key}
-            onClick={() =>
-              setParams({
-                view: "detail",
-                tab: key,
-                ...(selected ? { instance: selected.id } : {}),
-              })
-            }
-            className={`min-w-max flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${tab === key ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-800/60 hover:text-white"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      {pageView === "detail" ? (
+        <WorkspaceTabs
+          className="mb-5"
+          ariaLabel="模拟实例二级导航"
+          items={TABS.filter(([id]) => id !== "instances").map(([id, label]) => ({ id, label, testId: `paper-tab-${id}` }))}
+          value={tab === "instances" ? "signals" : tab}
+          onChange={(id) =>
+            setParams({
+              view: "detail",
+              tab: id,
+              ...(selected ? { instance: selected.id } : {}),
+            })
+          }
+        />
+      ) : null}
       {error ? (
         <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
           <strong>加载或操作失败：</strong>

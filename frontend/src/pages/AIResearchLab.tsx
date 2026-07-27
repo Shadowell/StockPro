@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { getAICapabilities, getStrategies, listBacktestRuns } from "../api/client";
+import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import type { AICapabilities, BacktestRun, Strategy } from "../types";
 
 const TABS = [
@@ -122,11 +123,11 @@ export function AIResearchLab() {
             <BrainCircuit className="h-7 w-7 text-cyan-400" />
             <h1 className="text-2xl font-black text-white">AI研发</h1>
             <span className="rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold text-cyan-200">
-              RESEARCH ONLY
+              仅限研究
             </span>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            自动交易 Agent、受控策略研发和既有策略优化统一入口；所有结果先经过回测与模拟准入。
+            智能交易代理、受控策略研发和既有策略优化统一入口；所有结果先经过回测与模拟准入。
           </p>
         </div>
         <button
@@ -141,9 +142,9 @@ export function AIResearchLab() {
 
       <section className="mb-5 grid gap-px overflow-hidden rounded-xl border border-crypto-border bg-crypto-border md:grid-cols-4">
         {[
-          ["AI连接", capabilities?.configured ? "可用" : "不可用", capabilities?.model || capabilityError || capabilities?.reason || "状态读取中"],
-          ["策略版本", loaded ? String(scopedStrategies.length) : "读取中", "PostgreSQL 版本记录"],
-          ["完整回测", loaded ? String(fullRuns.length) : "读取中", "仅 full 运行"],
+          ["AI连接", capabilities?.configured ? "可用" : "不可用", capabilities?.configured ? capabilities.model || "服务已连接" : capabilityError || "服务尚未配置"],
+          ["策略版本", loaded ? String(scopedStrategies.length) : "读取中", "策略版本库记录"],
+          ["完整回测", loaded ? String(fullRuns.length) : "读取中", "仅统计完整模式"],
           ["最新证据", dateTime(latestEvidence), latestEvidence ? "策略或回测更新时间" : "当前范围暂无记录"],
         ].map(([label, value, note], index) => (
           <div key={label} className="bg-crypto-card px-4 py-3">
@@ -174,28 +175,13 @@ export function AIResearchLab() {
         </div>
       ) : null}
 
-      <nav
-        className="mb-5 grid gap-1 rounded-xl border border-crypto-border bg-crypto-card p-1 md:grid-cols-3"
-        aria-label="AI研发工作台"
-      >
-        {TABS.map(([key, label, description]) => (
-          <button
-            type="button"
-            key={key}
-            onClick={() => setParams({ tab: key })}
-            className={`rounded-lg px-4 py-3 text-left ${
-              tab === key
-                ? "bg-cyan-600 text-white"
-                : "text-slate-500 hover:bg-slate-800/60 hover:text-white"
-            }`}
-          >
-            <span className="block text-sm font-semibold">{label}</span>
-            <span className="mt-0.5 block text-[10px] opacity-65">
-              {description}
-            </span>
-          </button>
-        ))}
-      </nav>
+      <WorkspaceTabs
+        className="mb-5"
+        ariaLabel="AI研发工作台"
+        items={TABS.map(([id, label]) => ({ id, label }))}
+        value={tab}
+        onChange={(id) => setParams({ tab: id })}
+      />
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex rounded-lg border border-crypto-border bg-crypto-card p-1 text-xs">
@@ -249,7 +235,7 @@ export function AIResearchLab() {
                 </p>
               </div>
               <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200">
-                PAPER ONLY
+                仅限模拟
               </span>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -295,7 +281,7 @@ export function AIResearchLab() {
               {[
                 ["账户", "模拟资金，不连接券商"],
                 ["交易制度", "A 股 T+1 / 100 股整数手"],
-                ["数据", "仅使用已封存 PG 快照"],
+                ["数据", "仅使用已封存研究快照"],
                 ["自动晋级", "禁止，必须人工复核"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between gap-4 border-b border-white/[0.05] pb-3">
@@ -360,7 +346,7 @@ export function AIResearchLab() {
               <div>
                 <h2 className="font-semibold text-white">候选与验证证据</h2>
                 <p className="mt-1 text-xs text-slate-500">
-                  只显示 PostgreSQL 中已有策略和回测记录，不生成演示候选。
+                  只显示策略版本库中已有的策略和回测记录，不生成演示候选。
                 </p>
               </div>
               <span className="text-xs text-slate-600">{eligibleRuns.length} 个可进入模拟评审</span>
