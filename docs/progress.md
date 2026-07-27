@@ -1080,6 +1080,15 @@ Verification:
 - Added browser regression coverage that verifies positive, negative and zero
   monthly backtest returns under both color schemes.
 
+25. BitPro workspace navigation hierarchy
+- Replaced full-width button-strip navigation with a shared content-width,
+  underline-style workspace tab component across Market, Stock Pools, Factors,
+  Monitor, Daily Review, Watch, AI Research, Paper detail and Data Center.
+- Kept scope, status and sort switches as compact segmented controls so
+  workspace navigation and filtering no longer share the same visual weight.
+- Localized the remaining AI Research environment and execution labels; raw
+  provider configuration names are no longer exposed in the product view.
+
 ## Verification Evidence
 
 - `python3 -m py_compile app/services/scheduler_service.py app/db/postgres_db.py app/api/endpoints/data_dev.py` (pass)
@@ -1096,9 +1105,15 @@ Verification:
 - `./scripts/check.sh` after configurable market-color consistency (pass:
   frontend build/lint with 5 existing Hook warnings, 289 backend tests, Python
   compilation)
+- `./scripts/check.sh` after workspace navigation hierarchy alignment (pass:
+  frontend build/lint with 5 existing Hook warnings, 289 backend tests, Python
+  compilation)
 - Focused mocked Playwright market-color and market-research checks (2/2 pass)
 - Real-browser Backtest detail verification under both color schemes: positive
   and negative values swap colors as configured; zero stays neutral (pass)
+- Real-browser workspace navigation review on Monitor, Market, Factors, Data
+  Center and AI Research at desktop width, plus Monitor at 390px (pass; no
+  browser console errors)
 - Playwright primary-route sweep at desktop and 390px (13/13 pass; no visible
   UUID/task/account/snapshot keys and no page-level horizontal overflow)
 - Playwright secondary/detail sweep (30 query-addressable tabs, 5 factor

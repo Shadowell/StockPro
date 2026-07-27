@@ -22,6 +22,7 @@ import {
   listStockPoolSnapshots,
   sealStockPoolSnapshot,
 } from "../api/client";
+import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import type {
   BacktestConfiguration,
   MarketResearchContext,
@@ -405,19 +406,13 @@ export function StockPools() {
           刷新
         </button>
       </header>
-      <nav className="mb-5 flex overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1">
-        {TABS.map(([key, label]) => (
-          <button
-            data-testid={`pool-tab-${key}`}
-            key={key}
-            type="button"
-            onClick={() => setParams({ tab: key })}
-            className={`min-w-max flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${tab === key ? "bg-purple-600 text-white" : "text-slate-500 hover:bg-slate-800/60 hover:text-slate-200"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <WorkspaceTabs
+        className="mb-5"
+        ariaLabel="股票池二级导航"
+        items={TABS.map(([id, label]) => ({ id, label, testId: `pool-tab-${id}` }))}
+        value={tab}
+        onChange={(id) => setParams({ tab: id })}
+      />
       {error ? (
         <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
           {error}
