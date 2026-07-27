@@ -88,6 +88,36 @@ const statusLabel: Record<string, string> = {
   warning: "警告",
   lifecycle: "生命周期",
   runtime: "运行",
+  paper_eligible: "已通过模拟盘准入",
+  rejected: "未通过准入",
+};
+const parameterLabel: Record<string, string> = {
+  stop_loss: "止损比例",
+  long_window: "长期均线",
+  initial_cash: "初始资金",
+  short_window: "短期均线",
+  target_weight: "目标仓位",
+  profit_trigger: "止盈触发",
+  trailing_drawdown: "浮盈回撤",
+};
+const percentParameterKeys = new Set([
+  "stop_loss",
+  "target_weight",
+  "profit_trigger",
+  "trailing_drawdown",
+]);
+const ratioText = (value: unknown) => {
+  const parsed = asNumber(value);
+  return parsed === null ? "--" : `${(parsed * 100).toFixed(1)}%`;
+};
+const parameterText = (key: string, value: unknown) => {
+  if (percentParameterKeys.has(key)) return ratioText(value);
+  if (key === "initial_cash") {
+    const parsed = asNumber(value);
+    return parsed === null ? "--" : `¥${parsed.toLocaleString("zh-CN")}`;
+  }
+  if (key === "long_window" || key === "short_window") return `${text(value)} 日`;
+  return text(value);
 };
 
 function Section({
@@ -254,6 +284,9 @@ export function PaperRuntimeInstanceDetail({
   const feed = instance.feed_config ?? {};
   const capacity = instance.capacity_limits ?? {};
   const parameters = instance.parameters ?? {};
+  const readableParameters = Object.entries(parameters).map(
+    ([key, value]) => [parameterLabel[key] ?? key, parameterText(key, value)] as [string, unknown],
+  );
   const latestEquity = equityRows.at(-1);
   const equity = asNumber(latestEquity?.equity ?? instance.equity);
   const initialCash = asNumber(instance.initial_cash);
@@ -410,7 +443,7 @@ export function PaperRuntimeInstanceDetail({
     "策略版本未提供文字说明；请以已封存脚本、参数和运行证据为准。";
   const selectionLogic =
     text(strategyVersion?.dependency_manifest?.selection_logic, "") ||
-    `${logicDescription} 候选范围固定来自股票池快照 #${instance.pool_snapshot_id}。`;
+    `${logicDescription} 候选范围固定来自创建模拟盘时选定的股票池。`;
   const tradingLogic =
     text(strategyVersion?.dependency_manifest?.trading_logic, "") ||
     `${logicDescription} 信号在收盘周期生成，按 A 股 T+1、100 股整手和容量约束执行。`;
@@ -446,7 +479,9 @@ export function PaperRuntimeInstanceDetail({
             : "事件未提供说明",
         ),
         tone: failed ? "red" : isCycle ? "blue" : "neutral",
-        meta: isCycle ? `cycle · ${text(row.trade_date)}` : `event · ${text(row.level)}`,
+        meta: isCycle
+          ? `交易周期 · ${text(row.trade_date)}`
+          : `系统事件 · ${statusLabel[text(row.level)] ?? text(row.level)}`,
       };
     });
   const eventLogItems = events.map((row, index): LogStreamItem => ({
@@ -455,7 +490,7 @@ export function PaperRuntimeInstanceDetail({
     label: statusLabel[text(row.category ?? row.level)] ?? text(row.category ?? row.level),
     message: text(row.message, "事件未提供说明"),
     tone: row.level === "error" ? "red" : row.level === "warning" ? "amber" : "neutral",
-    meta: `event · ${text(row.level)}`,
+    meta: `系统事件 · ${statusLabel[text(row.level)] ?? text(row.level)}`,
   }));
 
   return (
@@ -492,7 +527,6 @@ export function PaperRuntimeInstanceDetail({
                 />
                 {statusLabel[instance.status] ?? instance.status}
               </span>
-              <span className="font-mono">ID {instance.id}</span>
               <span>{strategyVersion?.name ?? "策略版本"} · 日线 · A股</span>
               <span>最后交易日 {instance.last_processed_trade_date ?? "--"}</span>
             </div>
@@ -523,14 +557,13 @@ export function PaperRuntimeInstanceDetail({
         </div>
       </header>
 
-      <div className="grid gap-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.055] p-3 text-[11px] text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.055] p-3 text-[11px] text-slate-400 sm:grid-cols-2 xl:grid-cols-3">
         <div><Database className="mr-1 inline h-3.5 w-3.5 text-blue-400" />数据源：{text(feed.provider) === "postgresql" ? "本地数据库" : text(feed.provider)}</div>
         <div>模式：{isReplay ? "封存历史回放" : text(feed.mode)}</div>
-        <div>数据快照：#{instance.dataset_snapshot_id} · 因子 #{instance.factor_snapshot_id}</div>
+        <div>研究数据：已绑定封存版本</div>
         <div>心跳：{dateTime(instance.heartbeat_at)}</div>
-        <div>股票池：#{instance.pool_snapshot_id} · Universe #{instance.universe_snapshot_id}</div>
-        <div>策略版本：v{strategyVersion?.version ?? "--"} · {instance.strategy_version_id.slice(0, 8)}</div>
-        <div>准入回测：{instance.qualifying_backtest_run_id.slice(0, 8)} · {qualifyingRun?.promotion_status ?? "已绑定"}</div>
+        <div>策略：{strategyVersion?.name ?? qualifyingRun?.strategy_name ?? "未提供"} · 版本 {strategyVersion?.version ?? qualifyingRun?.strategy_version ?? "--"}</div>
+        <div>回测准入：{statusLabel[qualifyingRun?.promotion_status ?? ""] ?? (qualifyingRun ? "已完成准入检查" : "未提供")}</div>
         <div>最新周期：{statusLabel[instance.latest_cycle_status ?? ""] ?? instance.latest_cycle_status ?? "--"} · {instance.latest_cycle_trade_date ?? "--"}</div>
       </div>
 
@@ -559,15 +592,15 @@ export function PaperRuntimeInstanceDetail({
         </div>
       </Section>
 
-      <Section title="策略参数" subtitle="来自实例固定参数、运行容量边界和行情配置；详情页只读。" icon={<Gauge className="mt-0.5 h-5 w-5 text-cyan-400" />}>
+      <Section title="策略参数" subtitle="来自实例固定参数、运行容量边界和行情配置；详情页只读。" icon={<Gauge className="mt-0.5 h-5 w-5 text-cyan-400" />} defaultOpen={false}>
         <div className="space-y-5">
-          <ParameterGrid title="交易逻辑参数" values={Object.entries(parameters).length ? Object.entries(parameters) : [["参数", "本实例未覆盖策略默认参数"]]} />
+          <ParameterGrid title="交易逻辑参数" values={readableParameters.length ? readableParameters : [["参数", "本实例未覆盖策略默认参数"]]} />
           <ParameterGrid title="风险参数" values={[
-            ["现金底线", capacity.cash_floor_ratio],
-            ["单票权重上限", capacity.max_single_symbol_weight],
-            ["参与率上限", capacity.max_participation_ratio],
-            ["最大回撤阈值", capacity.max_drawdown],
-            ["日换手上限", capacity.max_daily_turnover],
+            ["现金底线", ratioText(capacity.cash_floor_ratio)],
+            ["单票权重上限", ratioText(capacity.max_single_symbol_weight)],
+            ["参与率上限", ratioText(capacity.max_participation_ratio)],
+            ["最大回撤阈值", ratioText(capacity.max_drawdown)],
+            ["日换手上限", ratioText(capacity.max_daily_turnover)],
             ["A股 T+1", "启用"],
             ["整手规则", "100 股"],
           ]} />
@@ -601,8 +634,8 @@ export function PaperRuntimeInstanceDetail({
       </div>
 
       <Section title="买卖点 K线复盘" subtitle="K 线直接读取本实例绑定的 PostgreSQL 封存数据快照；只有真实模拟成交才绘制 B/S 标记。" icon={<CandlestickChart className="mt-0.5 h-5 w-5 text-blue-400" />} action={symbols.length ? <select value={symbol} onChange={(event) => setSymbol(event.target.value)} onClick={(event) => event.stopPropagation()} className="h-8 rounded-md border border-crypto-border bg-crypto-bg px-2 text-xs text-slate-300">{symbols.map((item) => <option key={item}>{item}</option>)}</select> : undefined}>
-        {!symbols.length ? <Empty>当前没有持仓、订单、成交或信号证券，无法确定 K 线标的。</Empty> : klineError ? <Empty>K 线接口失败：{klineError}</Empty> : !kline ? <div className="py-16 text-center text-xs text-slate-500">正在读取封存快照 K 线…</div> : kline.data_status === "empty" ? <Empty>快照 #{kline.dataset_snapshot_id} 中没有 {symbol} 的日线数据。</Empty> : <>
-          <div className="mb-3 flex flex-wrap justify-between gap-2 text-[10px] text-slate-500"><span>{kline.source_label} · 快照 #{kline.dataset_snapshot_id}</span><span>knowledge cutoff {dateTime(kline.knowledge_cutoff_at)} · {kline.total} 根</span></div>
+        {!symbols.length ? <Empty>当前没有持仓、订单、成交或信号证券，无法确定 K 线标的。</Empty> : klineError ? <Empty>K 线接口失败：{klineError}</Empty> : !kline ? <div className="py-16 text-center text-xs text-slate-500">正在读取封存研究数据…</div> : kline.data_status === "empty" ? <Empty>封存研究数据中没有 {symbol} 的日线数据。</Empty> : <>
+          <div className="mb-3 flex flex-wrap justify-between gap-2 text-[10px] text-slate-500"><span>{kline.source_label} · 封存研究数据</span><span>数据截止 {dateTime(kline.knowledge_cutoff_at)} · {kline.total} 根</span></div>
           <ReactECharts option={klineOption} style={{ height: 430 }} />
         </>}
       </Section>

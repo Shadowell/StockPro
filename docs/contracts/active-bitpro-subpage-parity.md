@@ -79,3 +79,7 @@ filter controls, detail views and operator-state semantics.
   metrics. Research data, coverage maintenance, job history and provider
   permissions are separated into task-oriented sections instead of one long
   undifferentiated page.
+- Primary product views do not expose database keys, UUID fragments or content
+  hashes as user-facing facts. They use readable names, version numbers,
+  localized workflow states, dates and binding summaries; internal identifiers
+  remain available to backend audit and diagnostics only.

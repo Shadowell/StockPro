@@ -398,8 +398,8 @@ export function DataCenter() {
   const researchReadiness = !latestSealedSnapshot
     ? { label: '研究快照未封存', tone: 'border-red-500/25 bg-red-500/10 text-red-200' }
     : researchFreshness.state === 'fresh'
-      ? { label: `研究快照当前 · #${latestSealedSnapshot.id}`, tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' }
-      : { label: `研究快照历史 · #${latestSealedSnapshot.id}`, tone: 'border-yellow-500/25 bg-yellow-500/10 text-yellow-200' };
+      ? { label: '研究快照当前', tone: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' }
+      : { label: '研究快照历史', tone: 'border-yellow-500/25 bg-yellow-500/10 text-yellow-200' };
   const attentionItems = useMemo(() => {
     const items: Array<{ label: string; detail: string; section: DataSection; tone: 'red' | 'amber' }> = [];
     if (loadIssues.length) {
@@ -437,7 +437,7 @@ export function DataCenter() {
     ? { label: '不可用于研究', tone: 'red' as const, detail: '先处理阻断项，再运行因子或回测' }
     : researchFreshness.state !== 'fresh'
       ? { label: '可用但已陈旧', tone: 'amber' as const, detail: '使用前建议更新并重新封存快照' }
-      : { label: '研究数据可用', tone: 'green' as const, detail: `封存快照 #${latestSealedSnapshot.id} 可追溯` };
+      : { label: '研究数据可用', tone: 'green' as const, detail: '最近封存的研究数据可追溯' };
 
   useEffect(() => {
     if (!showAddSymbolDialog) return undefined;
@@ -786,7 +786,7 @@ export function DataCenter() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             label="研究快照"
-            value={latestSealedSnapshot ? `#${latestSealedSnapshot.id}` : '--'}
+            value={latestSealedSnapshot ? '已封存' : '--'}
             icon={<Database className="h-4 w-4" />}
             color={latestSealedSnapshot ? (researchFreshness.state === 'fresh' ? 'green' : 'amber') : 'red'}
             detail={latestSealedSnapshot ? `知识截止 ${compactDate(latestSealedSnapshot.knowledge_cutoff_at)}` : '尚未封存，不能用于回测'}
@@ -1002,7 +1002,7 @@ export function DataCenter() {
                         <div className="mt-0.5 font-mono text-[10px] text-gray-600">{dataset.code} · {dataset.schema_version}</div>
                       </td>
                       <td className="px-4 py-2.5"><span className="font-mono text-[11px] text-gray-300">{dataset.primary_source}</span><span className="px-1 text-gray-700">→</span><span className="font-mono text-[11px] text-gray-500">{dataset.fallback_source || '--'}</span><div className="mt-0.5 font-mono text-[10px] text-gray-600">实际 {dataset.actual_source || '--'}{dataset.fallback_reason ? ` · ${dataset.fallback_reason}` : ''}</div></td>
-                      <td className="px-4 py-2.5">{dataset.end_date || '--'}<div className="mt-0.5 font-mono text-[10px] text-gray-600">{dataset.content_hash ? dataset.content_hash.slice(0, 12) : '未发布'}</div></td>
+                      <td className="px-4 py-2.5">{dataset.end_date || '--'}<div className="mt-0.5 text-[10px] text-gray-600">{dataset.content_hash ? '内容已校验' : '未发布'}</div></td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-gray-300">{dataset.row_count ? format(dataset.row_count) : '--'} <span className="text-gray-600">/</span> {dataset.symbol_count ? format(dataset.symbol_count) : '--'}</td>
                       <td className="px-4 py-2.5"><span className={clsx('inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold', blockers ? 'border-red-500/25 bg-red-500/10 text-red-200' : published ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-gray-600 bg-gray-800 text-gray-400')}>{blockers ? `阻断 ${blockers}` : published ? '已发布' : '待采集'}</span></td>
                     </tr>
@@ -1048,8 +1048,8 @@ export function DataCenter() {
                   {dailyReferenceSchedule.lastRun && (
                     <div className="mt-2 space-y-1 border-t border-blue-500/15 pt-2 text-[10px] text-gray-500">
                       <div>最近 {dailyReferenceSchedule.lastRun.tradeDate} · <span className={dailyReferenceSchedule.lastRun.status === 'sealed' ? 'text-emerald-300' : dailyReferenceSchedule.lastRun.status === 'not_trading_day' ? 'text-amber-300' : 'text-red-300'}>{dailyReferenceSchedule.lastRun.status}</span> · 第 {dailyReferenceSchedule.lastRun.attemptCount} 次 · 完成 {compactDate(dailyReferenceSchedule.lastRun.finishedAt)}</div>
-                      <div>数据快照 <span className="font-mono text-gray-300">{dailyReferenceSchedule.lastRun.snapshotId ?? lastPublication?.snapshot?.id ?? '--'}</span> · 实际来源 <span className="font-mono text-gray-300">{lastPublication?.actual_source || '--'}</span>{lastPublication?.fallback_reason ? <span className="text-amber-300"> · 兜底 {lastPublication.fallback_reason}</span> : null}</div>
-                      <div>因子 <span className={lastFactorSchedule?.status === 'sealed' ? 'text-emerald-300' : lastFactorSchedule?.status ? 'text-amber-300' : 'text-gray-600'}>{lastFactorSchedule?.status || '--'}</span> · 因子快照 <span className="font-mono text-gray-300">{lastFactorSchedule?.factor_snapshot?.id ?? lastFactorSchedule?.factor_snapshot_id ?? '--'}</span> · 市场证据 <span className="text-gray-300">{lastRunResult?.marketEvidence?.status || '--'}</span></div>
+                      <div>研究数据 <span className="text-gray-300">{dailyReferenceSchedule.lastRun.snapshotId ?? lastPublication?.snapshot?.id ? '已封存' : '未生成'}</span> · 实际来源 <span className="font-mono text-gray-300">{lastPublication?.actual_source || '--'}</span>{lastPublication?.fallback_reason ? <span className="text-amber-300"> · 兜底 {lastPublication.fallback_reason}</span> : null}</div>
+                      <div>因子 <span className={lastFactorSchedule?.status === 'sealed' ? 'text-emerald-300' : lastFactorSchedule?.status ? 'text-amber-300' : 'text-gray-600'}>{lastFactorSchedule?.status === 'sealed' ? '已封存' : lastFactorSchedule?.status || '--'}</span> · 市场证据 <span className="text-gray-300">{lastRunResult?.marketEvidence?.status || '--'}</span></div>
                     </div>
                   )}
                 </>
@@ -1062,7 +1062,7 @@ export function DataCenter() {
               <div className="space-y-2">
                 {researchSnapshots.slice(0, 6).map((snapshot) => (
                   <div key={snapshot.id} className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-2.5">
-                    <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[11px] text-gray-200">{snapshot.name}</span><span className={clsx('rounded border px-1.5 py-0.5 text-[10px]', snapshot.status === 'sealed' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-gray-600 text-gray-400')}>{snapshot.status === 'sealed' ? '已封存' : snapshot.status}</span></div>
+                    <div className="flex items-center justify-between gap-2"><span className="truncate text-[11px] text-gray-200">研究数据 · 截止 {compactDate(snapshot.knowledge_cutoff_at)}</span><span className={clsx('rounded border px-1.5 py-0.5 text-[10px]', snapshot.status === 'sealed' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200' : 'border-gray-600 text-gray-400')}>{snapshot.status === 'sealed' ? '已封存' : snapshot.status}</span></div>
                     <div className="mt-1 text-[10px] text-gray-600">{snapshot.partition_count || 0} 分区 · 截止 {compactDate(snapshot.knowledge_cutoff_at)}</div>
                   </div>
                 ))}

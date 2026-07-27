@@ -699,10 +699,10 @@ export function Strategy() {
                   <div className="flex flex-wrap items-center gap-2">
                     {validation?.valid ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <AlertCircle className="h-4 w-4 text-amber-400" />}
                     <span className={validation?.valid ? 'text-emerald-300' : 'text-amber-300'}>{validation?.valid ? '策略校验通过' : '等待校验或存在问题'}</span>
-                    {activeVersion && <span className="font-mono text-gray-500">v{activeVersion.version} · {activeVersion.content_hash.slice(0, 10)}</span>}
+                    {activeVersion && <span className="text-gray-500">当前版本 v{activeVersion.version}</span>}
                   </div>
                   {validation && !validation.valid && <div className="mt-2 text-amber-200/70">{validation.issues.map((item) => `${item.code}: ${item.message}`).join('；')}</div>}
-                  {replayResult?.status === 'success' && <div className="mt-2 text-gray-400">预检 {replayResult.run_id.slice(0, 8)} · {replayResult.event_count} 个交易日 · {replayResult.intent_count} 个委托意图 · {replayResult.record_count} 条指标</div>}
+                  {replayResult?.status === 'success' && <div className="mt-2 text-gray-400">预检通过 · {replayResult.event_count} 个交易日 · {replayResult.intent_count} 个委托意图 · {replayResult.record_count} 条指标</div>}
                 </div>
               )}
             </div>

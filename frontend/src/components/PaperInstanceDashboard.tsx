@@ -213,7 +213,6 @@ export function PaperInstanceDashboard({
         if (!normalized) return true;
         return [
           instance.name,
-          instance.id,
           statusLabel[heartbeatState(instance)],
           symbolsFor(instance).join(" "),
           timeframe(instance),
@@ -400,7 +399,7 @@ export function PaperInstanceDashboard({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索策略、证券、周期或实例 ID"
+            placeholder="搜索策略、证券或周期"
             className={`${control} w-full pl-9`}
           />
         </label>
@@ -468,9 +467,7 @@ export function PaperInstanceDashboard({
                         {instance.name}
                       </h2>
                     </div>
-                    <div className="mt-1 truncate font-mono text-[10px] text-slate-600">
-                      {instance.id}
-                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500">A股模拟策略</div>
                   </button>
                   <button
                     type="button"

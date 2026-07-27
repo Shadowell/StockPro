@@ -1043,6 +1043,10 @@ Verification:
   states whether research data is usable, surfaces only the highest-priority
   blockers and four decision metrics, while research datasets, market
   coverage, sync jobs and provider permissions live in dedicated sections.
+- Removed implementation identifiers from the primary Strategy, Paper and Data
+  reading layers. UUID fragments, content hashes, snapshot IDs and raw
+  `paper_eligible` values are replaced by localized strategy versions,
+  verification states, binding states, research periods and data cutoffs.
 
 ## Verification Evidence
 
