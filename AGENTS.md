@@ -32,6 +32,32 @@ Use this delivery loop for non-trivial tasks:
 5. Record QA findings if needed.
 6. Update progress and next step.
 
+## GitHub Delivery Rule
+
+After each completed user-requested change set that modifies repository files:
+
+1. Run the relevant verification. Documentation-only changes require at least `git diff --check`.
+2. Review `git status` and the scoped diff before staging.
+3. Stage only files and hunks changed for the current task. Never sweep in unrelated pre-existing worktree changes.
+4. Create one clear, conventional commit for the completed change set.
+5. Push the checked-out branch to `origin`. If it has no upstream, use `git push -u origin <current-branch>`.
+6. Report the commit hash and pushed branch in the final response.
+
+Safety rules:
+
+- Do not commit or push when required checks fail unless the user explicitly asks to preserve a failing checkpoint.
+- Never commit secrets, `.env` files, credentials, private keys, local runtime configuration, browser artifacts, generated output, or database files.
+- Never amend an existing commit, force-push, rewrite history, or switch branches solely to make an automatic push succeed.
+- If authentication, branch protection, a non-fast-forward update, or another remote error blocks the push, stop and report it; do not bypass the protection.
+- Pushing source code to GitHub is delivery, not deployment.
+
+## Local-only Deployment Boundary
+
+- Do not automatically deploy, SSH, `scp`, `rsync`, run production deployment scripts, restart remote services, or mutate server data.
+- After source-code changes, start or restart only the local frontend, backend, and required local dependencies.
+- Keep the local development URLs at `http://localhost:4444` and `http://localhost:4445`.
+- Server deployment requires a new explicit instruction from the user in the current conversation.
+
 ## Done Criteria
 
 A sprint is done only when:
