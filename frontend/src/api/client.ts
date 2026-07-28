@@ -412,6 +412,7 @@ export interface FactorMetricRow {
 export interface FactorValueRow {
   trade_date: string;
   symbol: string;
+  name?: string | null;
   raw_value?: number | null;
   processed_value?: number | null;
   rank?: number | null;
@@ -1272,6 +1273,7 @@ export type DataTableStatsResponse = {
     tableName: string;
     exchange?: string;
     symbol?: string;
+    name?: string;
     timeframe?: string;
     recordCount: number;
     firstTimestamp?: number | null;
@@ -1451,6 +1453,19 @@ export const addDataSymbol = async (symbol: string): Promise<{ symbol: string; a
   const response = await apiClient.post<{ symbol: string; added: boolean; defaultSymbols: string[] }>('/data/symbols', { symbol });
   return response.data;
 };
+
+
+export const lookupSymbolNames = async (
+  symbols: string[],
+): Promise<Record<string, string>> => {
+  const unique = Array.from(new Set(symbols.map((item) => String(item || '').trim()).filter(Boolean)));
+  if (!unique.length) return {};
+  const response = await apiClient.post<{ names: Record<string, string> }>('/data/symbol-names', {
+    symbols: unique,
+  });
+  return response.data.names || {};
+};
+
 
 export const removeDataSymbol = async (symbol: string): Promise<{ symbol: string; removed: boolean; defaultSymbols: string[] }> => {
   const response = await apiClient.delete<{ symbol: string; removed: boolean; defaultSymbols: string[] }>('/data/symbols', { data: { symbol } });

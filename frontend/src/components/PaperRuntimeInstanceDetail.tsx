@@ -37,8 +37,10 @@ import type {
   PaperKlineSnapshot,
   PaperRuntimeInstance,
 } from "../types";
-import { formatSymbolLabel } from "../utils/symbolDisplay";
-import { marketAdverseToneClass, marketToneClass } from "../utils/marketColors";
+import { SymbolCell } from "./SymbolCell";
+import { useSymbolNames } from "../hooks/useSymbolNames";
+import { marketAdverseToneClass, marketToneClass, type MetricTone } from "../utils/marketColors";
+import { MetricValue } from "./OperatorShell";
 import { COLOR_SCHEMES, useSettingsStore } from "../stores/useSettingsStore";
 
 type Row = Record<string, unknown>;
@@ -167,7 +169,7 @@ function Metric({
   label,
   value,
   note,
-  tone = "text-white",
+  tone = "text-blue-300",
   icon,
 }: {
   label: string;
@@ -176,15 +178,22 @@ function Metric({
   tone?: string;
   icon: React.ReactNode;
 }) {
-  const color = tone.includes("red")
-    ? "red"
-    : tone.includes("emerald")
-      ? "green"
-      : tone.includes("blue")
-        ? "blue"
-        : "neutral";
+  const color: MetricTone = tone.includes("down") || tone.includes("red")
+    ? "down"
+    : tone.includes("up") || tone.includes("emerald")
+      ? "up"
+      : tone.includes("amber") || tone.includes("yellow")
+        ? "amber"
+        : "blue";
   return (
-    <MetricCard label={label} value={value} detail={note} icon={icon} color={color} className="min-h-[104px]" />
+    <MetricCard
+      label={label}
+      value={<MetricValue tone={color}>{value}</MetricValue>}
+      detail={note}
+      icon={icon}
+      color={color}
+      className="min-h-[104px]"
+    />
   );
 }
 
@@ -284,6 +293,7 @@ export function PaperRuntimeInstanceDetail({
     [instance.equity_snapshots],
   );
   const symbols = useMemo(() => symbolsFrom(instance), [instance]);
+  const symbolNames = useSymbolNames(symbols);
   const strategyVersion = instance.strategy_version;
   const feed = instance.feed_config ?? {};
   const capacity = instance.capacity_limits ?? {};
@@ -292,7 +302,10 @@ export function PaperRuntimeInstanceDetail({
     ([key, value]) => [parameterLabel[key] ?? key, parameterText(key, value)] as [string, unknown],
   );
   const latestEquity = equityRows.at(-1);
-  const equity = asNumber(latestEquity?.equity ?? instance.equity);
+  const equity =
+    asNumber(latestEquity?.equity ?? instance.equity) ??
+    asNumber(instance.cash_balance) ??
+    asNumber(instance.initial_cash);
   const initialCash = asNumber(instance.initial_cash);
   const pnl =
     equity !== null && initialCash !== null ? equity - initialCash : null;
@@ -623,7 +636,7 @@ export function PaperRuntimeInstanceDetail({
                 <thead><tr className="border-b border-crypto-border text-left text-slate-500"><th className="py-2">股票</th><th className="py-2 text-right">数量</th><th className="py-2 text-right">可用</th><th className="py-2 text-right">成本</th><th className="py-2 text-right">最新价</th><th className="py-2 text-right">市值</th><th className="py-2 text-right">浮动盈亏</th></tr></thead>
                 <tbody>{positions.map((row, index) => {
                   const unrealized = asNumber(row.unrealized_pnl ?? row.pnl);
-                  return <tr key={text(row.id, `${row.symbol}-${index}`)} className="border-b border-white/[0.04] text-slate-300"><td className="py-2.5 font-mono">{formatSymbolLabel(text(row.symbol), text(row.name, ""))}</td><td className="py-2.5 text-right">{number(row.quantity, 0)}</td><td className="py-2.5 text-right">{number(row.available_quantity ?? row.sellable_quantity, 0)}</td><td className="py-2.5 text-right">{number(row.avg_price ?? row.cost_price)}</td><td className="py-2.5 text-right">{number(row.last_price)}</td><td className="py-2.5 text-right">{number(row.market_value)}</td><td className={clsx("py-2.5 text-right font-semibold", marketToneClass(unrealized))}>{money(unrealized)}</td></tr>;
+                  return <tr key={text(row.id, `${row.symbol}-${index}`)} className="border-b border-white/[0.04] text-slate-300"><td className="py-2.5"><SymbolCell symbol={text(row.symbol, "")} name={text(row.name, "")} names={symbolNames} compact /></td><td className="py-2.5 text-right">{number(row.quantity, 0)}</td><td className="py-2.5 text-right">{number(row.available_quantity ?? row.sellable_quantity, 0)}</td><td className="py-2.5 text-right">{number(row.avg_price ?? row.cost_price)}</td><td className="py-2.5 text-right">{number(row.last_price)}</td><td className="py-2.5 text-right">{number(row.market_value)}</td><td className={clsx("py-2.5 text-right font-semibold", marketToneClass(unrealized))}>{money(unrealized)}</td></tr>;
                 })}</tbody>
               </table>
             </div>
@@ -632,7 +645,7 @@ export function PaperRuntimeInstanceDetail({
 
         <Section title="成交与事件" icon={<ListTree className="mt-0.5 h-5 w-5 text-blue-400" />} action={<span className="flex gap-1" onClick={(event) => event.stopPropagation()}>{(["trades", "events"] as const).map((key) => <button key={key} type="button" onClick={() => setRecordTab(key)} className={clsx("rounded-md px-2.5 py-1 text-[10px] font-semibold", recordTab === key ? "bg-blue-500/20 text-blue-300" : "text-slate-500")}>{key === "trades" ? `成交 ${trades.length}` : `事件 ${events.length}`}</button>)}</span>}>
           {recordTab === "trades" ? (
-            trades.length === 0 ? <Empty>暂无模拟成交。信号、订单与成交不会相互冒充。</Empty> : <div className="max-h-[360px] overflow-auto"><table className="w-full min-w-[780px] text-xs"><thead><tr className="border-b border-crypto-border text-left text-slate-500"><th className="py-2">时间</th><th>方向</th><th>股票</th><th className="text-right">价格</th><th className="text-right">数量</th><th className="text-right">金额</th><th className="text-right">费用</th></tr></thead><tbody>{trades.map((row, index) => <tr key={text(row.id, String(index))} className="border-b border-white/[0.04] text-slate-300"><td className="py-2.5 text-[10px]">{dateTime(row.traded_at)}</td><td className={text(row.side).toLowerCase() === "buy" ? "text-emerald-300" : "text-red-300"}>{text(row.side).toLowerCase() === "buy" ? "买入" : "卖出"}</td><td className="font-mono">{formatSymbolLabel(text(row.symbol), text(row.name, ""))}</td><td className="text-right">{number(row.price)}</td><td className="text-right">{number(row.quantity, 0)}</td><td className="text-right">{number(row.amount)}</td><td className="text-right">{number(row.fee, 4)}</td></tr>)}</tbody></table></div>
+            trades.length === 0 ? <Empty>暂无模拟成交。信号、订单与成交不会相互冒充。</Empty> : <div className="max-h-[360px] overflow-auto"><table className="w-full min-w-[780px] text-xs"><thead><tr className="border-b border-crypto-border text-left text-slate-500"><th className="py-2">时间</th><th>方向</th><th>股票</th><th className="text-right">价格</th><th className="text-right">数量</th><th className="text-right">金额</th><th className="text-right">费用</th></tr></thead><tbody>{trades.map((row, index) => <tr key={text(row.id, String(index))} className="border-b border-white/[0.04] text-slate-300"><td className="py-2.5 text-[10px]">{dateTime(row.traded_at)}</td><td className={text(row.side).toLowerCase() === "buy" ? "text-emerald-300" : "text-red-300"}>{text(row.side).toLowerCase() === "buy" ? "买入" : "卖出"}</td><td className="py-2.5"><SymbolCell symbol={text(row.symbol, "")} name={text(row.name, "")} names={symbolNames} compact /></td><td className="text-right">{number(row.price)}</td><td className="text-right">{number(row.quantity, 0)}</td><td className="text-right">{number(row.amount)}</td><td className="text-right">{number(row.fee, 4)}</td></tr>)}</tbody></table></div>
           ) : <LogStream items={eventLogItems} emptyText="暂无系统事件。" />}
         </Section>
       </div>

@@ -826,6 +826,7 @@ class FactorResearchService:
                     (int(factor_definition_id), max(1, min(int(limit), 5000)), max(0, int(offset))),
                 )
                 rows = [dict(row) for row in cursor.fetchall()]
+        symbols: List[str] = []
         for row in rows:
             try:
                 row["symbol"] = provider_ts_code(row.get("symbol"))
@@ -833,6 +834,16 @@ class FactorResearchService:
                 # Preserve an invalid stored value for visible diagnosis instead
                 # of hiding the row or inventing a security identity.
                 pass
+            if row.get("symbol"):
+                symbols.append(str(row["symbol"]))
+        names = self.database.lookup_symbol_names(symbols) if symbols else {}
+        for row in rows:
+            symbol = str(row.get("symbol") or "")
+            resolved = str(names.get(symbol) or "").strip()
+            if resolved and resolved != symbol:
+                row["name"] = resolved
+            else:
+                row["name"] = ""
         return {"items": rows, "limit": limit, "offset": offset}
 
     def get_factor_snapshot(self, snapshot_id: int) -> Optional[Dict[str, Any]]:

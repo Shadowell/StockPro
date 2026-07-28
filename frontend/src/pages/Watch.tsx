@@ -10,10 +10,32 @@ import {
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
+import clsx from "clsx";
+import { DataPanel, StatusBadge } from "@bitpro/ui";
 import { acknowledgeRuntimeAlert, getWatchContext } from "../api/client";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
+import {
+  EvidenceStrip,
+  MetricValue,
+  OperatorPageHeader,
+} from "../components/OperatorShell";
 import type { RuntimeAlert, WatchContext } from "../types";
-import { orderTypeLabel, sideLabel, sourceLabel, statusLabel } from "../utils/presentation";
+import {
+  formatOperatorTime,
+  orderTypeLabel,
+  sideLabel,
+  sideToneClass,
+  signalReasonLabel,
+  sourceLabel,
+  statusLabel,
+} from "../utils/presentation";
+import {
+  formatSymbolLabel,
+  normalizeSymbolCode,
+  resolveSymbolName,
+  toPublicSymbol,
+} from "../utils/symbolDisplay";
+import { SymbolCell } from "../components/SymbolCell";
 
 const TABS = [
   ["signals", "策略信号"],
@@ -42,7 +64,6 @@ export function Watch() {
   const [context, setContext] = useState<WatchContext | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [dataScope, setDataScope] = useState<"business" | "test">("business");
   const load = async () => {
     setBusy(true);
     setError("");
@@ -61,21 +82,20 @@ export function Watch() {
     () => new Map((context?.instances ?? []).map((item) => [item.id, item])),
     [context],
   );
-  const inScope = (row: Record<string, unknown>) =>
-    dataScope === "business"
-      ? !row.data_purpose || row.data_purpose === "user"
-      : Boolean(row.data_purpose && row.data_purpose !== "user");
+  const symbolNames = context?.symbol_names ?? {};
+  const isBusiness = (row: Record<string, unknown>) =>
+    !row.data_purpose || row.data_purpose === "user";
   const scoped = {
     alerts: (context?.alerts ?? []).filter((row) =>
-      inScope(row as unknown as Record<string, unknown>),
+      isBusiness(row as unknown as Record<string, unknown>),
     ),
-    signals: (context?.signals ?? []).filter(inScope),
-    orders: (context?.orders ?? []).filter(inScope),
-    trades: (context?.trades ?? []).filter(inScope),
-    positions: (context?.positions ?? []).filter(inScope),
-    risk_events: (context?.risk_events ?? []).filter(inScope),
-    runtime_events: (context?.runtime_events ?? []).filter(inScope),
-    pool_moves: (context?.pool_moves ?? []).filter(inScope),
+    signals: (context?.signals ?? []).filter(isBusiness),
+    orders: (context?.orders ?? []).filter(isBusiness),
+    trades: (context?.trades ?? []).filter(isBusiness),
+    positions: (context?.positions ?? []).filter(isBusiness),
+    risk_events: (context?.risk_events ?? []).filter(isBusiness),
+    runtime_events: (context?.runtime_events ?? []).filter(isBusiness),
+    pool_moves: (context?.pool_moves ?? []).filter(isBusiness),
   };
   const latestObservedAt =
     scoped.alerts[0]?.triggered_at ??
@@ -99,49 +119,29 @@ export function Watch() {
     <div
       className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8"
       data-testid="watch-workbench"
+      data-operator-page="watch"
     >
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <Eye className="h-7 w-7 text-violet-400" />
-            <h1 className="text-2xl font-black text-white">盯盘</h1>
-          </div>
-          <p className="mt-2 text-sm text-slate-500">
-            集中查看策略信号、订单成交、股票池变化和待确认风险。
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400"
-        >
-          <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
-          刷新
-        </button>
-      </header>
-      <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border border-crypto-border bg-crypto-card px-4 py-3 text-xs text-slate-500">
-        <span>
-          数据{" "}
-          <strong className="font-medium text-slate-300">
-            模拟交易 / 告警 / 股票池
-          </strong>
-        </span>
-        <span>
-          状态{" "}
-          <strong
-            className={
-              error
-                ? "text-red-300"
-                : busy
-                  ? "text-blue-300"
-                  : context
-                    ? context.data_status === "fresh"
-                      ? "text-emerald-300"
-                      : "text-amber-300"
-                    : "text-amber-300"
-            }
+      <OperatorPageHeader
+        icon={Eye}
+        title="盯盘"
+        subtitle="集中查看策略信号、订单成交、股票池变化和待确认风险。五个子页签均需对齐密度。"
+        actions={
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400"
           >
-            {error
+            <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+            刷新
+          </button>
+        }
+      />
+      <EvidenceStrip
+        items={[
+          { label: "数据", value: "模拟交易 / 告警 / 股票池" },
+          {
+            label: "状态",
+            value: error
               ? "加载失败"
               : busy
                 ? "读取中"
@@ -151,109 +151,140 @@ export function Watch() {
                     : context.data_status === "empty"
                       ? "无审计记录"
                       : "已读取"
-                  : "未加载"}
-          </strong>
-        </span>
-        <span>
-          最新观察{" "}
-          <strong className="tabular-nums text-slate-300">
-            {context?.source_updated_at ??
-              (latestObservedAt === "--" ? "--" : latestObservedAt)}
-          </strong>
-        </span>
-        <span>
-          来源 <strong className="font-medium text-slate-300">{sourceLabel(context?.source_label)}</strong>
-        </span>
-      </div>
+                  : "未加载",
+            tone: error
+              ? "red"
+              : busy
+                ? "blue"
+                : context?.data_status === "fresh"
+                  ? "green"
+                  : "amber",
+          },
+          {
+            label: "最新观察",
+            value:
+              context?.source_updated_at ??
+              (latestObservedAt === "--" ? "--" : latestObservedAt),
+          },
+          { label: "来源", value: sourceLabel(context?.source_label) },
+        ]}
+      />
       <WorkspaceTabs
-        className="mb-5"
         ariaLabel="观察台二级导航"
         items={TABS.map(([id, label]) => ({ id, label, testId: `watch-tab-${id}` }))}
         value={tab}
         onChange={(id) => setParams({ tab: id })}
       />
-      <div className="mb-5 flex flex-wrap items-center gap-3 rounded-lg border border-crypto-border bg-crypto-card px-4 py-3 text-xs text-slate-500">
-        <div className="flex rounded-md border border-crypto-border bg-crypto-bg p-1">
-          <button
-            type="button"
-            data-testid="watch-scope-business"
-            onClick={() => setDataScope("business")}
-            className={`rounded px-2.5 py-1 font-semibold ${dataScope === "business" ? "bg-violet-600 text-white" : "text-slate-500"}`}
-          >
-            业务观察
-          </button>
-          <button
-            type="button"
-            data-testid="watch-scope-test"
-            onClick={() => setDataScope("test")}
-            className={`rounded px-2.5 py-1 font-semibold ${dataScope === "test" ? "bg-amber-500/15 text-amber-200" : "text-slate-500"}`}
-          >
-            测试与验收
-          </button>
-        </div>
-        <span>{dataScope === "business" ? "默认不混入测试运行证据" : "当前仅查看测试运行证据"}</span>
-      </div>
       {error ? (
         <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
           {error}
         </div>
       ) : null}
       {tab === "signals" ? (
-        <section className={`${panel} overflow-hidden`}>
-          <div className="border-b border-crypto-border px-5 py-4">
-            <h2 className="font-semibold text-white">最新策略信号</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              每个信号回链固定 Paper 实例，不提供绕过风险规则的下单入口。
-            </p>
-          </div>
-          <div className="divide-y divide-white/[0.04]">
-            {scoped.signals.map((row, index) => (
-              <div
-                key={text(row.id ?? index)}
-                className="grid gap-3 px-5 py-4 sm:grid-cols-[150px_100px_1fr_180px]"
-              >
-                <span className="font-mono text-xs text-slate-500">
-                  {text(row.signal_time)}
-                </span>
-                <span className="font-semibold text-slate-200">
-                  {text(row.symbol)}
-                </span>
-                <div>
-                  <span className="text-sm text-slate-300">
-                    {text(row.signal_type)} · {text(row.reason)}
-                  </span>
-                  <div className="mt-1 text-[10px] text-slate-500">策略信号已写入运行证据</div>
-                </div>
-                <Link
-                  to={`/paper?tab=signals&instance=${text(row.paper_instance_id)}`}
-                  className="text-xs text-blue-300 hover:text-blue-200"
+        <DataPanel
+          title="最新策略信号"
+          subtitle="每个信号回链固定 Paper 实例，不提供绕过风险规则的下单入口。"
+          actions={
+            <StatusBadge tone="blue">
+              {scoped.signals.length} 条
+            </StatusBadge>
+          }
+        >
+          <div className="space-y-3">
+            {scoped.signals.map((row, index) => {
+              const instanceId = text(row.paper_instance_id);
+              const instanceName =
+                instanceById.get(instanceId)?.name ?? instanceId;
+              const action = text(row.signal_type);
+              const cnName =
+                resolveSymbolName(text(row.symbol), text(row.name)) ||
+                symbolNames[normalizeSymbolCode(text(row.symbol))] ||
+                "";
+              return (
+                <article
+                  key={text(row.id ?? index)}
+                  className="relative rounded-xl border border-crypto-border bg-crypto-bg/95 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                  data-testid="watch-signal-row"
                 >
-                  {instanceById.get(text(row.paper_instance_id))?.name ??
-                    text(row.paper_instance_id)}
-                </Link>
-              </div>
-            ))}
+                  <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+                    <div className="min-w-0">
+                      <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <span
+                          className={clsx(
+                            "shrink-0 text-sm font-semibold",
+                            sideToneClass(action),
+                          )}
+                        >
+                          {sideLabel(action)}
+                        </span>
+                        <span className="min-w-0 truncate text-sm font-semibold text-gray-100">
+                          {cnName ||
+                            formatSymbolLabel(text(row.symbol), text(row.name))}
+                        </span>
+                        <span className="shrink-0 font-mono text-[11px] text-gray-500">
+                          {toPublicSymbol(text(row.symbol)) || text(row.symbol)}
+                        </span>
+                        <StatusBadge
+                          tone={
+                            text(row.status) === "ordered" ||
+                            text(row.status) === "closed"
+                              ? "green"
+                              : text(row.status) === "invalidated" ||
+                                  text(row.status) === "rejected"
+                                ? "red"
+                                : "amber"
+                          }
+                        >
+                          {statusLabel(row.status, text(row.status))}
+                        </StatusBadge>
+                      </div>
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                        <span className="shrink-0 text-gray-300">
+                          {signalReasonLabel(row.reason)}
+                        </span>
+                        <span className="shrink-0">
+                          产生时间：{formatOperatorTime(row.signal_time)}
+                        </span>
+                        <span className="shrink-0 text-gray-400">
+                          已写入运行证据
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex max-w-[240px] shrink-0 flex-wrap items-center justify-start gap-2 xl:justify-end">
+                      <Link
+                        to={`/paper?tab=signals&instance=${instanceId}`}
+                        className="inline-flex h-8 items-center rounded-lg border border-crypto-border bg-crypto-card/90 px-2.5 text-[11px] font-semibold text-gray-300 transition-colors hover:border-blue-500/50 hover:bg-blue-500/10 hover:text-blue-200"
+                      >
+                        {instanceName}
+                      </Link>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
             {!scoped.signals.length ? (
-              <div className="p-12 text-center text-sm text-slate-600">
+              <div className="flex min-h-[180px] items-center justify-center rounded-xl border border-dashed border-crypto-border px-6 text-center text-sm text-gray-500">
                 {emptyState("当前没有策略信号")}
               </div>
             ) : null}
           </div>
-        </section>
+        </DataPanel>
       ) : null}
       {tab === "execution" ? (
         <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["订单", scoped.orders.length],
-              ["成交", scoped.trades.length],
-              ["持仓", scoped.positions.length],
-              ["风险决策", scoped.risk_events.length],
-            ].map(([label, value]) => (
-              <div key={String(label)} className={`${panel} p-4`}>
-                <div className="text-xs text-slate-500">{String(label)}</div>
-                <div className="mt-2 text-2xl font-black text-white">
-                  {value === undefined ? "--" : String(value)}
+              { label: "订单", value: scoped.orders.length, tone: "blue" as const },
+              { label: "成交", value: scoped.trades.length, tone: "green" as const },
+              { label: "持仓", value: scoped.positions.length, tone: "amber" as const },
+              { label: "风险决策", value: scoped.risk_events.length, tone: "red" as const },
+            ].map((item) => (
+              <div key={item.label} className={`${panel} p-4`}>
+                <div className="text-xs text-slate-500">{item.label}</div>
+                <div className="mt-2">
+                  <MetricValue tone={item.value === 0 ? "neutral" : item.tone} size="xl">
+                    {String(item.value)}
+                  </MetricValue>
                 </div>
               </div>
             ))}
@@ -262,7 +293,7 @@ export function Watch() {
             <div className="border-b border-crypto-border px-5 py-4">
               <div className="flex items-center gap-2">
                 <ClipboardList className="h-5 w-5 text-blue-400" />
-                <h2 className="font-semibold text-white">模拟订单</h2>
+                <h2 className="font-semibold text-gray-100">模拟订单</h2>
               </div>
               <p className="mt-1 text-xs text-slate-500">
                 价格缺失表示订单没有可用限价证据，不显示为 0。
@@ -276,9 +307,15 @@ export function Watch() {
                 <tbody>
                   {scoped.orders.map((row) => (
                     <tr key={text(row.id)} className="border-b border-white/[0.04] text-slate-300">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{text(row.created_at)}</td>
-                      <td className="px-4 py-3 font-semibold">{text(row.symbol)}</td>
-                      <td className="px-4 py-3">{sideLabel(row.side)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{formatOperatorTime(row.created_at)}</td>
+                      <td className="px-4 py-3">
+                        <SymbolCell
+                          symbol={text(row.symbol) === "--" ? "" : text(row.symbol)}
+                          name={text(row.name) === "--" ? "" : text(row.name)}
+                          names={symbolNames}
+                        />
+                      </td>
+                      <td className={clsx("px-4 py-3 font-semibold", sideToneClass(row.side))}>{sideLabel(row.side)}</td>
                       <td className="px-4 py-3">{orderTypeLabel(row.order_type)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.price)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.quantity)} / {text(row.filled_quantity)}</td>
@@ -296,7 +333,7 @@ export function Watch() {
           </section>
           <section className={`${panel} overflow-hidden`}>
             <div className="border-b border-crypto-border px-5 py-4">
-              <h2 className="font-semibold text-white">模拟成交</h2>
+              <h2 className="font-semibold text-gray-100">模拟成交</h2>
               <p className="mt-1 text-xs text-slate-500">成交时间、价格、数量、金额与费用均来自本地成交记录。</p>
             </div>
             <div className="overflow-x-auto">
@@ -307,9 +344,15 @@ export function Watch() {
                 <tbody>
                   {scoped.trades.map((row) => (
                     <tr key={text(row.id)} className="border-b border-white/[0.04] text-slate-300">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{text(row.traded_at)}</td>
-                      <td className="px-4 py-3 font-semibold">{text(row.symbol)}</td>
-                      <td className="px-4 py-3">{sideLabel(row.side)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{formatOperatorTime(row.traded_at)}</td>
+                      <td className="px-4 py-3">
+                        <SymbolCell
+                          symbol={text(row.symbol) === "--" ? "" : text(row.symbol)}
+                          name={text(row.name) === "--" ? "" : text(row.name)}
+                          names={symbolNames}
+                        />
+                      </td>
+                      <td className={clsx("px-4 py-3 font-semibold", sideToneClass(row.side))}>{sideLabel(row.side)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.price)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.quantity)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.amount)}</td>
@@ -324,7 +367,7 @@ export function Watch() {
           </section>
           <section className={`${panel} overflow-hidden`}>
             <div className="border-b border-crypto-border px-5 py-4">
-              <h2 className="font-semibold text-white">当前持仓证据</h2>
+              <h2 className="font-semibold text-gray-100">当前持仓证据</h2>
               <p className="mt-1 text-xs text-slate-500">最新价缺失保持 --；数量和市值来自组合持仓账本。</p>
             </div>
             <div className="overflow-x-auto">
@@ -335,8 +378,14 @@ export function Watch() {
                 <tbody>
                   {scoped.positions.map((row) => (
                     <tr key={text(row.id)} className="border-b border-white/[0.04] text-slate-300">
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{text(row.updated_at)}</td>
-                      <td className="px-4 py-3 font-semibold">{text(row.symbol)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{formatOperatorTime(row.updated_at)}</td>
+                      <td className="px-4 py-3">
+                        <SymbolCell
+                          symbol={text(row.symbol) === "--" ? "" : text(row.symbol)}
+                          name={text(row.name) === "--" ? "" : text(row.name)}
+                          names={symbolNames}
+                        />
+                      </td>
                       <td className="px-4 py-3 font-mono">{text(row.quantity)} / {text(row.available_quantity)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.avg_cost)}</td>
                       <td className="px-4 py-3 font-mono">{text(row.last_price)}</td>
@@ -353,13 +402,13 @@ export function Watch() {
             <div className="border-b border-crypto-border px-5 py-4">
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5 text-amber-400" />
-                <h2 className="font-semibold text-white">风险决策</h2>
+                <h2 className="font-semibold text-gray-100">风险决策</h2>
               </div>
             </div>
             <div className="divide-y divide-white/[0.04]">
               {scoped.risk_events.map((row) => (
                 <div key={text(row.id)} className="grid gap-2 px-5 py-4 md:grid-cols-[160px_180px_100px_1fr_180px]">
-                  <span className="font-mono text-xs text-slate-500">{text(row.created_at)}</span>
+                  <span className="font-mono text-xs text-slate-500">{formatOperatorTime(row.created_at)}</span>
                   <span className="text-sm text-slate-300">{text(row.rule_name)} <span className="text-xs text-slate-600">v{text(row.rule_version)}</span></span>
                   <span className={text(row.decision) === "rejected" ? "text-sm text-red-300" : "text-sm text-emerald-300"}>{text(row.decision)}</span>
                   <span className="text-sm text-slate-400">{text(row.message)}</span>
@@ -405,7 +454,7 @@ export function Watch() {
           <section className={`${panel} p-5`}>
             <div className="flex items-center gap-2">
               <GitCompareArrows className="h-5 w-5 text-violet-400" />
-              <h2 className="font-semibold text-white">对象联动</h2>
+              <h2 className="font-semibold text-gray-100">对象联动</h2>
             </div>
             <p className="mt-2 text-xs leading-5 text-slate-500">
               从信号跳转时自动保留证券、策略实例与股票池上下文；行情图只用于观察，不触发交易。
@@ -426,7 +475,7 @@ export function Watch() {
             </div>
           </section>
           <section className={`${panel} p-5`}>
-            <h2 className="font-semibold text-white">联动边界</h2>
+            <h2 className="font-semibold text-gray-100">联动边界</h2>
             <div className="mt-4 space-y-3 text-xs text-slate-500">
               {[
                 "图表使用相同固定数据快照和证券代码。",
@@ -471,7 +520,7 @@ export function Watch() {
                       {alert.paper_instance_id && instanceById.get(alert.paper_instance_id)?.name
                         ? `关联策略 ${instanceById.get(alert.paper_instance_id)?.name} · `
                         : ""}
-                      触发时间 {text(alert.triggered_at)}
+                      触发时间 {formatOperatorTime(alert.triggered_at)}
                     </div>
                   </div>
                 </div>

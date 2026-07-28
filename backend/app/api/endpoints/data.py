@@ -160,7 +160,7 @@ def _normalize_symbol_input(value: Any) -> str:
         raise ValueError("请输入股票代码")
     if digits.startswith("6"):
         return f"SH_{digits}"
-    if digits.startswith(("8", "4")):
+    if digits.startswith(("8", "4")) or digits.startswith("92"):
         return f"BJ_{digits}"
     return f"SZ_{digits}"
 
@@ -612,6 +612,7 @@ def build_data_manager_table_stats(database=db) -> Dict[str, Any]:
             "timeframe": row.get("timeframe") or "1d",
             "exchange": row.get("exchange") or "cn",
             "symbol": row.get("symbol"),
+            "name": row.get("name") or "",
             "recordCount": int(row.get("rows") or row.get("total_records") or 0),
             "firstTimestamp": _date_to_ms(row.get("first_date") or row.get("first_timestamp")),
             "lastTimestamp": _date_to_ms(row.get("last_date") or row.get("last_timestamp")),
@@ -1080,6 +1081,23 @@ async def add_data_symbol(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]
     persist_data_symbol(symbol, remove=False)
     return {"symbol": symbol, "added": added, "defaultSymbols": _configured_symbols(db)}
 
+
+
+
+@router.post("/symbol-names")
+async def lookup_data_symbol_names(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
+    raw = payload.get("symbols") or []
+    if isinstance(raw, str):
+        raw = [part.strip() for part in raw.split(",")]
+    symbols: List[str] = []
+    for item in raw:
+        try:
+            symbols.append(_normalize_symbol_input(item))
+        except ValueError:
+            continue
+    symbols = sorted(set(symbols))
+    names = db.lookup_symbol_names(symbols) if hasattr(db, "lookup_symbol_names") else {}
+    return {"names": names, "total": len(names)}
 
 @router.delete("/symbols")
 async def remove_data_symbol(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:

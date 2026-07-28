@@ -747,6 +747,7 @@ export interface StockPool {
 export interface StockPoolMember {
   ordinal: number;
   symbol: string;
+  name?: string | null;
   score?: number | null;
   reason: string;
   evidence: Record<string, unknown>;
@@ -949,6 +950,7 @@ export interface WatchContext {
   pool_moves: Array<Record<string, unknown>>;
   instances: PaperRuntimeInstance[];
   coverage: Record<string, number>;
+  symbol_names?: Record<string, string>;
   data_status: 'fresh' | 'stale' | 'empty';
   source_label: string;
   source_updated_at?: string | null;

@@ -1,5 +1,45 @@
 # Progress Log
 
+## Global Symbol Chinese Names (2026-07-28)
+
+1. Rule: numbered A-share codes must render with 中文名 (primary) + public code
+   (secondary). Shared `SymbolCell` + `useSymbolNames` + `POST /data/symbol-names`.
+2. Backend attaches names via `lookup_symbol_names` on stock-pool members/
+   generations/snapshots and factor values.
+3. Wired StockPools members table, FactorLibrary values, Market selector,
+   MarketResearch limit pools, Strategy detail trading range, Paper positions/
+   trades, Watch tables.
+
+Verification: pool members API returns `格力电器` for `SZ_000651`; `tsc` OK;
+services healthy.
+
+## Watch Signal Cards + Chinese Symbol Names (2026-07-28)
+
+1. Root cause: `/watch` signals rendered raw `SZ_000651` / `buy ·
+   order_target_percent=1.0` as a flat log row; Chinese names already exist in
+   PostgreSQL (`lookup_symbol_names`) but were never attached to watch evidence.
+2. Backend `watch_context` now resolves `name` on signals/orders/trades/
+   positions and returns `symbol_names`.
+3. Frontend Watch signals rebuilt to BitPro SignalCenter card rhythm using
+   `@bitpro/ui` `DataPanel` + `StatusBadge`: 买入/卖出 semantic color, 中文名 +
+   `000651.SZ`, localized reason (`目标仓位 100%`), locale time, instance link.
+4. Orders / trades / positions tables use the same Chinese `SymbolCell`.
+
+Verification: backend attaches `SZ_000651→格力电器`; frontend/backend restarted;
+`tsc` on changed watch files clean.
+
+## Data Page Symbol Chinese Names (2026-07-28)
+
+1. Root cause: `/data` 研究数据「数据表统计」丢弃了 coverage 的 `name`，前端只渲染代码。
+2. Backend `build_data_manager_table_stats` now keeps `name`; `kline_coverage` enriches
+   blank/code-as-name rows via `lookup_symbol_names`; lookup maps digit codes back to
+   `SH_/SZ_/BJ_` keys.
+3. Frontend shows 中文名 as primary + `600000.SH` public code secondary in table stats
+   and coverage matrix; shared `toPublicSymbol` / `resolveSymbolName` helpers added.
+
+Verification: `npx tsc --noEmit` passed; frontend/backend restarted healthy;
+`/data` 研究数据「数据表统计」标的列显示中文名 + 公开代码（如 `中科美菱` / `920992.BJ`）。
+
 ## Cross-page Chinese Presentation Cleanup (2026-07-27)
 
 1. Replaced raw market source-map keys, provider table names, snapshot types and
