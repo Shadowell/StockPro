@@ -29,7 +29,9 @@ import {
   Play,
 } from 'lucide-react';
 import { formatSymbolLabel } from '../utils/symbolDisplay';
+import { useSymbolNames } from '../hooks/useSymbolNames';
 import { marketAdverseMetricColor, marketMetricColor, marketToneClass } from '../utils/marketColors';
+import { EvidenceStrip } from './OperatorShell';
 import type { PaperAccount, Strategy, StrategyBacktestResult, StrategyValidationReport, StrategyVersion } from '../types';
 
 const formatNumber = (value?: number | null, digits = 2) =>
@@ -88,15 +90,16 @@ function MetricCard({
   label: string;
   value: string;
   icon: React.ReactNode;
-  color: 'blue' | 'green' | 'red' | 'yellow' | 'gray' | 'neutral' | 'up' | 'down';
+  color: 'blue' | 'green' | 'red' | 'yellow' | 'amber' | 'gray' | 'neutral' | 'up' | 'down';
 }) {
   const colorMap: Record<string, string> = {
-    blue: 'text-blue-400',
-    green: 'text-green-400',
-    red: 'text-red-400',
-    yellow: 'text-yellow-400',
-    gray: 'text-gray-400',
-    neutral: 'text-gray-400',
+    blue: 'text-blue-300',
+    green: 'text-emerald-300',
+    red: 'text-red-300',
+    yellow: 'text-amber-300',
+    amber: 'text-amber-300',
+    gray: 'text-slate-400',
+    neutral: 'text-slate-300',
     up: 'text-up',
     down: 'text-down',
   };
@@ -106,7 +109,7 @@ function MetricCard({
         <span className={colorMap[color]}>{icon}</span>
         <span className="text-[10px] text-gray-500">{label}</span>
       </div>
-      <div className={clsx('text-lg font-bold tabular-nums', colorMap[color])}>{value}</div>
+      <div className={clsx('font-mono text-lg font-bold tabular-nums tracking-tight', colorMap[color])}>{value}</div>
     </div>
   );
 }
@@ -234,6 +237,7 @@ export function StrategyDetailPanel({
   onPaper?: () => void;
 }) {
   const symbols = parseSymbols(strategy);
+  const symbolNames = useSymbolNames(symbols);
   const parameters = evidenceEntries(version?.parameter_schema);
   const runtimeLimits = evidenceEntries(version?.runtime_limits);
   const dependencies = version?.data_dependencies ?? validation?.dependencies ?? [];
@@ -277,6 +281,19 @@ export function StrategyDetailPanel({
         </div>
       </header>
 
+      <EvidenceStrip
+        items={[
+          { label: '版本', value: version ? `v${version.version}` : '未绑定' },
+          {
+            label: '校验',
+            value: isValid ? '通过' : validation ? '未通过' : '未校验',
+            tone: isValid ? 'green' : validation ? 'amber' : 'neutral',
+          },
+          { label: '依赖', value: `${dependencies.length} 项` },
+          { label: '标的', value: symbols.length ? `${symbols.length} 只` : '未声明' },
+        ]}
+      />
+
       <DataPanel
         title={<span className="inline-flex items-center gap-2"><BookOpen className="h-4 w-4 text-blue-400" />核心选股与交易逻辑</span>}
         subtitle="策略定义中的可解释逻辑；进入回测或模拟前先核对信号、交易与风控边界。"
@@ -307,7 +324,7 @@ export function StrategyDetailPanel({
             <div className="flex flex-wrap gap-2">
               {symbols.map((symbol) => (
                 <span key={symbol} className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-xs text-gray-300">
-                  {formatSymbolLabel(symbol)}
+                  {formatSymbolLabel(symbol, symbolNames[symbol])}
                 </span>
               ))}
             </div>
@@ -597,8 +614,8 @@ export function BacktestDetailPanel({ result, onBack }: { result: StrategyBackte
                     <td className={clsx('py-3 text-sm font-semibold', trade.side === 'buy' ? 'text-up' : 'text-down')}>
                       {trade.side === 'buy' ? '买入' : '卖出'}
                     </td>
-                    <td className="py-3 text-right text-sm text-white">{formatNumber(trade.price)}</td>
-                    <td className="py-3 text-right text-sm text-white">{trade.quantity}</td>
+                    <td className="py-3 text-right text-sm font-mono tabular-nums text-blue-300">{formatNumber(trade.price)}</td>
+                    <td className="py-3 text-right text-sm font-mono tabular-nums text-blue-300">{trade.quantity}</td>
                     <td className="py-3 text-right text-sm text-gray-300">¥{formatNumber(trade.amount)}</td>
                     <td className="py-3 text-right text-sm text-gray-300">¥{formatNumber(trade.fee)}</td>
                     <td className={clsx('py-3 text-right text-sm font-semibold', marketToneClass(trade.pnl))}>
@@ -1054,7 +1071,7 @@ export function MarketDetailHeader({
           <span className="text-xs text-gray-500">{selectedSymbol}</span>
         </div>
         <div className="flex items-baseline gap-3">
-          <span className="text-3xl font-bold text-white">¥{formatNumber(price)}</span>
+          <span className={clsx('text-3xl font-bold tabular-nums', marketToneClass(changePercent, 'text-blue-300'))}>¥{formatNumber(price)}</span>
           <span className={clsx('text-sm font-semibold', marketToneClass(changePercent))}>
             {signedPercent(changePercent)}
           </span>

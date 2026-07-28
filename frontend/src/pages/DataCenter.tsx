@@ -51,7 +51,7 @@ import {
 } from '../api/client';
 import type { StockCandidate } from '../types';
 import { evaluateFreshness } from '../utils/dataFreshness';
-import { formatSymbolLabel } from '../utils/symbolDisplay';
+import { formatSymbolLabel, resolveSymbolName, toPublicSymbol } from '../utils/symbolDisplay';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
 
 type DataStatus = {
@@ -304,6 +304,14 @@ export function DataCenter() {
   }, []);
 
   const coverage = useMemo(() => status?.kline_coverage || [], [status?.kline_coverage]);
+  const symbolNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    coverage.forEach((item) => {
+      const name = String(item.name || '').trim();
+      if (item.symbol && name && name !== item.symbol) map.set(item.symbol, name);
+    });
+    return map;
+  }, [coverage]);
   const jobs = status?.sync_jobs || [];
   const tables = status?.tables || [];
   const defaultTimeframes = dataConfig?.defaultTimeframes?.length ? dataConfig.defaultTimeframes : ['1d'];
@@ -1173,7 +1181,23 @@ export function DataCenter() {
               ) : tableStats.tables.slice(0, 12).map((item, index) => (
                 <tr key={`${item.tableName}-${item.symbol || index}-${item.timeframe || '1d'}`} className="text-gray-400">
                   <td className="px-4 py-3 font-mono text-gray-200">{item.tableName}</td>
-                  <td className="px-4 py-3">{item.symbol ? formatSymbolLabel(item.symbol) : '--'}</td>
+                  <td className="px-4 py-3">
+                    {item.symbol ? (
+                      <div>
+                        <div className="font-medium text-gray-100">
+                          {resolveSymbolName(
+                            item.symbol,
+                            item.name || symbolNameMap.get(item.symbol),
+                          ) || '未命名'}
+                        </div>
+                        <div className="mt-0.5 font-mono text-[10px] text-gray-500">
+                          {toPublicSymbol(item.symbol)}
+                        </div>
+                      </div>
+                    ) : (
+                      '--'
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={clsx('inline-flex rounded border px-2 py-0.5 text-[10px] font-semibold', TIMEFRAME_BADGE[item.timeframe || '1d'] || TIMEFRAME_BADGE['1d'])}>
                       {TIMEFRAME_LABELS[item.timeframe || '1d'] || item.timeframe || '1D'}
@@ -1273,6 +1297,7 @@ export function DataCenter() {
               const displayTimeframes = filterTf ? allTimeframes.filter((timeframe) => timeframe === filterTf) : allTimeframes;
               const filledTimeframes = allTimeframes.filter((timeframe) => Number(rowsByTf.get(timeframe)?.rows || 0) > 0).length;
               const groupLabel = formatSymbolLabel(group.symbol, group.name);
+              const groupName = resolveSymbolName(group.symbol, group.name);
               return (
                 <div key={group.symbol} className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card transition-all hover:border-gray-600">
                   <div className="flex cursor-pointer select-none items-center gap-5 px-5 py-3.5" onClick={() => setExpandedSymbol(isExpanded ? null : group.symbol)}>
@@ -1280,9 +1305,13 @@ export function DataCenter() {
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-500/30 bg-blue-500/15 text-xs font-bold text-blue-200">
                         {group.symbol.slice(0, 2)}
                       </div>
-                      <div>
-                        <div className="text-sm font-semibold text-white">{groupLabel}</div>
-                        <div className="text-[10px] text-gray-500">A股历史 K 线</div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-white" title={groupLabel}>
+                          {groupName || '未命名'}
+                        </div>
+                        <div className="truncate font-mono text-[10px] text-gray-500">
+                          {toPublicSymbol(group.symbol)} · A股历史 K 线
+                        </div>
                       </div>
                     </div>
 

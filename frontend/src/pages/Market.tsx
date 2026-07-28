@@ -12,6 +12,7 @@ import {
 import type { ConceptLeaderStock, DailyChartData, StockFundamentals, ThsHotItem } from '../types';
 import { COLOR_SCHEMES, useSettingsStore } from '../stores/useSettingsStore';
 import { marketToneClass } from '../utils/marketColors';
+import { formatSymbolLabel, resolveSymbolName, toPublicSymbol } from '../utils/symbolDisplay';
 
 const MIN_KLINES_TO_RENDER = 1;
 
@@ -29,11 +30,6 @@ const signedPct = (value?: number | null) =>
   value === null || value === undefined || Number.isNaN(value)
     ? '--'
     : `${value > 0 ? '+' : ''}${format(value)}%`;
-
-const publicSymbol = (value: string) => {
-  const match = /^([A-Z]{2})_(\d{6})$/.exec(value);
-  return match ? `${match[2]}.${match[1]}` : value;
-};
 
 const ema = (rows: DailyChartData[], period: number) => {
   const k = 2 / (period + 1);
@@ -173,7 +169,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
       return [
         {
           code: selectedSymbol,
-          name: fundamentals?.name || publicSymbol(selectedSymbol),
+          name: fundamentals?.name || toPublicSymbol(selectedSymbol),
           price: fallbackPrice,
           change_percent: fallbackChangePct,
           amount: fallbackAmount,
@@ -198,7 +194,11 @@ export function Market({ asOfDate }: MarketProps = {}) {
   const selectedChangePct = asOfDate
     ? dailyChangePct ?? selectedLeader?.change_percent
     : fundamentals?.change_percent ?? selectedLeader?.change_percent ?? dailyChangePct;
-  const selectedName = fundamentals?.name || selectedLeader?.name || publicSymbol(selectedSymbol);
+  const selectedName =
+    resolveSymbolName(
+      selectedSymbol,
+      fundamentals?.name || selectedLeader?.name,
+    ) || toPublicSymbol(selectedSymbol);
 
   const chartOption = useMemo(() => {
     const dates = visibleDaily.map((item) => item.date);
@@ -371,7 +371,9 @@ export function Market({ asOfDate }: MarketProps = {}) {
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
                       {(selectedName || selectedSymbol).slice(0, 1)}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">{publicSymbol(selectedSymbol)}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">
+                      {formatSymbolLabel(selectedSymbol, selectedName)}
+                    </span>
                     <ChevronDown className={clsx('h-4 w-4 shrink-0 text-gray-400 transition-transform', isSearchOpen && 'rotate-180')} />
                   </button>
 
@@ -460,7 +462,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
                               </span>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-medium text-white">{item.name || item.code}</span>
-                                <span className="block truncate text-xs text-gray-500">{publicSymbol(item.code)}</span>
+                                <span className="block truncate text-xs text-gray-500">{toPublicSymbol(item.code)}</span>
                               </span>
                               <span className={clsx('ml-2 shrink-0 text-xs font-semibold tabular-nums', pctClass(item.change_percent))}>
                                 {signedPct(item.change_percent)}
@@ -479,7 +481,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
               </div>
 
               <div className="flex min-w-[13rem] flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-                <div className="inline-flex rounded px-2 py-0.5 text-2xl font-bold leading-none text-white tabular-nums transition-all duration-500">
+                <div className={clsx('inline-flex rounded px-2 py-0.5 text-2xl font-bold leading-none tabular-nums transition-all duration-500', marketToneClass(priceChange, 'text-blue-300'))}>
                   ¥{format(currentPrice)}
                 </div>
                 <span className={clsx('text-sm font-medium tabular-nums', pctClass(priceChange))}>{signedPct(priceChange)}</span>
@@ -496,7 +498,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span>共 {visibleDaily.length} 根K线</span>
                   <span className="text-gray-600">·</span>
-                  <span className="truncate text-gray-500">{selectedName || publicSymbol(selectedSymbol)}</span>
+                  <span className="truncate text-gray-500">{selectedName || toPublicSymbol(selectedSymbol)}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {quickSymbols.map((item) => (
@@ -511,7 +513,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
                           : 'border-crypto-border bg-crypto-bg/60 text-gray-500 hover:border-gray-600 hover:text-gray-300',
                       )}
                     >
-                      {item.name || publicSymbol(item.code)}
+                      {item.name || toPublicSymbol(item.code)}
                     </button>
                   ))}
                 </div>

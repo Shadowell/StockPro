@@ -230,20 +230,37 @@ class StockPoolService:
             if not row:
                 return []
             generation_id = str(row["id"])
-        return self._rows(
-            "SELECT * FROM stock_pool_members WHERE pool_id=%s AND generation_id=%s ORDER BY ordinal",
-            (str(pool_id), str(generation_id)),
+        return self._attach_member_names(
+            self._rows(
+                "SELECT * FROM stock_pool_members WHERE pool_id=%s AND generation_id=%s ORDER BY ordinal",
+                (str(pool_id), str(generation_id)),
+            )
         )
 
     def get_generation(self, generation_id: str) -> Dict[str, Any]:
         row = self._row("SELECT * FROM stock_pool_generations WHERE id=%s", (str(generation_id),))
         if not row:
             raise ValueError("股票池生成批次不存在")
-        row["members"] = self._rows(
-            "SELECT * FROM stock_pool_members WHERE generation_id=%s ORDER BY ordinal", (str(generation_id),)
+        row["members"] = self._attach_member_names(
+            self._rows(
+                "SELECT * FROM stock_pool_members WHERE generation_id=%s ORDER BY ordinal",
+                (str(generation_id),),
+            )
         )
         row["member_count"] = len(row["members"])
         return row
+
+    def _attach_member_names(self, members: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        symbols = [str(item.get("symbol") or "").strip() for item in members if item.get("symbol")]
+        names = self.database.lookup_symbol_names(symbols) if symbols else {}
+        for item in members:
+            symbol = str(item.get("symbol") or "").strip()
+            resolved = str(names.get(symbol) or item.get("name") or "").strip()
+            if resolved and resolved != symbol:
+                item["name"] = resolved
+            else:
+                item["name"] = item.get("name") or ""
+        return members
 
     def seal_snapshot(self, pool_id: str, generation_id: Optional[str] = None) -> Dict[str, Any]:
         pool = self.get_pool(pool_id)
@@ -337,8 +354,11 @@ class StockPoolService:
         )
         if not snapshot:
             raise ValueError("股票池快照不存在")
-        snapshot["members"] = self._rows(
-            "SELECT * FROM stock_pool_snapshot_members WHERE snapshot_id=%s ORDER BY ordinal", (int(snapshot_id),)
+        snapshot["members"] = self._attach_member_names(
+            self._rows(
+                "SELECT * FROM stock_pool_snapshot_members WHERE snapshot_id=%s ORDER BY ordinal",
+                (int(snapshot_id),),
+            )
         )
         return snapshot
 

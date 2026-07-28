@@ -823,7 +823,7 @@ class PostgresDatabase:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    SELECT h.exchange, h.symbol, COALESCE(NULLIF(MAX(h.name), ''), h.symbol) AS name,
+                    SELECT h.exchange, h.symbol, COALESCE(NULLIF(MAX(h.name), ''), '') AS name,
                            h.timeframe, COUNT(*) AS rows, MIN(h.trade_date) AS first_date,
                            MAX(h.trade_date) AS last_date, m.status, m.last_sync_at,
                            m.error_message, m.total_records
@@ -841,11 +841,11 @@ class PostgresDatabase:
                     (limit,),
                 )
                 rows = cursor.fetchall()
-        return [
+        payload = [
             {
                 "exchange": row["exchange"],
                 "symbol": row["symbol"],
-                "name": row["name"],
+                "name": row["name"] or "",
                 "timeframe": row["timeframe"],
                 "rows": int(row["rows"] or 0),
                 "first_date": row["first_date"].isoformat() if row["first_date"] else None,
@@ -857,6 +857,21 @@ class PostgresDatabase:
             }
             for row in rows
         ]
+        missing = [
+            item["symbol"]
+            for item in payload
+            if not item["name"] or item["name"] == item["symbol"]
+        ]
+        if missing:
+            resolved = self.lookup_symbol_names(missing)
+            for item in payload:
+                symbol = item["symbol"]
+                resolved_name = resolved.get(symbol) or ""
+                if resolved_name and resolved_name != symbol:
+                    item["name"] = resolved_name
+                elif not item["name"]:
+                    item["name"] = symbol
+        return payload
 
     def create_sync_job(
         self,
@@ -3736,10 +3751,15 @@ class PostgresDatabase:
         return str(row[0]) if row else None
 
     def lookup_symbol_names(self, symbols: List[str]) -> Dict[str, str]:
-        normalized_symbols = sorted(set(symbols))
+        normalized_symbols = sorted({str(symbol).strip() for symbol in symbols if str(symbol).strip()})
         if not normalized_symbols:
             return {}
         names: Dict[str, str] = {}
+        digit_to_symbols: Dict[str, List[str]] = {}
+        for symbol in normalized_symbols:
+            digits = "".join(ch for ch in symbol if ch.isdigit())
+            if digits:
+                digit_to_symbols.setdefault(digits, []).append(symbol)
         table_queries = [
             ("all_stocks_realtime", "code", True),
             ("stock_fundamentals", "symbol", False),
@@ -3772,8 +3792,14 @@ class PostgresDatabase:
                         )
                         for raw_symbol, name in cursor.fetchall():
                             name_str = str(name).strip()
-                            if name_str:
-                                names[raw_symbol] = name_str
+                            if not name_str:
+                                continue
+                            raw = str(raw_symbol).strip()
+                            if raw in normalized_symbols:
+                                names[raw] = name_str
+                            digits = "".join(ch for ch in raw if ch.isdigit())
+                            for symbol in digit_to_symbols.get(digits, []):
+                                names.setdefault(symbol, name_str)
                     except Exception:
                         pass
         return names

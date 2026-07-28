@@ -294,6 +294,9 @@ class PaperRuntimeService:
         )
         for row in rows:
             row["data_purpose"] = infer_data_purpose(row.get("name"))
+            # Before the first valuation cycle there is no equity snapshot; cash is the book.
+            if row.get("equity") is None:
+                row["equity"] = row.get("cash_balance") if row.get("cash_balance") is not None else row.get("initial_cash")
         return rows
 
     def get_instance(self, instance_id: str) -> Dict[str, Any]:
@@ -315,7 +318,10 @@ class PaperRuntimeService:
         instance["order_count"] = len(instance["orders"])
         instance["trade_count"] = len(instance["trades"])
         latest_equity = instance["equity_snapshots"][-1] if instance["equity_snapshots"] else None
-        instance["equity"] = latest_equity.get("equity") if latest_equity else None
+        if latest_equity:
+            instance["equity"] = latest_equity.get("equity")
+        else:
+            instance["equity"] = instance.get("cash_balance") if instance.get("cash_balance") is not None else instance.get("initial_cash")
         latest_cycle = instance["cycles"][-1] if instance["cycles"] else None
         if latest_cycle:
             for source, target in (
@@ -491,6 +497,8 @@ class PaperRuntimeService:
         for item in pool_moves:
             item["data_purpose"] = infer_data_purpose(item.get("pool_name"))
 
+        symbol_names = self._attach_symbol_names(signals, orders, trades, positions)
+
         candidates = [
             *(item.get("triggered_at") for item in alerts),
             *(item.get("signal_time") for item in signals),
@@ -530,6 +538,7 @@ class PaperRuntimeService:
                 "risk_events": len(risk_events),
                 "runtime_events": len(runtime_events),
             },
+            "symbol_names": symbol_names,
             "data_status": data_status,
             "source_label": "PostgreSQL Paper audit evidence",
             "source_updated_at": source_updated_at,
@@ -1024,6 +1033,25 @@ class PaperRuntimeService:
 
     def _health(self, service_code: str, status: str, observed_at: datetime, error_code: Optional[str], message: str, payload: Mapping[str, Any]) -> None:
         self._execute("INSERT INTO service_health_snapshots(service_code,status,last_success_at,error_code,message,payload,observed_at) VALUES (%s,%s,%s,%s,%s,%s,%s)", (service_code, status, observed_at if status == "healthy" else None, error_code, message, psycopg2.extras.Json(dict(payload)), observed_at))
+
+    def _attach_symbol_names(self, *row_groups: List[Dict[str, Any]]) -> Dict[str, str]:
+        symbols: List[str] = []
+        for rows in row_groups:
+            for item in rows:
+                symbol = str(item.get("symbol") or "").strip()
+                if symbol:
+                    symbols.append(symbol)
+        names = self.database.lookup_symbol_names(symbols) if symbols else {}
+        for rows in row_groups:
+            for item in rows:
+                symbol = str(item.get("symbol") or "").strip()
+                if not symbol:
+                    continue
+                resolved = names.get(symbol) or str(item.get("name") or "").strip()
+                if resolved:
+                    item["name"] = resolved
+                    names.setdefault(symbol, resolved)
+        return names
 
     @staticmethod
     def _timestamp(value: Any) -> datetime:

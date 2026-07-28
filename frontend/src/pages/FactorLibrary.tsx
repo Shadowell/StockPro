@@ -34,7 +34,10 @@ import {
   type ResearchFactor,
 } from '@/api/client';
 import { WorkspaceTabs } from '@/components/WorkspaceTabs';
+import { MetricValue, OperatorPageHeader } from '@/components/OperatorShell';
+import { SymbolCell } from '@/components/SymbolCell';
 import { statusLabel } from '@/utils/presentation';
+import type { MetricTone } from '@/utils/marketColors';
 
 type Workspace = 'library' | 'runs' | 'single' | 'multi' | 'correlation' | 'values';
 
@@ -339,33 +342,34 @@ export const FactorLibrary = () => {
   const latestValues = values.filter((item) => item.compute_run_id === latestValueRunId);
 
   return (
-    <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-testid="factor-research-workbench">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <BarChart3 className="h-7 w-7 text-blue-400" />
-            <h1 className="text-2xl font-black text-white">因子研究</h1>
+    <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-testid="factor-research-workbench" data-operator-page="factors">
+      <OperatorPageHeader
+        icon={BarChart3}
+        title={
+          <span className="inline-flex flex-wrap items-center gap-3">
+            因子研究
             <StatusBadge tone={loading ? 'amber' : error ? 'red' : 'green'}>
               {loading ? '读取中' : error ? '部分不可用' : `${factors.length} 个因子`}
             </StatusBadge>
+          </span>
+        }
+        subtitle="六个工作区：因子库 / 计算运行 / 单因子 / 多因子 / 相关性与暴露 / 因子值。"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => setAuthorOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-300 hover:border-blue-500/50 hover:text-white">
+              <Plus size={15} /> 新建自定义因子
+            </button>
+            <button onClick={runDaily} disabled={running || loading} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
+              {running ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />} 运行日频计算
+            </button>
+            <button aria-label="刷新因子研究" onClick={loadBase} className="grid h-10 w-10 place-items-center rounded-lg border border-crypto-border bg-crypto-card text-slate-400 hover:text-white">
+              <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            </button>
           </div>
-          <p className="mt-2 text-sm text-slate-500">管理因子定义、计算证据与有效性评价，支持从单因子检验到组合研究。</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setAuthorOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-300 hover:border-blue-500/50 hover:text-white">
-            <Plus size={15} /> 新建自定义因子
-          </button>
-          <button onClick={runDaily} disabled={running || loading} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
-            {running ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />} 运行日频计算
-          </button>
-          <button aria-label="刷新因子研究" onClick={loadBase} className="grid h-10 w-10 place-items-center rounded-lg border border-crypto-border bg-crypto-card text-slate-400 hover:text-white">
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </header>
+        }
+      />
 
       <WorkspaceTabs<Workspace>
-        className="mb-4"
         ariaLabel="因子研究二级导航"
         items={workspaces}
         value={workspace}
@@ -373,17 +377,17 @@ export const FactorLibrary = () => {
       />
 
       <section data-testid="factor-research-summary" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-        {[
-          ['因子总数', factors.length, `${categories.length} 个分类`],
-          ['校验通过', `${validCount}/${factors.length}`, validCount === factors.length && factors.length ? '定义可计算' : '存在待处理定义'],
-          ['已发布计算', `${publishedCount}/${factors.length}`, latestRun ? `最新交易日 ${latestRun.trade_date}` : '暂无运行'],
-          ['有效性已评估', `${evaluatedCount}/${factors.length}`, evaluatedCount ? '已有收益证据' : '收益窗口待成熟'],
-          ['中位覆盖率', medianCoverage === null ? '--' : percentageText(medianCoverage), '横截面可用样本'],
-          ['研究交易日', latestFactor?.last_trade_date ?? '--', sampleAge === null ? '暂无研究样本' : sampleAge <= 5 ? '近期样本' : `${sampleAge} 天前样本`],
-        ].map(([label, value, note]) => (
+        {([
+          ['因子总数', factors.length, `${categories.length} 个分类`, 'blue'],
+          ['校验通过', `${validCount}/${factors.length}`, validCount === factors.length && factors.length ? '定义可计算' : '存在待处理定义', validCount === factors.length && factors.length ? 'green' : 'blue'],
+          ['已发布计算', `${publishedCount}/${factors.length}`, latestRun ? `最新交易日 ${latestRun.trade_date}` : '暂无运行', 'blue'],
+          ['有效性已评估', `${evaluatedCount}/${factors.length}`, evaluatedCount ? '已有收益证据' : '收益窗口待成熟', 'blue'],
+          ['中位覆盖率', medianCoverage === null ? '--' : percentageText(medianCoverage), '横截面可用样本', medianCoverage === null ? 'neutral' : medianCoverage >= 0.8 ? 'green' : medianCoverage >= 0.5 ? 'amber' : 'red'],
+          ['研究交易日', latestFactor?.last_trade_date ?? '--', sampleAge === null ? '暂无研究样本' : sampleAge <= 5 ? '近期样本' : `${sampleAge} 天前样本`, sampleAge === null ? 'neutral' : sampleAge <= 5 ? 'blue' : 'amber'],
+        ] as const).map(([label, value, note, tone]) => (
           <div key={label} className="min-w-0 rounded-lg border border-crypto-border bg-crypto-card px-3 py-2.5">
             <div className="text-[10px] font-medium text-slate-500">{label}</div>
-            <div className="mt-1 truncate text-lg font-bold text-white tabular-nums" title={String(value)}>{value}</div>
+            <MetricValue tone={tone as MetricTone} size="lg" className="mt-1 block truncate" title={String(value)}>{value}</MetricValue>
             <div className="mt-0.5 truncate text-[10px] text-slate-600" title={String(note)}>{note}</div>
           </div>
         ))}
@@ -502,7 +506,7 @@ export const FactorLibrary = () => {
       {workspace === 'values' && selected && (
         <section className="overflow-hidden rounded border border-crypto-border bg-crypto-card">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crypto-border px-3 py-2"><div><span className="text-xs font-medium text-gray-200">{selected.factor_name} · 点时因子值</span><span className="ml-2 text-[10px] text-blue-400">{selected.factor_code}</span></div><div className="text-[10px] text-gray-600">封存数据 · 固定股票范围 · 版本 {selected.version_no}</div></div>
-          <div className="overflow-auto max-h-[650px]"><table className="min-w-[900px] w-full text-xs"><thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2 text-left">排名</th><th className="px-3 py-2 text-left">证券</th><th className="px-3 py-2 text-right">原始值</th><th className="px-3 py-2 text-right">处理值</th><th className="px-3 py-2 text-right">百分位</th><th className="px-3 py-2 text-right">分位组</th><th className="px-3 py-2">交易日</th><th className="px-3 py-2">质量</th></tr></thead><tbody>{latestValues.map((item) => <tr key={`${item.compute_run_id}-${item.symbol}`} className="border-b border-crypto-border/70 text-gray-300"><td className="px-3 py-2 font-mono">{item.rank ?? '-'}</td><td className="px-3 py-2 font-mono text-white">{item.symbol}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.raw_value, 5)}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.processed_value, 4)}</td><td className="px-3 py-2 text-right font-mono">{percentageText(item.percentile)}</td><td className="px-3 py-2 text-right">第 {item.quantile ?? '-'} 组</td><td className="px-3 py-2 text-[10px] text-gray-500">{item.trade_date}</td><td className="px-3 py-2">{item.quality_flags?.missing ? <span className="text-amber-300">缺失</span> : <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 size={11} />可用</span>}</td></tr>)}</tbody></table></div>
+          <div className="overflow-auto max-h-[650px]"><table className="min-w-[900px] w-full text-xs"><thead className="sticky top-0 bg-crypto-card text-[10px] text-gray-600"><tr className="border-b border-crypto-border"><th className="px-3 py-2 text-left">排名</th><th className="px-3 py-2 text-left">证券</th><th className="px-3 py-2 text-right">原始值</th><th className="px-3 py-2 text-right">处理值</th><th className="px-3 py-2 text-right">百分位</th><th className="px-3 py-2 text-right">分位组</th><th className="px-3 py-2">交易日</th><th className="px-3 py-2">质量</th></tr></thead><tbody>{latestValues.map((item) => <tr key={`${item.compute_run_id}-${item.symbol}`} className="border-b border-crypto-border/70 text-gray-300"><td className="px-3 py-2 font-mono">{item.rank ?? '-'}</td><td className="px-3 py-2"><SymbolCell symbol={item.symbol} name={item.name} compact /></td><td className="px-3 py-2 text-right font-mono">{numberText(item.raw_value, 5)}</td><td className="px-3 py-2 text-right font-mono">{numberText(item.processed_value, 4)}</td><td className="px-3 py-2 text-right font-mono">{percentageText(item.percentile)}</td><td className="px-3 py-2 text-right">第 {item.quantile ?? '-'} 组</td><td className="px-3 py-2 text-[10px] text-gray-500">{item.trade_date}</td><td className="px-3 py-2">{item.quality_flags?.missing ? <span className="text-amber-300">缺失</span> : <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 size={11} />可用</span>}</td></tr>)}</tbody></table></div>
           {!loading && latestValues.length === 0 && <div className="grid min-h-40 place-items-center px-6 text-center text-xs text-slate-600">所选因子暂无已发布因子值</div>}
         </section>
       )}

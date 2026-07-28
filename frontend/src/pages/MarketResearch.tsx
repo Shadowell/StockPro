@@ -4,8 +4,11 @@ import { Activity, ArrowDownRight, ArrowUpRight, CalendarDays, Database, Flame, 
 import { MetricCard } from '@bitpro/ui';
 import { getMarketCalendar, getMarketResearchContext, getMessageStream } from '../api/client';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
+import { MetricValue, OperatorPageHeader } from '../components/OperatorShell';
 import type { MarketCalendarEvent, MarketResearchContext, MessageStreamResponse } from '../types';
 import { snapshotTypeLabel, sourceKindLabel, sourceLabel, statusLabel } from '../utils/presentation';
+import { metricToneClass, type MetricTone } from '../utils/marketColors';
+import { formatSymbolLabel, toPublicSymbol } from '../utils/symbolDisplay';
 import { Market as StockTerminal } from './Market';
 
 const TABS = [
@@ -44,9 +47,46 @@ const HEADLINE_METRICS = [
   { code: 'seal_rate', color: 'blue', icon: ShieldCheck, detail: '涨停家数 / 涨停 + 炸板', cardClass: 'border-blue-500/30 bg-blue-500/[0.05]' },
 ] as const;
 
+function headlineTone(code: string): MetricTone {
+  if (code === 'rise_count' || code === 'limit_up_count') return 'up';
+  if (code === 'fall_count' || code === 'limit_down_count') return 'down';
+  if (code === 'highest_board') return 'amber';
+  if (code === 'seal_rate') return 'blue';
+  return 'neutral';
+}
+
 function headlineValue(code: string, value: unknown) {
   const display = format(value, code === 'seal_rate' ? 2 : 0);
-  return <span className="font-sans text-[28px] font-bold leading-none tracking-[-0.04em] tabular-nums">{display}{code === 'seal_rate' && display !== '--' ? <span className="ml-0.5 text-base font-semibold tracking-normal">%</span> : null}</span>;
+  return (
+    <span className={`font-sans text-[28px] font-bold leading-none tracking-[-0.04em] tabular-nums ${metricToneClass(headlineTone(code))}`}>
+      {display}
+      {code === 'seal_rate' && display !== '--' ? <span className="ml-0.5 text-base font-semibold tracking-normal">%</span> : null}
+    </span>
+  );
+}
+
+function sentimentMetricTone(code: string, value: unknown): MetricTone {
+  if (code === 'limit_up_count' || code === 'rise_count' || code === 'red_ratio') return 'up';
+  if (code === 'limit_down_count' || code === 'fall_count') return 'down';
+  if (code === 'broken_board_count' || code === 'broken_board') return 'amber';
+  if (code === 'highest_board' || code === 'board_height') return 'amber';
+  if (code === 'seal_rate') return 'blue';
+  if (code === 'rise_fall_ratio') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n >= 1 ? 'up' : 'down';
+    return 'neutral';
+  }
+  if (code.includes('up') || code.includes('rise') || code.includes('red')) return 'up';
+  if (code.includes('down') || code.includes('fall')) return 'down';
+  return 'blue';
+}
+
+function sentimentMetricSurface(tone: MetricTone): string {
+  if (tone === 'up') return 'border-up/25 bg-up/[0.06]';
+  if (tone === 'down') return 'border-down/25 bg-down/[0.06]';
+  if (tone === 'amber') return 'border-amber-400/25 bg-amber-400/[0.06]';
+  if (tone === 'blue') return 'border-blue-400/25 bg-blue-400/[0.06]';
+  return 'border-slate-700/80 bg-slate-950/40';
 }
 
 function StatePill({ state }: { state?: string }) {
@@ -86,10 +126,10 @@ function Sentiment({ context }: { context: MarketResearchContext }) {
     {!sentiment || !ecology ? <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-200">情绪或涨跌停生态证据未发布；下方缺失指标保持 “--”。</div> : null}
     <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
       <section className={`${panel} p-5`}><div className="flex items-center gap-2"><Activity className="h-5 w-5 text-amber-300" /><h2 className="font-semibold text-white">市场温度</h2></div><div className="mt-6 text-5xl font-black tabular-nums text-amber-300">{temperature?.value === null || temperature?.value === undefined ? '--' : format(temperature.value, 1)}</div><div className="mt-3"><StatePill state={temperature?.publication_state} /></div><p className="mt-4 text-xs leading-5 text-slate-500">{temperature?.value === null ? `不发布：缺少 ${temperature.missing_components.join('、')}` : `公式 ${temperature?.formula_version}`}</p></section>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{(sentiment?.metrics ?? []).map((item) => <div key={item.metric_code} className={`${panel} p-4`} title={item.definition}><div className="flex items-center justify-between"><span className="text-xs text-slate-500">{item.label}</span><StatePill state={item.publication_state} /></div><div className="mt-2 text-xl font-bold tabular-nums text-slate-100">{format(item.value)}{item.unit ?? ''}</div><div className="mt-2 truncate text-[10px] text-slate-600">{item.source_label ? sourceLabel(item.source_label) : item.missing_reason}</div></div>)}</div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{(sentiment?.metrics ?? []).map((item) => { const tone = sentimentMetricTone(item.metric_code, item.value); return <div key={item.metric_code} className={`rounded-xl border p-4 ${sentimentMetricSurface(tone)}`} title={item.definition}><div className="flex items-center justify-between"><span className="text-xs text-slate-500">{item.label}</span><StatePill state={item.publication_state} /></div><MetricValue tone={tone} size="lg" className="mt-2 block">{format(item.value)}{item.unit ?? ''}</MetricValue><div className="mt-2 truncate text-[10px] text-slate-600">{item.source_label ? sourceLabel(item.source_label) : item.missing_reason}</div></div>; })}</div>
     </div>
-    <section className={`${panel} p-5`}><div className="flex items-center justify-between"><div><h2 className="font-semibold text-white">连板天梯</h2><p className="mt-1 text-xs text-slate-500">最高 {format(ecology?.highest_board, 0)} 板 · {sourceLabel(ecology?.source_label)}</p></div><Flame className="h-5 w-5 text-up" /></div><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{(ecology?.ladder ?? []).map((item) => <div key={item.level} className="rounded-lg border border-crypto-border bg-crypto-bg p-4"><div className="flex items-end justify-between"><span className="font-bold text-slate-200">{item.level}</span><strong className="text-2xl text-up">{item.count}</strong></div><div className="mt-3 space-y-1.5">{item.members.slice(0, 6).map((member, index) => <div key={`${String(member.symbol)}-${index}`} className="flex justify-between text-xs"><span className="truncate text-slate-400">{String(member.name ?? member.symbol)}</span><span className="ml-2 tabular-nums text-slate-600">{String(member.symbol)}</span></div>)}</div></div>)}</div></section>
-    <section className={`${panel} p-5`}><h2 className="font-semibold text-white">涨停 / 跌停 / 炸板明细</h2><div className="mt-4 grid gap-3 lg:grid-cols-3">{([['up', '涨停池'], ['down', '跌停池'], ['broken', '炸板池']] as const).map(([key, label]) => <div key={key} className="rounded-lg border border-crypto-border bg-crypto-bg p-4"><div className="flex justify-between"><span className="font-semibold text-slate-300">{label}</span><strong className="font-mono text-white">{ecology ? ecology.pools[key]?.length ?? '--' : '--'}</strong></div><div className="mt-3 space-y-1">{(ecology?.pools[key] ?? []).slice(0, 8).map((row, index) => <div key={index} className="flex justify-between text-xs text-slate-500"><span>{String(row.name ?? row.symbol ?? '--')}</span><span className="font-mono">{String(row.symbol ?? '--')}</span></div>)}</div></div>)}</div></section>
+    <section className={`${panel} p-5`}><div className="flex items-center justify-between"><div><h2 className="font-semibold text-white">连板天梯</h2><p className="mt-1 text-xs text-slate-500">最高 {format(ecology?.highest_board, 0)} 板 · {sourceLabel(ecology?.source_label)}</p></div><Flame className="h-5 w-5 text-up" /></div><div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{(ecology?.ladder ?? []).map((item) => <div key={item.level} className="rounded-lg border border-crypto-border bg-crypto-bg p-4"><div className="flex items-end justify-between"><span className="font-bold text-amber-300">{item.level}</span><strong className="text-2xl text-up">{item.count}</strong></div><div className="mt-3 space-y-1.5">{item.members.slice(0, 6).map((member, index) => <div key={`${String(member.symbol)}-${index}`} className="flex justify-between gap-2 text-xs"><span className="min-w-0 truncate text-slate-200">{String(member.name ?? formatSymbolLabel(String(member.symbol ?? '')))}</span><span className="ml-2 shrink-0 font-mono tabular-nums text-slate-600">{toPublicSymbol(String(member.symbol ?? ''))}</span></div>)}</div></div>)}</div></section>
+    <section className={`${panel} p-5`}><h2 className="font-semibold text-white">涨停 / 跌停 / 炸板明细</h2><div className="mt-4 grid gap-3 lg:grid-cols-3">{([['up', '涨停池', 'up' as MetricTone], ['down', '跌停池', 'down' as MetricTone], ['broken', '炸板池', 'amber' as MetricTone]] as const).map(([key, label, tone]) => <div key={key} className="rounded-lg border border-crypto-border bg-crypto-bg p-4"><div className="flex justify-between"><span className="font-semibold text-slate-300">{label}</span><MetricValue tone={tone} size="md">{ecology ? ecology.pools[key]?.length ?? '--' : '--'}</MetricValue></div><div className="mt-3 space-y-1">{(ecology?.pools[key] ?? []).slice(0, 8).map((row, index) => <div key={index} className="flex justify-between gap-2 text-xs text-slate-500"><span className="min-w-0 truncate text-slate-200">{String(row.name ?? formatSymbolLabel(String(row.symbol ?? '--')))}</span><span className="shrink-0 font-mono">{toPublicSymbol(String(row.symbol ?? '')) || '--'}</span></div>)}</div></div>)}</div></section>
     <section className={`${panel} p-5`}><h2 className="font-semibold text-white">晋级 / 淘汰队列</h2><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{(ecology?.promotion_elimination ?? []).map((row, index) => <div key={index} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-xs"><div className="font-semibold text-slate-300">{format(row.from_level, 0)}板队列</div><div className="mt-2 text-slate-500">样本 {format(row.cohort_size, 0)} · 晋级 {format(row.promoted_count, 0)} · 淘汰 {format(row.eliminated_count, 0)}</div></div>)}</div></section>
   </div>;
 }
@@ -147,9 +187,25 @@ export function MarketResearch() {
   useEffect(() => { void load(); }, []);
   const title = useMemo(() => TABS.find(([key]) => key === tab)?.[1], [tab]);
 
-  return <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-testid="market-research-workbench">
-    <header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-3"><Search className="h-7 w-7 text-blue-400" /><h1 className="text-2xl font-black text-white">行情</h1><span className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-xs text-blue-300">{title}</span></div><p className="mt-2 text-sm text-slate-500">查看市场结构、板块、情绪、事件、日历和个股证据。</p></div><div className="flex flex-wrap items-end gap-2"><label className="text-[11px] text-slate-500">交易日<input aria-label="市场交易日" type="date" value={tradeDate} onChange={(event) => setTradeDate(event.target.value)} className="mt-1 block h-10 rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm text-slate-300" /></label><label className="text-[11px] text-slate-500">市场范围<select aria-label="市场范围" value={scope} onChange={(event) => setScope(event.target.value)} className="mt-1 block h-10 rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm text-slate-300"><option value="all_a">全A</option><option value="main_board">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="beijing">北交所</option><option value="exclude_st">非ST</option></select></label><button type="button" onClick={() => void load()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400 hover:text-white"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />加载快照</button></div></header>
-    <WorkspaceTabs className="mb-5" ariaLabel="市场研究二级导航" items={TABS.map(([id, label]) => ({ id, label, testId: `market-tab-${id}` }))} value={tab} onChange={(id) => setParams({ tab: id })} />
+  return <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-testid="market-research-workbench" data-operator-page="market">
+    <OperatorPageHeader
+      icon={Search}
+      title={
+        <span className="inline-flex flex-wrap items-center gap-3">
+          行情
+          <span className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-xs font-semibold text-blue-300">{title}</span>
+        </span>
+      }
+      subtitle="六个子页：市场结构 / 板块轮动 / 情绪涨停 / 事件 / 交易日历 / 个股研究。"
+      actions={
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-[11px] text-slate-500">交易日<input aria-label="市场交易日" type="date" value={tradeDate} onChange={(event) => setTradeDate(event.target.value)} className="mt-1 block h-10 rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm text-slate-300" /></label>
+          <label className="text-[11px] text-slate-500">市场范围<select aria-label="市场范围" value={scope} onChange={(event) => setScope(event.target.value)} className="mt-1 block h-10 rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm text-slate-300"><option value="all_a">全A</option><option value="main_board">主板</option><option value="chinext">创业板</option><option value="star">科创板</option><option value="beijing">北交所</option><option value="exclude_st">非ST</option></select></label>
+          <button type="button" onClick={() => void load()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400 hover:text-white"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />加载快照</button>
+        </div>
+      }
+    />
+    <WorkspaceTabs ariaLabel="市场研究二级导航" items={TABS.map(([id, label]) => ({ id, label, testId: `market-tab-${id}` }))} value={tab} onChange={(id) => setParams({ tab: id })} />
     {error ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{error}</div> : null}
     {tab === 'events' && resourceErrors.messages ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{resourceErrors.messages}；未把失败响应显示为空资讯。</div> : null}
     {tab === 'calendar' && resourceErrors.calendar ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{resourceErrors.calendar}；未把接口失败解释为“无事件”。</div> : null}
