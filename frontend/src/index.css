@@ -406,3 +406,44 @@ body {
     padding-inline: 10px;
   }
 }
+
+/* A-share market session breathing status light */
+@keyframes market-session-breath {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.market-session-breath {
+  animation: market-session-breath 1.85s ease-in-out infinite;
+}
+
+.market-session-breath-fast {
+  animation: market-session-breath 1.15s ease-in-out infinite;
+}
+
+.market-session-breath-slow {
+  animation: market-session-breath 2.8s ease-in-out infinite;
+}
+
+.market-session-breath-dim {
+  animation: market-session-breath 3.6s ease-in-out infinite;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-session-breath,
+  .market-session-breath-fast,
+  .market-session-breath-slow,
+  .market-session-breath-dim {
+    animation: none;
+    opacity: 0.9;
+    transform: none;
+  }
+}

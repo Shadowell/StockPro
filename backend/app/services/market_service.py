@@ -381,24 +381,63 @@ class MarketService:
             return None
 
     @staticmethod
+    def _shanghai_now() -> datetime:
+        try:
+            from zoneinfo import ZoneInfo
+
+            return datetime.now(ZoneInfo("Asia/Shanghai"))
+        except Exception:
+            return datetime.now()
+
+    @staticmethod
+    def market_session(now: Optional[datetime] = None) -> Dict[str, Any]:
+        """A-share session phase for operator status lights (clock-based, not holiday calendar)."""
+        current = now or MarketService._shanghai_now()
+        if current.tzinfo is not None:
+            try:
+                from zoneinfo import ZoneInfo
+
+                current = current.astimezone(ZoneInfo("Asia/Shanghai"))
+            except Exception:
+                pass
+        weekday = current.weekday()
+        minutes = current.hour * 60 + current.minute
+        if weekday >= 5:
+            return {
+                "phase": "weekend",
+                "label": "休市",
+                "is_open": False,
+                "detail": "周末休市",
+                "local_time": current.strftime("%H:%M"),
+            }
+        # 09:15-09:25 集合竞价；09:25-09:30 开盘准备；09:30-11:30 / 13:00-15:00 连续竞价
+        if minutes < 9 * 60 + 15:
+            phase, label, detail = "pre_open", "盘前", "未开盘"
+        elif minutes < 9 * 60 + 25:
+            phase, label, detail = "auction", "竞价中", "集合竞价"
+        elif minutes < 9 * 60 + 30:
+            phase, label, detail = "auction", "竞价中", "开盘准备"
+        elif minutes <= 11 * 60 + 30:
+            phase, label, detail = "open", "开盘中", "上午连续竞价"
+        elif minutes < 13 * 60:
+            phase, label, detail = "lunch", "午休", "午间休市"
+        elif minutes <= 15 * 60:
+            phase, label, detail = "open", "开盘中", "下午连续竞价"
+        else:
+            phase, label, detail = "closed", "已收盘", "今日已收盘"
+        return {
+            "phase": phase,
+            "label": label,
+            "is_open": phase == "open",
+            "detail": detail,
+            "local_time": current.strftime("%H:%M"),
+        }
+
+    @staticmethod
     def _is_market_open() -> bool:
-        """检查当前是否是交易时间"""
-        now = datetime.now()
-        # 周末不交易
-        if now.weekday() >= 5:
-            return False
-        
-        hour = now.hour
-        minute = now.minute
-        time_val = hour * 60 + minute
-        
-        # 交易时间：9:30-11:30, 13:00-15:00
-        morning_start = 9 * 60 + 30
-        morning_end = 11 * 60 + 30
-        afternoon_start = 13 * 60
-        afternoon_end = 15 * 60
-        
-        return (morning_start <= time_val <= morning_end) or (afternoon_start <= time_val <= afternoon_end)
+        """检查当前是否是连续竞价交易时间。"""
+        return bool(MarketService.market_session()["is_open"])
+
 
     @staticmethod
     def _empty_market_pulse() -> Dict[str, Any]:
@@ -550,7 +589,7 @@ class MarketService:
     def get_market_overview() -> Dict[str, Any]:
         """获取市场概览数据 - 非开盘时间展示昨日数据，开盘时间展示实时数据"""
         now = datetime.now()
-        is_open = MarketService._is_market_open()
+        session = MarketService.market_session()
         
         # 优先从数据库读取缓存数据
         indices_data = db.get_market_indices_realtime()
@@ -672,7 +711,11 @@ class MarketService:
                     "全市场实时快照已陈旧" if stock_snapshot_state == "stale" else "全市场实时快照可用"
                 ),
             },
-            "is_open": is_open,
+            "is_open": bool(session["is_open"]),
+            "session_phase": session["phase"],
+            "session_label": session["label"],
+            "session_detail": session["detail"],
+            "session_local_time": session["local_time"],
             "last_update": stock_snapshot_updated_at or index_snapshot_updated_at,
             "response_generated_at": now.isoformat(),
         }
@@ -953,6 +996,37 @@ class MarketService:
         stocks = MarketService._get_cached_all_stocks()
         logger.info(f"Fetched {len(stocks)} stocks in {time.time() - start_time:.2f} seconds")
         return stocks
+
+    @staticmethod
+    def get_order_book(symbol: str) -> Dict[str, Any]:
+        """On-demand L5 depth. Uses live quote sources, not PostgreSQL cache."""
+        code = MarketService._to_code(symbol)
+        if not code:
+            return {
+                "symbol": "",
+                "code": "",
+                "asks": [],
+                "bids": [],
+                "volume_unit": "手",
+                "data_status": "empty",
+                "error": "invalid_symbol",
+                "source_label": "无效标的",
+            }
+        try:
+            return ak.get_order_book(code)
+        except Exception as exc:
+            logger.warning("get_order_book failed for %s: %s", code, exc)
+            return {
+                "symbol": code,
+                "code": code,
+                "asks": [],
+                "bids": [],
+                "volume_unit": "手",
+                "data_status": "empty",
+                "error": f"{type(exc).__name__}: {exc}",
+                "source_label": "实时盘口不可用",
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+            }
 
     @staticmethod
     def get_stock_fundamentals(symbol: str, cache_only: bool = False) -> Dict[str, Any]:
@@ -1242,7 +1316,13 @@ class MarketService:
         Sankey links on the homepage are proportional visualization aids.
         """
         limit = max(1, min(int(limit), 50))
-        rows = MarketService.get_hot_concepts(limit=max(limit * 4, 80))
+        # Pull a wide slice so inflow/outflow boards are ranked by money, not by 涨跌幅 rank.
+        try:
+            rows = db.get_hot_concepts_realtime(500) or []
+        except Exception:
+            rows = MarketService.get_hot_concepts(limit=max(limit * 4, 80))
+        if not rows:
+            rows = MarketService.get_hot_concepts(limit=max(limit * 4, 80))
         prepared: List[Dict[str, Any]] = []
         updated_at = None
         for row in rows:
@@ -1310,6 +1390,154 @@ class MarketService:
         }
 
     @staticmethod
+    def _limit_board_quote_from_raw(raw: Any) -> Dict[str, Optional[float]]:
+        payload = raw if isinstance(raw, dict) else {}
+        price = None
+        change_percent = None
+        for key in ("最新价", "close", "price", "Close"):
+            if key in payload and payload.get(key) is not None:
+                try:
+                    price = float(payload.get(key))
+                    break
+                except (TypeError, ValueError):
+                    continue
+        for key in ("涨跌幅", "pct_chg", "change_percent", "change"):
+            if key in payload and payload.get(key) is not None:
+                try:
+                    change_percent = float(payload.get(key))
+                    break
+                except (TypeError, ValueError):
+                    continue
+        # TuShare limit_list_d stores first/last times as HHMMSS integers.
+        return {"price": price, "change_percent": change_percent}
+
+    @staticmethod
+    def _limit_board_item_from_member(row: Dict[str, Any], pool_kind: str) -> Dict[str, Any]:
+        quote = MarketService._limit_board_quote_from_raw(row.get("raw_payload"))
+        symbol = str(row.get("symbol") or "").strip()
+        code = "".join(ch for ch in symbol if ch.isdigit())[-6:] or symbol
+        return {
+            "symbol": symbol,
+            "code": code,
+            "name": str(row.get("name") or "").strip() or None,
+            "pool_kind": pool_kind,
+            "price": quote.get("price"),
+            "change_percent": quote.get("change_percent"),
+            "limit_times": row.get("limit_times"),
+            "first_limit_at": row.get("first_limit_at"),
+            "last_limit_at": row.get("last_limit_at"),
+            "open_times": row.get("open_times"),
+            "seal_amount": row.get("seal_amount"),
+            "turnover": row.get("turnover"),
+            "industry": row.get("industry"),
+            "source_label": row.get("source_label"),
+        }
+
+    @staticmethod
+    def _limit_board_from_realtime_estimate() -> Dict[str, List[Dict[str, Any]]]:
+        """Last-resort board members from all_stocks_realtime ±9.8% thresholds."""
+        try:
+            rows = db.get_all_stocks_realtime() or []
+        except Exception as exc:
+            logger.warning("limit-board realtime estimate failed: %s", exc)
+            return {"up": [], "down": []}
+
+        up: List[Dict[str, Any]] = []
+        down: List[Dict[str, Any]] = []
+        for row in rows:
+            try:
+                change = float(row.get("change_percent"))
+            except (TypeError, ValueError):
+                continue
+            code = str(row.get("code") or "").strip()
+            digits = "".join(ch for ch in code if ch.isdigit())[-6:]
+            if not digits:
+                continue
+            if digits.startswith("6"):
+                symbol = f"{digits}.SH"
+            elif digits.startswith(("8", "4")) or digits.startswith("92"):
+                symbol = f"{digits}.BJ"
+            else:
+                symbol = f"{digits}.SZ"
+            item = {
+                "symbol": symbol,
+                "code": digits,
+                "name": row.get("name"),
+                "price": row.get("price"),
+                "change_percent": change,
+                "limit_times": None,
+                "industry": row.get("industry"),
+                "source_label": "PostgreSQL all_stocks_realtime (±9.8% 估计，非交易所封板名单)",
+            }
+            if change >= 9.8:
+                up.append({**item, "pool_kind": "up"})
+            elif change <= -9.8:
+                down.append({**item, "pool_kind": "down"})
+        up.sort(key=lambda item: (item.get("change_percent") is None, -(item.get("change_percent") or 0)))
+        down.sort(key=lambda item: (item.get("change_percent") is None, item.get("change_percent") or 0))
+        return {"up": up, "down": down}
+
+    @staticmethod
+    def get_limit_board(trade_date: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Homepage limit-up / limit-down member board for chart drill-down.
+
+        Prefer sealed market-evidence members (TuShare limit_list_d / AkShare zt|dt pools).
+        Fall back to realtime ±9.8% estimate when no sealed members exist.
+        """
+        research = MarketResearchService(db)
+        snapshot = research._latest_snapshot(trade_date, "all_a")
+        up: List[Dict[str, Any]] = []
+        down: List[Dict[str, Any]] = []
+        source_label = "market_evidence limit_pool_members"
+        data_status = "empty"
+        captured_at = None
+        snapshot_id = None
+        resolved_trade_date = trade_date
+
+        if snapshot and snapshot.get("id") is not None:
+            snapshot_id = int(snapshot["id"])
+            resolved_trade_date = str(snapshot.get("trade_date") or "")[:10] or resolved_trade_date
+            captured_at = snapshot.get("captured_at")
+            ecology = research.limit_ecosystem(snapshot_id)
+            pools = ecology.get("pools") or {}
+            up = [
+                MarketService._limit_board_item_from_member(item, "up")
+                for item in (pools.get("up") or [])
+            ]
+            down = [
+                MarketService._limit_board_item_from_member(item, "down")
+                for item in (pools.get("down") or [])
+            ]
+            source_label = ecology.get("source_label") or source_label
+            if up or down:
+                data_status = "stale" if research._is_stale(captured_at) else "fresh"
+
+        if not up and not down:
+            estimated = MarketService._limit_board_from_realtime_estimate()
+            up = estimated["up"]
+            down = estimated["down"]
+            if up or down:
+                source_label = "PostgreSQL all_stocks_realtime (±9.8% 估计)"
+                data_status = "stale"
+                resolved_trade_date = datetime.now().strftime("%Y-%m-%d")
+
+        return {
+            "trade_date": resolved_trade_date,
+            "snapshot_id": snapshot_id,
+            "captured_at": captured_at.isoformat() if hasattr(captured_at, "isoformat") else captured_at,
+            "data_status": data_status,
+            "source_label": source_label,
+            "counts": {"up": len(up), "down": len(down)},
+            "up": up,
+            "down": down,
+            "methodology": (
+                "优先读取封存市场证据 limit_pool_members（TuShare limit_list_d / AkShare 涨跌停池）；"
+                "无成员时回退 all_stocks_realtime ±9.8% 估计，不能当作交易所正式封板名单。"
+            ),
+        }
+
+    @staticmethod
     def get_ths_hot(limit: int = 100, date: Optional[str] = None) -> List[Dict[str, Any]]:
         try:
             limit = max(1, min(int(limit), 200))
@@ -1355,7 +1583,8 @@ class MarketService:
                 return []
             col = 'trade_date' if 'trade_date' in df.columns else df.columns[0]
             dates = pd.to_datetime(df[col], errors='coerce').dropna().dt.strftime('%Y%m%d').tolist()
-            return dates
+            # Always ascending so callers can take [-1] as the latest session.
+            return sorted(set(dates))
         except Exception:
             return []
 
@@ -1363,6 +1592,15 @@ class MarketService:
     def get_lianban_ladder(date: Optional[str] = None) -> Dict[str, Any]:
         try:
             dates = MarketService._latest_trade_dates()
+            if not dates:
+                # Fallback: sealed limit_pool snap dates when calendar fetch fails.
+                try:
+                    sealed = db.get_latest_sealed_limit_pool_snapshot() or {}
+                    snap_date = str(sealed.get("trade_date") or "").replace("-", "")[:8]
+                    if len(snap_date) == 8 and snap_date.isdigit():
+                        dates = [snap_date]
+                except Exception:
+                    pass
             if not dates:
                 return {"date": None, "prev_date": None, "levels": []}
 
@@ -2359,6 +2597,315 @@ class MarketService:
 
 
     @staticmethod
+    def _iso_date(value: Any) -> Optional[str]:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        if len(text) == 8 and text.isdigit():
+            return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+        return text[:10]
+
+    @staticmethod
+    def _compact_ymd(value: str) -> str:
+        return str(value or "").replace("-", "")[:8]
+
+    @staticmethod
+    def _holiday_name(iso_date: str) -> Optional[str]:
+        for item in MarketService._get_holidays():
+            if item.get("event_date") == iso_date:
+                title = str(item.get("title") or "")
+                return title.replace("休市", "").strip() or title
+        return None
+
+    @staticmethod
+    def get_trading_calendar(start: Optional[str] = None, end: Optional[str] = None) -> Dict[str, Any]:
+        """Month grid payload: session open/closed + delivery + macro tags per day.
+
+        Built live from TuShare ``trade_cal`` / ``fut_basic`` / ``eco_cal`` when
+        available, with rule-based options/month-end supplements. Does not invent
+        missing provider rows.
+        """
+        today = datetime.now().date()
+        try:
+            start_d = datetime.strptime((start or "")[:10], "%Y-%m-%d").date() if start else today.replace(day=1)
+        except ValueError:
+            start_d = today.replace(day=1)
+        try:
+            end_d = datetime.strptime((end or "")[:10], "%Y-%m-%d").date() if end else (
+                (start_d.replace(day=28) + timedelta(days=4)).replace(day=1) + timedelta(days=32)
+            ).replace(day=1) - timedelta(days=1)
+        except ValueError:
+            end_d = (start_d.replace(day=28) + timedelta(days=4)).replace(day=1) + timedelta(days=32)
+            end_d = end_d.replace(day=1) - timedelta(days=1)
+        if end_d < start_d:
+            start_d, end_d = end_d, start_d
+
+        start_iso = start_d.isoformat()
+        end_iso = end_d.isoformat()
+        start_c = MarketService._compact_ymd(start_iso)
+        end_c = MarketService._compact_ymd(end_iso)
+        sources: List[str] = []
+        errors: List[str] = []
+
+        open_by_date: Dict[str, bool] = {}
+        try:
+            pro = ak._pro_api() if hasattr(ak, "_pro_api") else None
+            if pro is None:
+                raise RuntimeError("tushare_pro_unavailable")
+            cal = pro.trade_cal(exchange="SSE", start_date=start_c, end_date=end_c)
+            if isinstance(cal, pd.DataFrame) and not cal.empty:
+                sources.append("tushare.trade_cal")
+                for _, row in cal.iterrows():
+                    iso = MarketService._iso_date(row.get("cal_date"))
+                    if not iso:
+                        continue
+                    open_by_date[iso] = str(row.get("is_open")).strip() in {"1", "1.0", "True", "true"}
+            else:
+                errors.append("trade_cal_empty")
+        except Exception as exc:
+            errors.append(f"trade_cal:{type(exc).__name__}")
+            logger.warning("trading calendar trade_cal failed: %s", exc)
+
+        delivery_index: Dict[str, List[str]] = {}
+        delivery_bond: Dict[str, List[str]] = {}
+        delivery_commodity: Dict[str, List[str]] = {}
+        try:
+            pro = ak._pro_api() if hasattr(ak, "_pro_api") else None
+            if pro is None:
+                raise RuntimeError("tushare_pro_unavailable")
+            for exchange in ("CFFEX", "SHFE", "DCE", "CZCE", "INE", "GFEX"):
+                try:
+                    frame = pro.fut_basic(exchange=exchange)
+                except Exception as exc:
+                    errors.append(f"fut_basic:{exchange}:{type(exc).__name__}")
+                    continue
+                if not isinstance(frame, pd.DataFrame) or frame.empty:
+                    continue
+                sources.append(f"tushare.fut_basic:{exchange}")
+                for _, row in frame.iterrows():
+                    iso = MarketService._iso_date(row.get("last_ddate") or row.get("delist_date"))
+                    if not iso or iso < start_iso or iso > end_iso:
+                        continue
+                    code = str(row.get("fut_code") or "").strip().upper()
+                    name = str(row.get("name") or row.get("symbol") or row.get("ts_code") or "").strip()
+                    label = name or code or str(row.get("ts_code") or "")
+                    if exchange == "CFFEX" and code in {"IF", "IH", "IC", "IM"}:
+                        delivery_index.setdefault(iso, []).append(label)
+                    elif exchange == "CFFEX":
+                        delivery_bond.setdefault(iso, []).append(label)
+                    else:
+                        delivery_commodity.setdefault(iso, []).append(label)
+        except Exception as exc:
+            errors.append(f"fut_basic:{type(exc).__name__}")
+            logger.warning("trading calendar fut_basic failed: %s", exc)
+
+        macro_by_date: Dict[str, List[str]] = {}
+        try:
+            pro = ak._pro_api() if hasattr(ak, "_pro_api") else None
+            if pro is None:
+                raise RuntimeError("tushare_pro_unavailable")
+            eco = pro.eco_cal(start_date=start_c, end_date=end_c)
+            if isinstance(eco, pd.DataFrame) and not eco.empty:
+                sources.append("tushare.eco_cal")
+                for _, row in eco.iterrows():
+                    currency = str(row.get("currency") or "").upper()
+                    event = str(row.get("event") or "").strip()
+                    if currency != "CNY":
+                        continue
+                    iso = MarketService._iso_date(row.get("date"))
+                    if not iso or iso < start_iso or iso > end_iso or not event:
+                        continue
+                    short = event
+                    for token, alias in (
+                        ("贷款市场报价利率(LPR)", "LPR"),
+                        ("5年期贷款市场报价利率(LPR)", "五年LPR"),
+                        ("居民消费价格指数", "CPI"),
+                        ("工业生产者出厂价格指数", "PPI"),
+                        ("国内生产总值", "GDP"),
+                        ("制造业采购经理指数", "PMI"),
+                    ):
+                        if token in event:
+                            short = alias
+                            break
+                    if len(short) > 12:
+                        short = short[:12]
+                    macro_by_date.setdefault(iso, []).append(short)
+            else:
+                errors.append("eco_cal_empty")
+        except Exception as exc:
+            errors.append(f"eco_cal:{type(exc).__name__}")
+            logger.warning("trading calendar eco_cal failed: %s", exc)
+
+        open_dates = sorted(
+            datetime.strptime(d, "%Y-%m-%d").date()
+            for d, is_open in open_by_date.items()
+            if is_open
+        )
+        options_days = {
+            ev["event_date"]
+            for ev in MarketService._calculate_options_expiry_dates(open_dates)
+            if start_iso <= ev["event_date"] <= end_iso
+        }
+        month_end_days = {
+            ev["event_date"]
+            for ev in MarketService._calculate_month_end_dates(open_dates)
+            if start_iso <= ev["event_date"] <= end_iso
+        }
+        quarter_end_days = {
+            ev["event_date"]
+            for ev in MarketService._calculate_quarter_end_dates(open_dates)
+            if start_iso <= ev["event_date"] <= end_iso
+        }
+        if options_days:
+            sources.append("rule.options_expiry")
+        if month_end_days or quarter_end_days:
+            sources.append("rule.month_quarter_end")
+
+        days: List[Dict[str, Any]] = []
+        cursor = start_d
+        while cursor <= end_d:
+            iso = cursor.isoformat()
+            weekday = cursor.weekday()  # 0=Mon
+            known_open = open_by_date.get(iso)
+            if known_open is True:
+                session = "open"
+                is_open = True
+            elif known_open is False:
+                session = "closed"
+                is_open = False
+            elif weekday >= 5:
+                session = "weekend"
+                is_open = False
+            else:
+                session = "unknown"
+                is_open = False
+
+            tags: List[Dict[str, Any]] = []
+            if session == "open":
+                tags.append({"kind": "session", "label": "开盘", "tone": "open", "detail": "上交所交易日"})
+            elif session == "weekend":
+                tags.append({"kind": "session", "label": "休市", "tone": "closed", "detail": "周末"})
+            elif session == "closed":
+                holiday = MarketService._holiday_name(iso)
+                tags.append(
+                    {
+                        "kind": "session",
+                        "label": "休市",
+                        "tone": "closed",
+                        "detail": f"{holiday}休市" if holiday else "非交易日",
+                    }
+                )
+                if holiday:
+                    tags.append({"kind": "holiday", "label": holiday, "tone": "holiday", "detail": f"{holiday}假期"})
+            else:
+                tags.append({"kind": "session", "label": "待定", "tone": "muted", "detail": "交易日历未覆盖"})
+
+            if iso in delivery_index:
+                names = sorted(set(delivery_index[iso]))
+                tags.append(
+                    {
+                        "kind": "index_futures",
+                        "label": "股指交割",
+                        "tone": "danger",
+                        "detail": "、".join(names[:8]) + (f" 等{len(names)}个" if len(names) > 8 else ""),
+                    }
+                )
+            if iso in delivery_bond:
+                names = sorted(set(delivery_bond[iso]))
+                tags.append(
+                    {
+                        "kind": "bond_futures",
+                        "label": "国债交割",
+                        "tone": "warn",
+                        "detail": "、".join(names[:6]) + (f" 等{len(names)}个" if len(names) > 6 else ""),
+                    }
+                )
+            if iso in delivery_commodity:
+                names = sorted(set(delivery_commodity[iso]))
+                tags.append(
+                    {
+                        "kind": "commodity_futures",
+                        "label": f"商品交割·{len(names)}",
+                        "tone": "warn",
+                        "detail": "、".join(names[:8]) + (f" 等{len(names)}个" if len(names) > 8 else ""),
+                    }
+                )
+            if iso in options_days:
+                tags.append({"kind": "options", "label": "期权交割", "tone": "accent", "detail": "股指/ETF期权交割临近窗口"})
+            if iso in quarter_end_days:
+                tags.append({"kind": "quarter_end", "label": "季末", "tone": "info", "detail": "季度末交易日"})
+            elif iso in month_end_days:
+                tags.append({"kind": "month_end", "label": "月末", "tone": "info", "detail": "月度最后交易日"})
+            for event_label in list(dict.fromkeys(macro_by_date.get(iso, [])))[:3]:
+                tags.append({"kind": "macro", "label": event_label, "tone": "macro", "detail": event_label})
+
+            days.append(
+                {
+                    "date": iso,
+                    "is_open": is_open,
+                    "session": session,
+                    "weekday": weekday,
+                    "tags": tags,
+                }
+            )
+            cursor += timedelta(days=1)
+
+        # Persist a flat event cache so legacy /market/calendar list is not empty.
+        try:
+            written = MarketService._persist_trading_calendar_events(days)
+            if written:
+                sources.append("cache.market_calendar_events")
+        except Exception as exc:
+            errors.append(f"persist:{type(exc).__name__}")
+            logger.warning("persist trading calendar events failed: %s", exc)
+
+        return {
+            "start": start_iso,
+            "end": end_iso,
+            "days": days,
+            "source_label": " · ".join(dict.fromkeys(sources)) if sources else "日历数据不可用",
+            "sources": sources,
+            "errors": errors,
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+
+    @staticmethod
+    def _persist_trading_calendar_events(days: List[Dict[str, Any]]) -> int:
+        written = 0
+        if not hasattr(db, "insert_market_calendar_event"):
+            return 0
+        for day in days:
+            iso = str(day.get("date") or "")
+            for tag in day.get("tags") or []:
+                kind = str(tag.get("kind") or "")
+                label = str(tag.get("label") or "")
+                if kind == "session" and label in {"开盘", "待定"}:
+                    continue
+                category = {
+                    "session": "休市",
+                    "holiday": "节假日",
+                    "index_futures": "交割日",
+                    "bond_futures": "交割日",
+                    "commodity_futures": "交割日",
+                    "options": "交割日",
+                    "month_end": "结算日",
+                    "quarter_end": "结算日",
+                    "macro": "重大事项",
+                }.get(kind, "市场事件")
+                detail = str(tag.get("detail") or label)
+                db.insert_market_calendar_event(
+                    event_date=iso,
+                    title=f"{label}" + (f" · {detail}" if detail and detail != label else ""),
+                    category=category,
+                    market="A股",
+                    source="trading_calendar_builder",
+                    details=detail,
+                    event_key=f"{iso}:{kind}:{label}",
+                )
+                written += 1
+        return written
+
+    @staticmethod
     def get_market_calendar_events(start: Optional[str] = None, end: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
         try:
             limit = max(1, min(int(limit), 500))
@@ -2370,7 +2917,7 @@ class MarketService:
             events = db.get_market_calendar_events(start, end)
             # 应用限制
             events = events[:limit]
-            return [
+            mapped = [
                 {
                     "event_key": r.get("event_key", str(r.get("id", ""))),  # 使用event_key作为主键
                     "event_date": r.get("event_date"),
@@ -2383,9 +2930,40 @@ class MarketService:
                 }
                 for r in events
             ]
+            if mapped:
+                return mapped
         except Exception as e:
             logger.error(f"Failed to read market calendar events: {e}")
-            return []
+
+        # Empty cache: build live month window so the UI is not blank.
+        today = datetime.now().date()
+        start_iso = (start or today.replace(day=1).isoformat())[:10]
+        try:
+            start_d = datetime.strptime(start_iso, "%Y-%m-%d").date()
+        except ValueError:
+            start_d = today.replace(day=1)
+        end_iso = (end or ((start_d.replace(day=28) + timedelta(days=4)).replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)).isoformat()[:10]
+        built = MarketService.get_trading_calendar(start=start_iso, end=end_iso if isinstance(end_iso, str) else str(end_iso))
+        flat: List[Dict[str, Any]] = []
+        for day in built.get("days") or []:
+            for tag in day.get("tags") or []:
+                kind = str(tag.get("kind") or "")
+                label = str(tag.get("label") or "")
+                if kind == "session" and label == "开盘":
+                    continue
+                flat.append(
+                    {
+                        "event_key": f"{day.get('date')}:{kind}:{label}",
+                        "event_date": day.get("date"),
+                        "title": label,
+                        "category": kind,
+                        "market": "A股",
+                        "source": built.get("source_label"),
+                        "details": tag.get("detail"),
+                        "updated_at": built.get("updated_at"),
+                    }
+                )
+        return flat[:limit]
 
     @staticmethod
     def fetch_free_calendar_data() -> List[Dict[str, Any]]:

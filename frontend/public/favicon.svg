@@ -1,9 +1,6 @@
 <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
   <title>StockPro</title>
-  <rect x="2" y="2" width="28" height="28" rx="6" fill="#111827"/>
-  <rect x="2.5" y="2.5" width="27" height="27" rx="5.5" stroke="#3B82F6" stroke-opacity="0.55"/>
-  <path d="M8 20.5V11.5M16 20.5V11.5M24 20.5V11.5M6.5 18H25.5M6.5 14H25.5" stroke="#1F3B73" stroke-width="1"/>
-  <path d="M6.5 17H10.2L12.2 12.4L15 22.1L17.8 9.8L20.4 17H25.5" stroke="#BFDBFE" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="17.8" cy="9.8" r="2" fill="#22D3EE"/>
-  <circle cx="12.2" cy="12.4" r="1.5" fill="#60A5FA"/>
+  <rect x="1.5" y="1.5" width="29" height="29" rx="7" fill="#121a24"/>
+  <rect x="1.5" y="1.5" width="29" height="29" rx="7" stroke="#7DD3FC" stroke-opacity="0.55"/>
+  <path d="M5.5 16.5H10.2L12.4 11.2L15.8 22.4L18.7 8.6L21.4 16.5H26.5" stroke="#7DD3FC" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

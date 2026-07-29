@@ -74,10 +74,28 @@ const metricLabels: Record<string, string> = {
   strategy_return: '策略收益', annualized_return: '年化收益', benchmark_return: '基准收益', excess_return: '超额收益',
   maximum_drawdown: '最大回撤', sharpe: '夏普比率', sortino: '索提诺比率', alpha: 'Alpha', beta: 'Beta',
   information_ratio: '信息比率', annualized_volatility: '年化波动', downside_volatility: '下行波动',
+  benchmark_volatility: '基准波动', tracking_error: '跟踪误差', calmar: '卡玛比率',
   win_rate: '交易胜率', profit_loss_ratio: '盈亏比', daily_win_rate: '日胜率', fill_rate: '成交率', rejection_rate: '拒单率',
   turnover: '换手率', total_cost: '总成本', total_commission: '佣金', total_tax: '印花税', total_transfer_fee: '过户费',
   total_slippage_cost: '滑点成本', average_holding_days: '平均持有天数', average_exposure: '平均敞口',
   peak_single_symbol_weight: '单票最高权重', capacity_warnings: '容量警告', data_quality_warnings: '数据质量警告',
+};
+
+const unitLabels: Record<string, string> = {
+  ratio: '比率 / %',
+  ratio_per_year: '年化比率',
+  number: '数值',
+  count: '次数',
+  days: '天',
+  CNY: '人民币',
+  percent: '%',
+};
+
+const frequencyLabels: Record<string, string> = {
+  '1d': '日频',
+  daily: '日频',
+  '1h': '小时',
+  intraday: '日内',
 };
 
 function formatValue(value: number | null | undefined, unit = 'number') {
@@ -87,6 +105,27 @@ function formatValue(value: number | null | undefined, unit = 'number') {
   if (unit === 'count') return Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
   if (unit === 'days') return `${Number(value).toFixed(1)} 天`;
   return Number(value).toFixed(3);
+}
+
+function metricValueTone(code: string, value: number | null | undefined, unit?: string) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'text-slate-500';
+  if (code === 'maximum_drawdown' || code.includes('drawdown') || code.includes('cost') || code.includes('tax') || code.includes('slippage') || code.includes('rejection')) {
+    return marketAdverseToneClass(value, 'text-slate-200');
+  }
+  if (code === 'sharpe' || code === 'sortino' || code === 'calmar' || code === 'information_ratio' || code === 'profit_loss_ratio') {
+    return thresholdToneClass(value, code === 'profit_loss_ratio' ? 1 : 1, 'text-slate-200');
+  }
+  if (
+    unit === 'ratio' ||
+    unit === 'ratio_per_year' ||
+    code.includes('return') ||
+    code.includes('excess') ||
+    code.includes('alpha') ||
+    code.includes('win_rate')
+  ) {
+    return marketToneClass(value, 'text-slate-200');
+  }
+  return 'text-slate-100';
 }
 
 function StatusBadge({ run }: { run: BacktestRun }) {
@@ -103,6 +142,19 @@ function Field({ label, children, hint }: { label: string; children: React.React
   return <label className="block"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</span>{children}{hint ? <span className="mt-1.5 block text-xs text-gray-600">{hint}</span> : null}</label>;
 }
 
+const NUMERIC_KEYS = new Set([
+  'metric_value', 'quantity', 'available_quantity', 'avg_cost', 'close_price', 'market_value', 'weight',
+  'price', 'amount', 'commission', 'tax', 'realized_pnl', 'filled_quantity', 'contribution',
+  'return', 'drawdown', 'sharpe',
+]);
+const DATETIME_KEYS = new Set([
+  'trade_date', 'signal_at', 'earliest_fill_at', 'filled_at', 'simulated_at', 'created_at', 'period',
+]);
+const META_KEYS = new Set([
+  'calculation_version', 'input_frequency', 'null_reason', 'rejection_code', 'source', 'payload',
+  'attribution_type', 'attribution_key',
+]);
+
 function GenericTable({
   rows,
   columns,
@@ -112,14 +164,21 @@ function GenericTable({
   columns: Array<[string, string]>;
   symbolNames?: Record<string, string>;
 }) {
-  if (!rows.length) return <div className="flex min-h-48 items-center justify-center text-sm text-gray-600">暂无记录</div>;
+  if (!rows.length) {
+    return <div className="flex min-h-48 items-center justify-center text-sm text-gray-600">暂无记录</div>;
+  }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[820px] text-left text-sm">
+      <table className="w-full min-w-[820px] text-left">
         <thead>
-          <tr className="border-b border-crypto-border text-xs uppercase tracking-wider text-gray-500">
+          <tr className="border-b border-crypto-border">
             {columns.map(([key, label]) => (
-              <th key={key} className="px-4 py-3 font-semibold">{label}</th>
+              <th
+                key={key}
+                className={`px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-600 ${NUMERIC_KEYS.has(key) ? 'text-right' : 'text-left'}`}
+              >
+                {label}
+              </th>
             ))}
           </tr>
         </thead>
@@ -127,13 +186,13 @@ function GenericTable({
           {rows.map((row, index) => (
             <tr
               key={String(row.id ?? `${index}`)}
-              className="border-b border-white/[0.04] text-gray-300 hover:bg-white/[0.02]"
+              className="border-b border-white/[0.04] hover:bg-white/[0.015]"
             >
               {columns.map(([key]) => {
                 const current = row[key];
                 if (key === 'symbol') {
                   return (
-                    <td key={key} className="max-w-[360px] px-4 py-3 text-xs">
+                    <td key={key} className="max-w-[280px] px-4 py-3">
                       <SymbolCell
                         symbol={String(current ?? '')}
                         name={String(row.name ?? '')}
@@ -143,19 +202,125 @@ function GenericTable({
                     </td>
                   );
                 }
-                const textValue =
-                  key === 'status' || key === 'level'
-                    ? statusLabel(current)
-                    : key === 'side'
-                      ? sideLabel(current)
-                      : key === 'order_type' || key === 'intent_type'
-                        ? orderTypeLabel(current)
-                        : typeof current === 'object'
-                          ? JSON.stringify(current)
-                          : String(current ?? '--');
+                if (key === 'metric_code') {
+                  const code = String(current ?? '');
+                  return (
+                    <td key={key} className="px-4 py-3">
+                      <div className="text-sm font-medium text-slate-200">
+                        {metricLabels[code] ?? code}
+                      </div>
+                      <div className="mt-0.5 font-mono text-[10px] text-gray-600">{code}</div>
+                    </td>
+                  );
+                }
+                if (key === 'metric_value') {
+                  const code = String(row.metric_code ?? '');
+                  const unit = String(row.unit ?? 'number');
+                  const numeric =
+                    current === null || current === undefined || current === ''
+                      ? null
+                      : Number(current);
+                  return (
+                    <td key={key} className="px-4 py-3 text-right">
+                      <span className={`font-mono text-sm font-bold tabular-nums tracking-tight ${metricValueTone(code, numeric, unit)}`}>
+                        {formatValue(numeric, unit)}
+                      </span>
+                    </td>
+                  );
+                }
+                if (key === 'unit') {
+                  const raw = String(current ?? '');
+                  return (
+                    <td key={key} className="px-4 py-3">
+                      <span className="inline-flex rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                        {unitLabels[raw] ?? (raw || '--')}
+                      </span>
+                    </td>
+                  );
+                }
+                if (key === 'input_frequency') {
+                  const raw = String(current ?? '');
+                  return (
+                    <td key={key} className="px-4 py-3 text-[11px] text-gray-500">
+                      {frequencyLabels[raw] ?? (raw || '--')}
+                    </td>
+                  );
+                }
+                if (key === 'status' || key === 'level') {
+                  return (
+                    <td key={key} className="px-4 py-3">
+                      <span className="inline-flex rounded border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-slate-300">
+                        {statusLabel(current)}
+                      </span>
+                    </td>
+                  );
+                }
+                if (key === 'side') {
+                  const label = sideLabel(current);
+                  const buy = String(current).toLowerCase().includes('buy') || label.includes('买');
+                  return (
+                    <td key={key} className="px-4 py-3">
+                      <span className={`text-sm font-semibold ${buy ? 'text-up' : 'text-down'}`}>{label}</span>
+                    </td>
+                  );
+                }
+                if (key === 'order_type' || key === 'intent_type') {
+                  return (
+                    <td key={key} className="px-4 py-3 text-xs font-medium text-slate-300">
+                      {orderTypeLabel(current)}
+                    </td>
+                  );
+                }
+                if (DATETIME_KEYS.has(key)) {
+                  return (
+                    <td key={key} className="whitespace-nowrap px-4 py-3 font-mono text-[11px] tabular-nums text-gray-500">
+                      {String(current ?? '--')}
+                    </td>
+                  );
+                }
+                if (NUMERIC_KEYS.has(key)) {
+                  const numeric =
+                    current === null || current === undefined || current === ''
+                      ? null
+                      : Number(current);
+                  const pnlLike = key.includes('pnl') || key === 'return' || key === 'contribution';
+                  return (
+                    <td key={key} className="px-4 py-3 text-right">
+                      <span
+                        className={`font-mono text-sm tabular-nums tracking-tight ${
+                          pnlLike ? marketToneClass(numeric, 'text-slate-200') : 'font-semibold text-slate-100'
+                        }`}
+                      >
+                        {numeric === null || !Number.isFinite(numeric)
+                          ? '--'
+                          : key === 'weight' || key === 'return' || key === 'drawdown'
+                            ? formatValue(numeric, 'ratio')
+                            : Number.isInteger(numeric)
+                              ? numeric.toLocaleString('zh-CN')
+                              : numeric.toLocaleString('zh-CN', { maximumFractionDigits: 4 })}
+                      </span>
+                    </td>
+                  );
+                }
+                if (META_KEYS.has(key) || typeof current === 'object') {
+                  const text =
+                    typeof current === 'object' ? JSON.stringify(current) : String(current ?? '--');
+                  const empty = !current || text === '--' || text === 'null';
+                  return (
+                    <td key={key} className="max-w-[320px] px-4 py-3">
+                      <span
+                        className={`line-clamp-2 font-mono text-[10px] leading-4 ${
+                          key === 'null_reason' && !empty ? 'text-amber-300/90' : 'text-gray-600'
+                        }`}
+                      >
+                        {empty ? '--' : text}
+                      </span>
+                    </td>
+                  );
+                }
                 return (
-                  <td key={key} className="max-w-[360px] px-4 py-3 text-xs">
-                    <span className="line-clamp-2">{textValue}</span>
+                  <td key={key} className="max-w-[360px] px-4 py-3">
+                    <span className="line-clamp-2 text-sm text-slate-300">{String(current ?? '--')}</span>
                   </td>
                 );
               })}
@@ -180,7 +345,7 @@ type DetailData = {
   attribution: Array<Record<string, unknown>>;
 };
 
-const detailTabs = ['总览', '收益分析', '持仓', '交易', '订单', '日志', '代码与参数', '归因'] as const;
+const detailTabs = ['总览', '绩效指标', '持仓', '交易', '订单', '日志', '代码与参数', '归因'] as const;
 
 function BacktestDetail({ runId }: { runId: string }) {
   const navigate = useNavigate();
@@ -291,7 +456,28 @@ function BacktestDetail({ runId }: { runId: string }) {
         <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2><div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 font-mono text-sm font-bold tabular-nums ${marketToneClass(item.return)}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div></section>
       </div>}
 
-      {tab === '收益分析' && <section className={`${panel} overflow-hidden`}><GenericTable rows={data.metrics as unknown as Array<Record<string, unknown>>} columns={[["metric_code", "指标"], ["metric_value", "数值"], ["unit", "单位"], ["calculation_version", "计算版本"], ["input_frequency", "频率"], ["null_reason", "未定义原因"]]} /></section>}
+      {tab === '绩效指标' && (
+        <section className={`${panel} overflow-hidden`}>
+          <div className="flex items-center justify-between gap-3 border-b border-crypto-border px-5 py-3">
+            <div>
+              <h2 className="text-sm font-semibold text-white">绩效指标明细</h2>
+              <p className="mt-0.5 text-[11px] text-gray-600">中文指标名 + 原始代码；数值按涨跌语义着色，单位与计算版本弱化展示</p>
+            </div>
+            <span className="font-mono text-[10px] tabular-nums text-gray-600">{data.metrics.length} 项</span>
+          </div>
+          <GenericTable
+            rows={data.metrics as unknown as Array<Record<string, unknown>>}
+            columns={[
+              ['metric_code', '指标'],
+              ['metric_value', '数值'],
+              ['unit', '单位'],
+              ['calculation_version', '计算版本'],
+              ['input_frequency', '频率'],
+              ['null_reason', '未定义原因'],
+            ]}
+          />
+        </section>
+      )}
       {tab === '持仓' && <section className={panel}><GenericTable rows={data.positions} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["quantity", "数量"], ["available_quantity", "可卖"], ["avg_cost", "成本"], ["close_price", "收盘"], ["market_value", "市值"], ["weight", "权重"]]} /></section>}
       {tab === '交易' && <section className={panel}><GenericTable rows={data.trades} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["side", "方向"], ["price", "价格"], ["quantity", "数量"], ["amount", "金额"], ["commission", "佣金"], ["tax", "税费"], ["realized_pnl", "已实现盈亏"]]} /></section>}
       {tab === '订单' && <section className={panel}><GenericTable rows={data.orders} symbolNames={symbolNames} columns={[["signal_at", "信号时间"], ["earliest_fill_at", "最早成交"], ["filled_at", "成交时间"], ["symbol", "证券"], ["intent_type", "意图"], ["status", "状态"], ["filled_quantity", "成交数量"], ["rejection_code", "拒单代码"]]} /></section>}

@@ -227,6 +227,25 @@
 
 ---
 
+### 1.3c GET /market/limit-board
+
+首页涨停/跌停个股名单（供近 30 日 K + 当日分时展开）。
+
+**请求参数**：
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| trade_date | string | 否 | 最新封存 | YYYY-MM-DD |
+
+**响应字段**：
+- `up` / `down`：成员列表（`symbol`/`name`/`price`/`change_percent`/`limit_times` 等）
+- `counts`：`{ up, down }`
+- `data_status`：`fresh` | `stale` | `empty`
+- `methodology`：优先封存 `limit_pool_members`；空则 ±9.8% 实时估计回退
+
+**数据来源**：`market_evidence_snapshots` + `limit_pool_members`（TuShare `limit_list_d` / AkShare 涨跌停池）。
+
+---
+
 ### 1.4 GET /market/hot-concept/leaders
 
 获取概念板块龙头股列表 (优先从缓存读取)

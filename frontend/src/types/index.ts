@@ -102,6 +102,34 @@ export interface StockCandidate {
   name?: string | null;
   price?: number | null;
   change_percent?: number | null;
+  amount?: number | null;
+}
+
+export interface OrderBookLevel {
+  level: number;
+  price?: number | null;
+  volume?: number | null;
+}
+
+export interface OrderBookSnapshot {
+  symbol?: string | null;
+  code?: string | null;
+  name?: string | null;
+  price?: number | null;
+  pre_close?: number | null;
+  bid?: number | null;
+  ask?: number | null;
+  change_percent?: number | null;
+  asks: OrderBookLevel[];
+  bids: OrderBookLevel[];
+  volume_unit?: string | null;
+  trade_date?: string | null;
+  trade_time?: string | null;
+  source?: string | null;
+  source_label?: string | null;
+  data_status?: string | null;
+  updated_at?: string | null;
+  error?: string | null;
 }
 
 export interface HotConceptItem {
@@ -135,6 +163,35 @@ export interface SectorFundFlowResponse {
   updated_at?: string | null;
   data_status: 'fresh' | 'stale' | 'empty' | string;
   source_label: string;
+  methodology: string;
+}
+
+export interface LimitBoardStock {
+  symbol: string;
+  code?: string | null;
+  name?: string | null;
+  pool_kind: 'up' | 'down' | string;
+  price?: number | null;
+  change_percent?: number | null;
+  limit_times?: number | null;
+  first_limit_at?: string | null;
+  last_limit_at?: string | null;
+  open_times?: number | null;
+  seal_amount?: number | null;
+  turnover?: number | null;
+  industry?: string | null;
+  source_label?: string | null;
+}
+
+export interface LimitBoardResponse {
+  trade_date?: string | null;
+  snapshot_id?: number | null;
+  captured_at?: string | null;
+  data_status: 'fresh' | 'stale' | 'empty' | string;
+  source_label: string;
+  counts: { up: number; down: number };
+  up: LimitBoardStock[];
+  down: LimitBoardStock[];
   methodology: string;
 }
 
@@ -289,6 +346,31 @@ export interface MarketCalendarEvent {
   updated_at?: string | null;
 }
 
+export interface TradingCalendarTag {
+  kind: string;
+  label: string;
+  tone?: string | null;
+  detail?: string | null;
+}
+
+export interface TradingCalendarDay {
+  date: string;
+  is_open: boolean;
+  session: string;
+  weekday?: number;
+  tags: TradingCalendarTag[];
+}
+
+export interface TradingCalendarResponse {
+  start: string;
+  end: string;
+  days: TradingCalendarDay[];
+  source_label?: string | null;
+  sources?: string[];
+  errors?: string[];
+  updated_at?: string | null;
+}
+
 export interface CalendarRefreshResponse {
   written: number;
   error: string | null;
@@ -362,6 +444,10 @@ export interface MarketOverview {
     message?: string;
   };
   is_open: boolean;
+  session_phase?: 'pre_open' | 'auction' | 'open' | 'lunch' | 'closed' | 'weekend' | string;
+  session_label?: string;
+  session_detail?: string;
+  session_local_time?: string;
   last_update?: string;
   response_generated_at?: string;
   updated_at?: string;

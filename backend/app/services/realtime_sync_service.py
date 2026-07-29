@@ -341,8 +341,55 @@ class RealtimeSyncService:
                 logger.warning(f"获取连续下跌数据失败: {e}")
             
             if indices_data:
+                # Dashboard still keys some chips as LIMIT_UP / LIMIT_DOWN / BREADTH.
+                by_code = {str(item.get("code")): item for item in indices_data}
+                if "ZT" in by_code and "LIMIT_UP" not in by_code:
+                    zt = by_code["ZT"]
+                    indices_data.append({
+                        "code": "LIMIT_UP",
+                        "name": "涨停家数",
+                        "price": zt.get("price"),
+                        "change_amount": 0,
+                        "change_percent": 0,
+                    })
+                if "DT" in by_code and "LIMIT_DOWN" not in by_code:
+                    dt = by_code["DT"]
+                    indices_data.append({
+                        "code": "LIMIT_DOWN",
+                        "name": "跌停家数",
+                        "price": dt.get("price"),
+                        "change_amount": 0,
+                        "change_percent": 0,
+                    })
+                if "BREADTH" not in by_code:
+                    rise = by_code.get("UP") or by_code.get("RISE")
+                    fall = by_code.get("DOWN") or by_code.get("FALL")
+                    # Prefer 涨跌比 if already computed under another code.
+                    ratio_item = by_code.get("ZDB") or by_code.get("RED_RATIO")
+                    if ratio_item is not None:
+                        indices_data.append({
+                            "code": "BREADTH",
+                            "name": "涨跌比",
+                            "price": ratio_item.get("price"),
+                            "change_amount": 0,
+                            "change_percent": 0,
+                        })
+                    elif rise and fall:
+                        try:
+                            r = float(rise.get("price") or 0)
+                            f = float(fall.get("price") or 0)
+                            breadth = (r / f) if f > 0 else (r if r > 0 else 0.0)
+                        except (TypeError, ValueError):
+                            breadth = 0.0
+                        indices_data.append({
+                            "code": "BREADTH",
+                            "name": "涨跌比",
+                            "price": breadth,
+                            "change_amount": 0,
+                            "change_percent": 0,
+                        })
                 db.update_short_line_indices_realtime(indices_data)
-                logger.debug(f"已同步{len(indices_data)}个短线指标")
+                logger.info("已同步%d个短线指标", len(indices_data))
                 
         except Exception as e:
             logger.error(f"同步短线指标失败: {e}")
@@ -384,33 +431,58 @@ class RealtimeSyncService:
             logger.error(f"同步股票实时数据失败: {e}")
     
     def _sync_hot_concepts(self):
-        """同步热门概念板块数据"""
+        """同步热门概念板块数据（涨跌 + 资金流向）。"""
         try:
-            df = ak.stock_board_concept_name_em()
-            if df is None or df.empty:
+            # Prefer dedicated concept fund-flow feed; board name list no longer carries 流入/流出.
+            flow_df = None
+            try:
+                flow_df = ak.stock_fund_flow_concept()
+            except Exception as exc:
+                logger.warning("stock_fund_flow_concept unavailable: %s", exc)
+
+            board_df = None
+            try:
+                board_df = ak.stock_board_concept_name_em()
+            except Exception as exc:
+                logger.warning("stock_board_concept_name_em unavailable: %s", exc)
+
+            concepts: List[Dict] = []
+            if flow_df is not None and not flow_df.empty:
+                for idx, row in flow_df.iterrows():
+                    name = str(row.get("行业") or row.get("名称") or "").strip()
+                    if not name:
+                        continue
+                    concepts.append({
+                        "rank": int(row.get("序号") or idx + 1),
+                        "name": name,
+                        "change_percent": float(row.get("行业-涨跌幅") or row.get("涨跌幅") or 0)
+                        if pd.notna(row.get("行业-涨跌幅", row.get("涨跌幅")))
+                        else 0.0,
+                        # AkShare concept fund-flow amounts are already in 亿元.
+                        "inflow": float(row.get("流入资金") or 0) if pd.notna(row.get("流入资金")) else 0.0,
+                        "outflow": float(row.get("流出资金") or 0) if pd.notna(row.get("流出资金")) else 0.0,
+                        "net_inflow": float(row.get("净额") or 0) if pd.notna(row.get("净额")) else 0.0,
+                    })
+            elif board_df is not None and not board_df.empty:
+                for idx, row in board_df.iterrows():
+                    concepts.append({
+                        "rank": idx + 1,
+                        "name": str(row.get("板块名称", "")).strip(),
+                        "change_percent": float(row.get("涨跌幅", 0)) if pd.notna(row.get("涨跌幅")) else 0.0,
+                        "inflow": 0.0,
+                        "outflow": 0.0,
+                        "net_inflow": 0.0,
+                    })
+            else:
                 return
-            
-            concepts = []
-            for idx, row in df.iterrows():
-                concepts.append({
-                    'rank': idx + 1,
-                    'name': str(row.get('板块名称', '')).strip(),
-                    'change_percent': float(row.get('涨跌幅', 0)) if pd.notna(row.get('涨跌幅')) else 0,
-                    'inflow': float(row.get('流入资金', 0)) if pd.notna(row.get('流入资金')) else 0,
-                    'outflow': float(row.get('流出资金', 0)) if pd.notna(row.get('流出资金')) else 0,
-                    'net_inflow': float(row.get('净额', 0)) if pd.notna(row.get('净额')) else 0,
-                })
-            
+
             if concepts:
                 db.update_hot_concepts_realtime(concepts)
-                # 同时写入历史表
-                today = datetime.now().strftime('%Y-%m-%d')
+                today = datetime.now().strftime("%Y-%m-%d")
                 db.insert_hot_concepts_history(today, concepts)
-                logger.debug(f"已同步{len(concepts)}个热门概念")
-                
-                # 同步前 30 个热门概念的龙头股（首页 TOP30 点选需要）
+                logger.info("已同步%d个热门概念（含资金流）", len(concepts))
                 self._sync_concept_leaders(concepts[:30])
-                
+
         except Exception as e:
             logger.error(f"同步热门概念失败: {e}")
     

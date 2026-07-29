@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities } from '../types';
+import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -475,8 +475,13 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
+    // Only drop the session on explicit auth rejection. Network blips / 5xx during
+    // local uvicorn --reload must not force a login loop.
     if (error.response?.status === 401) {
-      clearAdminToken();
+      const url = String(error.config?.url || '');
+      if (!url.includes('/auth/admin/login') && !url.includes('/auth/guest/login')) {
+        clearAdminToken();
+      }
     }
 
     const config = error.config as RetryableRequestConfig | undefined;
@@ -589,16 +594,23 @@ export const getShortLineIndices = async (): Promise<ShortLineIndex[]> => {
 
 export const getDailyChart = async (symbol: string): Promise<DailyChartData[]> => {
   const response = await apiClient.get<DailyChartData[]>(`/charts/daily/${symbol}`);
-  return response.data;
+  return Array.isArray(response.data) ? response.data : [];
 };
 
 export const getIntradayChart = async (symbol: string): Promise<IntradayChartData[]> => {
-  const response = await apiClient.get<IntradayChartData[]>(`/charts/intraday/${symbol}`);
-  return response.data;
+  const response = await apiClient.get<{ data?: IntradayChartData[] } | IntradayChartData[]>(`/charts/intraday/${symbol}`);
+  const payload = response.data;
+  if (Array.isArray(payload)) return payload;
+  return Array.isArray(payload?.data) ? payload.data : [];
 };
 
 export const getStockFundamentals = async (symbol: string): Promise<StockFundamentals> => {
   const response = await apiClient.get<StockFundamentals>(`/market/fundamentals/${symbol}`);
+  return response.data;
+};
+
+export const getOrderBook = async (symbol: string): Promise<OrderBookSnapshot> => {
+  const response = await apiClient.get<OrderBookSnapshot>(`/market/order-book/${encodeURIComponent(symbol)}`);
   return response.data;
 };
 
@@ -612,8 +624,10 @@ export const triggerHistoryFetch = async (): Promise<{ message: string }> => {
   return response.data;
 };
 
-export const searchStocks = async (params: { q: string; limit?: number }): Promise<StockCandidate[]> => {
-  const response = await apiClient.get<StockCandidate[]>('/stocks/search', { params });
+export const searchStocks = async (params: { q?: string; limit?: number } = {}): Promise<StockCandidate[]> => {
+  const response = await apiClient.get<StockCandidate[]>('/stocks/search', {
+    params: { q: params.q ?? '', limit: params.limit ?? 80 },
+  });
   return response.data;
 };
 
@@ -624,6 +638,13 @@ export const getHotConcepts = async (limit = 50, date?: string): Promise<HotConc
 
 export const getSectorFundFlow = async (limit = 30): Promise<SectorFundFlowResponse> => {
   const response = await apiClient.get<SectorFundFlowResponse>('/market/sector-fund-flow', { params: { limit } });
+  return response.data;
+};
+
+export const getLimitBoard = async (tradeDate?: string): Promise<LimitBoardResponse> => {
+  const response = await apiClient.get<LimitBoardResponse>('/market/limit-board', {
+    params: tradeDate ? { trade_date: tradeDate } : undefined,
+  });
   return response.data;
 };
 
@@ -674,6 +695,11 @@ export const syncNewsStream = async (): Promise<{status: string; count: number}>
 
 export const getMarketCalendar = async (params?: { start?: string; end?: string; limit?: number }): Promise<MarketCalendarEvent[]> => {
   const response = await apiClient.get<MarketCalendarEvent[]>('/market/calendar', { params });
+  return response.data;
+};
+
+export const getTradingCalendar = async (params?: { start?: string; end?: string }): Promise<TradingCalendarResponse> => {
+  const response = await apiClient.get<TradingCalendarResponse>('/market/trading-calendar', { params });
   return response.data;
 };
 

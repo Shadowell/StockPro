@@ -34,14 +34,20 @@ function buildSankeyOption(flow: SectorFundFlowResponse | null) {
   const inflows = flow.inflows.slice(0, 12);
   if (!outflows.length && !inflows.length) return null;
 
+  const amountByNode = new Map<string, number>();
+  outflows.forEach((item) => amountByNode.set(`出·${item.name}`, item.net_inflow_yi));
+  inflows.forEach((item) => amountByNode.set(`入·${item.name}`, item.net_inflow_yi));
+
   const nodes = [
     ...outflows.map((item) => ({
       name: `出·${item.name}`,
+      value: Math.abs(item.net_inflow_yi),
       itemStyle: { color: '#00C853' },
       label: { color: '#86efac' },
     })),
     ...inflows.map((item) => ({
       name: `入·${item.name}`,
+      value: Math.abs(item.net_inflow_yi),
       itemStyle: { color: '#FF1744' },
       label: { color: '#fca5a5' },
     })),
@@ -63,6 +69,16 @@ function buildSankeyOption(flow: SectorFundFlowResponse | null) {
     });
   });
 
+  const nodeLabel = (name?: string) => {
+    const raw = String(name || '');
+    const sector = raw.replace(/^[出入]·/, '');
+    const amount = amountByNode.get(raw);
+    if (amount === undefined || amount === null || Number.isNaN(Number(amount))) return sector;
+    // Match reference board: outflow shows amount then name; inflow shows name then amount.
+    if (raw.startsWith('出·')) return `${formatYi(Math.abs(amount))} ${sector}`;
+    return `${sector} ${formatYi(Math.abs(amount))}`;
+  };
+
   return {
     backgroundColor: 'transparent',
     tooltip: {
@@ -72,9 +88,12 @@ function buildSankeyOption(flow: SectorFundFlowResponse | null) {
       textStyle: { color: '#e2e8f0', fontSize: 12 },
       formatter: (params: { dataType?: string; name?: string; value?: number; data?: { source?: string; target?: string; value?: number } }) => {
         if (params.dataType === 'edge' && params.data) {
-          return `${String(params.data.source || '').replace(/^出·/, '')} → ${String(params.data.target || '').replace(/^入·/, '')}<br/>分摊 ${params.data.value} 亿`;
+          return `${String(params.data.source || '').replace(/^出·/, '')} → ${String(params.data.target || '').replace(/^入·/, '')}<br/>分摊连线 ${params.data.value} 亿<br/><span style="color:#94a3b8">连线为按流入权重分摊，非真实板块迁移</span>`;
         }
-        return `${String(params.name || '').replace(/^[出入]·/, '')}<br/>${params.value ?? '--'} 亿`;
+        const raw = String(params.name || '');
+        const amount = amountByNode.get(raw);
+        const side = raw.startsWith('出·') ? '净流出' : '净流入';
+        return `${raw.replace(/^[出入]·/, '')}<br/>${side} ${formatYi(amount == null ? null : Math.abs(amount))}`;
       },
     },
     series: [
@@ -93,7 +112,7 @@ function buildSankeyOption(flow: SectorFundFlowResponse | null) {
         },
         label: {
           fontSize: 11,
-          formatter: (params: { name?: string }) => String(params.name || '').replace(/^[出入]·/, ''),
+          formatter: (params: { name?: string }) => nodeLabel(params.name),
         },
         data: nodes,
         links,

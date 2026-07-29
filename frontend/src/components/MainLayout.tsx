@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, LogOut, Settings, X } from 'lucide-react';
+import { LogOut, Settings, X } from 'lucide-react';
 import clsx from 'clsx';
 import {
   clearAdminToken,
@@ -14,6 +14,8 @@ import {
 import { Navigation } from './Navigation';
 import { GuestCodeManager } from './GuestCodeManager';
 import { McpAgentManager } from './McpAgentManager';
+import { MarketSessionBadge } from './MarketSessionBadge';
+import { StockProMark } from './StockProMark';
 
 interface MainLayoutProps {
   children?: ReactNode;
@@ -55,17 +57,6 @@ function ColorSchemeCard({
         <span style={{ color: down }}>跌</span>
       </div>
     </button>
-  );
-}
-
-function StockProMark() {
-  return (
-    <div
-      aria-label="StockPro"
-      className="flex h-11 w-11 items-center justify-center rounded-xl border border-blue-400/30 bg-blue-500/15"
-    >
-      <Activity className="h-5 w-5 text-blue-300" />
-    </div>
   );
 }
 
@@ -144,8 +135,11 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
       data-auth-role={authProfile?.role || 'unknown'}
     >
       <aside className="hidden w-16 shrink-0 flex-col overflow-hidden border-r border-crypto-border bg-crypto-card md:flex">
-        <div className="flex h-16 items-center justify-center border-b border-crypto-border">
-          <StockProMark />
+        <div className="flex h-16 flex-col items-center justify-center gap-1 border-b border-crypto-border py-1">
+          <StockProMark size="md" />
+        </div>
+        <div className="border-b border-crypto-border py-1.5">
+          <MarketSessionBadge compact />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto py-4">
           <Navigation />
@@ -193,7 +187,8 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
       >
         <div className="sticky top-0 z-30 border-b border-crypto-border bg-crypto-card/95 px-3 py-2 backdrop-blur md:hidden">
           <div className="flex items-center justify-between gap-3">
-            <StockProMark />
+            <StockProMark size="sm" />
+            <MarketSessionBadge className="shrink-0" />
             <div className="min-w-0 flex-1 overflow-x-auto">
               <Navigation orientation="horizontal" />
             </div>

@@ -10,7 +10,7 @@ export type WorkspaceTabItem<T extends string> = {
   testId?: string;
 };
 
-/** BitPro-dense L2 workspace tabs — shared by every primary page with subviews. */
+/** BitPro-dense L2 workspace tabs — capsule chips with filled active state. */
 export function WorkspaceTabs<T extends string>({
   items,
   value,
@@ -30,7 +30,7 @@ export function WorkspaceTabs<T extends string>({
       aria-label={ariaLabel}
       data-operator-workspace-tabs="true"
       className={clsx(
-        'mb-4 flex items-center gap-5 overflow-x-auto border-b border-crypto-border px-1',
+        'mb-4 flex items-center gap-1.5 overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card p-1.5',
         className,
       )}
     >
@@ -46,19 +46,19 @@ export function WorkspaceTabs<T extends string>({
             data-testid={item.testId}
             onClick={() => onChange(item.id)}
             className={clsx(
-              '-mb-px inline-flex h-10 shrink-0 items-center gap-2 border-b-2 px-0.5 text-sm font-medium transition-colors',
+              'inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3.5 text-sm font-semibold transition-colors',
               active
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-gray-500 hover:text-gray-300',
+                ? 'bg-blue-600 text-white shadow-sm shadow-blue-900/40'
+                : 'bg-crypto-bg/80 text-gray-400 hover:bg-slate-800 hover:text-gray-200',
             )}
           >
-            {Icon ? <Icon className={clsx('h-4 w-4', active ? 'text-blue-500' : 'text-gray-600')} /> : null}
+            {Icon ? <Icon className={clsx('h-4 w-4', active ? 'text-white' : 'text-gray-500')} /> : null}
             <span>{item.label}</span>
             {item.badge !== undefined ? (
               <span
                 className={clsx(
-                  'rounded-md px-1.5 py-0.5 text-[10px] tabular-nums',
-                  active ? 'bg-blue-500/15 text-blue-200' : 'bg-slate-800 text-slate-500',
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                  active ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-500',
                 )}
               >
                 {item.badge}
