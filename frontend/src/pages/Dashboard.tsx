@@ -5,7 +5,9 @@ import clsx from 'clsx';
 import { StatusBadge } from '@bitpro/ui';
 import { getMarketOverview, getShortLineIndices, getThsHot } from '../api/client';
 import { OperatorMetricCard, OperatorPageHeader, MetricValue } from '../components/OperatorShell';
+import { MarketSessionBadge } from '../components/MarketSessionBadge';
 import { SectorFundFlowPanel } from '../components/SectorFundFlowPanel';
+import { LimitBoardPanel } from '../components/LimitBoardPanel';
 import type { MarketOverview, MarketPulse, ThsHotItem } from '../types';
 import { evaluateFreshness, formatFreshnessTime, latestTimestamp } from '../utils/dataFreshness';
 import { marketMetricColor, marketToneClass, type MetricTone } from '../utils/marketColors';
@@ -50,10 +52,10 @@ const metricText = (value?: number | null, digits = 0) => (
 );
 
 const shortLineUnit = (unit?: string | null) => {
-  if (unit === 'stocks') return '家';
+  if (unit === 'stocks') return '';
   if (unit === 'boards') return '板';
   if (unit === 'percent') return '%';
-  if (unit === 'ratio') return '倍';
+  if (unit === 'ratio') return '';
   return '';
 };
 
@@ -428,7 +430,9 @@ function RealtimeMarketModule({
             <Zap className="h-4 w-4 text-yellow-400" />
             <div>
               <h2 className="text-base font-black text-white">涨停生态</h2>
-              <p className="mt-1 text-xs text-gray-500">TuShare/AkShare 涨跌停与封板证据 · 与上方广度指标去重</p>
+              <p className="mt-1 text-xs text-gray-500">
+                TuShare/AkShare 涨跌停计数 + 封存名单；点开个股看近 30 日 K 与当日分时
+              </p>
             </div>
           </div>
           <StatusBadge tone={shortLineFreshness.state === 'fresh' ? 'green' : 'amber'}>
@@ -463,6 +467,7 @@ function RealtimeMarketModule({
             </div>
           )}
         </div>
+        <LimitBoardPanel />
       </section>
 
       <SectorFundFlowPanel onViewAll={onViewAll} />
@@ -508,6 +513,7 @@ export function Dashboard() {
         icon={LayoutDashboard}
         title="市场大盘"
         subtitle="聚合 A 股指数、全市场广度诊断、涨停生态、板块资金流向与龙头；进入行情页查看完整市场证据。"
+        actions={<MarketSessionBadge prominent overview={overview} />}
       />
       <section className="min-h-[720px]">
         <RealtimeMarketModule

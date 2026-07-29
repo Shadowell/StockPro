@@ -441,7 +441,7 @@ export function Strategy() {
       )}
 
       {listTab === 'my' && listState === 'ready' && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {visibleStrategies.map((item) => {
             const active = selectedId === item.id;
             const tags = inferTags(item);
@@ -527,7 +527,7 @@ export function Strategy() {
       )}
 
       {listTab === 'plaza' && listState === 'ready' && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {referenceStrategies.map((strategy) => {
             const copy = productStrategyCopy(strategy);
             return (

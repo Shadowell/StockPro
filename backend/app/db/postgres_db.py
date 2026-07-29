@@ -155,18 +155,13 @@ class PostgresDatabase:
             return 0
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
+                cursor.execute("DELETE FROM short_line_indices_realtime")
                 psycopg2.extras.execute_values(
                     cursor,
                     """
                     INSERT INTO short_line_indices_realtime
                     (code, name, price, change_percent, change_amount)
                     VALUES %s
-                    ON CONFLICT (code) DO UPDATE SET
-                        name = EXCLUDED.name,
-                        price = EXCLUDED.price,
-                        change_percent = EXCLUDED.change_percent,
-                        change_amount = EXCLUDED.change_amount,
-                        updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
                 )
@@ -251,10 +246,12 @@ class PostgresDatabase:
 
     def update_hot_concepts_realtime(self, records: List[Dict]) -> int:
         values = []
+        seen = set()
         for idx, record in enumerate(records or [], start=1):
             name = str(record.get("name") or record.get("concept_name") or "").strip()
-            if not name:
+            if not name or name in seen:
                 continue
+            seen.add(name)
             values.append(
                 (
                     self._coerce_int(record.get("rank"), idx),
@@ -269,19 +266,14 @@ class PostgresDatabase:
             return 0
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
+                # Full replace so stale concept rows from prior feeds do not linger.
+                cursor.execute("DELETE FROM hot_concepts_realtime")
                 psycopg2.extras.execute_values(
                     cursor,
                     """
                     INSERT INTO hot_concepts_realtime
                     (rank, name, change_percent, inflow, outflow, net_inflow)
                     VALUES %s
-                    ON CONFLICT (name) DO UPDATE SET
-                        rank = EXCLUDED.rank,
-                        change_percent = EXCLUDED.change_percent,
-                        inflow = EXCLUDED.inflow,
-                        outflow = EXCLUDED.outflow,
-                        net_inflow = EXCLUDED.net_inflow,
-                        updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
                 )
@@ -289,11 +281,13 @@ class PostgresDatabase:
 
     def insert_hot_concepts_history(self, trade_date: str, records: List[Dict]) -> int:
         values = []
+        seen = set()
         date_text = self._normalize_date_text(trade_date)
         for idx, record in enumerate(records or [], start=1):
             name = str(record.get("name") or record.get("concept_name") or "").strip()
-            if not name:
+            if not name or name in seen:
                 continue
+            seen.add(name)
             values.append(
                 (
                     date_text,
@@ -513,6 +507,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    template="(%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)",
                 )
         return len(values)
 

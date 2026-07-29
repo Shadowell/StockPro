@@ -1,5 +1,112 @@
 # Progress Log
 
+## Market Page Refresh Loop + Stale Evidence (2026-07-29)
+
+1. Root cause of「总是刷新」: `RequireAdmin` treated any `/auth/me` failure
+   (including uvicorn `--reload` blips) as logout → login redirect loop.
+   Now only 401/403 clears the session; network/5xx retries optimistically.
+2. Sentiment/structure pages show sealed post-close evidence, not live quotes.
+   Latest was stuck at 2026-07-27; published 2026-07-28 evidence snapshot #12.
+   UI now shows「证据截止」badge + stale lag banner; date picker no longer
+   auto-locks to the sealed day (empty = 最新封存).
+
+## Trading Calendar Capsules (2026-07-29)
+
+1. Empty `market_calendar_events` left `/market?tab=calendar` blank; rebuilt as
+   live month grid from TuShare `trade_cal` + `fut_basic` + CNY `eco_cal`.
+2. New `GET /market/trading-calendar` tags each day: 开盘/休市、股指交割、
+   国债/商品交割、期权窗口、月末/季末、LPR 等重大事项（胶囊样式）。
+3. Builder upserts event cache so legacy `/market/calendar` is no longer empty.
+
+Verification: July 2026 API returns 股指交割 on 07-17, LPR on 07-20, 期权交割
+on 07-22; `npx tsc --noEmit` OK; services :4444/:4445 healthy.
+
+## Workstation Review + Intraday Fallback (2026-07-29)
+
+1. Full menu/module audit (12 L1 + L2): structure OK, freshness weak.
+2. P0: `ChartService.get_intraday_data` falls back to AkShare
+   `stock_zh_a_hist_min_em` when `kline_1m` empty (verified 121 bars).
+3. Sector fund-flow Sankey labels show 亿元 amounts.
+4. Review canvas: stockpro-workstation-review.canvas.tsx.
+
+Open: stale index/short-line/hot-concept caches; broken lianban dates;
+monitor critical; intraday pre_close mapping.
+
+## Realtime Order Book (2026-07-29)
+
+1. Probed TuShare: paid `rt_k` needs add-on (current token denied); Pro
+   `realtime_quote`/`quote_detail` stubs fail; package
+   `get_realtime_quotes` returns live L5 depth (Sina-backed).
+2. Added `GET /market/order-book/{symbol}` via TuShare quotes → East Money
+   AkShare fallback; volumes normalized to 手.
+3. 个股研究右侧挂「五档盘口」并 5s 轮询，保留全市场筛选列表；来源标签诚实展示。
+
+Verification: provider + API smoke on `SH_600519` (茅台五档 OK); `npx tsc --noEmit`
+OK; services :4444/:4445 healthy.
+
+## StockPro Mark + Dashboard Session Breath (2026-07-29)
+
+Designed StockPro brand mark as rounded dark shell + single sky pulse stroke
+(`StockProMark` + favicon). Homepage header uses prominent「开盘中」badge with
+dual-layer breathing light; sidebar/login reuse the same mark.
+
+Verification: `npx tsc --noEmit` OK; frontend restarted on :4444.
+
+## Backtest Evidence Table Typography (2026-07-29)
+
+Aligned backtest detail tables to BitPro role typography: Chinese metric labels
+with mono codes, primary values as bold tabular mono with semantic up/down,
+units as muted chips, versions/null reasons as low-contrast meta. Tab renamed
+`收益分析` → `绩效指标`. Verification: `npx tsc --noEmit` OK; frontend :4444 OK.
+
+## Market Stock Universe Browse (2026-07-29)
+
+1. `GET /stocks/search` empty `q` now returns成交额-sorted browse window from
+   `all_stocks_realtime` (limit up to 500); non-empty `q` filters full universe
+   by code/name.
+2. 个股研究 (`/market?tab=stock` A股模式) loads ~200-stock browse list, dropdown
+   search up to 120 hits, and right panel「全市场标的」with independent filter —
+   no longer stuck on a single selected symbol / concept leaders.
+
+## Market Terminal Theme Toggle (2026-07-29)
+
+Fixed `/market?tab=stock` 行情终端「A股 / 板块」switch: previously decorative
+with no state/`onClick`. Now toggles scope; 板块 mode selects hot concepts,
+loads concept intraday + 龙头 list, and can jump back to A-share daily for a
+leader.
+
+## Sentiment Tab Tonghuashun Layout (2026-07-29)
+
+1. Removed English unit suffixes (`stocks`/`percent`/`boards`/`ratio`) from
+   `/market?tab=sentiment` metric cards; only show `%` / `板` when needed.
+2. Rebuilt sentiment workspace to a Tonghuashun-like scan layout: compact KPI
+   strip → 连板天梯 (1–5+板 columns with name+code lists) → 涨停/跌停/炸板 pools
+   → 晋级/淘汰 queues.
+3. Dashboard short-line cards also stop appending English `stocks`.
+
+## Limit Board Charts On Homepage (2026-07-29)
+
+1. Backend `GET /market/limit-board` reads sealed `limit_pool_members`
+   (TuShare `limit_list_d`) for full 涨停/跌停名单；无成员时回退 ±9.8% 估计。
+2. Dashboard「涨停生态」下增加 `LimitBoardPanel`：涨停/跌停 Tab 全列表，
+   点开个股懒加载近 30 日 K + 当日分时（`StockMiniCharts`）。
+3. Fixed `getIntradayChart` to unwrap `{ data, pre_close, trade_date }`.
+
+Verification: `npx tsc --noEmit` OK; `GET /market/limit-board` returns
+up=111/down=6 for sealed 2026-07-27; e2e
+`limit-up and limit-down|realtime market cockpit` 2 passed; services on
+:4444/:4445 via screen.
+
+## Market Session Breathing Light (2026-07-29)
+
+1. Backend `MarketService.market_session()` returns A-share phase
+   (`pre_open` / `auction` / `open` / `lunch` / `closed` / `weekend`) in
+   Asia/Shanghai; `/market/overview` exposes `session_phase` + labels.
+2. Frontend `MarketSessionBadge` with CSS breathing light; wired into MainLayout
+   sidebar (global), Dashboard header, MarketOverview, SentimentAnalysis.
+3. Open = green breath; auction = amber fast; pre/lunch = slow; closed/weekend =
+   dim gray breath. Clock ticks every 15s; respects `prefers-reduced-motion`.
+
 ## Reference Factor Catalog ×100 (2026-07-29)
 
 1. Added `backend/app/services/reference_factor_catalog.py` with exactly 100

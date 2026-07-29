@@ -251,7 +251,7 @@ test('真实完整回测展示八类证据且收盘信号不会同日成交', as
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.goto(`/backtest/${runId}`, { waitUntil: 'networkidle' });
-  for (const tab of ['总览', '收益分析', '持仓', '交易', '订单', '日志', '代码与参数', '归因']) {
+  for (const tab of ['总览', '绩效指标', '持仓', '交易', '订单', '日志', '代码与参数', '归因']) {
     await expect(page.getByRole('tab', { name: tab })).toBeVisible();
   }
   await expect(page.getByText('可复现实验凭证')).toBeVisible();

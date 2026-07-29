@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
 import { COLOR_SCHEMES, useSettingsStore } from '@/stores/useSettingsStore';
 import { marketToneClass, metricToneClass, type MetricTone } from '@/utils/marketColors';
+import { MarketSessionBadge } from '@/components/MarketSessionBadge';
 
 // 短线指标类型
 interface ShortLineIndex {
@@ -267,13 +268,7 @@ export const SentimentAnalysisContent: React.FC = () => {
         {/* 顶部状态栏 */}
         <div className="flex items-center gap-4 text-gray-400">
           <Activity size={18} />
-          <span className="text-sm font-medium">
-            {marketOverview?.is_open ? (
-              <span className="text-green-400">● 交易中</span>
-            ) : (
-              <span className="text-red-400">● 已休市</span>
-            )}
-          </span>
+          <MarketSessionBadge overview={marketOverview} />
           {marketOverview?.last_update && (
             <span className="text-xs text-gray-500">
               更新于 {new Date(marketOverview.last_update).toLocaleTimeString()}

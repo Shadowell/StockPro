@@ -14,7 +14,7 @@ import tempfile
 import types
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -724,6 +724,169 @@ class TushareFirstDataProvider:
         }
         raw = str(symbol or "").strip().lower()
         return mapping.get(raw, self._to_ts_code(symbol))
+
+    @staticmethod
+    def _safe_float(value: Any) -> Optional[float]:
+        try:
+            num = float(value)
+        except (TypeError, ValueError):
+            return None
+        if pd.isna(num):
+            return None
+        return float(num)
+
+    def get_order_book(self, symbol: str) -> Dict[str, Any]:
+        """Fetch L5 bid/ask depth for one A-share.
+
+        TuShare Pro ``rt_k`` only exposes L1 and requires a paid add-on this
+        workspace may not have. Prefer the package's ``get_realtime_quotes``
+        (Sina-backed five-level snapshot), then East Money via AkShare.
+        """
+        plain = self._to_plain_code(symbol)
+        internal = self._from_ts_code(symbol) or self._from_ts_code(plain)
+        empty = {
+            "symbol": internal,
+            "code": plain,
+            "name": None,
+            "price": None,
+            "pre_close": None,
+            "bid": None,
+            "ask": None,
+            "change_percent": None,
+            "asks": [],
+            "bids": [],
+            "volume_unit": "手",
+            "trade_date": None,
+            "trade_time": None,
+            "source": None,
+            "source_label": None,
+            "data_status": "empty",
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "error": None,
+        }
+        if not plain:
+            empty["error"] = "invalid_symbol"
+            return empty
+
+        try:
+            book = self._order_book_from_tushare_quotes(plain, internal)
+            if book:
+                return book
+        except Exception as exc:  # pragma: no cover - network/provider path
+            logger.warning("TuShare order book failed for %s: %s", plain, exc)
+
+        try:
+            book = self._order_book_from_akshare(plain, internal)
+            if book:
+                return book
+        except Exception as exc:  # pragma: no cover - network/provider path
+            logger.warning("AkShare order book failed for %s: %s", plain, exc)
+            empty["error"] = f"{type(exc).__name__}: {exc}"
+
+        empty["error"] = empty.get("error") or "order_book_unavailable"
+        empty["source_label"] = "实时盘口不可用"
+        return empty
+
+    def _order_book_from_tushare_quotes(self, plain: str, internal: str) -> Optional[Dict[str, Any]]:
+        if self.tushare is None or not hasattr(self.tushare, "get_realtime_quotes"):
+            return None
+        frame = self.tushare.get_realtime_quotes([plain])
+        if not isinstance(frame, pd.DataFrame) or frame.empty:
+            return None
+        row = frame.iloc[0]
+        asks = []
+        bids = []
+        for level in range(5, 0, -1):
+            price = self._safe_float(row.get(f"a{level}_p"))
+            volume = self._safe_float(row.get(f"a{level}_v"))
+            asks.append({"level": level, "price": price, "volume": volume})
+        for level in range(1, 6):
+            price = self._safe_float(row.get(f"b{level}_p"))
+            volume = self._safe_float(row.get(f"b{level}_v"))
+            bids.append({"level": level, "price": price, "volume": volume})
+        price = self._safe_float(row.get("price"))
+        pre_close = self._safe_float(row.get("pre_close"))
+        change_percent = None
+        if price is not None and pre_close not in (None, 0):
+            change_percent = round((price / pre_close - 1.0) * 100.0, 2)
+        return {
+            "symbol": internal,
+            "code": plain,
+            "name": str(row.get("name") or "").strip() or None,
+            "price": price,
+            "pre_close": pre_close,
+            "bid": self._safe_float(row.get("bid")),
+            "ask": self._safe_float(row.get("ask")),
+            "change_percent": change_percent,
+            "asks": asks,
+            "bids": bids,
+            "volume_unit": "手",
+            "trade_date": str(row.get("date") or "").strip() or None,
+            "trade_time": str(row.get("time") or "").strip() or None,
+            "source": "tushare_realtime_quotes",
+            "source_label": "TuShare 五档快照（新浪源）",
+            "data_status": "fresh",
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "error": None,
+        }
+
+    def _order_book_from_akshare(self, plain: str, internal: str) -> Optional[Dict[str, Any]]:
+        if self.akshare is None:
+            return None
+        frame = self._akshare_attr("stock_bid_ask_em")(symbol=plain)
+        if not isinstance(frame, pd.DataFrame) or frame.empty:
+            return None
+        mapping = {
+            str(row.get("item") or "").strip(): self._safe_float(row.get("value"))
+            for _, row in frame.iterrows()
+        }
+
+        def lot(value: Optional[float]) -> Optional[float]:
+            if value is None:
+                return None
+            # East Money bid/ask volumes are in shares; normalize to 手.
+            return round(value / 100.0, 2)
+
+        asks = []
+        bids = []
+        for level in range(5, 0, -1):
+            asks.append(
+                {
+                    "level": level,
+                    "price": mapping.get(f"sell_{level}"),
+                    "volume": lot(mapping.get(f"sell_{level}_vol")),
+                }
+            )
+        for level in range(1, 6):
+            bids.append(
+                {
+                    "level": level,
+                    "price": mapping.get(f"buy_{level}"),
+                    "volume": lot(mapping.get(f"buy_{level}_vol")),
+                }
+            )
+        if not any(level.get("price") is not None for level in asks + bids):
+            return None
+        return {
+            "symbol": internal,
+            "code": plain,
+            "name": None,
+            "price": mapping.get("最新") or mapping.get("price"),
+            "pre_close": mapping.get("昨收") or mapping.get("pre_close"),
+            "bid": mapping.get("buy_1"),
+            "ask": mapping.get("sell_1"),
+            "change_percent": mapping.get("涨跌幅"),
+            "asks": asks,
+            "bids": bids,
+            "volume_unit": "手",
+            "trade_date": None,
+            "trade_time": None,
+            "source": "eastmoney_bid_ask",
+            "source_label": "东财五档快照（AkShare）",
+            "data_status": "fresh",
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "error": None,
+        }
 
 
 market_data_provider = TushareFirstDataProvider()

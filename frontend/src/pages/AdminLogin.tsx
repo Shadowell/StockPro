@@ -1,8 +1,9 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { AlertCircle, KeyRound, Loader2, LogIn, ShieldCheck, Ticket, User } from 'lucide-react';
+import { AlertCircle, KeyRound, Loader2, LogIn, Ticket, User } from 'lucide-react';
 import { adminLogin, clearAdminToken, getAuthProfile, guestLogin, hasAdminToken } from '../api/client';
 import { SegmentedControl } from '../components/OperatorShell';
+import { StockProMark } from '../components/StockProMark';
 import { useStore } from '../stores/useStore';
 
 const getRedirectTarget = (search: string): string => {
@@ -109,11 +110,9 @@ export const AdminLogin: React.FC = () => {
       <section className="relative w-full max-w-md rounded-[12px] border border-crypto-border bg-crypto-card shadow-2xl shadow-black/30">
         <div className="border-b border-crypto-border px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="rounded-[9px] bg-blue-600 p-2 text-white shadow-[0_10px_28px_rgba(37,99,235,0.32)]">
-              <ShieldCheck size={22} />
-            </div>
+            <StockProMark size="lg" />
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-blue-300">{copy.subtitle}</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-sky-300">{copy.subtitle}</p>
               <h1 className="mt-1 text-2xl font-black text-white">StockPro <span className="text-slate-400">AI</span></h1>
               <p className="mt-1 text-xs font-semibold text-slate-500">{copy.title}</p>
             </div>

@@ -101,6 +101,15 @@ async def get_sector_fund_flow(
     return await loop.run_in_executor(None, lambda: MarketService.get_sector_fund_flow(limit))
 
 
+@router.get("/limit-board")
+async def get_limit_board(
+    trade_date: str | None = Query(None, description="YYYY-MM-DD；默认取最新封存快照"),
+) -> Dict[str, Any]:
+    """Homepage limit-up / limit-down member list for K-line + intraday drill-down."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.get_limit_board(trade_date))
+
+
 @router.get("/ths-hot")
 async def get_ths_hot(
     limit: int = Query(100, ge=1, le=200),
@@ -154,6 +163,13 @@ async def get_stock_fundamentals(symbol: str) -> Dict[str, Any]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: MarketService.get_stock_fundamentals(symbol, cache_only=True))
 
+
+@router.get("/order-book/{symbol}")
+async def get_order_book(symbol: str) -> Dict[str, Any]:
+    """Live five-level bid/ask for one symbol (TuShare quotes → East Money fallback)."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.get_order_book(symbol))
+
 @router.get("/message-stream")
 async def get_message_stream(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
     loop = asyncio.get_running_loop()
@@ -174,6 +190,16 @@ async def get_market_calendar(
 ) -> List[Dict[str, Any]]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: MarketService.get_market_calendar_events(start=start, end=end, limit=limit))
+
+
+@router.get("/trading-calendar")
+async def get_trading_calendar(
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+) -> Dict[str, Any]:
+    """Month grid: open/closed sessions, futures delivery and macro tags per day."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.get_trading_calendar(start=start, end=end))
 
 @router.post("/calendar/refresh")
 async def refresh_market_calendar(months: int = Query(6, ge=1, le=24)) -> Dict[str, Any]:

@@ -19,6 +19,7 @@ import { useStore } from '../stores/useStore';
 import { getTranslation, TranslationKey } from '../lib/i18n';
 import { COLOR_SCHEMES, useSettingsStore } from '../stores/useSettingsStore';
 import { marketToneClass } from '../utils/marketColors';
+import { MarketSessionBadge } from '../components/MarketSessionBadge';
 
 // Filter options for concept list
 type ConceptFilterOption = 'all' | '1' | '2' | '3' | '5' | '8';
@@ -493,15 +494,7 @@ export const MarketOverviewContent: React.FC<MarketOverviewContentProps> = ({ em
                   {marketSnapshotLoading ? '指数同步中...' : '暂无指数快照'}
                 </div>
               )}
-              <span className={clsx(
-                'inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-black',
-                marketSnapshot?.is_open
-                  ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
-                  : 'border-crypto-border bg-gray-800/70 text-gray-400',
-              )}>
-                <span className={clsx('h-2 w-2 rounded-full', marketSnapshot?.is_open ? 'bg-emerald-400' : 'bg-gray-500')} />
-                {marketSnapshot?.is_open ? '开市中' : '休市'}
-              </span>
+              <MarketSessionBadge overview={marketSnapshot} />
               <button
                 type="button"
                 onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}

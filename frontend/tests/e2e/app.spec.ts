@@ -238,6 +238,25 @@ async function mockApi(page: Page) {
       }));
     }
 
+    if (method === 'GET' && path === '/market/limit-board') {
+      return route.fulfill(json({
+        trade_date: '2025-01-02',
+        snapshot_id: 1,
+        captured_at: now,
+        data_status: 'fresh',
+        source_label: 'market_evidence limit_pool_members',
+        counts: { up: 2, down: 1 },
+        up: [
+          { symbol: '000017.SZ', code: '000017', name: '深中华A', pool_kind: 'up', price: 3.45, change_percent: 10.02, limit_times: 2, industry: '商业百货' },
+          { symbol: '600000.SH', code: '600000', name: '浦发银行', pool_kind: 'up', price: 10.2, change_percent: 9.99, limit_times: 1, industry: '银行' },
+        ],
+        down: [
+          { symbol: '000001.SZ', code: '000001', name: '平安银行', pool_kind: 'down', price: 8.1, change_percent: -10.01, limit_times: 1, industry: '银行' },
+        ],
+        methodology: '优先读取封存市场证据 limit_pool_members。',
+      }));
+    }
+
     if (method === 'GET' && path === '/market/ths-hot') {
       return route.fulfill(json([
         { rank: 1, code: '600000', name: '浦发银行', hot: 10, change_percent: 1.2, price: 10, reason: '银行板块活跃', tags: '金融' },
@@ -813,7 +832,7 @@ test('backtest result exposes six core cards and eight evidence tabs', async ({ 
   for (const label of ['策略收益', '年化收益', '基准收益', '超额收益', '最大回撤', '夏普比率']) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
-  for (const tab of ['总览', '收益分析', '持仓', '交易', '订单', '日志', '代码与参数', '归因']) {
+  for (const tab of ['总览', '绩效指标', '持仓', '交易', '订单', '日志', '代码与参数', '归因']) {
     await expect(page.getByRole('tab', { name: tab })).toBeVisible();
   }
   await page.getByRole('tab', { name: '代码与参数' }).click();
@@ -937,10 +956,38 @@ test('dashboard shows the realtime market cockpit by default', async ({ page }) 
   await expect(page.getByText('市场情绪', { exact: true }).last()).toBeVisible();
   await expect(page.getByText('成交额', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '涨停生态', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '涨跌停个股列表', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '板块资金流向', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '热门板块 TOP30', exact: true })).toBeVisible();
   await expect(page.getByText('查看全部')).toBeVisible();
 });
+
+test('dashboard shows limit-up and limit-down stock board with expandable charts', async ({ page }) => {
+  await page.route('**/api/charts/daily/**', (route) => route.fulfill(json([
+    { date: '2025-01-01', open: 9.7, high: 10.1, low: 9.6, close: 9.9, volume: 900000 },
+    { date: '2025-01-02', open: 9.9, high: 10.3, low: 9.8, close: 10.1, volume: 1000000 },
+  ])));
+  await page.route('**/api/charts/intraday/**', (route) => route.fulfill(json({
+    data: [
+      { time: '2025-01-02 09:31:00', price: 10.0, volume: 1000, pre_close: 9.9, trade_date: '2025-01-02' },
+      { time: '2025-01-02 09:32:00', price: 10.1, volume: 1200 },
+    ],
+    pre_close: 9.9,
+    trade_date: '2025-01-02',
+  })));
+  await loginAsAdmin(page);
+  await page.goto('/');
+
+  const board = page.getByTestId('limit-board');
+  await expect(board.getByRole('heading', { name: '涨跌停个股列表' })).toBeVisible();
+  await expect(board.getByRole('button', { name: /涨停 2/ })).toBeVisible();
+  await expect(board.getByText('深中华A')).toBeVisible();
+  await board.getByRole('button', { name: /深中华A/ }).click();
+  await expect(board.getByText(/近 30 日 K|读取日 K|无日 K/)).toBeVisible();
+  await board.getByRole('button', { name: /跌停 1/ }).click();
+  await expect(board.getByText('平安银行')).toBeVisible();
+});
+
 
 test('dashboard shows sector fund-flow top30 list and loads leaders on click', async ({ page }) => {
   await page.route('**/api/market/sector-fund-flow**', (route) => route.fulfill(json({

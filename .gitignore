@@ -81,3 +81,4 @@ frontend/test-results/
 .data-runtime-config.json
 .playwright-cli/
 output/
+.gstack/
