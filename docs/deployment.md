@@ -19,13 +19,6 @@
 - Node.js 18+、npm 9+
 - Docker Desktop / Docker Compose
 - 可选 `tmux`
-- 同级 BitPro 仓库，用于 `frontend/package.json` 中的本地 `@bitpro/ui` 依赖
-
-```text
-Private/
-├── BitPro/
-└── StockPro/
-```
 
 ## 3. 首次安装
 
@@ -161,14 +154,6 @@ curl -fsS http://127.0.0.1:4445/api/health/storage
 ```
 
 确认 `backend/.env` 的 `DATABASE_URL` 与 `docker-compose.yml` 一致。
-
-### 前端依赖找不到 `@bitpro/ui`
-
-确认 BitPro 与 StockPro 为同级目录，然后重新执行：
-
-```bash
-npm --prefix frontend install
-```
 
 ### 登录失败
 

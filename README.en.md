@@ -39,7 +39,7 @@ StockPro is designed to preserve evidence: every research result should identify
 
 ## Local quick start
 
-Requirements: Python 3.11+, Node.js 18+, npm 9+, Docker Compose, and a sibling BitPro checkout for the local `@bitpro/ui` dependency.
+Requirements: Python 3.11+, Node.js 18+, npm 9+, and Docker Compose.
 
 ```bash
 cp backend/.env.example backend/.env

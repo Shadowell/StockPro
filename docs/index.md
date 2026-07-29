@@ -30,7 +30,6 @@
 - [本地运行手册](deployment.md)
 - [前端开发说明](../frontend/README.md)
 - [脚本使用说明](../SCRIPTS_USAGE.md)
-- [MCP 长运行应用参考](references/harness-design-long-running-apps.md)
 
 ## QA 与历史材料
 
@@ -40,12 +39,4 @@
 - [历史计划](superpowers/plans/)：已执行或被替代的实施计划。
 - 根目录的 Electron、优化总结、AKShare 接口笔记属于早期历史或 Provider 研究材料，不是当前产品合同。
 
-## 文档维护约定
-
-1. 产品边界或工作流变化：更新 `spec.md` 和对应合同。
-2. 对用户可见的功能、安装或入口变化：更新根 README 和相关使用手册。
-3. API 域或鉴权变化：更新 `api.md`，字段细节保持 OpenAPI 可发现。
-4. 有意义的实现或文档整理：在 `progress.md` 追加简洁条目和实际验证命令。
-5. 不把会话计划、调试日志或阶段性思考新建成 Markdown；历史材料必须明确其时间和状态。
-
-最后更新：2026-07-29。
+最后更新：2026-07-30。

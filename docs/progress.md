@@ -1695,3 +1695,9 @@ Verification:
 - Replaced stale StockApp routes, automatic-startup writes, Electron-first architecture and simulated/live-trading claims. Updated frontend, strategy and script usage guides; marked early Electron, optimization, Provider and test notes as historical/reference material.
 - Documentation-only change: no frontend/backend source changed, no service restart and no remote deployment were required.
 - Verification passed: `git diff --check`; local Markdown link audit checked 61 files with no missing local targets.
+
+## Public documentation boundary cleanup (2026-07-30)
+
+- Removed the private `Private/BitPro/StockPro` directory example, sibling-repository instructions and comparison-project implementation notes from the public README, English README, local operations guide, frontend guide, product specification and architecture overview.
+- Removed Codex-oriented maintenance/reference links from the reader-facing documentation index. Internal delivery rules and historical audit records remain in their dedicated project files rather than appearing as product setup guidance.
+- Documentation-only change: no application source changed, no service restart and no remote deployment were required. Verification passed: `git diff --check`; reader-facing Markdown scan found no remaining absolute user paths, private directory examples or internal tool instructions.
