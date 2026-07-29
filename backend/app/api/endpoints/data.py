@@ -1687,13 +1687,24 @@ async def heal_missing_data(request: HealDataRequest = Body(...)):
     Checks for gaps in daily bars, short-line metrics, and hot concepts,
     then automatically triggers asynchronous sync tasks from TuShare / AkShare.
     """
+    from datetime import timedelta
+
+    end_date = datetime.now().strftime("%Y%m%d")
+    start_date = (datetime.now() - timedelta(days=request.days)).strftime("%Y%m%d")
     job_name = f"heal-missing-data-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    created_job = kline_sync_service.create_market_daily_sync_job(
-        job_name=job_name,
-        history_days=request.days,
-        include_signals=request.heal_market_evidence,
-        force=True,
-    )
+
+    try:
+        created_job = kline_sync_service.create_market_daily_sync_job(
+            start_date=start_date,
+            end_date=end_date,
+            job_name=job_name,
+        )
+        job_id = created_job.get("job_id") or created_job.get("jobId")
+        job_msg = f"已成功启动数据自愈任务 #{job_id}，正在为您自动补全近 {request.days} 天的数据缺口！"
+    except (ValueError, RuntimeError) as exc:
+        # No trade dates in range or DB doesn't support — fall back to concept/index refresh only
+        job_id = None
+        job_msg = f"K 线同步跳过（{exc}），仅刷新概念与短线指标。"
 
     # 触发实时刷新兜底
     refreshed_concepts = _refresh_hot_concepts()
@@ -1701,8 +1712,8 @@ async def heal_missing_data(request: HealDataRequest = Body(...)):
 
     return {
         "status": "success",
-        "message": f"已成功启动数据自愈任务 #{created_job['id']}，正在为您自动补全近 {request.days} 天的数据缺口！",
-        "job_id": created_job["id"],
+        "message": job_msg,
+        "job_id": job_id,
         "refreshed_concepts": refreshed_concepts,
         "refreshed_indices": refreshed_indices,
     }
