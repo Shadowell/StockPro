@@ -72,3 +72,9 @@ See [docs/index.md](docs/index.md) for the maintained documentation set and [doc
 ## Safety
 
 StockPro is a research and simulation tool, not investment advice. Keep `.env`, API keys, databases, backups, logs, and broker credentials out of Git. AI output and simulated fills require independent review.
+
+## License
+
+StockPro source code is licensed under the [MIT License](LICENSE).
+
+The MIT License applies only to source code and documentation that this repository is authorized to license. Market data, AI services, third-party APIs, dependencies, and their outputs remain subject to their respective licenses, terms, data permissions, rate limits, and redistribution rules.

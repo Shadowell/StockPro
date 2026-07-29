@@ -1701,3 +1701,9 @@ Verification:
 - Removed the private `Private/BitPro/StockPro` directory example, sibling-repository instructions and comparison-project implementation notes from the public README, English README, local operations guide, frontend guide, product specification and architecture overview.
 - Removed Codex-oriented maintenance/reference links from the reader-facing documentation index. Internal delivery rules and historical audit records remain in their dedicated project files rather than appearing as product setup guidance.
 - Documentation-only change: no application source changed, no service restart and no remote deployment were required. Verification passed: `git diff --check`; reader-facing Markdown scan found no remaining absolute user paths, private directory examples or internal tool instructions.
+
+## MIT license declaration (2026-07-30)
+
+- Added the repository-level standard MIT license with copyright holder `shadowell`, and linked it from the Chinese README, English README and documentation index.
+- Clarified that the MIT grant covers repository-owned source code and documentation, while market data, AI services, third-party APIs, dependencies and their outputs retain their own licenses and service/data restrictions.
+- Documentation/legal-metadata-only change: no application source changed, no service restart and no remote deployment were required. Verification passed: `git diff --check` and local documentation link validation.
