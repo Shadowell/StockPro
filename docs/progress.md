@@ -1,5 +1,17 @@
 # Progress Log
 
+## Tremor UI Style Integration (2026-07-29)
+
+1. Introduced GitHub high-star Tremor UI Design System visual components for analytics and dashboards into StockPro.
+2. Built `TremorShowcasePanel` component (`frontend/src/components/TremorShowcasePanel.tsx`) implementing:
+   - Tremor KPI Metric Cards with `TremorDeltaBadge`
+   - Tremor Tracker (30-day health status stream bar with tooltips)
+   - Tremor BarList (high-density sector money flow ranking bars)
+   - Tremor Callout boxes
+3. Integrated `TremorShowcasePanel` into `/` (Dashboard page). Fixed `@bitpro/ui` type declarations in `vite-env.d.ts`.
+
+Verification: `npx tsc -b --noEmit` clean; frontend & backend restarted on :4444 and :4445; backend health OK.
+
 ## Market Page Refresh Loop + Stale Evidence (2026-07-29)
 
 1. Root cause of「总是刷新」: `RequireAdmin` treated any `/auth/me` failure
