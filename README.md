@@ -91,14 +91,14 @@ Paper 模拟执行
 
 | 层 | 技术 | 本地地址 |
 | --- | --- | --- |
-| 前端 | React 18、TypeScript、Vite、Tailwind CSS、ECharts、`@bitpro/ui` | `http://localhost:4444` |
+| 前端 | React 18、TypeScript、Vite、Tailwind CSS、ECharts | `http://localhost:4444` |
 | 后端 | FastAPI、Pydantic、SQLAlchemy、APScheduler、Backtrader | `http://localhost:4445` |
 | 数据库 | PostgreSQL 16 | `127.0.0.1:55432` |
 | 数据源 | TuShare 优先，AKShare 显式补充 | 由数据中心管理 |
 | AI | 通义千问 / DashScope，可选 | 由 `QWEN_API_KEY` 启用 |
 | Agent | 本地 stdio MCP，协议 `stockpro-mcp-v1` | 不提供公网传输 |
 
-前端采用紧凑的金融操作台风格：固定一级菜单、页面内二级标签、统一状态语义、中文优先、可切换“红涨绿跌 / 绿涨红跌”。StockPro 复用 `@bitpro/ui` 基础组件和主题令牌，但不复制 BitPro 的业务页面代码。
+前端采用紧凑的金融操作台风格：固定一级菜单、页面内二级标签、统一状态语义、中文优先，并支持切换“红涨绿跌 / 绿涨红跌”。
 
 ## 快速开始
 
@@ -109,15 +109,6 @@ Paper 模拟执行
 - Node.js 18+ 与 npm 9+
 - Docker Desktop 或可用的 Docker Compose
 - 可选：`tmux`，用于让一键启动的前后端服务稳定驻留
-- 本机需要可访问同级 BitPro 仓库，因为前端通过本地依赖引用 `@bitpro/ui`
-
-推荐目录结构：
-
-```text
-Private/
-├── BitPro/
-└── StockPro/
-```
 
 ### 首次初始化
 
