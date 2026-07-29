@@ -214,7 +214,11 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           </div>
         )}
 
-        <div key={location.pathname} className="animate-fade-in-up flex-1 h-full min-h-0">
+        <div
+          key={location.pathname}
+          className="stockpro-page-viewport animate-fade-in-up min-h-full min-w-0 flex-1"
+          data-tremor-workspace="true"
+        >
           <Suspense fallback={<PageFallback />}>{children || <Outlet />}</Suspense>
         </div>
       </main>

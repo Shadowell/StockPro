@@ -8,7 +8,6 @@ import { OperatorMetricCard, OperatorPageHeader, MetricValue } from '../componen
 import { MarketSessionBadge } from '../components/MarketSessionBadge';
 import { SectorFundFlowPanel } from '../components/SectorFundFlowPanel';
 import { LimitBoardPanel } from '../components/LimitBoardPanel';
-import { TremorShowcasePanel } from '../components/TremorShowcasePanel';
 import type { MarketOverview, MarketPulse, ThsHotItem } from '../types';
 import { evaluateFreshness, formatFreshnessTime, latestTimestamp } from '../utils/dataFreshness';
 import { marketMetricColor, marketToneClass, type MetricTone } from '../utils/marketColors';
@@ -472,7 +471,6 @@ function RealtimeMarketModule({
       </section>
 
       <SectorFundFlowPanel onViewAll={onViewAll} />
-      <TremorShowcasePanel />
     </div>
   );
 }

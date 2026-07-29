@@ -33,13 +33,13 @@ export function TremorDeltaBadge({ type, value, className }: TremorDeltaBadgePro
       case 'increase':
       case 'moderate-increase':
         return {
-          bg: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+          bg: 'bg-up border-up text-up',
           icon: <ArrowUpRight className="h-3.5 w-3.5 mr-0.5" />,
         };
       case 'decrease':
       case 'moderate-decrease':
         return {
-          bg: 'bg-rose-500/10 border-rose-500/20 text-rose-400',
+          bg: 'bg-down border-down text-down',
           icon: <ArrowDownRight className="h-3.5 w-3.5 mr-0.5" />,
         };
       case 'unchanged':
