@@ -1,5 +1,18 @@
 # Progress Log
 
+## MarketSession Badge Static Pill & Brand Logo Redesign (2026-07-29)
+
+1. **Removed Breathing Animations & Glowing Pulses**:
+   - Cleaned `market-session-breath*` animation keyframes, glow shadows, and expanding ripple elements from `MarketSessionBadge.tsx` and `index.css`.
+   - Replaced status badge indicator with clean, non-distracting static solid dots (emerald/amber/sky/slate).
+2. **Redesigned StockPro Brand Logo (`frontend/src/components/StockProMark.tsx`)**:
+   - Crafted high-end modern quant brand mark featuring:
+     - Gradient dark crystal shell with ambient sky-blue glow.
+     - Multi-dimensional asset pillar foundation + impulse trend stroke (`#38BDF8` → `#818CF8`).
+     - Emerald quant trigger spark point (`#34D399`).
+
+Verification: `./scripts/check.sh` clean (build, 0 lint errors, 290 unit tests PASS); frontend restarted on :4444.
+
 ## Full-Site Tremor UI Style Transformation (2026-07-29)
 
 1. **Shared Tremor UI Component Library (`frontend/src/components/TremorUI.tsx`)**:
