@@ -44,10 +44,21 @@ const signedPct = (value?: number | null) =>
     : `${value > 0 ? '+' : ''}${format(value)}%`;
 
 const ema = (rows: DailyChartData[], period: number) => {
+  if (!rows || rows.length < period) {
+    return rows.map(() => null);
+  }
   const k = 2 / (period + 1);
-  let current = rows[0]?.close || 0;
+  let current = 0;
   return rows.map((row, index) => {
-    current = index === 0 ? row.close : row.close * k + current * (1 - k);
+    if (index < period - 1) {
+      return null;
+    }
+    if (index === period - 1) {
+      const initialSum = rows.slice(0, period).reduce((acc, item) => acc + item.close, 0);
+      current = initialSum / period;
+      return Number(current.toFixed(4));
+    }
+    current = row.close * k + current * (1 - k);
     return Number(current.toFixed(4));
   });
 };
@@ -484,6 +495,8 @@ export function Market({ asOfDate }: MarketProps = {}) {
           name: 'K线',
           type: 'candlestick',
           data: candleRows,
+          barMaxWidth: 16,
+          barMinWidth: 2,
           itemStyle: {
             color: upColor,
             color0: downColor,
@@ -495,7 +508,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
         { name: 'EMA10', type: 'line', data: ema10, smooth: true, symbol: 'none', lineStyle: { color: '#00B8FF', width: 1.2 } },
         { name: 'EMA20', type: 'line', data: ema20, smooth: true, symbol: 'none', lineStyle: { color: '#E85AAD', width: 1.2 } },
         { name: 'EMA30', type: 'line', data: ema30, smooth: true, symbol: 'none', lineStyle: { color: '#00C853', width: 1.2 } },
-        { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: volumeRows, barWidth: '60%' },
+        { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: volumeRows, barMaxWidth: 16 },
       ],
     };
   }, [downColor, upColor, visibleDaily]);
