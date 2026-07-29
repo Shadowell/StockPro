@@ -443,13 +443,18 @@ export function Market({ asOfDate }: MarketProps = {}) {
         { left: 56, right: 20, top: '74%', height: '14%' },
       ],
       dataZoom: [
-        { type: 'inside', xAxisIndex: [0, 1], start: visibleDaily.length > 80 ? 45 : 0, end: 100 },
+        {
+          type: 'inside',
+          xAxisIndex: [0, 1],
+          start: visibleDaily.length > 60 ? Math.max(0, Math.floor((1 - 60 / visibleDaily.length) * 100)) : 0,
+          end: 100,
+        },
         {
           type: 'slider',
           xAxisIndex: [0, 1],
           bottom: 8,
           height: 18,
-          start: visibleDaily.length > 80 ? 45 : 0,
+          start: visibleDaily.length > 60 ? Math.max(0, Math.floor((1 - 60 / visibleDaily.length) * 100)) : 0,
           end: 100,
           borderColor: '#30363D',
           fillerColor: 'rgba(88,166,255,0.16)',
@@ -921,7 +926,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
               <h2 className="sr-only">{marketScope === 'theme' ? '板块分时' : 'K线图表'}</h2>
               <div className="h-[610px] min-h-[460px] min-w-0">
                 {hasChart ? (
-                  <ReactECharts option={chartOption} style={{ height: '100%', width: '100%' }} />
+                  <ReactECharts option={chartOption} notMerge={true} lazyUpdate={true} style={{ height: '100%', width: '100%' }} />
                 ) : (
                   <div className="flex h-full items-center justify-center px-6 text-center text-gray-400">
                     {marketScope === 'theme'
