@@ -1,172 +1,183 @@
-# StockPro 云端 B/S 生产部署
+# StockPro 本地运行手册
 
-StockPro 采用参考 BitPro 的单机生产模式：GitHub Actions 构建 React 前端，rsync 到生产服务器，远端 `deploy.sh` 安装依赖、运行 Postgres migrations、重启 FastAPI systemd 服务，并由 Nginx 对外提供静态前端和 `/api` 反代。
+> 当前授权只允许本地运行。本文不提供远程服务器部署步骤；GitHub commit/push 只是源码交付，不会自动部署。
 
-## 生产目标
+## 1. 本地服务
 
-| 项目 | 值 |
-|---|---|
-| 服务器 | `root@47.79.36.92` |
-| 应用目录 | `/opt/stockpro` |
-| 公网入口 | `http://47.79.36.92:4444` |
-| 后端监听 | `127.0.0.1:4445` |
-| Nginx | `:4444` 静态前端 + `/api/` 反代 |
-| 数据库 | PostgreSQL 服务端，新建 `stockpro_prod` |
-| systemd | `stockpro-backend` |
+| 服务 | 地址 | 说明 |
+| --- | --- | --- |
+| 前端 | `http://localhost:4444` | React + Vite |
+| 后端 | `http://localhost:4445` | FastAPI |
+| 健康检查 | `http://localhost:4445/api/health/health` | 后端进程状态 |
+| 存储检查 | `http://localhost:4445/api/health/storage` | PostgreSQL 状态 |
+| OpenAPI | `http://localhost:4445/docs` | 运行时接口文档 |
+| PostgreSQL | `127.0.0.1:55432` | Docker 映射端口 |
 
-## 目录结构
+## 2. 环境准备
 
-```text
-/opt/stockpro/
-├── backend/          # FastAPI 源码 + venv
-├── frontend/dist/    # Vite 构建产物
-├── deploy/           # deploy.sh、setup、nginx、systemd
-├── logs/             # 运行日志
-├── strategies/       # 预置策略脚本（后续迁移到 PG strategy_versions）
-└── scripts/          # 运维脚本
-```
-
-## 首次服务器初始化
-
-在服务器上执行：
-
-```bash
-ssh root@47.79.36.92
-bash /opt/stockpro/deploy/setup-server.sh
-```
-
-如果 `/opt/stockpro/deploy` 还没有同步，先从本地同步部署目录：
-
-```bash
-rsync -azP deploy/ root@47.79.36.92:/opt/stockpro/deploy/
-ssh root@47.79.36.92 "bash /opt/stockpro/deploy/setup-server.sh"
-```
-
-## 创建 Postgres 数据库
-
-`setup-server.sh` 会安装 PostgreSQL 服务端和客户端；随后使用脚本创建独立数据库和最小权限用户。密码只通过环境变量传入，不写入仓库：
-
-```bash
-ssh root@47.79.36.92
-STOCKPRO_DB_PASSWORD='replace-with-strong-password' \
-  bash /opt/stockpro/deploy/setup-postgres.sh
-```
-
-脚本默认创建：
-
-- 数据库：`stockpro_prod`
-- 用户：`stockpro_app`
-
-## 生产环境变量
-
-复制示例文件并填写真实值：
-
-```bash
-cp /opt/stockpro/backend/.env.example /opt/stockpro/backend/.env
-vim /opt/stockpro/backend/.env
-```
-
-关键项：
-
-```bash
-DATABASE_URL=postgresql://stockpro_app:<password>@127.0.0.1:5432/stockpro_prod
-ENABLE_SCHEDULER=false
-ENABLE_REALTIME_SYNC=false
-ENABLE_STRATEGY_EXECUTION=false
-
-BACKEND_CORS_ORIGINS=["http://47.79.36.92:4444"]
-QWEN_API_KEY=<your-qwen-api-key>
-```
-
-不要提交 `.env`、数据库密码、API key 或券商凭证。
-
-## 手动部署
-
-```bash
-# 构建前端
-cd frontend
-VITE_API_URL=/api npm run build
-cd ..
-
-# 同步到服务器
-rsync -azP --delete --exclude='venv/' --exclude='.env' \
-  backend/ root@47.79.36.92:/opt/stockpro/backend/
-rsync -azP --delete frontend/dist/ root@47.79.36.92:/opt/stockpro/frontend/dist/
-rsync -azP deploy/ root@47.79.36.92:/opt/stockpro/deploy/
-rsync -azP --delete strategies/ root@47.79.36.92:/opt/stockpro/strategies/
-rsync -azP --delete scripts/ root@47.79.36.92:/opt/stockpro/scripts/
-
-# 远端部署
-ssh root@47.79.36.92 "chmod +x /opt/stockpro/deploy/deploy.sh && bash /opt/stockpro/deploy/deploy.sh"
-```
-
-`deploy.sh` 会：
-
-1. 校验 `/opt/stockpro/backend/.env` 存在。
-2. 校验 `DATABASE_URL` 存在并指向 Postgres。
-3. 安装 Python 依赖。
-4. 编译后端源码。
-5. 运行 `python -m app.db.postgres_migrations`。
-6. 安装/启动 `stockpro-backend` systemd 服务。
-7. 安装/重载 Nginx 配置。
-8. 轮询后端和前端健康检查。
-
-## GitHub Actions 自动部署
-
-工作流：`.github/workflows/deploy.yml`
-
-触发方式：
-
-- push 到 `main`
-- 每 5 分钟 schedule 兜底
-- `workflow_dispatch`，支持 `force_deploy`
-
-生产 runner：
-
-- self-hosted runner label：`stockpro-production`
-
-GitHub Secrets：
-
-- `SERVER_HOST=47.79.36.92`
-- `SERVER_USER=root`
-- `SSH_PRIVATE_KEY`
-
-部署成功并通过健康检查后，工作流写入：
+- Python 3.11+
+- Node.js 18+、npm 9+
+- Docker Desktop / Docker Compose
+- 可选 `tmux`
+- 同级 BitPro 仓库，用于 `frontend/package.json` 中的本地 `@bitpro/ui` 依赖
 
 ```text
-/opt/stockpro/deploy/last_deployed_sha
+Private/
+├── BitPro/
+└── StockPro/
 ```
 
-同一个 main SHA 已部署时，后续 schedule 会跳过，除非手动 `force_deploy=true`。
+## 3. 首次安装
 
-## 验证
-
-服务器本机：
+在 StockPro 根目录执行：
 
 ```bash
-curl http://127.0.0.1:4445/api/health/health
-curl http://127.0.0.1:4445/api/health/storage
+cp backend/.env.example backend/.env
+```
+
+编辑 `backend/.env`：
+
+- 修改 `ADMIN_PASSWORD` 和 `ADMIN_TOKEN_SECRET`；
+- 保持 `DATABASE_URL` 指向本地 PG；
+- 按需填写 `TUSHARE_TOKEN` 和 `QWEN_API_KEY`；
+- 首次运行建议保持实时同步、策略执行和启动期写操作关闭。
+
+然后初始化：
+
+```bash
+docker compose up -d postgres
+
+python3 -m venv backend/venv
+backend/venv/bin/python -m pip install -r backend/requirements.txt
+
+(cd backend && venv/bin/python bootstrap_runtime.py)
+npm --prefix frontend install
+```
+
+`bootstrap_runtime.py` 显式执行迁移、数据目录安装、数据集注册和预置策略初始化。它会写入本地 PostgreSQL，但不会自动执行外部市场同步。
+
+## 4. 启动、停止和重启
+
+```bash
+./restart.sh
+./stop.sh
+```
+
+`restart.sh` 会：
+
+1. 停止占用 4444/4445 的旧本地进程；
+2. 启动 Docker PostgreSQL；
+3. 确保 Python/Node 依赖已安装；
+4. 启动 FastAPI 和 Vite；
+5. 轮询后端健康接口和前端首页。
+
+如果安装了 `tmux`，前后端分别运行在 `stockpro-backend` 和 `stockpro-frontend` 会话中；否则使用后台进程。
+
+它不会：
+
+- 自动运行数据库迁移或 bootstrap；
+- 自动同步全市场数据；
+- SSH、rsync、scp 或连接远程服务器；
+- 自动部署 GitHub 上的新提交。
+
+## 5. 日志与状态
+
+```bash
+tail -f logs/backend.log
+tail -f logs/frontend.log
+
+lsof -nP -iTCP:4444 -sTCP:LISTEN
+lsof -nP -iTCP:4445 -sTCP:LISTEN
+
+curl -fsS http://127.0.0.1:4445/api/health/health
+curl -fsS http://127.0.0.1:4445/api/health/storage
 curl -I http://127.0.0.1:4444/
 ```
 
-外网：
+如果使用 `tmux`：
 
 ```bash
-curl http://47.79.36.92:4444/api/health/health
-curl http://47.79.36.92:4444/api/health/storage
-curl -I http://47.79.36.92:4444/
+tmux attach -t stockpro-backend
+tmux attach -t stockpro-frontend
 ```
 
-运维：
+按 `Ctrl+B`、再按 `D` 可离开会话而不停止服务。
+
+## 6. 配置开关
+
+| 变量 | 说明 |
+| --- | --- |
+| `RUN_MIGRATIONS_ON_STARTUP` | 后端启动时执行迁移；常规本地运行保持 `false` |
+| `RUN_BOOTSTRAP_ON_STARTUP` | 启动时写入目录/预置数据；保持 `false`，改用显式命令 |
+| `RUN_PAPER_RECOVERY_ON_STARTUP` | 启动时恢复 Paper；保持 `false`，按需显式执行 |
+| `ENABLE_SCHEDULER` | 启用 PG 调度计划 |
+| `ENABLE_REALTIME_SYNC` | 启用外部实时数据轮询 |
+| `ENABLE_STRATEGY_EXECUTION` | 启用策略定时执行 |
+| `ENABLE_EXTERNAL_MARKET_FETCH` | 页面读取时允许外部取数；建议关闭 |
+| `ENABLE_LOCAL_PG_BACKUP` | 启用本地 PostgreSQL 备份任务 |
+
+启动后无写入并不意味着所有模块可用。数据同步、因子计算、回测和 Paper 均需要对应数据与任务状态。
+
+## 7. 数据库变更
+
+代码包含新迁移或首次拉取项目时，显式运行：
 
 ```bash
-systemctl status stockpro-backend
-journalctl -u stockpro-backend -f
-nginx -t && systemctl reload nginx
+(cd backend && venv/bin/python bootstrap_runtime.py)
 ```
 
-## 当前限制
+需要恢复中断的 Paper 运行证据时：
 
-- 生产入口暂时是 IP + 端口，未启用 HTTPS；接入真实交易前应迁移到域名 + TLS。
-- 当前运行路径为 Postgres-only；旧模块需要继续通过 PG repositories 承载，不再新增本地文件数据库路径。
-- 实盘交易默认不启用；broker adapter 和 live order submission 必须单独开 contract。
+```bash
+(cd backend && venv/bin/python bootstrap_runtime.py --recover-paper)
+```
+
+此命令会改变本地数据库状态，执行前先确认目标数据库连接。
+
+## 8. 验证
+
+```bash
+./scripts/check.sh
+```
+
+该入口负责前端类型检查、lint、build、后端测试和 Python 编译。真实后端 E2E 需要服务与 PostgreSQL 正常运行：
+
+```bash
+npm --prefix frontend run test:e2e:real
+```
+
+## 9. 常见排障
+
+### 4444 或 4445 被占用
+
+优先运行 `./restart.sh`。仍失败时用 `lsof` 确认占用者，不要结束与 StockPro 无关的进程。
+
+### PostgreSQL 无法连接
+
+```bash
+docker compose ps
+docker compose logs postgres
+curl -fsS http://127.0.0.1:4445/api/health/storage
+```
+
+确认 `backend/.env` 的 `DATABASE_URL` 与 `docker-compose.yml` 一致。
+
+### 前端依赖找不到 `@bitpro/ui`
+
+确认 BitPro 与 StockPro 为同级目录，然后重新执行：
+
+```bash
+npm --prefix frontend install
+```
+
+### 登录失败
+
+检查 `backend/.env` 的管理员账号、密码和 Token 密钥，重启后端。不要在文档、日志或 Git 中公开真实密码。
+
+### 页面空白或 API 401
+
+查看浏览器控制台和后端日志，确认登录 Token 未过期、Vite 代理目标为 `http://127.0.0.1:4445`。
+
+## 10. 远程部署边界
+
+仓库可能保留历史部署脚本或工作流作为未来基础，但当前项目规则禁止自动部署、远程重启和服务器数据变更。需要部署时，用户必须在当前会话中明确指定目标、范围和验证要求，并单独审查密钥、数据库迁移、回滚和真实交易隔离。

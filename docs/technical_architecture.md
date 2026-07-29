@@ -1,1115 +1,250 @@
-# StockPro AI 技术架构文档
+# StockPro 技术架构
 
-> 版本：2.0  
-> 更新日期：2026-01-24
+> 更新日期：2026-07-29
+> 目标环境：本地 B/S
+> 核心约束：PostgreSQL only、读取不触发写操作、仅 Paper 模拟交易
 
----
+## 1. 系统概览
 
-## 目录
-
-1. [系统架构概览](#1-系统架构概览)
-2. [技术栈](#2-技术栈)
-3. [前端架构](#3-前端架构)
-4. [后端架构](#4-后端架构)
-5. [数据库设计](#5-数据库设计)
-6. [API 接口文档](#6-api-接口文档)
-7. [数据同步服务](#7-数据同步服务)
-8. [页面与模块交互](#8-页面与模块交互)
-9. [环境配置](#9-环境配置)
-10. [部署说明](#10-部署说明)
-
----
-
-## 1. 系统架构概览
-
-### 1.1 整体架构图
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              用户浏览器 / Electron                            │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                    React 前端应用 (Vite + TypeScript)                   │  │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────┐  │  │
-│  │  │  Home   │  │ Market  │  │   AI    │  │Sentiment│  │    Data     │  │  │
-│  │  │  Page   │  │Overview │  │Analysis │  │Analysis │  │  Center     │  │  │
-│  │  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └──────┬──────┘  │  │
-│  └───────┼───────────┼───────────┼───────────┼───────────────┼──────────┘  │
-│          │           │           │           │               │             │
-└──────────┼───────────┼───────────┼───────────┼───────────────┼─────────────┘
-           │           │           │           │               │
-           ▼           ▼           ▼           ▼               ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         FastAPI 后端服务 (Python 3.11)                        │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                           API 路由层 (/api)                         │   │
-│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐   │   │
-│  │  │stocks  │ │market  │ │charts  │ │  ai    │ │analysis│ │database│   │   │
-│  │  └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘ └───┬────┘   │   │
-│  └──────┼──────────┼──────────┼──────────┼──────────┼──────────┼────────┘   │
-│         │          │          │          │          │          │            │
-│  ┌──────▼──────────▼──────────▼──────────▼──────────▼──────────▼────────┐   │
-│  │                          业务服务层 (Services)                         │   │
-│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────────┐  │   │
-│  │  │StockService │ │MarketService│ │ChartService │ │ AIService       │  │   │
-│  │  └──────┬──────┘ └──────┬──────┘ └──────┬──────┘ └────────┬────────┘  │   │
-│  │  ┌──────┴──────┐ ┌──────┴──────┐ ┌──────┴──────┐ ┌────────┴────────┐  │   │
-│  │  │SectorService│ │SentimentSvc │ │RealtimeSyncS│ │SchedulerService│  │   │
-│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────────┘  │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│         │                    │                    │                         │
-└─────────┼────────────────────┼────────────────────┼─────────────────────────┘
-          │                    │                    │
-          ▼                    ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────────┐
-│   Postgres 数据库  │  │   AkShare API   │  │       千问大模型 API            │
-│   (本地缓存)     │  │   (股票数据)     │  │    (AI 分析 / 日历生成)         │
-└─────────────────┘  └─────────────────┘  └─────────────────────────────────┘
+```text
+浏览器
+  │
+  │ http://localhost:4444
+  ▼
+React + Vite + TypeScript
+  │
+  │ /api 代理
+  ▼
+FastAPI :4445
+  ├── 鉴权与权限
+  ├── 市场/数据/因子/股票池
+  ├── 策略运行时与回测任务
+  ├── Paper/Watch/Monitor/Review
+  ├── AI 与 MCP Agent
+  └── APScheduler
+          │
+          ▼
+PostgreSQL :55432
+  ▲
+  ├── TuShare（主要研究数据源）
+  ├── AKShare（显式补充/整类回退）
+  └── DashScope（可选 AI）
 ```
 
-### 1.2 数据流向
+前端不直连数据库和外部数据源。研究、回测和 Paper 页面读取 FastAPI；后端负责鉴权、状态判断、Provider 适配、任务编排和持久化。
 
-```
-外部数据源                    后端服务                      前端展示
-    │                           │                            │
-    │  ┌───────────────────────┐│                            │
-    │  │   定时同步服务         ││                            │
-    │  │ (RealtimeSyncService) ││                            │
-    │◄─┤  - 每10秒: 市场指数    ├┤                            │
-    │  │  - 每30秒: 全部股票    ││                            │
-    │  │  - 每2分钟: 热门概念   ││                            │
-    │  └───────────┬───────────┘│                            │
-    │              │            │                            │
-    │              ▼            │                            │
-    │  ┌───────────────────────┐│  ┌──────────────────────┐  │
-    │  │    Postgres Postgres 数据库   │├──►    API 请求/响应     ├──►
-    │  │  (缓存 + 历史数据)     ││  └──────────────────────┘  │
-    │  └───────────────────────┘│                            │
-    │                           │                            │
-```
+## 2. 前端
 
----
+### 技术
 
-## 2. 技术栈
+- React 18 + TypeScript
+- Vite 6
+- React Router 7
+- Tailwind CSS
+- Zustand
+- ECharts
+- Monaco Editor
+- Lucide 图标
+- 本地 `@bitpro/ui` 主题与基础组件
 
-### 2.1 前端技术
+### 页面结构
 
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| React | 18.x | UI 框架 |
-| TypeScript | 5.x | 类型安全 |
-| Vite | 5.x | 构建工具 |
-| Tailwind CSS | 3.x | 样式框架 |
-| Zustand | 4.x | 状态管理 |
-| React Router | 6.x | 路由管理 |
-| Apache ECharts | 5.x | 图表展示 |
-| Axios | 1.x | HTTP 客户端 |
-| Lucide React | - | 图标库 |
+`frontend/src/App.tsx` 注册 12 个一级工作区、详情路由和历史兼容跳转。`MainLayout` 提供：
 
-### 2.2 后端技术
+- 固定 64px 一级侧栏；
+- 管理员/访客身份状态；
+- 设置、退出、色彩方案；
+- 页面内容容器与移动端导航；
+- 全局任务进度和 Toast。
 
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| Python | 3.11 | 运行时 |
-| FastAPI | 0.104+ | Web 框架 |
-| Uvicorn | 0.40+ | ASGI 服务器 |
-| AkShare | 1.x | 股票数据获取 |
-| Postgres | 3.x | Postgres 数据库 |
-| APScheduler | 3.x | 定时任务 |
-| DashScope | - | 千问大模型 SDK |
+各页面拥有自己的标题、二级工作区标签、过滤器、表格/图表和详情界面。导航、业务状态和筛选控件使用不同视觉层级。
 
-### 2.3 外部服务
+### API 调用
 
-| 服务 | 用途 |
-|------|------|
-| 东方财富/同花顺 (via AkShare) | 实时行情、概念板块、热榜数据 |
-| 千问大模型 (Qwen) | AI 股票分析、日历事件生成 |
+- 开发环境 `/api` 由 Vite 代理到 `http://127.0.0.1:4445`。
+- Bearer Token 由统一客户端注入。
+- 页面必须处理加载、空、部分缺失、过期、错误和权限不足。
+- 前端不得通过 GET 页面加载隐式触发同步或其他写操作。
 
----
+## 3. 后端
 
-## 3. 前端架构
+### 技术
 
-### 3.1 页面结构
+- FastAPI + Pydantic 2
+- SQLAlchemy / psycopg
+- APScheduler
+- pandas
+- Backtrader 与 StockPro 自有策略运行时
+- TuShare、AKShare、DashScope SDK
+- Python MCP SDK
 
-| 路由 | 页面组件 | 功能描述 |
-|------|----------|----------|
-| `/` | `Home.tsx` | 主页：市场指数、短线指标、热门板块、筛选股票列表 |
-| `/market` | `MarketOverview.tsx` | 市场概览：热门概念、同花顺热榜、连板天梯 |
-| `/sentiment` | `SentimentAnalysis.tsx` | 市场情绪分析：情绪仪表盘、涨跌统计、板块热度 |
-| `/ai` | `AIStockAnalysis.tsx` | AI 智能分析：单股深度分析、评分、建议 |
-| `/news` | `NewsCalendar.tsx` | 消息流：异动、并购重组、利好利空、财联社、雪球 |
-| `/calendar` | `TradingCalendarPage.tsx` | 交易日历：重要事件、财报日期 |
-| `/data` | `DataProcessingAnalysis.tsx` | 数据中心：数据库管理、批量导入 |
+### 分层
 
-### 3.2 核心组件
-
-| 组件 | 功能 |
-|------|------|
-| `MainLayout.tsx` | 全局布局：侧边栏导航、顶部指数行情、语言切换 |
-| `ChartPanel.tsx` | 图表面板：日K线、分时图（带0轴线） |
-| `StockTable.tsx` | 股票列表：筛选结果展示 |
-| `SectorMonitor.tsx` | 板块监控：热门板块涨跌情况 |
-| `NewsFeed.tsx` | 消息流：多 Tab 切换、自动滚动 |
-| `DatabaseManager.tsx` | 数据库管理：表查询、SQL 执行 |
-
-### 3.3 状态管理 (Zustand Store)
-
-```typescript
-interface AppState {
-  // 基础状态
-  language: 'zh' | 'en';
-  selectedStock: Stock | null;
-  
-  // 市场数据
-  stocks: Stock[];
-  sectors: Sector[];
-  marketOverview: MarketOverview | null;
-  
-  // 图表数据
-  dailyData: DailyChartData[];
-  intradayData: IntradayChartData[];
-  
-  // 加载状态
-  isLoadingStocks: boolean;
-  isLoadingSectors: boolean;
-  isLoadingCharts: boolean;
-  isLoadingMarket: boolean;
-  
-  // Actions
-  fetchStocks: () => Promise<void>;
-  fetchSectors: () => Promise<void>;
-  fetchMarketOverview: () => Promise<void>;
-  selectStock: (stock: Stock) => void;
-}
-```
-
----
-
-## 4. 后端架构
-
-### 4.1 目录结构
-
-```
+```text
 backend/app/
-├── main.py                    # FastAPI 应用入口
-├── api/
-│   ├── api.py                 # 路由聚合
-│   └── endpoints/             # API 端点
-│       ├── stocks.py          # 股票筛选相关
-│       ├── market.py          # 市场数据相关
-│       ├── charts.py          # 图表数据
-│       ├── ai.py              # AI 分析
-│       ├── analysis.py        # 情绪分析
-│       ├── database.py        # 数据库管理
-│       ├── batch_import.py    # 批量导入
-│       └── health.py          # 健康检查
-├── services/                  # 业务服务层
-│   ├── stock_service.py       # 股票筛选服务
-│   ├── market_service.py      # 市场数据服务
-│   ├── chart_service.py       # 图表数据服务
-│   ├── ai_service.py          # AI 分析服务
-│   ├── sentiment_service.py   # 情绪分析服务
-│   ├── realtime_sync_service.py  # 实时同步服务
-│   ├── scheduler_service.py   # 定时任务服务
-│   └── batch_import_service.py   # 批量导入服务
-├── db/
-│   └── postgres_db.py            # Postgres 数据库操作
-├── core/
-│   └── config.py              # 配置管理
-├── models/
-│   └── schemas.py             # Pydantic 模型
-└── utils/
-    └── dashscope_utils.py     # 千问 API 工具
+├── api/          # 路由、鉴权依赖、请求/响应边界
+├── core/         # 配置、Token、安全和公共规则
+├── db/           # PostgreSQL 连接、迁移、repository
+├── models/       # API 与领域数据模型
+├── services/     # 数据、研究、任务、回测、Paper、AI
+└── main.py       # FastAPI 生命周期和路由装配
 ```
 
-### 4.2 服务层职责
+路由只负责 HTTP 边界和权限，业务规则在 services，持久化集中在 PG repository/migration。新功能不应在 service 中散落未经封装的 SQL，也不应增加 SQLite 或 JSON 文件数据库。
 
-| 服务 | 文件 | 职责 |
-|------|------|------|
-| **StockService** | `stock_service.py` | 股票筛选策略、涨停板识别、ST 股过滤 |
-| **MarketService** | `market_service.py` | 热门概念、同花顺热榜、连板天梯、消息流、日历 |
-| **ChartService** | `chart_service.py` | 日 K 线数据、分时数据、技术指标计算 |
-| **AIService** | `ai_service.py` | 千问大模型调用、股票分析、结构化输出 |
-| **SentimentService** | `sentiment_service.py` | 市场情绪计算、涨跌家数统计 |
-| **RealtimeSyncService** | `realtime_sync_service.py` | 后台数据同步、缓存更新 |
-| **SchedulerService** | `scheduler_service.py` | 定时任务调度 |
-| **BatchImportService** | `batch_import_service.py` | 历史数据批量导入 |
+### API 域
 
-### 4.3 数据缓存策略
+所有接口使用单一 `/api` 前缀。主要域：
 
-| 数据类型 | 缓存位置 | 更新频率 | 缓存时长 |
-|----------|----------|----------|----------|
-| 市场指数 | `market_indices_realtime` | 10秒 (交易时段) | 实时覆盖 |
-| 全部股票 | `all_stocks_realtime` | 30秒 (交易时段) | 实时覆盖 |
-| 热门概念 | `hot_concepts_realtime` | 2分钟 | 实时覆盖 |
-| 同花顺热榜 | `ths_hot_realtime` | 2分钟 | 实时覆盖 |
-| 短线指标 | `short_line_indices_realtime` | 2分钟 | 实时覆盖 |
-| 概念龙头股 | `concept_leaders_cache` | 按需 + 2分钟 | 5分钟有效期 |
-| 日 K 线 | `stock_history` | 按需 | 永久 |
-| 基本面数据 | `stock_fundamentals` | 每日一次 | 永久 |
-
----
-
-## 5. 数据库设计
-
-### 5.1 数据库概览
-
-**数据库类型**：Postgres (Postgres 数据库)
-**文件位置**：
-- macOS: `DATABASE_URL 指向的 Postgres 数据库`
-- Windows: `DATABASE_URL 指向的 Postgres 数据库`
-- Linux: `DATABASE_URL 指向的 Postgres 数据库`
-
-### 5.2 表结构详解
-
-#### 5.2.1 stock_history - 股票历史数据表
-
-**用途**：存储股票日K线历史数据，用于图表展示和技术分析
-
-```sql
-CREATE TABLE stock_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol TEXT NOT NULL,           -- 股票代码 (如: 600519)
-    name TEXT NOT NULL,             -- 股票名称 (如: 贵州茅台)
-    date DATE NOT NULL,             -- 交易日期
-    open REAL,                      -- 开盘价
-    high REAL,                      -- 最高价
-    low REAL,                       -- 最低价
-    close REAL,                     -- 收盘价
-    volume BIGINT,                  -- 成交量 (股)
-    turnover BIGINT,                -- 成交额 (元)
-    UNIQUE(symbol, date)            -- 唯一约束: 每只股票每天一条记录
-);
+```text
+health auth workflow
+market stocks charts ai
+data data-hub data-dev database
+factors factor-research pools
+strategy backtest paper
+watch monitor review
+acceptance
 ```
 
-#### 5.2.2 stock_fundamentals - 股票基本面数据表
+完整接口由 FastAPI OpenAPI 生成。
 
-**用途**：存储股票基本面信息，用于筛选和展示
+## 4. 鉴权与权限
 
-```sql
-CREATE TABLE stock_fundamentals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol TEXT NOT NULL UNIQUE,    -- 股票代码
-    name TEXT NOT NULL,             -- 股票名称
-    pe REAL,                        -- 市盈率
-    pb REAL,                        -- 市净率
-    dividend_yield REAL,            -- 股息率
-    market_cap BIGINT,              -- 总市值
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+### Web Token
+
+- 管理员账号来自环境变量。
+- 登录后签发带有效期的 Bearer Token。
+- 访客码由管理员创建，包含有效期、每日回测数、并发数和回测天数限制。
+- 受保护业务路由统一要求已认证身份。
+
+### Agent Token
+
+- MCP Token 在 PG 中只保存 SHA-256 哈希。
+- 明文仅在创建响应中出现一次。
+- `R` 和 `W` 作用域限制工具集合。
+- 写操作要求幂等键并保存调用审计。
+- 远程 MCP 和真实券商能力不可用。
+
+### Secrets
+
+数据库密码、管理员密码、Token 密钥、Provider Token 和 AI Key 只存在于本地环境配置，不进入 Git、日志、API 示例或前端构建。
+
+## 5. PostgreSQL
+
+PostgreSQL 是唯一平台数据库，承载：
+
+- 身份、访客码、Agent Token 与审计；
+- 证券主数据、交易日历和 Provider 数据；
+- 数据分区、质量报告、快照和调度状态；
+- 因子定义、版本、运行、指标、值和快照；
+- 股票池、成员和快照；
+- 策略身份、不可变版本、参数和验证；
+- 回测任务、实验、指标、时间序列、订单、成交和日志；
+- Paper 实例、周期、信号、风控、订单、成交、持仓、现金与权益；
+- Watch 告警、Monitor 状态和 Review 记录。
+
+数据库结构由显式迁移维护。后端普通启动默认不运行迁移和 bootstrap。
+
+## 6. 数据与研究证据
+
+```text
+Provider 响应
+  → 标准化
+  → PG 未封存分区
+  → 质量门
+  → 不可变数据快照
+  → 因子快照 / 股票池快照
+  → 策略版本
+  → 回测证据
+  → Paper 证据
 ```
 
-#### 5.2.3 market_indices_realtime - 市场指数实时表
+每层保存上游标识、时间语义、来源和哈希。封存后不原地改写；Provider 更正产生新分区和新快照。
 
-**用途**：存储大盘指数实时数据，用于顶部行情展示
+回测、因子和 Paper Replay 只读取持久化快照，不在运行中访问外部 Provider。这既保证可复现，也避免回测结果受当前网络和最新数据影响。
 
-```sql
-CREATE TABLE market_indices_realtime (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,      -- 指数名称 (如: 上证指数)
-    code TEXT,                      -- 指数代码 (如: sh000001)
-    price REAL,                     -- 当前点位
-    change_amount REAL,             -- 涨跌点数
-    change_percent REAL,            -- 涨跌幅 (%)
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+## 7. 策略运行时
+
+平台定义 `StockPro Strategy API v1`：
+
+- 用户实现 `initialize(context)`、`handle_data(context, data)` 和可选生命周期函数；
+- 平台注入数据、模拟时钟、订单和记录 API；
+- 代码版本、参数、依赖和资源限制固定；
+- 禁止直接网络、数据库、文件写入和券商访问；
+- 回测与 Paper Replay 共用同一事件和撮合语义；
+- 每个事件保存模拟时间、数据可用时间、顺序和确定性证据。
+
+回测采用任务模式。任务提交与执行分离，状态和日志持久化，支持取消和显式重试。
+
+## 8. Paper 运行时
+
+Paper 实例绑定固定策略版本和研究输入。一次周期的典型链路：
+
+```text
+读取封存行情
+  → 策略事件
+  → 信号/订单意图
+  → A 股可交易性与风控
+  → 模拟委托
+  → 模拟成交
+  → 持仓/现金/权益
+  → 周期与心跳证据
 ```
 
-**数据示例**：
-| name | code | price | change_amount | change_percent |
-|------|------|-------|---------------|----------------|
-| 上证指数 | sh000001 | 3250.00 | 25.50 | 0.79 |
-| 深证成指 | sz399001 | 10500.00 | 80.00 | 0.77 |
-| 创业板指 | sz399006 | 2100.00 | 15.00 | 0.72 |
-| 科创50 | sh000688 | 980.00 | 8.00 | 0.82 |
+Watch 读取业务证据，Monitor 汇总运行健康。两者都是观察面，不直接修改真实账户。Paper adapter 与任何未来 broker adapter 必须保持隔离。
 
-#### 5.2.4 all_stocks_realtime - 全部股票实时表
+## 9. 调度与后台任务
 
-**用途**：存储全市场A股实时行情数据，用于股票筛选和列表展示
+APScheduler 用于日终数据同步、备份和其他受控任务。计划、下次运行、运行记录和结果保存到 PG。
 
-```sql
-CREATE TABLE all_stocks_realtime (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT NOT NULL UNIQUE,      -- 股票代码
-    name TEXT NOT NULL,             -- 股票名称
-    price REAL,                     -- 最新价
-    change_percent REAL,            -- 涨跌幅 (%)
-    volume REAL,                    -- 成交量 (手)
-    amount REAL,                    -- 成交额 (元)
-    turnover REAL,                  -- 换手率 (%)
-    volume_ratio REAL,              -- 量比
-    pe_dynamic REAL,                -- 动态市盈率
-    pb REAL,                        -- 市净率
-    total_market_cap REAL,          -- 总市值 (元)
-    float_market_cap REAL,          -- 流通市值 (元)
-    amplitude REAL,                 -- 振幅 (%)
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
+安全要求：
 
-#### 5.2.5 short_line_indices_realtime - 短线指标实时表
+- 调度由环境开关和 PG 配置共同控制；
+- 任务需要幂等和并发锁；
+- 交易日判断先于 Provider 请求；
+- 部分成功不能发布完整数据快照；
+- 启动不自动补跑未知范围的大任务；
+- 页面读取不能注册或执行任务。
 
-**用途**：存储短线交易核心指标，用于短线投资者决策参考
+## 10. 本地运行与可观测性
 
-```sql
-CREATE TABLE short_line_indices_realtime (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT NOT NULL UNIQUE,      -- 指标代码 (ZT/LB/MLB/DT/ZB/FBL)
-    name TEXT NOT NULL,             -- 指标名称
-    price REAL,                     -- 指标数值
-    change_percent REAL,            -- 变化幅度 (预留)
-    change_amount REAL,             -- 变化量 (预留)
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
+- `restart.sh` 启动 PostgreSQL、FastAPI 和 Vite，并做健康检查。
+- 日志写入 `logs/backend.log` 与 `logs/frontend.log`。
+- `/api/health/health` 检查进程，`/api/health/storage` 检查 PG。
+- `./scripts/check.sh` 是统一静态检查和测试入口。
 
-**指标说明**：
-| code | name | 计算方式 | 意义 |
-|------|------|----------|------|
-| ZT | 涨停数 | 当日涨停板股票数量 | 市场做多情绪 |
-| LB | 连板数 | 连续涨停2板及以上数量 | 市场连续性热度 |
-| MLB | 最高板 | 当日最高连板数 | 市场高度 |
-| DT | 跌停数 | 当日跌停板股票数量 | 市场恐慌程度 |
-| ZB | 炸板数 | 当日炸板股票数量 | 做多失败率 |
-| FBL | 封板率 | ZT/(ZT+ZB)*100% | 涨停成功率 |
+浏览器验收需同时关注：
 
-#### 5.2.6 hot_concepts_realtime - 热门概念实时表
+- 控制台错误；
+- 失败的 API 请求；
+- 加载/空/过期/权限状态；
+- 桌面和窄屏溢出；
+- 用户界面是否泄露内部 ID、哈希或工程标签。
 
-**用途**：存储热门概念板块实时数据
+## 11. 扩展边界
 
-```sql
-CREATE TABLE hot_concepts_realtime (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rank INTEGER,                   -- 排名
-    name TEXT NOT NULL UNIQUE,      -- 概念名称
-    change_percent REAL,            -- 涨跌幅 (%)
-    inflow REAL,                    -- 流入资金 (元)
-    outflow REAL,                   -- 流出资金 (元)
-    net_inflow REAL                 -- 净流入资金 (元)
-);
-```
+### 可以在当前架构内扩展
 
-#### 5.2.7 hot_concepts_history - 热门概念历史表
+- 新数据集与 Provider adapter；
+- 新因子、研究协议和诊断；
+- 新策略版本与回测指标；
+- 新 Paper 风控规则；
+- 只读 Agent 工具。
 
-**用途**：存储热门概念板块历史数据，用于趋势分析
+### 需要单独合同和安全审查
 
-```sql
-CREATE TABLE hot_concepts_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date DATE NOT NULL,             -- 日期
-    rank INTEGER,                   -- 当日排名
-    name TEXT NOT NULL,             -- 概念名称
-    change_percent REAL,            -- 涨跌幅 (%)
-    inflow REAL,                    -- 流入资金
-    outflow REAL,                   -- 流出资金
-    net_inflow REAL,                -- 净流入
-    UNIQUE(date, name)
-);
-```
+- 真实券商连接、订单、撤单、资金与持仓；
+- 公网 MCP 或公开 API；
+- 多租户、注册、计费和团队权限；
+- 自动远程部署和生产数据库迁移；
+- 商业数据再分发。
 
-#### 5.2.8 concept_leaders_cache - 概念龙头股缓存表
+## 12. 架构原则
 
-**用途**：缓存概念板块成分股数据，加速龙头股查询
-
-```sql
-CREATE TABLE concept_leaders_cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    concept_name TEXT NOT NULL,     -- 概念名称
-    stock_code TEXT NOT NULL,       -- 股票代码
-    stock_name TEXT NOT NULL,       -- 股票名称
-    price REAL,                     -- 最新价
-    change_percent REAL,            -- 涨跌幅 (%)
-    amount REAL,                    -- 成交额
-    turnover REAL,                  -- 换手率 (%)
-    rank INTEGER,                   -- 排名 (按涨跌幅)
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(concept_name, stock_code)
-);
-
--- 索引: 加速按概念名称查询
-CREATE INDEX idx_concept_leaders_name ON concept_leaders_cache(concept_name);
-```
-
-#### 5.2.9 ths_hot_realtime - 同花顺热榜实时表
-
-**用途**：存储同花顺人气榜实时数据
-
-```sql
-CREATE TABLE ths_hot_realtime (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    rank INTEGER,                   -- 热度排名
-    code TEXT NOT NULL UNIQUE,      -- 股票代码
-    name TEXT NOT NULL,             -- 股票名称
-    hot_value REAL,                 -- 热度值
-    change_percent REAL,            -- 涨跌幅 (%)
-    price REAL,                     -- 最新价
-    reason TEXT,                    -- 上榜理由
-    tags TEXT                       -- 相关板块标签
-);
-```
-
-#### 5.2.10 ths_hot_history - 同花顺热榜历史表
-
-**用途**：存储同花顺热榜历史数据
-
-```sql
-CREATE TABLE ths_hot_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date DATE NOT NULL,             -- 日期
-    rank INTEGER,                   -- 排名
-    code TEXT NOT NULL,             -- 股票代码
-    name TEXT NOT NULL,             -- 股票名称
-    hot_value REAL,                 -- 热度值
-    change_percent REAL,            -- 涨跌幅
-    price REAL,                     -- 价格
-    reason TEXT,                    -- 上榜理由
-    tags TEXT,                      -- 相关板块
-    UNIQUE(date, code)
-);
-```
-
-#### 5.2.11 lianban_ladder_history - 连板天梯历史表
-
-**用途**：存储连板天梯数据，追踪连板晋级情况
-
-```sql
-CREATE TABLE lianban_ladder_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date DATE NOT NULL,             -- 当日日期
-    prev_date DATE,                 -- 前一交易日
-    level INTEGER NOT NULL,         -- 连板层级 (1板/2板/3板...)
-    code TEXT NOT NULL,             -- 股票代码
-    name TEXT NOT NULL,             -- 股票名称
-    change_percent REAL,            -- 涨跌幅
-    price REAL,                     -- 当前价格
-    duration_days INTEGER,          -- 连板天数
-    success_rate REAL,              -- 晋级成功率 (预留)
-    reason TEXT,                    -- 涨停原因/所属行业
-    UNIQUE(date, code)
-);
-```
-
-#### 5.2.12 market_calendar - 市场日历事件表
-
-**用途**：存储股市重要事件，如月末交易日、财报日期等
-
-```sql
-CREATE TABLE market_calendar (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_key TEXT NOT NULL UNIQUE, -- 事件唯一标识
-    event_date DATE NOT NULL,       -- 事件日期
-    title TEXT NOT NULL,            -- 事件标题
-    category TEXT,                  -- 分类 (结算/财报/停牌等)
-    market TEXT,                    -- 市场 (A股/港股等)
-    source TEXT,                    -- 数据来源
-    details TEXT,                   -- 详情 (JSON)
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(event_date, title) ON CONFLICT REPLACE
-);
-```
-
-#### 5.2.13 message_stream - 消息流表
-
-**用途**：存储消息流数据（预留）
-
-```sql
-CREATE TABLE message_stream (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp DATETIME NOT NULL,    -- 消息时间
-    source TEXT NOT NULL,           -- 来源 (财联社/雪球/东财等)
-    title TEXT NOT NULL,            -- 标题
-    content TEXT,                   -- 内容
-    category TEXT,                  -- 分类 (异动/利好/利空等)
-    importance INTEGER DEFAULT 1    -- 重要性 (1-5)
-);
-```
-
-### 5.3 表关系图
-
-```
-┌─────────────────────┐     ┌─────────────────────┐
-│ market_indices_     │     │ short_line_indices_ │
-│ realtime           │     │ realtime            │
-│ (大盘指数)          │     │ (短线指标)          │
-└─────────────────────┘     └─────────────────────┘
-
-┌─────────────────────┐     ┌─────────────────────┐
-│ all_stocks_realtime │────►│ stock_history       │
-│ (全市场实时行情)     │     │ (历史K线)           │
-└─────────────────────┘     └─────────────────────┘
-         │
-         │
-         ▼
-┌─────────────────────┐
-│ stock_fundamentals  │
-│ (基本面数据)        │
-└─────────────────────┘
-
-┌─────────────────────┐     ┌─────────────────────┐
-│ hot_concepts_       │────►│ hot_concepts_       │
-│ realtime           │     │ history             │
-│ (概念板块实时)       │     │ (概念板块历史)      │
-└──────────┬──────────┘     └─────────────────────┘
-           │
-           ▼
-┌─────────────────────┐
-│ concept_leaders_    │
-│ cache              │
-│ (概念龙头股缓存)     │
-└─────────────────────┘
-
-┌─────────────────────┐     ┌─────────────────────┐
-│ ths_hot_realtime   │────►│ ths_hot_history     │
-│ (热榜实时)          │     │ (热榜历史)          │
-└─────────────────────┘     └─────────────────────┘
-
-┌─────────────────────┐
-│ lianban_ladder_    │
-│ history            │
-│ (连板天梯历史)       │
-└─────────────────────┘
-
-┌─────────────────────┐     ┌─────────────────────┐
-│ market_calendar    │     │ message_stream      │
-│ (市场日历)          │     │ (消息流)            │
-└─────────────────────┘     └─────────────────────┘
-```
-
----
-
-## 6. API 接口文档
-
-### 6.1 Market 模块 - 市场数据
-
-#### GET /api/market/overview
-**功能**：获取市场概览数据（指数、涨跌统计、成交量等）
-
-**请求参数**：无
-
-**响应示例**：
-```json
-{
-  "indices": [
-    { "name": "上证指数", "code": "sh000001", "price": 3250.00, "change_amount": 25.50, "change_percent": 0.79 }
-  ],
-  "is_open": true,
-  "last_update": "2026-01-24T10:30:00",
-  "sentiment": { "status": "偏多", "score": 65 },
-  "volume": { "amount": 8500, "unit": "亿", "ratio": 1.2 },
-  "advance_decline": { "up": 2800, "down": 1500, "flat": 200 }
-}
-```
-
-#### GET /api/market/short-line-indices
-**功能**：获取短线指标数据
-
-**响应示例**：
-```json
-[
-  { "code": "ZT", "name": "涨停数", "price": 104, "change_percent": 0, "change_amount": 0 },
-  { "code": "LB", "name": "连板数", "price": 11, "change_percent": 0, "change_amount": 0 },
-  { "code": "MLB", "name": "最高板", "price": 5, "change_percent": 0, "change_amount": 0 },
-  { "code": "DT", "name": "跌停数", "price": 0, "change_percent": 0, "change_amount": 0 },
-  { "code": "ZB", "name": "炸板数", "price": 18, "change_percent": 0, "change_amount": 0 },
-  { "code": "FBL", "name": "封板率", "price": 85.2, "change_percent": 0, "change_amount": 0 }
-]
-```
-
-#### GET /api/market/hot-concepts
-**功能**：获取热门概念板块列表
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| limit | int | 否 | 50 | 返回数量限制 (1-200) |
-| date | string | 否 | 当天 | 日期 (YYYY-MM-DD) |
-
-**响应示例**：
-```json
-[
-  {
-    "rank": 1,
-    "name": "BC电池",
-    "change_percent": 8.56,
-    "inflow": 7149000000,
-    "outflow": 5000000000,
-    "net_inflow": 2149000000,
-    "leading_stock": "通威股份",
-    "leading_stock_change": 10.0
-  }
-]
-```
-
-#### GET /api/market/hot-concept/leaders
-**功能**：获取概念板块龙头股列表（优先从缓存读取）
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| name | string | 是 | 概念名称 |
-| limit | int | 否 | 返回数量 (默认20) |
-
-**响应示例**：
-```json
-[
-  { "code": "920368", "name": "连城数控", "price": 47.16, "change_percent": 29.99, "amount": 1261000000, "turnover": 12.65 },
-  { "code": "688223", "name": "晶科能源", "price": 6.90, "change_percent": 20.00, "amount": 3768000000, "turnover": 5.75 }
-]
-```
-
-#### GET /api/market/hot-concept/intraday
-**功能**：获取概念板块分时K线
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| name | string | 是 | 概念名称 |
-| period | string | 否 | 周期 (默认"1") |
-
-#### GET /api/market/ths-hot
-**功能**：获取同花顺人气榜
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 |
-|------|------|------|--------|
-| limit | int | 否 | 100 |
-| date | string | 否 | 当天 |
-
-#### GET /api/market/lianban-ladder
-**功能**：获取连板天梯数据
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| date | string | 否 | 日期 (YYYYMMDD格式) |
-
-**响应示例**：
-```json
-{
-  "date": "2026-01-24",
-  "prev_date": "2026-01-23",
-  "levels": [
-    {
-      "prev_level": 4,
-      "prev_count": 2,
-      "prev_items": [...],
-      "today_level": 5,
-      "today_count": 1,
-      "today_items": [
-        { "code": "000001", "name": "平安银行", "change_percent": 10.0, "price": 12.50, "duration_days": 5 }
-      ]
-    }
-  ]
-}
-```
-
-#### GET /api/market/message-stream
-**功能**：获取消息流数据（异动、利好利空、财联社、雪球、东财）
-
-**响应结构**：
-```json
-{
-  "updated_at": "2026-01-24T10:30:00",
-  "abnormal_news": [...],
-  "mergers_news": [...],
-  "good_news": [...],
-  "bad_news": [...],
-  "cailian_news": [...],
-  "xueqiu_news": [...],
-  "eastmoney_news": [...]
-}
-```
-
-#### GET /api/market/fundamentals/{symbol}
-**功能**：获取单只股票基本面数据
-
-### 6.2 Stocks 模块 - 股票筛选
-
-#### GET /api/stocks/filter
-**功能**：获取策略筛选股票列表
-
-**响应**：返回符合打板策略的股票列表
-
-#### GET /api/stocks/search
-**功能**：搜索股票
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| q | string | 是 | 搜索关键词 (代码/名称) |
-| limit | int | 否 | 返回数量 (默认20) |
-
-### 6.3 Charts 模块 - 图表数据
-
-#### GET /api/charts/daily/{symbol}
-**功能**：获取日K线数据
-
-**响应示例**：
-```json
-[
-  { "date": "2026-01-24", "open": 10.0, "high": 10.5, "low": 9.8, "close": 10.3, "volume": 1000000 }
-]
-```
-
-#### GET /api/charts/intraday/{symbol}
-**功能**：获取分时数据
-
-### 6.4 AI 模块 - 智能分析
-
-#### POST /api/ai/analyze-stock
-**功能**：AI 单股深度分析
-
-**请求体**：
-```json
-{ "symbol": "600519", "date": "2026-01-24" }
-```
-
-**响应示例**：
-```json
-{
-  "symbol": "600519",
-  "name": "贵州茅台",
-  "score": 78,
-  "recommendation": "买入",
-  "summary": "...",
-  "technical_analysis": { "trend": "上升", "support": 1800, "resistance": 1900 },
-  "fundamental_analysis": { "pe_assessment": "合理", "growth_outlook": "稳定" },
-  "risk_alerts": ["注意高位风险"],
-  "catalysts": ["春节旺季预期"],
-  "operation_advice": "..."
-}
-```
-
-### 6.5 Analysis 模块 - 情绪分析
-
-#### POST /api/analysis/run-sentiment
-**功能**：计算市场情绪因子
-
-#### GET /api/analysis/sentiment
-**功能**：获取情绪榜单
-
-### 6.6 Database 模块 - 数据管理
-
-#### GET /api/database/tables
-**功能**：获取所有表信息
-
-#### POST /api/database/query
-**功能**：执行 SQL 查询（只读）
-
-### 6.7 Calendar 模块 - 交易日历
-
-#### GET /api/market/calendar
-**功能**：获取市场日历事件
-
-#### POST /api/market/calendar/refresh
-**功能**：刷新日历数据（从交易日历计算）
-
-#### POST /api/market/calendar/generate-with-ai
-**功能**：使用 AI 生成日历事件
-
----
-
-## 7. 数据同步服务
-
-### 7.1 RealtimeSyncService
-
-**位置**：`backend/app/services/realtime_sync_service.py`
-
-**职责**：后台线程定期同步实时数据到Postgres 数据库
-
-#### 同步任务
-
-| 任务 | 方法 | 频率 | 数据源 | 目标表 |
-|------|------|------|--------|--------|
-| 市场指数 | `_sync_market_indices()` | 10秒 | `ak.stock_zh_index_daily` | `market_indices_realtime` |
-| 短线指标 | `_sync_short_line_indices()` | 10秒 | `ak.stock_zt_pool_em` 等 | `short_line_indices_realtime` |
-| 全部股票 | `_sync_all_stocks()` | 30秒 | `ak.stock_zh_a_spot_em` | `all_stocks_realtime` |
-| 热门概念 | `_sync_hot_concepts()` | 2分钟 | `ak.stock_board_concept_name_em` | `hot_concepts_realtime` |
-| 概念龙头 | `_sync_concept_leaders()` | 2分钟 | `ak.stock_board_concept_cons_em` | `concept_leaders_cache` |
-| 同花顺热榜 | `_sync_ths_hot()` | 2分钟 | `ak.stock_hot_rank_em` | `ths_hot_realtime` |
-| 连板天梯 | `_sync_lianban_ladder()` | 2分钟 | `ak.stock_zt_pool_em` | `lianban_ladder_history` |
-
-#### 时间控制
-
-```python
-def _is_market_hours(self) -> bool:
-    """检查是否在交易时间"""
-    now = datetime.now()
-    # 周末不同步
-    if now.weekday() >= 5:
-        return False
-    
-    hour, minute = now.hour, now.minute
-    time_val = hour * 60 + minute
-    
-    # 交易时间: 9:15-11:30, 13:00-15:05
-    morning_start, morning_end = 9*60+15, 11*60+30
-    afternoon_start, afternoon_end = 13*60, 15*60+5
-    
-    return (morning_start <= time_val <= morning_end) or \
-           (afternoon_start <= time_val <= afternoon_end)
-```
-
-### 7.2 SchedulerService
-
-**位置**：`backend/app/services/scheduler_service.py`
-
-**职责**：APScheduler 定时任务调度
-
-| 任务 | Cron 表达式 | 说明 |
-|------|-------------|------|
-| 股票历史同步 | `0 18 * * 1-5` | 每个交易日18:00 |
-| 市场数据同步 | `*/30 9-15 * * 1-5` | 交易时段每30分钟 |
-| 同花顺热榜同步 | `0 9,12,15 * * 1-5` | 每日9点、12点、15点 |
-
----
-
-## 8. 页面与模块交互
-
-### 8.1 首页 (Home)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    顶部: 市场指数行情栏                       │
-│  上证指数 3250.00 +0.79%  深证成指 10500 +0.77%  开市中      │
-├─────────────────────────────────────────────────────────────┤
-│  短线指标面板                                                │
-│  ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐           │
-│  │涨停数│ │连板数│ │最高板│ │跌停数│ │炸板数│ │封板率│          │
-│  │ 104 │ │ 11  │ │  5  │ │  0  │ │ 18  │ │85.2%│          │
-│  └─────┘ └─────┘ └─────┘ └─────┘ └─────┘ └─────┘           │
-├─────────────────────────────────────────────────────────────┤
-│  快速洞察卡片                                                │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │ 领涨板块     │ │ 市场情绪    │ │ 成交金额    │           │
-│  │ BC电池 +8.5%│ │ 偏多 65分   │ │ 8500亿      │           │
-│  └─────────────┘ └─────────────┘ └─────────────┘           │
-├─────────────────────────────────────────────────────────────┤
-│  热门板块监控                     筛选股票列表                │
-│  ┌────────────────────┐         ┌────────────────────────┐ │
-│  │ BC电池   +8.56%    │         │ 代码  名称   涨跌  ...  │ │
-│  │ TOPCon  +7.39%    │         │ ...                    │ │
-│  │ HJT电池  +7.30%    │         │                        │ │
-│  └────────────────────┘         └────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-
-数据流:
-  1. 页面加载 → fetchMarketOverview() → GET /market/overview
-  2. 10秒定时 → fetchMarketOverview() → 刷新指数
-  3. 页面加载 → getShortLineIndices() → GET /market/short-line-indices
-  4. 页面加载 → fetchStocks() → GET /stocks/filter
-  5. 页面加载 → fetchSectors() → GET /sectors/hot
-```
-
-### 8.2 市场概览 (MarketOverview)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Tab: [热门概念板块] [同花顺热榜] [连板天梯]     日期选择器    │
-├─────────────────────────────────────────────────────────────┤
-│  左侧: 概念/热榜列表              右侧: 详情面板               │
-│  ┌────────────────────┐         ┌────────────────────────┐ │
-│  │ 筛选: >=3% ▼       │         │ ● BC电池               │ │
-│  ├────────────────────┤         │ [龙头股] [分时K线]      │ │
-│  │ 1 BC电池  +8.56%  │ ──────► │ ┌────────────────────┐ │ │
-│  │ 2 TOPCon +7.39%   │         │ │ 代码  名称  涨跌幅   │ │ │
-│  │ 3 HJT电池 +7.30%  │         │ │ 920368 连城数控 +30%│ │ │
-│  │ ...               │         │ │ 688223 晶科能源 +20%│ │ │
-│  └────────────────────┘         │ └────────────────────┘ │ │
-│                                 │ 点击股票 → 展开图表     │ │
-│                                 │ ┌─────────┬─────────┐  │ │
-│                                 │ │ 分时图  │  日K线   │  │ │
-│                                 │ └─────────┴─────────┘  │ │
-│                                 └────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-
-数据流:
-  1. 页面加载 → getHotConcepts() → GET /market/hot-concepts
-  2. 选择概念 → getHotConceptLeaders() → GET /market/hot-concept/leaders?name=BC电池
-     (优先从 concept_leaders_cache 表读取，5分钟缓存)
-  3. 选择概念 → getHotConceptIntradayKline() → GET /market/hot-concept/intraday
-  4. 点击股票 → selectStock() → GET /charts/daily/{symbol} + /intraday/{symbol}
-```
-
-### 8.3 AI 智能分析 (AIStockAnalysis)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  搜索栏: [输入股票代码或名称...] [一键智能分析]               │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │ 综合评分: 78分   推荐: 买入                              ││
-│  │ ┌─────────────┬─────────────┬─────────────┐            ││
-│  │ │ 技术面 75   │ 基本面 80   │ 情绪面 72   │            ││
-│  │ └─────────────┴─────────────┴─────────────┘            ││
-│  ├─────────────────────────────────────────────────────────┤│
-│  │ AI趋势判断: 短期看涨，中期震荡                           ││
-│  │ 核心观点: xxx                                           ││
-│  ├─────────────────────────────────────────────────────────┤│
-│  │ 关键价位          风险提示                               ││
-│  │ 支撑: 1800        [注意高位回调风险]                     ││
-│  │ 阻力: 1900        [注意政策风险]                        ││
-│  ├─────────────────────────────────────────────────────────┤│
-│  │ 分时走势                        日K线                    ││
-│  │ ┌─────────────────────┐    ┌─────────────────────┐     ││
-│  │ │                     │    │                     │     ││
-│  │ └─────────────────────┘    └─────────────────────┘     ││
-│  └─────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
-
-数据流:
-  1. 输入搜索 → searchStocks() → GET /stocks/search?q=xxx
-  2. 点击分析 → analyzeStockByAI() → POST /ai/analyze-stock
-  3. 获取图表 → getDailyChart() + getIntradayChart()
-```
-
-### 8.4 情绪分析 (SentimentAnalysis)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  状态: ● 交易中                                              │
-├─────────────────────────────────────────────────────────────┤
-│  ┌───────────────┐  ┌─────────────────────────────────────┐ │
-│  │ 情绪仪表盘     │  │ 核心指标卡片                        │ │
-│  │    [偏多]      │  │ 上涨: 2800  涨停: 104  最高板: 5    │ │
-│  │   ┌─────┐     │  │ 下跌: 1500  封板率: 85.2%          │ │
-│  │   │ 65  │     │  │ 成交额: 8500亿  量比: 1.2          │ │
-│  │   └─────┘     │  └─────────────────────────────────────┘ │
-│  └───────────────┘                                          │
-├─────────────────────────────────────────────────────────────┤
-│  板块涨幅TOP10              连板天梯                         │
-│  ┌────────────────────┐    ┌────────────────────┐          │
-│  │ BC电池   ████ 8.5% │    │ 5板: 1只            │          │
-│  │ TOPCon  ███ 7.4%  │    │ 4板: 2只            │          │
-│  │ ...                │    │ 3板: 5只            │          │
-│  └────────────────────┘    └────────────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-
-数据流:
-  1. 页面加载 → getMarketOverview() → GET /market/overview
-  2. 页面加载 → getHotConcepts() → 获取板块涨幅
-  3. 页面加载 → getLianbanLadder() → 获取连板数据
-  4. 页面加载 → getThsHot() → 获取热门股票
-  5. 1分钟定时刷新所有数据
-```
-
----
-
-## 9. 环境配置
-
-### 9.1 后端环境变量
-
-```bash
-# .env 文件
-
-# AI 服务配置
-QWEN_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-QWEN_STOCK_MODEL=qwen-plus
-
-# 数据库配置 (可选，默认使用本地 Postgres)
-# SUPABASE_URL=https://xxx.postgres.co
-# SUPABASE_KEY=xxx
-
-# 股票数据配置
-AKSHARE_TIMEOUT=30
-
-# 应用配置
-BACKEND_CORS_ORIGINS=["http://localhost:4444"]
-```
-
-### 9.2 前端环境变量
-
-```bash
-# frontend/.env
-
-# API 配置
-VITE_API_URL=/api
-```
-
-### 9.3 Vite 代理配置
-
-```typescript
-// frontend/vite.config.ts
-export default defineConfig({
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:4445',
-        changeOrigin: true
-      }
-    }
-  }
-})
-```
-
----
-
-## 10. 部署说明
-
-### 10.1 本地开发
-
-```bash
-# 1. 启动后端
-cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 4445
-
-# 2. 启动前端
-cd frontend
-npm install
-npm run dev
-```
-
-### 10.2 生产部署
-
-```bash
-# 后端
-uvicorn app.main:app --host 0.0.0.0 --port 4445 --workers 4
-
-# 前端构建
-npm run build
-# 静态文件部署到 Nginx 或 CDN
-```
-
-### 10.3 Electron 打包
-
-```bash
-cd frontend
-npm run build
-npm run electron:build
-```
-
----
-
-## 附录
-
-### A. AkShare 接口映射表
-
-| 功能 | AkShare 接口 | 调用位置 |
-|------|--------------|----------|
-| A股实时行情 | `stock_zh_a_spot_em` | `RealtimeSyncService` |
-| 日K线数据 | `stock_zh_a_hist` | `ChartService` |
-| 分时数据 | `stock_zh_a_minute` | `ChartService` |
-| 指数日K | `stock_zh_index_daily` | `RealtimeSyncService` |
-| 概念板块列表 | `stock_board_concept_name_em` | `MarketService` |
-| 概念板块成分 | `stock_board_concept_cons_em` | `MarketService` |
-| 人气榜 | `stock_hot_rank_em` | `MarketService` |
-| 涨停池 | `stock_zt_pool_em` | `RealtimeSyncService` |
-| 跌停池 | `stock_zt_pool_dtgc_em` | `RealtimeSyncService` |
-| 炸板池 | `stock_zt_pool_zbgc_em` | `RealtimeSyncService` |
-
-### B. 错误码说明
-
-| 错误码 | 说明 |
-|--------|------|
-| 400 | 请求参数错误 |
-| 404 | 资源未找到 |
-| 500 | 服务器内部错误 |
-| 503 | 外部服务不可用 (AkShare 连接失败) |
-
----
-
-> 文档维护：技术团队  
-> 最后更新：2026-01-24
+1. PostgreSQL 是事实存储，页面状态不是事实来源。
+2. 读取无副作用，写操作显式、可审计、可恢复。
+3. 缺失保持缺失，过期保持过期，不用 0 或 mock 掩盖。
+4. 每个研究结果固定版本、快照、时间和来源。
+5. A 股规则位于共享执行边界，不在各页面重复实现。
+6. BitPro 提供 UI 和工作流参考，不成为 StockPro 业务代码副本。
+7. 本地运行与远程部署严格分离。

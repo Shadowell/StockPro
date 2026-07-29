@@ -1,25 +1,27 @@
-# 数据处理与分析模块
+# 数据处理模块说明
 
-## 页面与路由
-- 路由：`/analysis`
-- 目标：提供历史数据回补控制台 + 情绪因子计算/查询入口。
+> 主入口：`/data`；兼容详情入口：`/data/processing`。
 
-## 历史数据回补（History Fetch）
-### 现状
-- 后端启动时自动开启 APScheduler 每日任务（见 `backend/app/services/scheduler_service.py`）。
-- 同时提供管理接口：
-  - `POST /api/admin/fetch-history`
-  - `GET /api/admin/task-status`
+旧版 `/analysis` 页面已经迁移到数据工作区。当前数据处理按“状态 → 数据集 → 同步任务 → 质量 → Provider → 调度”组织，不再把批量导入、情绪计算和数据库表直接堆在同一页面。
 
-### 页面能力
-- 展示当前任务状态（是否运行、进度、提示信息）。\n- 支持手动触发全市场回补（后台异步执行）。\n
-## 情绪因子（Sentiment Factor）
-### 接口
-- 计算并写入：`POST /api/analysis/run-sentiment?date=YYYYMMDD&universe=all|hot`\n- 查询榜单：`GET /api/analysis/sentiment?date=YYYYMMDD&limit=200&order=desc`\n
-### 计算逻辑（当前实现）
-- 输入数据（AkShare）：\n  - 全市场现货：涨跌幅、成交额、换手率\n  - 涨停池：连板数（用于加分）\n  - 热度榜：排名（用于加分）\n  - 市场新闻情绪指数：作为市场层面的加减项\n- 输出：`score(0~100)` + `level(冷/中/热)`，并保留 `components` 明细便于后续调参。\n
-### 存储表（Postgres）
-当前实现默认写入：`stock_sentiment_daily`\n
-建议建表 SQL：\n```sql\ncreate table if not exists public.stock_sentiment_daily (\n  code text not null,\n  name text,\n  date date not null,\n  score double precision,\n  level text,\n  components jsonb,\n  created_at timestamptz default now(),\n  primary key (code, date)\n);\n```\n
-## 后端实现位置
-- Analysis endpoints：`backend/app/api/endpoints/analysis.py`\n- SentimentService：`backend/app/services/sentiment_service.py`\n
+## 主要能力
+
+- 查看研究数据是否可用、最新交易日和阻塞项；
+- 浏览数据集、覆盖率、质量问题与快照；
+- 查询同步任务、进度和日志；
+- 管理 TuShare 端点目录与权限探测；
+- 按日期提交单股或全市场历史同步；
+- 管理日终调度与手动运行；
+- 查看表统计和受控数据查询。
+
+## 安全边界
+
+- 后端普通启动和页面 GET 不自动触发迁移、全量回补或 Provider 同步。
+- 同步、迁移、删除、修复和封存都是显式写操作。
+- 质量失败或部分完成的数据不能发布为完整研究快照。
+- 数据缺失保持 `null`/不可用，不以 0 填充。
+- 全市场任务执行前确认日期、范围、权限和目标数据库。
+
+接口入口见 `/api/data/*`、`/api/data-hub/*`、`/api/data-dev/*`；完整字段见运行时 OpenAPI。
+
+详见 [数据架构](../DATA_ARCHITECTURE.md) 和 [本地运行手册](../deployment.md)。

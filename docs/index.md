@@ -1,0 +1,51 @@
+# StockPro 文档中心
+
+这里是 StockPro 当前文档的统一入口。产品行为以代码、`docs/spec.md` 和对应 Sprint 合同为准；README 面向第一次了解和运行项目的人，进度文档保留实现与验证历史。
+
+## 先看什么
+
+| 读者 | 建议入口 | 内容 |
+| --- | --- | --- |
+| 第一次了解 StockPro | [项目 README](../README.md) | 产品定位、功能地图、架构和快速开始 |
+| 日常使用者 | [用户指南](user_guide.md) | 从数据准备到研究、回测、Paper 和复盘 |
+| 本地开发/运维 | [本地运行手册](deployment.md) | 安装、配置、启动、日志、健康检查和排障 |
+| 产品与研发 | [产品规格](spec.md) | 产品边界、核心对象、工作流和验收规则 |
+| 前后端开发 | [技术架构](technical_architecture.md) | 组件关系、请求链路、安全与扩展边界 |
+| 数据研究 | [数据架构](DATA_ARCHITECTURE.md) | Provider、PG、快照、质量和调度 |
+| API/Agent 接入 | [API 指南](api.md) | 鉴权、接口域、写操作规范和 OpenAPI |
+| 策略作者 | [策略开发说明](../strategies/README.md) | 策略 API、版本、验证和运行限制 |
+
+## 产品事实入口
+
+- [产品规格](spec.md)：当前产品合同。
+- [开发进度](progress.md)：按时间记录已完成实现、实际验证和已知缺口；不是安装手册。
+- [Sprint 合同](contracts/)：具体迭代的范围、边界和验收证据。文件名包含 `active-` 不代表当前仍在开发，先看正文的 `Status`。
+- [A 股研究路线](ashare-research-roadmap.md)：研究平台专业化路线和长期方向。
+- [API 指南](api.md)：人工维护的稳定入口；完整字段以运行中的 OpenAPI 为准。
+
+## 设计、架构与运行
+
+- [技术架构](technical_architecture.md)
+- [数据架构](DATA_ARCHITECTURE.md)
+- [本地运行手册](deployment.md)
+- [前端开发说明](../frontend/README.md)
+- [脚本使用说明](../SCRIPTS_USAGE.md)
+- [MCP 长运行应用参考](references/harness-design-long-running-apps.md)
+
+## QA 与历史材料
+
+- [QA 目录](qa/README.md)：人工审查报告和模板。
+- [最近测试报告](test_report.md)：特定阶段的测试快照，不代表当前每次提交的结果。
+- [页面/模块分析](modules/) 与 [早期功能说明](mguide/functionals.md)：设计和实现背景。
+- [历史计划](superpowers/plans/)：已执行或被替代的实施计划。
+- 根目录的 Electron、优化总结、AKShare 接口笔记属于早期历史或 Provider 研究材料，不是当前产品合同。
+
+## 文档维护约定
+
+1. 产品边界或工作流变化：更新 `spec.md` 和对应合同。
+2. 对用户可见的功能、安装或入口变化：更新根 README 和相关使用手册。
+3. API 域或鉴权变化：更新 `api.md`，字段细节保持 OpenAPI 可发现。
+4. 有意义的实现或文档整理：在 `progress.md` 追加简洁条目和实际验证命令。
+5. 不把会话计划、调试日志或阶段性思考新建成 Markdown；历史材料必须明确其时间和状态。
+
+最后更新：2026-07-29。

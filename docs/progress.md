@@ -1687,3 +1687,11 @@ Verification:
 1. Add deeper real-backend assertions for `market/overview`, `database/query`, and `data-dev` CRUD flows.
 2. Use `scripts/backend-health.sh --ping` + `npm run test:e2e:real` in CI/预发 gate.
 3. Add integration test for `stocks/search`, `data-dev/tasks`, and `batch-import/historical-data` against a temporary Postgres database.
+
+## Documentation system refresh (2026-07-29)
+
+- Rebuilt `README.md` as the canonical Chinese product introduction, with the current 12-workspace map, evidence-based research lifecycle, local-only Paper boundary, architecture, setup, configuration, verification and documentation links. Updated the English entry and made `README.zh-CN.md` a stable pointer to the canonical Chinese document.
+- Added `docs/index.md` as the documentation map. Rewrote the current product specification, user guide, API guide, local operations guide, technical architecture and data architecture around the implemented React/FastAPI/PostgreSQL system.
+- Replaced stale StockApp routes, automatic-startup writes, Electron-first architecture and simulated/live-trading claims. Updated frontend, strategy and script usage guides; marked early Electron, optimization, Provider and test notes as historical/reference material.
+- Documentation-only change: no frontend/backend source changed, no service restart and no remote deployment were required.
+- Verification passed: `git diff --check`; local Markdown link audit checked 61 files with no missing local targets.

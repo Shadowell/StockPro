@@ -1,5 +1,7 @@
 # Electron 架构优化方案总结
 
+> 状态：2026-06 的历史阶段总结。StockPro 当前以本地 B/S 为核心架构，Electron 只是可选壳层；请以 [README](README.md) 和 [技术架构](docs/technical_architecture.md) 为准。
+
 ## 优化目标
 将现有 Web 应用转换为 Electron 桌面应用，并使用本地 Postgres 数据库替代远程 Postgres，以提高性能和响应速度。
 
@@ -29,7 +31,7 @@
 ### 3. 服务层适配
 更新了所有后端服务文件以兼容新的数据库接口：
 - `market_service.py` - 市场数据服务
-- `ai_service.py` - AI 分析服务  
+- `ai_service.py` - AI 分析服务
 - `chart_service.py` - 图表服务
 - `sector_service.py` - 板块服务
 - `sentiment_service.py` - 情绪分析服务

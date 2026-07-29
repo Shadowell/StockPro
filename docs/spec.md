@@ -1,273 +1,217 @@
-# StockPro Product Spec
+# StockPro 产品规格
+
+> 文档角色：当前产品级事实入口
+> 更新日期：2026-07-29
+> 当前交付边界：本地 B/S、PostgreSQL、研究优先、仅 Paper 模拟交易
+
+## 1. 产品定义
 
-## Product Summary
+StockPro 是面向个人量化研究员和 A 股策略操作者的本地研究工作台。它覆盖“数据 → 因子 → 股票池 → 策略 → 回测 → Paper → 盯盘/监控 → 复盘”的完整链路，并要求每个下游对象保留可重现的上游版本和证据。
 
-StockPro is a locally operated B/S A-share strategy workstation. It provides research, factor development, strategy development, backtesting, live signal monitoring, paper trading and risk controls for a personal research workspace.
+StockPro 不以荐股、自动实盘或营销式 AI 评分为产品中心。系统的核心价值是：
 
-Sprint 09 `readonly-runtime-safety`, Sprint 10 `daily-publication-integrity` and Sprint 11 `bitpro-ashare-strategy-workbench` completed locally on 2026-07-17. The 2026-07-27 BitPro-parity work added workflow discovery, guest access, asynchronous PostgreSQL backtest jobs, the authenticated `stockpro-mcp-v1` Agent interface, complete Paper runtime evidence and a real-backend read-only twelve-page acceptance gate. The 2026-07-28 data-module contract adds full-market date-based daily K-line download (`POST /api/data/history/sync-all`), PG daily-reference schedule control from Data Center, and local `ENABLE_SCHEDULER=true` for post-close catchup. Remote production deployment still requires separate explicit approval.
+1. 把市场事实、研究假设和策略结论分开表达。
+2. 让数据来源、交易日、可用时间、新鲜度和缺失原因可见。
+3. 让因子、股票池、策略、回测和模拟执行可以追溯与复现。
+4. 在启用任何真实交易能力前维持明确的技术与产品隔离。
 
-The current authorized delivery environment is local development only: React on `http://localhost:4444`, FastAPI on `http://localhost:4445`, and PostgreSQL through the local `DATABASE_URL`. Remote-server deployment and production-data changes are deferred to a separate explicit contract.
+## 2. 用户与权限
 
-## Users
+### 管理员
 
-- Primary user: one owner operating a personal local strategy workstation.
-- Future users: small research collaborators, only after a separate permissions contract.
+- 管理数据、因子、股票池、策略、回测、Paper 和本地 Agent Token。
+- 执行同步、创建版本、运行回测与控制 Paper 实例。
+- 查看所有审计证据。
 
-## Core User Journeys
+### 访客
 
-1. Review A-share market structure, concepts, limit-up ladders, money flow, news catalysts, and market sentiment.
-2. Define or edit a Python strategy with parameters, versioning, declared data dependencies, and a standard output contract.
-3. Run a backtest on Postgres-backed historical data and review return, drawdown, win rate, turnover, trades, and signal quality.
-4. Review the current trading day after close, including index breadth, hot sectors, limit-up ladders, risk notes, and next-day plan.
-5. Publish a strategy to live monitoring and inspect normalized signals with chart and research context.
-6. Convert a signal into a paper order, pass risk checks, and track orders, trades, positions, and cash ledger.
-7. Prepare broker adapter configuration in dry-run mode before any real trading integration is enabled.
+- 以只读方式查看研究和运行状态。
+- 只允许在显式配额与权限范围内发起回测。
+- 不能同步数据、修改策略、控制 Paper 或执行其他写操作。
 
-## Product Priorities
+当前不是公开 SaaS，不提供注册、计费、团队租户或公开 API。
 
-1. Web-first B/S architecture with React + FastAPI + Postgres.
-2. A-share-specific research rules: ST, exchange boards, lot size, T+1, limit-up/down, suspension, lunch break, concept rotation, and event catalysts.
-3. Auditable strategy lifecycle from development to backtest to signal to order.
-4. Local-first delivery with reproducible PostgreSQL migrations and checks; deployment is outside the current roadmap.
-5. Explicit safety gates before any live trading path.
-6. BitPro-compatible operator UI: a fixed 64px dark first-level sidebar, page-owned headers, compact bordered modules and explicit data-state strips.
+## 3. 一级信息架构
 
-## Research Platform Operating Model
+一级侧栏保持 12 个稳定入口：
 
-StockPro follows BitPro's operator-stage page hierarchy while adapting it for A-share research. The L1 sidebar contains 12 short, stable entries in workflow order:
-
-1. Research workspace: Home (`/`), Market (`/market`), Stock Pools (`/pools`).
-2. Strategy development: Factors (`/factors`), Strategy (`/strategy`), Backtest (`/backtest`), AI Lab (`/ai-lab`).
-3. Execution validation: Paper (`/paper`), Watch (`/watch`), Monitor (`/monitor`), Review (`/review`).
-4. System: Data (`/data`).
-
-L2 tabs contain related views within one workflow stage; L3 routes or drawers contain object details such as a factor version, strategy version, stock-pool snapshot, backtest run or Paper instance. Market structure, sentiment, news, calendar and data-processing pages are migration surfaces into the matching L2 workspace rather than permanent standalone navigation entries.
-
-Paper, Watch and Monitor remain separate because they represent execution, human observation and system health. A real-trading entry is not displayed or registered until a separate broker contract and safety review are complete.
-
-The required lifecycle is:
-
-1. Synchronize source-aware TuShare/AKShare datasets into Postgres.
-2. Validate and freeze an immutable dataset snapshot.
-3. Calculate and publish immutable point-in-time factor snapshots.
-4. Build a reproducible stock-pool snapshot with reasons and evidence.
-5. Create and validate a versioned strategy with declared data/factor dependencies.
-6. Run task-based backtest experiments against explicit strategy, factor, pool and dataset versions.
-7. Promote a passing strategy version into isolated Paper execution.
-8. Audit signals, risk decisions, orders, trades, positions, cash and daily review records.
-
-## BitPro UI Contract
-
-- All routed pages **and every nested L2/L3 surface** (WorkspaceTabs, `?tab=` views, list/editor/detail modes, create wizards, detail nested tabs and drawers), including admin login, render inside the shared financial operator theme; trading, monitoring, and data-admin surfaces must follow `~/.codex/skills/financial-operator-ui/SKILL.md`.
-- Prefer the installed `@bitpro/ui` primitives and theme tokens for generic panels, metrics, and statuses. StockPro owns its business composition and must not copy BitPro business-page source. BitPro reference lives at `/Users/jie.feng/Dev/Github/Private/BitPro`.
-- Reuse the existing `MainLayout`, BitPro-compatible 64px single-column sidebar, page-owned headers, dark design tokens and Lucide icons.
-- The twelve first-level destinations stay flat and stable. Catalogue filters, workflow stages and object details belong inside each page rather than in grouped sidebar sections.
-- User/business objects are the default scope. Seed and acceptance objects are excluded from default catalogue, backtest, AI, Paper, Watch and Monitor views and remain reachable only through a clearly labelled test scope.
-- Primary pages are dense operator workspaces: compact title/status, KPI strip, segmented filters, chart/table split panels, drill-down drawers and linkable object details. Subpages must share the same density and state semantics as their parent L1.
-- Color, typography, spacing, borders, radii, buttons, status tags and up/down semantics remain consistent across all pages.
-- Do not add gradients, marketing hero layouts, decorative oversized cards, emoji icons, placeholder dashboards or a parallel component system.
-- All data panels implement loading, empty, stale, error and permission-denied states and expose data date, source/snapshot and version.
-
-## Daily Data Sync Contract
-
-- Reuse the existing APScheduler service with a PG-backed daily schedule; default local run time is 17:30 Asia/Shanghai.
-- The job checks `trade_cal`, acquires a PostgreSQL advisory lock, and incrementally fetches the current trade date rather than reloading all history.
-- Required order is daily bars, adjustment factors, daily valuation/turnover, suspension, price limits and benchmark indices; security/calendar metadata refreshes only when due.
-- TuShare is primary. An allowed AKShare fallback is applied and recorded per whole dataset/date item, never silently mixed by row.
-- Data lands in unsealed partitions, passes quality gates, then publishes one atomic dataset snapshot. Partial days cannot trigger factor calculations.
-- The last five trading days are reconciled for provider corrections. Corrections produce new partitions/snapshots without mutating sealed history.
-- Retries, watermarks, schedules and run state persist in PostgreSQL; startup recovery resumes missed/failed trading dates idempotently.
-- Each daily orchestration date has one persisted run ledger with its calendar decision, K-line job, sealed dataset snapshot and optional market-evidence snapshot; the UI reports this ledger rather than inferring completion from a process-local timer.
-
-## Research Validity Contract
-
-- Every research fact has both `trade_date` and `available_at`: `trade_date` is when the market fact occurred, while `available_at` is the earliest simulated time at which StockPro may expose it. Data snapshots additionally pin `knowledge_cutoff_at`.
-- A backtest, factor run or pool must bind an immutable universe snapshot: historical listing/ST/suspension/delisting status, symbol/name mapping, industry classification and, where applicable, benchmark constituent history.
-- Corporate actions are first-class point-in-time data. Cash dividends, rights issues, splits/consolidations and adjustment factors must reconcile with position quantity, cash and executable unadjusted prices.
-- Financial data may be used only from its recorded disclosure/availability time, never merely because its report period is earlier than the simulated date.
-- Each data definition records entitlement/use scope, rate/permission state, permitted cache/export behavior and source contract version. Restricted or unlicensed data cannot enter a publishable snapshot.
-
-## Research Protocol And Promotion Contract
-
-- Every promotable factor/strategy experiment references a versioned research protocol: hypothesis, universe, benchmark, train/validation/out-of-sample windows, embargo/gap rule, metrics, costs and rejection criteria.
-- Parameter/factor searches persist all candidates, including rejected variants and selection rationale. A candidate selected on a full sample cannot be labelled out-of-sample.
-- Promotion to Paper requires a sealed full backtest, an untouched out-of-sample result, liquidity/capacity checks and explicit passing promotion checks. Quick runs and exploratory factor analyses are never promotable evidence.
-- The platform presents research status as `exploratory`, `validated`, `rejected` or `paper_eligible`; it must not imply investment suitability.
-
-## Local Recovery Contract
-
-- Local PostgreSQL has a recorded daily backup, a weekly restore rehearsal into a disposable database and a `backup_run` audit record; initial targets are RPO <= 24 hours and RTO <= 2 hours.
-- A restore rehearsal must verify snapshot manifests, factor snapshots, backtest evidence and Paper ledgers, not only that PostgreSQL starts.
-- Secrets remain outside the repository. Backup artifacts must be access-controlled and excluded from source control.
-
-## Agent Tool Interface Contract
-
-- External Agents discover the stable `stockpro-mcp-v1` contract through the local stdio MCP resource/tool before calling application APIs.
-- Agent tokens use `X-StockPro-MCP-Token`, are stored in PostgreSQL as SHA-256 hashes, return plaintext once, and can be revoked immediately from the administrator settings panel or API.
-- Scope `R` grants only the listed research, strategy, backtest, Paper, Watch, Monitor, Review and Data reads. Scope `W` grants only the listed asynchronous backtest create/cancel/retry tools.
-- Every W call requires a unique `Idempotency-Key`; duplicate keys are rejected before the underlying mutation. Method/path allowlisting prevents a W token from guessing data-sync, strategy mutation, Paper control or other application routes.
-- Agent reads preserve the same data source, freshness, snapshot, null and missing-reason semantics as the corresponding page APIs. MCP never creates synthetic market data or converts missing values to zero.
-- Remote MCP and all real-broker diagnostics/mutations are absent. The capability response reports `real_broker_available=false`.
-
-## Factor Platform Contract
-
-- Factor authors write metadata plus a plain Python `calculate(context, data)` function against `StockPro Factor API v1`; new factors require no framework/route edits or backend restart.
-- Factor definitions, code versions, dependencies, lookback, universe snapshot, direction, preprocessing and knowledge cutoff are immutable versioned inputs.
-- Daily calculation starts only from a sealed dataset snapshot and publishes long-form PG values plus an immutable `factor_snapshot_id`.
-- Forward-return diagnostics mature through append-only evaluation rows against later sealed dataset snapshots; source factor values, source metrics and factor snapshot hashes are never rewritten.
-- Diagnostics include coverage/missing/outliers, IC/RankIC/ICIR, Q1-Q5 and long-short returns, turnover, rank autocorrelation/decay, exposures and correlation. Promotable conclusions additionally bind the research protocol and untouched out-of-sample window.
-- Strategies and backtests read point-in-time published values by factor snapshot and never recompute factors or call providers during execution.
-- `/factors` is a stable L1 workspace for Factor Library, Compute Runs, Single-Factor Analysis, Multi-Factor Analysis, Correlation/Exposure and Factor Values.
-
-## Strategy Authoring Contract
-
-- BitPro's strategy module is the product and workflow baseline for StockPro strategy development. StockPro must preserve the same operator journey and state semantics across strategy catalogue/search/filter, strategy detail, code/config editing, validation, creation or version iteration, backtest job submission and result review, Paper configuration and lifecycle control, runtime evidence, monitoring and review.
-- The adaptation boundary is the traded asset, not a separate StockPro workflow. Cryptocurrency exchanges, symbols, 24x7 sessions, spot/swap fields, leverage, funding and long/short assumptions are replaced by A-share security identities, exchange boards, trading calendar and sessions, long-only default, T+1 sellability, 100-share lots, price limits, suspensions, ST/universe rules, corporate actions, commissions, transfer fees, stamp duty and A-share liquidity/capacity controls.
-- Equivalent BitPro stages, actions, statuses, filters, task progress, evidence tabs, error/empty states and audit lineage use consistent concepts and interaction order. StockPro may add A-share-only evidence or safety gates, but must not invent a parallel strategy lifecycle where the BitPro module already defines one.
-- Strategy creation follows validate -> create immutable version -> backtest -> evidence review -> Paper eligibility -> isolated Paper execution -> monitor/review. Editing an existing strategy creates a child version and preserves the strategy identity and history; it never silently mutates accepted backtest or Paper evidence.
-- Backtest and Paper remain distinct lifecycle stages but use the exact accepted strategy version and configuration. Every downstream object keeps the strategy/version, dataset, Universe, factor, pool, protocol and cost-model lineage needed to reproduce it.
-- BitPro is a behavioral reference, not a source-copy dependency. Reuse shared `@bitpro/ui` primitives and vocabulary where appropriate, but keep StockPro's A-share domain implementation, API contract and business composition independent.
-- Real broker promotion and order submission are not implied by workflow parity. They remain absent until a separate broker contract, safety review and explicit authorization are complete.
-- Clients discover lifecycle support through the versioned `stockpro-workflow-v1` capability contract before presenting a stage as usable. Code capability, runtime service state and data availability are separate states.
-- The operator shell presents one canonical Strategy -> Backtest -> Paper -> Watch -> Monitor -> Review rail. Until a broker contract is implemented, first-level copy says Paper/模拟交易 and explicitly marks real trading unavailable.
-
-- Strategy authors write ordinary Python functions, following the platform-owned `StockPro Strategy API v1`.
-- The minimum strategy implements `initialize(context)` and `handle_data(context, data)`; optional lifecycle functions include `before_trading_start`, `after_trading_end` and `on_strategy_end`.
-- Strategy code is stored as immutable versions in `strategy_versions.script_content`.
-- Creating or changing a strategy must not require editing framework files, registering a class, adding a route or restarting FastAPI.
-- The platform owns data access, simulated clock, scheduling, order APIs, A-share matching, risk, persistence and metrics.
-- Backtest and Paper Replay execute the exact same strategy code through the same API version.
-- User strategy code cannot directly access TuShare, AKShare, PostgreSQL, filesystem writes, network or broker services.
-- The fixed runtime enforces a declared package allowlist plus CPU, wall-time, memory, output/event and log quotas. A timeout/resource violation becomes a persisted failed run; it never falls back to another strategy.
-- Every saved version pins `stockpro.v1`, its content hash, dependency manifest and versioned runtime limits; changing code always creates a child row and PostgreSQL rejects in-place content mutation.
-- The initial third-party package allowlist is empty; deterministic `math`, safe builtins and platform APIs are injected by the worker. Unsupported calls and wall-clock class methods fail validation before execution.
-- A strategy replay reads sealed PostgreSQL dataset/factor snapshots only. Factor values are invisible before the factor snapshot knowledge cutoff and may only be forward-filled after that cutoff.
-- Quick, backtest and Paper Replay modes share one isolated event loop and persist event ordinal, simulated timestamp, data-availability timestamp and deterministic hashes for every intent and custom record.
-
-## Backtest Execution-Timing Contract
-
-- A daily-bar strategy receives day D's close only after D's regular session ends. An order created from that event is queued no earlier than the next tradable session on D+1; same-bar close fill is prohibited.
-- Every intent/order/fill records `signal_at`, `data_available_at`, `submitted_at`, `earliest_fill_at`, price source and fill/reject reason.
-- The initial daily model uses the next executable unadjusted bar price; opening/closing auction participation, intraday execution and order-book queue priority are explicitly unsupported until their own data/model contract exists.
-- Adjusted price history may generate a signal, but corporate-action-adjusted position/cash and unadjusted executable price must reconcile before an order can fill.
-- Capacity is reported from configured participation/ADV limits and impact assumptions. A run that exceeds its stated capacity cannot pass promotion.
-
-## Backtest Presentation Contract
-
-The Backtest workflow follows JoinQuant's edit -> configure -> quick run -> full backtest model while using StockPro's local PG data and A-share execution rules.
-
-- Core result cards: strategy return, annualized return, benchmark return, excess return, maximum drawdown and Sharpe ratio.
-- Full metrics: Alpha, Beta, Sortino, information ratio, strategy/benchmark volatility, excess maximum drawdown, excess Sharpe, win rate, profit/loss ratio, daily win rate, profitable/losing trades, turnover and total cost.
-- Result charts: strategy/benchmark/excess cumulative return, drawdown interval, daily returns, monthly heatmap, positions/exposure and attribution.
-- Result detail tabs: Overview, Return Analysis, Positions, Trades, Orders, Logs, Code And Params, Attribution.
-- Undefined metrics remain `null` with an explanation; they are never replaced with numeric zero.
-- Quick backtests are diagnostic only. Only full backtests persist complete PG evidence and may be compared or promoted to Paper.
-
-## Market Data Source Policy
-
-- TuShare is the primary source for stable research datasets: security master, trading calendar, historical bars, adjustment factors, daily valuation data, suspension, price limits, financial statements, index benchmarks and licensed money-flow datasets.
-- AKShare supplements datasets without a suitable TuShare shape, including public full-market snapshots, concept/industry boards, hot rankings, limit pools, public news, announcements and dragon-tiger lists.
-- Every normalized dataset must preserve source, trade date, collection time, schema version and fallback reason.
-- Missing or stale data must remain explicit. APIs and pages must not replace unavailable facts with hard-coded values or numeric zeroes.
-- Backtest/factor data is stored in PostgreSQL only. Sprint 01 persists security master, trading calendar, unadjusted daily bars, adjustment factors, daily valuation/turnover, suspension, price limits and benchmark index bars.
-- Backtests may only read persisted PG dataset snapshots. They must not trigger external provider calls while an experiment is running.
-- Backtests must also bind the applicable universe, corporate-action and research-protocol manifests; `trade_date` alone is insufficient evidence of point-in-time availability.
-
-## TuShare 5,000-Credit Module Contract
-
-- The implementation baseline is a TuShare account with at least 5,000 credits. The Data workspace maintains an endpoint catalogue with module, fields, schedule, storage policy, entitlement state and latest contract-probe result for every admitted endpoint; a failed/unauthorised probe is `restricted` or `unsupported`, never an empty successful dataset.
-- The first delivery admits all A-share research endpoints confirmed by the account probe to require no more than 5,000 credits. They are organised as Reference & Calendar, A-share Price & Valuation, Corporate Actions & Financial Disclosure, Index & Industry, Capital Flow & Dragon-Tiger, Limit-up Ecology, Fund/ETF & Convertible Bond, Macro & Cross-market Context, and Research Events. Minute, news, announcement and other individually licensed products remain separate entitlements even when the account has 5,000 credits.
-- Confirmed 5,000-credit short-line endpoints are `limit_list_d` and `kpl_list`. `limit_step`, `limit_cpt_list` and `dc_hot` require 8,000 credits; `ths_hot` and the THS money-flow endpoints require 6,000 credits. The platform must expose these as unavailable at this entitlement instead of promising their data.
-- Market snapshots retain the actual source and timing. An AkShare fallback is category-wide and explicit. `stock_hot_rank_em` is EastMoney popularity, not a THS ranking; only a real THS endpoint may use a THS label.
-
-## Market Intelligence Contract
-
-- The Market `Sentiment/Limit` workspace is a transparent market-observation product, not a trading signal or black-box investment rating. It presents raw facts and, only when complete, a versioned `market_temperature` built from breadth, limit-up ecology, momentum continuity, loss/risk and liquidity/participation.
-- The first-screen KPIs are rising/falling/flat counts, limit-up/down/broken-board counts, sealing rate, highest consecutive board, red-market ratio, rise/fall ratio, new highs and new lows. Every KPI exposes its scope, trade date/capture time, source, freshness and comparison window; unavailable values remain unavailable.
-- Limit ecology contains the 1/2/3/4/5+ board ladder, maximum streak, first-board/multi-board counts, broken-board rate, yesterday-limit-up premium and promotion/elimination rates. With 5,000 credits the ladder is derived from `limit_list_d` and labelled accordingly; an entitled `limit_step` source may later supersede it without changing history.
-- Sector/theme views lock one classification system per panel, and show return, breadth, limit-up/ladder participation, leader/laggard and permitted money-flow evidence. They never describe a web-derived flow as exchange-level capital flow.
-
-## Delivery Contracts
-
-The research-platform roadmap is delivered in strict dependency order. Only one contract may be Active at a time.
-
-| Sprint | Contract | Status | Exit capability |
-| --- | --- | --- | --- |
-| 00 | `sprint-00-product-contract-and-page-hierarchy.md` | Completed | Product boundary, 12-page hierarchy and source policy frozen |
-| 01 | `active-sprint-01-data-trust-and-snapshots.md` | Completed | A sealed 20-stock, two-year daily-data snapshot passes quality gates |
-| 02 | `sprint-02-factor-store-and-daily-research.md` | Completed | Daily factors publish immutable PG values, diagnostics and snapshots |
-| 03 | `sprint-03-stable-python-strategy-runtime.md` | Completed | Plain Python runs unchanged through backtest and Paper Replay |
-| 04 | `sprint-04-joinquant-backtest-workbench.md` | Completed | JoinQuant-style local PG backtest results and experiment evidence |
-| 05 | `sprint-05-market-stock-pool-loop.md` | Completed | Market evidence becomes an immutable pool snapshot and backtest input |
-| 06 | `sprint-06-paper-watch-monitor.md` | Completed | Five-day auditable Paper run across execution, watch and health views |
-| 07 | `sprint-07-review-local-acceptance.md` | Completed | Full local research-to-review E2E, resilience drills and final route migration |
-| 08 | `active-data-trust-presentation.md` | Completed | Stale, unavailable, replay and research-readiness states cannot masquerade as current facts |
-| 09 | `active-readonly-runtime-safety.md` | Active | Page reads and safe local startup cannot mutate runtime or research state |
-
-Sprint 00-08 is complete. Sprint 09 continues the local data-integrity remediation by enforcing read-only page and startup boundaries; it does not expand into broker, deployment, multi-user or commercial-data work.
-
-## Technical Shape
-
-- Frontend: local React + Vite on `http://localhost:4444`.
-- Backend: local FastAPI on `http://localhost:4445`.
-- Database: local PostgreSQL only, using `DATABASE_URL`.
-- Scheduling: the existing backend APScheduler with schedule/run state persisted in PostgreSQL.
-- Deployment: explicitly outside Sprint 01-07.
-- Electron: optional shell only; not part of the core platform architecture.
-
-## Current Delivery Boundary
-
-- All Sprint 01-07 implementation and verification runs locally.
-- PostgreSQL is required for persisted data, strategy versions, backtest inputs and results; SQLite/file fallbacks are not allowed.
-- Local migrations must run against a development database that can be recreated independently of any server database.
-- Do not SSH to, migrate, deploy or mutate the known remote server during this roadmap.
-- Deployment requires a separate approved sprint after local acceptance.
-
-## Current Architecture Notes
-
-The runtime is Postgres-only. New and migrated modules must use Postgres migrations plus repository/adapter methods; do not add local file database fallbacks or versioned API prefixes.
-
-### Paper Runtime Observation And Health
-
-- Watch reads Paper signals, orders, trades, positions, risk decisions, runtime
-  events, alerts and stock-pool snapshots from PostgreSQL. It is read-only and
-  links each execution or risk record back to its Paper instance.
-- Monitor reports health per Paper instance, including lifecycle state,
-  heartbeat age, last processed trade date, latest cycle/error, equity, drawdown,
-  ledger difference, order/trade counts and rejected risk decisions.
-- `source_updated_at` is computed from persisted evidence.
-  `response_generated_at` only records API response generation and cannot make
-  stale evidence fresh.
-- Missing prices, heartbeats, cycles, equity and drawdown remain null. Only
-  explicit database counts may be zero.
-- A running instance with a missing or older-than-36-hour heartbeat is critical;
-  stopped and acceptance/seed records are labelled rather than presented as live.
-- Watch and Monitor never expose real-broker controls. Broker integration remains
-  subject to a separate contract and safety review.
-
-## Constraints
-
-- Do not commit production secrets, `.env`, database files, private keys, or broker credentials.
-- Do not enable live trading by default.
-- Any real broker integration requires a separate contract and explicit confirmation.
-- Production server changes that create users, databases, or credentials must be performed with auditable scripts and documented commands.
-
-## Non-Goals
-
-- Public SaaS multi-tenancy.
-- Team permission model in the first cloud version.
-- Kubernetes, Docker Swarm, or blue/green deployment.
-- Real broker order submission in the initial PG/B/S migration.
-
-## Acceptance Direction
-
-The primary acceptance flow is: recreate a local PostgreSQL database, run migrations, start FastAPI and Vite, seal reference data/factor snapshots, then complete the local research -> strategy -> backtest -> Paper -> review journey and restart/failure drills. No server deployment is part of this roadmap.
-
-## Page Professionalism Acceptance
-
-Every primary page must expose its role in the A-share workflow, show data readiness for data-driven panels, and either enforce or clearly mark A-share constraints: T+1, 100-share lots, limit-up/down, suspension, ST/universe filtering, cost model, trading sessions, and broker isolation.
-
-## Open Questions
-
-- Which point-in-time fundamental datasets should be admitted after price/volume factors pass acceptance?
-- Which broker adapter, if any, should receive a separate post-local-acceptance contract?
+| 阶段 | 工作区 |
+| --- | --- |
+| 研究发现 | 首页、行情、股票池 |
+| 策略研发 | 因子、策略、回测 |
+| 模拟验证 | 模拟、盯盘、监控、复盘 |
+| 系统与扩展 | 数据、AI 研发 |
+
+路由：
+
+```text
+/            首页
+/market      行情
+/pools       股票池
+/factors     因子
+/strategy    策略
+/backtest    回测
+/paper       模拟
+/watch       盯盘
+/monitor     监控
+/review      复盘
+/data        数据
+/ai-lab      AI 研发
+```
+
+二级标签表示同一工作阶段下的不同视图；详情页、抽屉和对象内标签属于三级界面。旧的情绪、新闻、日历、策略开发和交易路由只承担兼容跳转，不再成为独立一级菜单。
+
+## 4. 核心产品对象
+
+| 对象 | 关键要求 |
+| --- | --- |
+| 数据分区 | 按数据集、交易日和来源持久化，保留采集和质量状态 |
+| 数据快照 | 质量通过后封存；包含知识截止时间、清单与哈希 |
+| 因子版本/快照 | 定义、代码、方向、依赖和因子值不可变 |
+| 股票池快照 | 固定股票范围、入选原因、规则和数据证据 |
+| 策略版本 | 普通 Python 代码、参数、依赖和运行限制不可变 |
+| 回测任务 | 异步执行；固定所有输入并持久化指标、订单、成交和日志 |
+| Paper 实例 | 隔离执行；记录信号、风控、订单、成交、持仓、现金和周期 |
+| 复盘记录 | 绑定交易日与市场证据，记录结论、风险和次日计划 |
+
+任何已被回测或 Paper 使用的版本不得原地修改。修改代码或参数必须创建子版本。
+
+## 5. 标准工作流
+
+1. 数据中心同步证券主数据、交易日历和研究数据。
+2. 系统保存来源与权限状态，执行覆盖率、一致性和完整性检查。
+3. 质量通过的数据分区封存为数据快照。
+4. 因子运行只读取封存快照，发布不可变因子值与诊断结果。
+5. 股票池根据显式规则和证据生成并封存。
+6. 策略版本绑定所需数据、因子、股票池、协议和成本模型。
+7. 回测任务异步运行并保存完整结果；探索性或快速结果不能冒充晋级证据。
+8. 通过验证的固定版本可创建 Paper 实例。
+9. 盯盘用于人工观察业务事件，监控用于判断系统和数据健康。
+10. 复盘工作区沉淀当日结论、风险和下一交易日计划。
+
+## 6. A 股研究与执行规则
+
+- 股票使用明确交易所身份，不能只凭六位代码猜测市场。
+- 研究与执行遵循交易日历、早晚盘时段和午间休市。
+- 默认只做多；卖出受 T+1 可卖数量约束。
+- 委托数量按 100 股整数手处理，清仓零股规则单独表达。
+- 涨跌停、停牌、ST、退市和板块范围参与可交易性与股票池判断。
+- 信号用复权数据时，成交仍需与未复权可交易价格和公司行动一致。
+- 回测至少表达佣金、过户费、印花税、滑点和容量假设。
+- 日线策略在 D 日收盘后才能看到 D 日完整数据，不能在同一根收盘价上成交。
+
+未定义或不可计算的指标保持 `null` 并显示原因，禁止用数值 0 伪装。
+
+## 7. 数据来源与可信度
+
+### 来源策略
+
+- TuShare：证券主数据、交易日历、日线、复权因子、估值、停复牌、涨跌停、财务、指数等稳定研究数据的主要来源。
+- AKShare：公开全市场快照、概念/行业、热榜、涨停生态、新闻和其他 TuShare 不适配数据的补充来源。
+
+回退必须按完整数据集/日期显式记录，不能把两类来源静默拼成一个看似一致的数据集。受限、无权限、超时、空响应、过期和质量失败是不同状态。
+
+### 时间语义
+
+- `trade_date`：市场事实发生的交易日。
+- `available_at`：模拟研究中最早可以使用该事实的时间。
+- `knowledge_cutoff_at`：快照固定的知识截止时间。
+- `collected_at` / `source_updated_at`：采集或来源更新时间。
+- `response_generated_at`：API 生成时间，不能用于证明数据新鲜。
+
+### 只读边界
+
+打开页面、读取 API、健康检查和后端普通启动不得隐式触发 Provider 同步、迁移、bootstrap、Paper 恢复或策略执行。所有写操作都必须由明确命令、任务或用户动作触发。
+
+## 8. 因子平台
+
+- 因子实现遵循 `StockPro Factor API v1`。
+- 定义包含名称、分类、研究假设、方向、依赖、回看期、代码和预处理。
+- 计算只读取已封存数据，发布长表因子值和不可变因子快照。
+- 诊断覆盖缺失、异常、覆盖率、IC/RankIC、分层收益、换手、衰减、暴露和相关性。
+- 平台提供 100 个参考因子目录；目录存在不等于所有因子均已计算、验证或可用于策略。
+- 因子研究状态区分探索、验证、拒绝和 Paper 候选，不表达投资适用性。
+
+## 9. 策略与回测
+
+### 策略运行时
+
+- 策略遵循 `StockPro Strategy API v1`，核心函数为 `initialize(context)` 和 `handle_data(context, data)`。
+- 平台负责数据、模拟时钟、订单 API、A 股撮合、风控、持久化和指标。
+- 用户代码不能直接访问 Provider、数据库、文件写入、网络或券商。
+- 每个版本固定内容哈希、API 版本、参数、依赖清单和 CPU/内存/时长/输出限制。
+- 回测和 Paper Replay 执行同一策略版本，不允许悄悄切换实现。
+
+### 回测证据
+
+- 快速回测用于诊断；完整回测才保存可晋级的完整证据。
+- 结果包括收益、基准、超额、回撤、Sharpe、风险指标、月度表现、持仓、订单、成交、成本、日志和参数。
+- 每笔信号、意图、订单与成交记录模拟时间、数据可用时间、最早成交时间、价格来源和拒绝原因。
+- 只有绑定研究协议、样本外结果、成本、流动性和容量检查的结果才可进入 Paper 候选。
+
+## 10. Paper、盯盘、监控与复盘
+
+- Paper 是唯一执行入口，使用隔离账户与模拟撮合；页面不展示真实交易入口。
+- 风控发生在订单接受前，并保留通过或拒绝的决策记录。
+- Watch 按策略和股票查看信号、订单、成交、持仓、风险、运行事件与股票池上下文。
+- Monitor 展示实例生命周期、心跳、最后处理日期、周期结果、异常、权益、回撤、账本差异和数据健康。
+- 运行实例心跳缺失或超过阈值时显示明确告警；响应生成时间不能刷新运行证据。
+- Review 绑定交易日保存市场结构、热点、风险和次日计划。
+
+## 11. AI 与 Agent 接口
+
+### AI
+
+- AI 结论必须绑定研究对象、数据日期和可用证据。
+- 未配置 `QWEN_API_KEY`、Provider 不可用或证据不足时，页面明确显示限制。
+- AI 输出不自动创建策略、不自动晋级 Paper、不构成投资建议。
+
+### Agent
+
+- 稳定协议为 `stockpro-mcp-v1`，当前仅提供本地 stdio。
+- Token 仅保存 SHA-256 哈希，明文只在创建时返回一次。
+- `R` 为读取作用域；`W` 仅开放合同列出的研究/回测写操作。
+- 写请求需要唯一 `Idempotency-Key`，并写入审计记录。
+- MCP 不绕过数据来源、新鲜度、快照、权限或真实交易边界。
+
+## 12. UI 合同
+
+- 所有一级、二级和三级页面使用统一金融操作台主题与 `@bitpro/ui` 令牌。
+- 一级侧栏固定、简短、扁平；二级工作区使用下划线式标签，不使用整行按钮导航。
+- 中文优先；工程字段、UUID、数据库主键和哈希不直接暴露在主阅读层。
+- 页面保持紧凑信息密度，不使用营销 Hero、巨大留白、渐变装饰或无业务意义的大卡片。
+- 业务状态、筛选开关和导航必须有不同视觉层级。
+- 所有数据面板覆盖加载、空、过期、错误、部分缺失和权限不足状态。
+- 涨跌配色支持“红涨绿跌”和“绿涨红跌”，零值和缺失值保持中性。
+
+## 13. 技术与运行边界
+
+- 前端：React + Vite，`http://localhost:4444`。
+- 后端：FastAPI，`http://localhost:4445`。
+- 数据库：PostgreSQL，开发默认映射到 `127.0.0.1:55432`。
+- 调度：APScheduler，计划与执行状态持久化到 PostgreSQL。
+- Electron：可选壳层，不是核心产品架构或主要验收入口。
+- 本地 bootstrap、迁移、数据同步和 Paper 恢复均显式执行。
+- 远程部署、生产数据变更、公开 MCP、真实券商接入和实盘订单均不在当前授权范围。
+
+## 14. 非目标
+
+- 荐股或收益保证。
+- 自动实盘交易。
+- 公网多租户 SaaS、注册、计费或团队权限系统。
+- 用 mock、随机数或硬编码值填充真实研究页面。
+- 在回测期间从外部 Provider 临时取数。
+- 让 GitHub 提交或 push 自动触发服务器部署。
+
+## 15. 完成标准
+
+一个功能切片只有在以下条件满足后才算完成：
+
+1. 用户可见行为符合产品和 Sprint 合同。
+2. 数据来源、时间、状态和缺失语义正确。
+3. 关键对象保留必要版本与审计证据。
+4. 相关自动化检查或人工验收已执行并记录。
+5. 本地前端、后端和健康检查可用（纯文档修改除外）。
+6. 已知缺口在 `docs/progress.md` 或对应合同中明确记录。
+
+具体实现与历史验收见 [开发进度](progress.md) 和 [Sprint 合同](contracts/)。

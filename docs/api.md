@@ -1,887 +1,251 @@
-# StockPro AI API 接口文档
+# StockPro API 指南
 
-> 版本：2.0  
 > 基础路径：`/api`
-> 更新日期：2026-01-24
+> 本地地址：`http://localhost:4445`
+> 运行时完整契约：`http://localhost:4445/docs` 或 `/openapi.json`
+> 更新日期：2026-07-29
 
----
+本文说明稳定接口域、鉴权、状态语义和写操作边界。请求/响应字段持续由 FastAPI OpenAPI 生成，避免在手写文档中复制一份容易过期的完整 Schema。
 
-## 目录
+## 1. 基本约定
 
-1. [Market - 市场数据](#1-market---市场数据)
-2. [Stocks - 股票筛选](#2-stocks---股票筛选)
-3. [Charts - 图表数据](#3-charts---图表数据)
-4. [AI - 智能分析](#4-ai---智能分析)
-5. [Analysis - 情绪分析](#5-analysis---情绪分析)
-6. [Database - 数据管理](#6-database---数据管理)
-7. [Admin - 管理接口](#7-admin---管理接口)
-8. [数据源速查表](#8-数据源速查表)
+- JSON 请求使用 `Content-Type: application/json`。
+- 除健康和登录接口外，业务接口都需要认证。
+- Web 管理员和访客使用 Bearer Token。
+- 所有时间字段都应包含时区；交易日使用 `YYYY-MM-DD`。
+- 股票标识优先使用带市场身份的标准符号，不能依赖六位代码猜交易所。
+- 分页、排序和过滤参数以 OpenAPI 为准。
+- 缺失、无权限、过期、质量失败和真正的数值 0 是不同语义。
 
----
+## 2. 健康接口
 
-## 1. Market - 市场数据
+健康接口无需登录：
 
-### 1.1 GET /market/overview
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/health/health` | 后端进程健康 |
+| `GET` | `/api/health/storage` | PostgreSQL 连接与存储状态 |
+| `GET` | `/api/health/report` | 汇总诊断 |
+| `GET` | `/api/health/dns-diagnostic` | Provider DNS 诊断 |
+| `GET` | `/api/health/dashscope-endpoint` | DashScope 端点诊断 |
 
-获取市场概览数据（大盘指数、涨跌统计、成交量、市场情绪）
+健康接口是只读诊断，不应触发迁移、同步、bootstrap、Paper 恢复或策略执行。
 
-**请求参数**：无
+## 3. Web 鉴权
 
-**响应示例**：
-```json
+### 管理员登录
+
+```http
+POST /api/auth/admin/login
+Content-Type: application/json
+
 {
-  "indices": [
-    {
-      "name": "上证指数",
-      "code": "sh000001",
-      "price": 3250.00,
-      "change_amount": 25.50,
-      "change_percent": 0.79
-    },
-    {
-      "name": "深证成指",
-      "code": "sz399001",
-      "price": 10500.00,
-      "change_amount": 80.00,
-      "change_percent": 0.77
-    },
-    {
-      "name": "创业板指",
-      "code": "sz399006",
-      "price": 2100.00,
-      "change_amount": 15.00,
-      "change_percent": 0.72
-    },
-    {
-      "name": "科创50",
-      "code": "sh000688",
-      "price": 980.00,
-      "change_amount": 8.00,
-      "change_percent": 0.82
-    }
-  ],
-  "is_open": true,
-  "last_update": "2026-01-24T10:30:00",
-  "sentiment": {
-    "status": "偏多",
-    "score": 65
-  },
-  "volume": {
-    "amount": 8500,
-    "unit": "亿",
-    "ratio": 1.2,
-    "sh_amount": 4200,
-    "sz_amount": 4000,
-    "bj_amount": 300
-  },
-  "advance_decline": {
-    "up": 2800,
-    "down": 1500,
-    "flat": 200,
-    "limit_up": 104,
-    "limit_down": 0
-  }
+  "username": "configured-admin",
+  "password": "configured-password"
 }
 ```
 
-**数据来源**：
-- 指数数据：`market_indices_realtime` 表 (优先) → AkShare `stock_zh_index_daily` (兜底)
-- 股票统计：`all_stocks_realtime` 表 (优先) → AkShare `stock_zh_a_spot_em` (兜底)
+响应返回 `access_token`、有效期、角色和权限。后续请求：
 
----
-
-### 1.2 GET /market/short-line-indices
-
-获取短线交易核心指标
-
-**请求参数**：无
-
-**响应示例**：
-```json
-[
-  {
-    "code": "ZT",
-    "name": "涨停数",
-    "price": 104,
-    "change_percent": 0,
-    "change_amount": 0,
-    "updated_at": "2026-01-24T10:30:00"
-  },
-  {
-    "code": "LB",
-    "name": "连板数",
-    "price": 11,
-    "change_percent": 0,
-    "change_amount": 0,
-    "updated_at": "2026-01-24T10:30:00"
-  },
-  {
-    "code": "MLB",
-    "name": "最高板",
-    "price": 5,
-    "change_percent": 0,
-    "change_amount": 0,
-    "updated_at": "2026-01-24T10:30:00"
-  },
-  {
-    "code": "DT",
-    "name": "跌停数",
-    "price": 0,
-    "change_percent": 0,
-    "change_amount": 0,
-    "updated_at": "2026-01-24T10:30:00"
-  },
-  {
-    "code": "ZB",
-    "name": "炸板数",
-    "price": 18,
-    "change_percent": 0,
-    "change_amount": 0,
-    "updated_at": "2026-01-24T10:30:00"
-  },
-  {
-    "code": "FBL",
-    "name": "封板率",
-    "price": 85.2,
-    "change_percent": 0,
-    "change_amount": 0,
-    "updated_at": "2026-01-24T10:30:00"
-  }
-]
+```http
+Authorization: Bearer <access_token>
 ```
 
-**指标说明**：
-| code | name | 计算方式 |
-|------|------|----------|
-| ZT | 涨停数 | 当日涨停板股票数量 |
-| LB | 连板数 | 连续涨停2板及以上数量 |
-| MLB | 最高板 | 当日最高连板数 |
-| DT | 跌停数 | 当日跌停板股票数量 |
-| ZB | 炸板数 | 当日炸板股票数量 |
-| FBL | 封板率 | ZT/(ZT+ZB)*100% |
+验证当前身份：
 
-**数据来源**：`short_line_indices_realtime` 表 (后台每10秒同步)
-
----
-
-### 1.3 GET /market/hot-concepts
-
-获取热门概念板块列表
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| limit | int | 否 | 50 | 返回数量 (1-200) |
-| date | string | 否 | 当天 | 日期 (YYYY-MM-DD) |
-
-**响应示例**：
-```json
-[
-  {
-    "rank": 1,
-    "name": "BC电池",
-    "change_percent": 8.56,
-    "inflow": 7149000000,
-    "outflow": 5000000000,
-    "net_inflow": 2149000000,
-    "leading_stock": "通威股份",
-    "leading_stock_change": 10.0
-  },
-  {
-    "rank": 2,
-    "name": "钙钛矿电池",
-    "change_percent": 8.24,
-    "inflow": 6800000000,
-    "outflow": 5200000000,
-    "net_inflow": 1600000000,
-    "leading_stock": "协鑫科技",
-    "leading_stock_change": 9.5
-  }
-]
+```http
+GET /api/auth/me
+Authorization: Bearer <access_token>
 ```
 
-**数据来源**：
-- 实时数据：`hot_concepts_realtime` 表
-- 历史数据：`hot_concepts_history` 表
-- 原始接口：AkShare `stock_board_concept_name_em`
-- TuShare 同步上游可对标：`moneyflow_ind_dc` / `moneyflow_ind_ths` / `moneyflow_cnt_ths`
+### 访客登录
 
----
+管理员先创建带有效期和回测配额的访客码，访客调用：
 
-### 1.3b GET /market/sector-fund-flow
+```http
+POST /api/auth/guest/login
+Content-Type: application/json
 
-首页板块流入/流出看板（净流入排序，金额统一为亿元）。
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| limit | int | 否 | 30 | 流入、流出、排行各自上限 (1-50) |
-
-**响应字段**：
-- `inflows` / `outflows`：按净流入正/负排序的板块列表（`net_inflow_yi` 等）
-- `rankings`：热门板块 TOP N（同源缓存顺序截断）
-- `data_status`：`fresh` | `stale` | `empty`
-- `methodology`：说明 Sankey 连线为按流入权重分摊的可视化，不是板块间真实迁移矩阵
-
-**数据来源**：复用 `hot_concepts_realtime` 资金流字段；页面侧不直连 TuShare。
-
----
-
-### 1.3c GET /market/limit-board
-
-首页涨停/跌停个股名单（供近 30 日 K + 当日分时展开）。
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| trade_date | string | 否 | 最新封存 | YYYY-MM-DD |
-
-**响应字段**：
-- `up` / `down`：成员列表（`symbol`/`name`/`price`/`change_percent`/`limit_times` 等）
-- `counts`：`{ up, down }`
-- `data_status`：`fresh` | `stale` | `empty`
-- `methodology`：优先封存 `limit_pool_members`；空则 ±9.8% 实时估计回退
-
-**数据来源**：`market_evidence_snapshots` + `limit_pool_members`（TuShare `limit_list_d` / AkShare 涨跌停池）。
-
----
-
-### 1.4 GET /market/hot-concept/leaders
-
-获取概念板块龙头股列表 (优先从缓存读取)
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| name | string | 是 | - | 概念名称 |
-| limit | int | 否 | 20 | 返回数量 (1-200) |
-| date | string | 否 | - | 日期 |
-
-**响应示例**：
-```json
-[
-  {
-    "code": "920368",
-    "name": "连城数控",
-    "price": 47.16,
-    "change_percent": 29.99,
-    "amount": 1261000000,
-    "turnover": 12.65,
-    "rank": 1
-  },
-  {
-    "code": "688223",
-    "name": "晶科能源",
-    "price": 6.90,
-    "change_percent": 20.00,
-    "amount": 3768000000,
-    "turnover": 5.75,
-    "rank": 2
-  }
-]
-```
-
-**缓存策略**：
-1. 优先从 `concept_leaders_cache` 表读取
-2. 缓存有效期：5分钟
-3. 缓存过期或不存在时，调用 AkShare `stock_board_concept_cons_em` 并存入缓存
-
----
-
-### 1.5 GET /market/hot-concept/intraday
-
-获取概念板块分时K线数据
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| name | string | 是 | - | 概念名称 |
-| period | string | 否 | "1" | K线周期 |
-| date | string | 否 | - | 日期 |
-
-**响应示例**：
-```json
-[
-  {
-    "time": "2026-01-24 09:30",
-    "open": 100.0,
-    "high": 100.5,
-    "low": 99.8,
-    "close": 100.3,
-    "volume": 1000000
-  }
-]
-```
-
-**数据来源**：AkShare `stock_board_concept_hist_min_em`
-
----
-
-### 1.6 GET /market/ths-hot
-
-获取同花顺人气榜
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| limit | int | 否 | 100 | 返回数量 (1-200) |
-| date | string | 否 | 当天 | 日期 |
-
-**响应示例**：
-```json
-[
-  {
-    "rank": 1,
-    "code": "600519",
-    "name": "贵州茅台",
-    "hot": 985000,
-    "change_percent": 2.5,
-    "price": 1850.00,
-    "reason": "白酒龙头，机构重仓",
-    "tags": "白酒,食品饮料"
-  }
-]
-```
-
-**数据来源**：
-- 实时数据：`ths_hot_realtime` 表
-- 历史数据：`ths_hot_history` 表
-- 原始接口：AkShare `stock_hot_rank_em`
-
----
-
-### 1.7 GET /market/lianban-ladder
-
-获取连板天梯数据
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| date | string | 否 | 日期 (YYYYMMDD格式)，默认当天 |
-
-**响应示例**：
-```json
 {
-  "date": "2026-01-24",
-  "prev_date": "2026-01-23",
-  "levels": [
-    {
-      "prev_level": 4,
-      "prev_count": 2,
-      "prev_items": [
-        { "code": "000001", "name": "平安银行", "change_percent": 10.0 }
-      ],
-      "today_level": 5,
-      "today_count": 1,
-      "today_items": [
-        {
-          "code": "000001",
-          "name": "平安银行",
-          "change_percent": 10.0,
-          "price": 12.50,
-          "duration_days": 5,
-          "success_rate": null,
-          "reason": "金融"
-        }
-      ]
-    },
-    {
-      "prev_level": 3,
-      "prev_count": 5,
-      "prev_items": [...],
-      "today_level": 4,
-      "today_count": 2,
-      "today_items": [...]
-    }
-  ]
+  "code": "<guest-code>"
 }
 ```
 
-**数据来源**：
-- 历史数据：`lianban_ladder_history` 表
-- 原始接口：AkShare `stock_zt_pool_em`
-
----
-
-### 1.8 GET /market/message-stream
-
-获取消息流数据
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 |
-|------|------|------|--------|
-| limit | int | 否 | 50 |
-
-**响应示例**：
-```json
-{
-  "updated_at": "2026-01-24T10:30:00",
-  "abnormal_news": [
-    {
-      "code": "600000",
-      "name": "浦发银行",
-      "change_percent": 10.0,
-      "direction": "UP",
-      "rule_id": "sh_sz_main_10",
-      "threshold_pct": 10
-    }
-  ],
-  "mergers_news": [
-    {
-      "id": "xxx",
-      "time": "2026-01-24",
-      "title": "关于重大资产重组的公告",
-      "source": "公告",
-      "related_stocks": [{"code": "600000", "name": "浦发银行"}]
-    }
-  ],
-  "good_news": [
-    {
-      "id": "xxx",
-      "time": "09:00",
-      "title": "央行降准0.5个百分点",
-      "source": "财联社"
-    }
-  ],
-  "bad_news": [...],
-  "cailian_news": [
-    {
-      "time": "10:30:00",
-      "title": "【快讯】xxx",
-      "content": "详细内容...",
-      "source": "财联社电报"
-    }
-  ],
-  "xueqiu_news": [...],
-  "eastmoney_news": [...]
-}
-```
-
-**数据来源**：
-- 异动数据：根据 `all_stocks_realtime` 实时计算
-- 财联社：AkShare `stock_info_global_cls`
-- 雪球：AkShare `stock_hot_tweet_xq`
-- 东财：AkShare `stock_info_global_em`
-
----
-
-### 1.9 GET /market/fundamentals/{symbol}
-
-获取单只股票基本面数据
-
-**路径参数**：
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| symbol | string | 股票代码 |
-
-**响应示例**：
-```json
-{
-  "code": "600519",
-  "name": "贵州茅台",
-  "price": 1850.00,
-  "change_percent": 2.5,
-  "pe_dynamic": 35.6,
-  "pb": 12.3,
-  "total_market_cap": 2320000000000,
-  "float_market_cap": 2100000000000,
-  "volume_ratio": 1.2,
-  "turnover": 0.5,
-  "amplitude": 3.2
-}
-```
-
----
-
-### 1.10 GET /market/calendar
-
-获取市场日历事件
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| start | string | 否 | 开始日期 (YYYY-MM-DD) |
-| end | string | 否 | 结束日期 (YYYY-MM-DD) |
-| limit | int | 否 | 返回数量 (默认200) |
-
-**响应示例**：
-```json
-[
-  {
-    "event_key": "month_end:2026-01-30",
-    "event_date": "2026-01-30",
-    "title": "2026-01 月末交易日",
-    "category": "结算",
-    "market": "A",
-    "source": "computed",
-    "details": null
-  }
-]
-```
-
-**数据来源**：`market_calendar` 表
-
----
-
-### 1.11 POST /market/calendar/refresh
-
-刷新市场日历数据
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 |
-|------|------|------|--------|
-| months | int | 否 | 6 |
-
-**响应示例**：
-```json
-{
-  "success": true,
-  "count": 120,
-  "message": "Refreshed 120 calendar events"
-}
-```
-
----
-
-### 1.12 POST /market/calendar/generate-with-ai
-
-使用AI生成日历事件
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| start_date | string | 是 | 开始日期 |
-| end_date | string | 是 | 结束日期 |
-
----
-
-## 2. Stocks - 股票筛选
-
-### 2.1 GET /stocks/filter
-
-获取策略筛选股票列表
-
-**请求参数**：无
-
-**响应示例**：
-```json
-{
-  "stocks": [
-    {
-      "code": "000001",
-      "name": "平安银行",
-      "current_price": 12.50,
-      "change_percent": 5.5,
-      "volume": 1000000,
-      "market_cap": 250000000000,
-      "is_short": true
-    }
-  ],
-  "filter_time": "2026-01-24T10:30:00"
-}
-```
-
-**筛选策略**：
-- 涨幅 >= 5%
-- 非ST股
-- 非停牌
-- 市值 > 50亿
-
----
-
-### 2.2 GET /stocks/search
-
-搜索股票
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| q | string | 是 | - | 搜索关键词 |
-| limit | int | 否 | 20 | 返回数量 |
-
-**响应示例**：
-```json
-[
-  {
-    "code": "600519",
-    "name": "贵州茅台"
-  },
-  {
-    "code": "000568",
-    "name": "泸州老窖"
-  }
-]
-```
-
-**数据来源**：
-- `stock_fundamentals` 表
-- `stock_history` 表
-- `all_stocks_realtime` 表
-
----
-
-## 3. Charts - 图表数据
-
-### 3.1 GET /charts/daily/{symbol}
-
-获取日K线数据
-
-**路径参数**：
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| symbol | string | 股票代码 |
-
-**响应示例**：
-```json
-[
-  {
-    "date": "2026-01-24",
-    "open": 1800.00,
-    "high": 1860.00,
-    "low": 1795.00,
-    "close": 1850.00,
-    "volume": 5000000,
-    "turnover": 9200000000
-  }
-]
-```
-
-**数据来源**：
-- 优先：`stock_history` 表
-- 兜底：AkShare `stock_zh_a_hist`
-
----
-
-### 3.2 GET /charts/intraday/{symbol}
-
-获取分时数据
-
-**路径参数**：
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| symbol | string | 股票代码 |
-
-**响应示例**：
-```json
-[
-  {
-    "time": "09:30",
-    "price": 1820.00,
-    "volume": 10000,
-    "avg_price": 1820.00
-  }
-]
-```
-
-**数据来源**：AkShare `stock_zh_a_minute`
-
----
-
-## 4. AI - 智能分析
-
-### 4.1 POST /ai/analyze-stock
-
-AI单股深度分析
-
-**请求体**：
-```json
-{
-  "symbol": "600519",
-  "date": "2026-01-24"
-}
-```
-
-**响应示例**：
-```json
-{
-  "symbol": "600519",
-  "name": "贵州茅台",
-  "score": 78,
-  "recommendation": "买入",
-  "summary": "贵州茅台作为白酒龙头，基本面稳健，技术面处于上升趋势...",
-  "technical_analysis": {
-    "trend": "上升趋势",
-    "trend_judgment": "短期看涨",
-    "support_levels": [1800, 1750],
-    "resistance_levels": [1900, 1950],
-    "volume_analysis": "量能温和放大，多方占优"
-  },
-  "fundamental_analysis": {
-    "pe_assessment": "估值合理",
-    "growth_outlook": "增长稳定",
-    "industry_position": "行业龙头"
-  },
-  "sentiment_analysis": {
-    "market_sentiment": "偏多",
-    "news_sentiment": "中性偏多"
-  },
-  "risk_alerts": [
-    "注意高位回调风险",
-    "关注白酒行业政策变化"
-  ],
-  "catalysts": [
-    "春节旺季预期",
-    "提价预期"
-  ],
-  "operation_advice": "建议逢低布局，目标价1900-1950，止损位1750"
-}
-```
-
-**AI模型**：千问大模型 (qwen-plus)
-
----
-
-### 4.2 POST /ai/analyze
-
-批量AI分析（对一组股票评分）
-
-**请求体**：
-```json
-{
-  "stocks": [
-    { "code": "600519", "name": "贵州茅台" },
-    { "code": "000858", "name": "五粮液" }
-  ]
-}
-```
-
----
-
-## 5. Analysis - 情绪分析
-
-### 5.1 POST /analysis/run-sentiment
-
-计算市场情绪因子
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| date | string | 否 | 日期 (YYYYMMDD) |
-| universe | string | 否 | 股票池 (all/hot) |
-
----
-
-### 5.2 GET /analysis/sentiment
-
-获取情绪榜单
-
-**请求参数**：
-| 参数 | 类型 | 必填 | 默认值 |
-|------|------|------|--------|
-| date | string | 否 | 当天 |
-| limit | int | 否 | 200 |
-| order | string | 否 | desc |
-
----
-
-## 6. Database - 数据管理
-
-### 6.1 GET /database/tables
-
-获取所有表信息
-
-**响应示例**：
-```json
-[
-  {
-    "name": "stock_history",
-    "row_count": 1000000,
-    "columns": ["id", "symbol", "name", "date", "open", "high", "low", "close", "volume"]
-  }
-]
-```
-
----
-
-### 6.2 POST /database/query
-
-执行SQL查询（只读）
-
-**请求体**：
-```json
-{
-  "sql": "SELECT * FROM stock_history WHERE symbol = '600519' LIMIT 10"
-}
-```
-
-**响应示例**：
-```json
-{
-  "columns": ["id", "symbol", "name", "date", "open", "high", "low", "close", "volume"],
-  "rows": [
-    [1, "600519", "贵州茅台", "2026-01-24", 1800.0, 1860.0, 1795.0, 1850.0, 5000000]
-  ],
-  "row_count": 1
-}
-```
-
----
-
-## 7. Admin - 管理接口
-
-### 7.1 POST /admin/fetch-history
-
-触发历史数据回补任务
-
-### 7.2 GET /admin/task-status
-
-获取任务状态
-
----
-
-## 8. 数据源速查表
-
-| API | 数据读取 | 数据写入/缓存 | 更新频率 |
-|-----|----------|---------------|----------|
-| GET /market/overview | `market_indices_realtime` + `all_stocks_realtime` | - | 10秒 |
-| GET /market/short-line-indices | `short_line_indices_realtime` | - | 10秒 |
-| GET /market/hot-concepts | `hot_concepts_realtime` | `hot_concepts_history` | 2分钟 |
-| GET /market/hot-concept/leaders | `concept_leaders_cache` (5分钟缓存) | 同左 | 按需 |
-| GET /market/ths-hot | `ths_hot_realtime` | `ths_hot_history` | 2分钟 |
-| GET /market/lianban-ladder | `lianban_ladder_history` | 同左 | 2分钟 |
-| GET /market/message-stream | AkShare 多接口 | - | 实时 |
-| GET /charts/daily/{symbol} | `stock_history` → AkShare | `stock_history` | 按需 |
-| GET /charts/intraday/{symbol} | AkShare `stock_zh_a_minute` | - | 实时 |
-| POST /ai/analyze-stock | 千问大模型 | - | 按需 |
-
----
-
-## 错误码说明
-
-| HTTP状态码 | 说明 |
-|------------|------|
-| 200 | 成功 |
-| 400 | 请求参数错误 |
-| 404 | 资源未找到 |
-| 500 | 服务器内部错误 |
-| 503 | 外部服务不可用 |
-
----
-
-## 请求/响应示例
-
-### cURL 示例
+访客默认只读，只在返回权限允许的范围内运行回测。
+
+### 管理端安全接口
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `POST` | `/api/auth/guest-codes` | 创建访客码 |
+| `GET` | `/api/auth/guest-codes` | 列出访客码 |
+| `DELETE` | `/api/auth/guest-codes/{id}` | 撤销访客码 |
+| `POST` | `/api/auth/mcp-agent-tokens` | 创建 Agent Token |
+| `GET` | `/api/auth/mcp-agent-tokens` | 列出 Agent Token 元数据 |
+| `DELETE` | `/api/auth/mcp-agent-tokens/{id}` | 撤销 Agent Token |
+
+Token/访客码明文只应在必要时展示一次，禁止写入仓库、日志或截图。
+
+## 4. 业务接口域
+
+| 接口域 | 代表路径 | 说明 |
+| --- | --- | --- |
+| 工作流发现 | `/api/workflow/capabilities` | 客户端先确认阶段、能力和真实交易边界 |
+| 市场研究 | `/api/market/*` | 概览、情绪、涨停生态、板块、事件、日历 |
+| 股票与图表 | `/api/stocks/*`、`/api/charts/*` | 搜索、筛选、日线和分时 |
+| 因子 | `/api/factors/*`、`/api/factor-*` | 定义、版本、计算、快照、指标与相关性 |
+| 股票池 | `/api/pools/*`、`/api/pool-snapshots/*` | 股票池、成员、快照和回测草稿 |
+| 策略 | `/api/strategy/*` | 策略目录、版本、验证、快速运行与回放 |
+| 回测 | `/api/backtest/*` | 任务、运行、指标、序列、订单、成交和比较 |
+| Paper | `/api/paper/*` | 实例、周期、事件、K 线和模拟账户 |
+| 盯盘 | `/api/watch/*` | 观察上下文、告警和确认 |
+| 监控 | `/api/monitor/*` | 运行、数据和风险健康 |
+| 复盘 | `/api/review/*` | 交易日记录、组装、保存和封存 |
+| 数据中心 | `/api/data/*` | 数据集、快照、质量、同步、Provider 和计划 |
+| 数据任务 | `/api/data-hub/*`、`/api/data-dev/*` | 任务、日志、质量报告和开发任务 |
+| AI | `/api/ai/*` | 能力发现、个股和批量分析 |
+| 本地验收 | `/api/acceptance/*` | 本地恢复、性能和备份演练 |
+
+旧接口仍可能为页面兼容存在。新客户端优先使用页面当前调用的工作流接口和 OpenAPI，不要仅凭旧文档猜路由。
+
+## 5. 常用读取示例
 
 ```bash
-# 获取市场概览
-curl -X GET "http://localhost:4445/api/market/overview"
+TOKEN='<bearer-token>'
 
-# 获取短线指标
-curl -X GET "http://localhost:4445/api/market/short-line-indices"
+curl -fsS \
+  -H "Authorization: Bearer ${TOKEN}" \
+  http://127.0.0.1:4445/api/workflow/capabilities
 
-# 获取热门概念
-curl -X GET "http://localhost:4445/api/market/hot-concepts?limit=20"
+curl -fsS \
+  -H "Authorization: Bearer ${TOKEN}" \
+  http://127.0.0.1:4445/api/market/overview
 
-# 获取概念龙头股
-curl -X GET "http://localhost:4445/api/market/hot-concept/leaders?name=BC电池&limit=10"
+curl -fsS \
+  -H "Authorization: Bearer ${TOKEN}" \
+  http://127.0.0.1:4445/api/data/status
 
-# AI分析
-curl -X POST "http://localhost:4445/api/ai/analyze-stock" \
-  -H "Content-Type: application/json" \
-  -d '{"symbol": "600519"}'
+curl -fsS \
+  -H "Authorization: Bearer ${TOKEN}" \
+  http://127.0.0.1:4445/api/backtest/jobs
 ```
 
----
+不要把真实 Token 直接写进 shell 历史、脚本或文档。
 
-> 文档维护：技术团队  
-> 最后更新：2026-01-24
+## 6. 异步任务
+
+回测、全市场同步、因子计算和部分数据任务可能异步执行。典型模式：
+
+1. `POST` 创建任务，返回 `202 Accepted` 和任务标识。
+2. 客户端轮询任务详情或列表。
+3. 终态为完成、失败或取消。
+4. 失败任务保留错误和日志；重试创建新的可审计尝试。
+
+回测示例入口：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `POST` | `/api/backtest/jobs` | 创建异步回测 |
+| `GET` | `/api/backtest/jobs` | 查询任务 |
+| `GET` | `/api/backtest/jobs/{id}` | 查询单个任务 |
+| `GET` | `/api/backtest/jobs/{id}/logs` | 查询日志 |
+| `POST` | `/api/backtest/jobs/{id}/cancel` | 取消任务 |
+| `POST` | `/api/backtest/jobs/{id}/retry` | 重试失败/取消任务 |
+
+字段、合法状态和错误响应以 OpenAPI 为准。
+
+## 7. 数据与快照写操作
+
+以下操作会调用外部 Provider、写入大量 PG 数据或改变研究状态，执行前必须确认目标和影响：
+
+- `/api/data/history/sync-all`
+- `/api/data/realtime/sync`
+- `/api/data/market-evidence/sync`
+- `/api/data/snapshots`
+- `/api/data/snapshots/{id}/seal`
+- `/api/data/schedules/daily/run`
+- `/api/factor-compute-runs`
+- `/api/pools/{id}/generate`
+- `/api/pool-snapshots/{id}/backtests`
+
+数据同步接口不应被健康检查或页面 GET 隐式调用。封存快照后，后续更正通过新分区和新快照表达，不修改历史证据。
+
+## 8. Paper 写操作
+
+Paper 实例控制：
+
+| 方法 | 路径 |
+| --- | --- |
+| `POST` | `/api/paper/instances` |
+| `POST` | `/api/paper/instances/{id}/start` |
+| `POST` | `/api/paper/instances/{id}/pause` |
+| `POST` | `/api/paper/instances/{id}/resume` |
+| `POST` | `/api/paper/instances/{id}/stop` |
+| `POST` | `/api/paper/instances/{id}/cycles` |
+
+这些接口只改变模拟运行状态，不允许真实券商订单、资金划转或账户诊断。
+
+## 9. Agent / MCP
+
+`stockpro-mcp-v1` 使用独立的 Agent Token：
+
+```http
+X-StockPro-MCP-Token: <one-time-token>
+```
+
+规则：
+
+- Token 在 PG 中只保存 SHA-256 哈希；
+- `R` 作用域用于合同列出的读工具；
+- `W` 作用域只开放允许的研究/回测写操作；
+- 每个写调用需要唯一 `Idempotency-Key`；
+- 所有调用记录方法、路径、作用域、结果和审计信息；
+- 当前仅支持本地 stdio MCP，不提供公网传输；
+- Agent 无法访问真实券商操作。
+
+本地 MCP 的工具清单和资源以运行时 capability discovery 为准。
+
+## 10. 数据状态语义
+
+推荐响应和前端共同表达：
+
+| 状态 | 含义 |
+| --- | --- |
+| `ready` / `available` | 数据满足当前用途 |
+| `empty` | 请求成功但没有符合条件的记录 |
+| `stale` | 有记录但超过新鲜度阈值 |
+| `partial` | 部分数据集或字段缺失 |
+| `restricted` | Provider 权限或账号积分不足 |
+| `unsupported` | 当前实现或 Provider 不支持 |
+| `quality_failed` | 数据存在但未通过质量门 |
+| `error` | 读取、任务或 Provider 调用失败 |
+
+不能用响应生成时间覆盖来源更新时间，也不能把 `null` 转成 0。
+
+## 11. 错误处理
+
+常见 HTTP 状态：
+
+| 状态 | 含义 |
+| --- | --- |
+| `400` | 参数或状态转换不合法 |
+| `401` | 未登录或 Token 无效 |
+| `403` | 当前角色/作用域不允许 |
+| `404` | 对象不存在或不可见 |
+| `409` | 状态冲突、幂等冲突或不可变对象修改 |
+| `422` | 请求 Schema 校验失败 |
+| `429` | 配额或并发限制 |
+| `500` | 未处理的服务错误 |
+| `503` | Provider、数据库或依赖暂不可用 |
+
+客户端应显示可操作的中文错误和下一步，不直接把堆栈或原始 Provider JSON 暴露给用户。
+
+## 12. 如何确认文档没有过期
+
+启动本地后端后：
+
+```bash
+curl -fsS http://127.0.0.1:4445/openapi.json > /tmp/stockpro-openapi.json
+```
+
+优先根据 OpenAPI 生成客户端或核对字段。若 API 域、鉴权、状态或安全边界变化，应同时更新本文、`docs/spec.md` 和对应 Sprint 合同。

@@ -1,518 +1,192 @@
-# StockPro 数据架构设计
+# StockPro 数据架构
 
-## 概述
+> 更新日期：2026-07-29
+> 数据库：PostgreSQL only
+> 原则：来源可见、时间可解释、质量先于发布、快照不可变
 
-本文档描述 StockPro 应用的数据获取、存储和调度架构。所有数据都通过 AKShare 接口获取，按照不同的更新频率分为三类：天级、小时级和秒级数据。
+## 1. 数据链路
 
-## 核心原则
-
-1. **数据库优先**：页面所有数据从Postgres 数据库获取，不直接调用外部接口
-2. **定时调度**：通过调度任务定期从 AKShare 获取数据并写入数据库
-3. **接口-表一致**：AKShare 返回的字段尽量与数据库表字段保持一致
-4. **实时数据特殊处理**：秒级数据通过 WebSocket 推送或内存缓存
-
----
-
-## 一、数据分类与调度策略
-
-### 1.1 天级数据（Daily）
-
-每日收盘后更新一次，适用于历史类、统计类数据。
-
-| 数据类型 | AKShare 接口 | 调度时间 | 数据库表 |
-|----------|--------------|----------|----------|
-| 股票历史K线 | `stock_zh_a_hist` | 16:00 | `stock_history` |
-| 股票基本面 | `stock_zh_a_spot_em` | 16:00 | `stock_fundamentals` |
-| 涨停股池 | `stock_zt_pool_em` | 16:00 | `lianban_ladder_history` |
-| 连板数据 | `stock_zt_pool_lbc_em` | 16:00 | `lianban_ladder_history` |
-| 龙虎榜 | `stock_lhb_detail_em` | 18:00 | `dragon_tiger_board` |
-| 北向资金 | `stock_hsgt_hist_em` | 18:00 | `northbound_flow` |
-| 融资融券 | `stock_margin_detail_szse/sse` | 19:00 | `margin_trading` |
-| 财务报表 | `stock_profit_sheet_by_report_em` | 季度 | `financial_statements` |
-| 股东数据 | `stock_gdfx_holding_detail_em` | 季度 | `shareholder_data` |
-| 均线数据 | 计算生成 | 16:00 | `stock_ma_data` |
-| 因子数据 | 计算生成 | 16:00 | `factor_data` |
-
-### 1.2 小时级数据（Hourly）
-
-交易时间内每小时更新，适用于排行、热度类数据。
-
-| 数据类型 | AKShare 接口 | 调度时间 | 数据库表 |
-|----------|--------------|----------|----------|
-| 热门概念板块 | `stock_board_concept_name_em` | 每小时30分 | `hot_concepts_realtime` |
-| 行业板块行情 | `stock_board_industry_name_em` | 每小时30分 | `sector_realtime` |
-| 同花顺热榜 | `stock_hot_rank_ths` | 每小时30分 | `ths_hot_realtime` |
-| 东财热度榜 | `stock_hot_rank_em` | 每小时30分 | `hot_stocks_realtime` |
-| 板块资金流向 | `stock_sector_fund_flow_rank` | 每小时00分 | `sector_fund_flow` |
-| 个股资金流向 | `stock_individual_fund_flow_rank` | 每小时00分 | `stock_fund_flow` |
-
-### 1.3 秒级/分钟级数据（Realtime）
-
-交易时间内高频更新，适用于实时行情类数据。
-
-| 数据类型 | AKShare 接口 | 获取方式 | 存储方式 |
-|----------|--------------|----------|----------|
-| 全市场实时行情 | `stock_zh_a_spot_em` | 每分钟轮询 | `all_stocks_realtime` + 内存缓存 |
-| 指数实时行情 | `stock_zh_index_spot_em` | 每分钟轮询 | `market_indices_realtime` |
-| 分时数据 | `stock_intraday_em` | 按需请求 | 内存缓存 |
-| 盘口异动 | `stock_changes_em` | 每30秒轮询 | WebSocket 推送 |
-| 同花顺快讯 | `stock_info_global_ths` | 每分钟轮询 | `news_stream` |
-| 财联社电报 | `stock_info_global_cls(symbol="全部")` | 每分钟轮询 | `news_stream` |
-
-**资讯数据来源网站：**
-- 同花顺实时快讯: https://news.10jqka.com.cn/realtimenews.html
-- 财联社电报: https://www.cls.cn/telegraph
-
----
-
-## 二、数据库表设计
-
-### 2.1 现有核心表
-
-```
-├── stock_history          # 股票历史K线（天级）
-├── stock_fundamentals     # 股票基本面（天级）
-├── stock_ma_data          # 均线数据（天级）
-├── lianban_ladder_history # 连板历史（天级）
-├── hot_concepts_history   # 热门概念历史（天级）
-├── hot_concepts_realtime  # 热门概念实时（小时级）
-├── ths_hot_history        # 同花顺热榜历史（天级）
-├── ths_hot_realtime       # 同花顺热榜实时（小时级）
-├── all_stocks_realtime    # 全股票实时行情（分钟级）
-├── market_indices_realtime# 指数实时行情（分钟级）
-├── message_stream         # 消息流（分钟级）
-├── factor_data            # 因子数据（天级）
-└── factor_definitions     # 因子定义
+```text
+TuShare / AKShare
+       ↓
+Provider adapter 与权限检查
+       ↓
+标准化记录 + 来源/时间元数据
+       ↓
+PostgreSQL 未封存分区
+       ↓
+覆盖率 / 完整性 / 一致性 / 合法性检查
+       ↓
+不可变数据快照
+       ↓
+因子、股票池、回测、Paper Replay
 ```
 
-### 2.2 需新增的表
+页面、因子、回测和模拟盘优先读取 PG。页面 GET 不应为了填充空状态自动访问外部 Provider。
 
-#### 资讯新闻表 (news_stream)
+## 2. Provider 策略
 
-```sql
-CREATE TABLE IF NOT EXISTS news_stream (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source TEXT NOT NULL,           -- cls/ths/em/sina/futu
-    publish_time DATETIME NOT NULL,
-    title TEXT,
-    content TEXT NOT NULL,
-    importance INTEGER DEFAULT 1,   -- 1-5
-    category TEXT,                  -- 宏观/公司/行业/市场
-    related_stocks TEXT,            -- 关联股票,逗号分隔
-    is_read INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(source, publish_time, content)
-);
+### TuShare
 
-CREATE INDEX idx_news_publish_time ON news_stream(publish_time DESC);
-CREATE INDEX idx_news_source ON news_stream(source);
-```
+主要用于：
 
-#### 板块行情实时表 (sector_realtime)
+- 证券主数据与上市状态；
+- 交易日历；
+- 日线与指数行情；
+- 复权因子；
+- 日度估值与换手；
+- 停复牌与涨跌停价格；
+- 财务披露和公司行动；
+- 获得授权的资金流、涨停生态和其他研究数据。
 
-```sql
-CREATE TABLE IF NOT EXISTS sector_realtime (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sector_type TEXT NOT NULL,      -- industry/concept/geo
-    sector_code TEXT,
-    sector_name TEXT NOT NULL,
-    price REAL,
-    change_percent REAL,
-    change_amount REAL,
-    volume REAL,
-    turnover REAL,
-    total_market_cap REAL,
-    leader_code TEXT,
-    leader_name TEXT,
-    leader_change REAL,
-    up_count INTEGER,
-    down_count INTEGER,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(sector_type, sector_name)
-);
+接口可用性取决于 Token、积分、单独权限和调用频率。权限不足必须显示为 `restricted`，不能返回看似成功的空数据。
 
-CREATE INDEX idx_sector_type ON sector_realtime(sector_type);
-```
+### AKShare
 
-#### 资金流向表 (fund_flow_daily)
+主要用于：
 
-```sql
-CREATE TABLE IF NOT EXISTS fund_flow_daily (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date DATE NOT NULL,
-    symbol TEXT NOT NULL,
-    name TEXT,
-    flow_type TEXT NOT NULL,        -- stock/industry/concept
-    main_inflow REAL,
-    main_outflow REAL,
-    main_net REAL,
-    super_large_inflow REAL,
-    super_large_outflow REAL,
-    super_large_net REAL,
-    large_inflow REAL,
-    large_outflow REAL,
-    large_net REAL,
-    medium_inflow REAL,
-    medium_outflow REAL,
-    medium_net REAL,
-    small_inflow REAL,
-    small_outflow REAL,
-    small_net REAL,
-    UNIQUE(date, symbol, flow_type)
-);
+- 公开全市场快照；
+- 概念/行业板块；
+- 热门排行；
+- 涨停池与公开短线生态；
+- 公开新闻、事件和其他补充数据。
 
-CREATE INDEX idx_fund_flow_date ON fund_flow_daily(date);
-CREATE INDEX idx_fund_flow_symbol ON fund_flow_daily(symbol);
-```
+AKShare 不是无条件兜底。回退必须按一个完整数据集/日期发生，并记录来源与原因，不能逐行混合后仍标成同一来源。
 
-#### 龙虎榜表 (dragon_tiger_board)
+## 3. 核心时间字段
 
-```sql
-CREATE TABLE IF NOT EXISTS dragon_tiger_board (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date DATE NOT NULL,
-    code TEXT NOT NULL,
-    name TEXT NOT NULL,
-    close_price REAL,
-    change_percent REAL,
-    turnover_rate REAL,
-    net_buy REAL,
-    buy_amount REAL,
-    sell_amount REAL,
-    reason TEXT,                    -- 上榜原因
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(date, code, reason)
-);
+| 字段 | 含义 |
+| --- | --- |
+| `trade_date` | 市场事实所属交易日 |
+| `available_at` | 研究或模拟时最早允许使用的时间 |
+| `knowledge_cutoff_at` | 快照包含信息的截止时间 |
+| `collected_at` | StockPro 实际采集时间 |
+| `source_updated_at` | 上游或持久化证据的更新时间 |
+| `response_generated_at` | API 响应生成时间，仅用于传输诊断 |
 
-CREATE INDEX idx_dtb_date ON dragon_tiger_board(date);
-```
+财务数据按披露可用时间进入研究，不按报告期提前可见。日线数据只有收盘后才完整可用。
 
-#### 北向资金流向表 (northbound_flow)
+## 4. 数据目录与分区
 
-```sql
-CREATE TABLE IF NOT EXISTS northbound_flow (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date DATE NOT NULL,
-    channel TEXT NOT NULL,          -- 沪股通/深股通/北向
-    buy_amount REAL,
-    sell_amount REAL,
-    net_buy REAL,
-    total_buy REAL,
-    total_sell REAL,
-    total_net REAL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(date, channel)
-);
+数据目录记录：
 
-CREATE INDEX idx_nb_date ON northbound_flow(date);
-```
+- 数据集代码和中文名称；
+- 业务模块与用途；
+- Provider/端点；
+- Schema 版本；
+- 更新频率与计划；
+- 权限要求和当前权限状态；
+- 存储、缓存和导出规则；
+- 最近同步、质量和发布状态。
 
----
+每次同步写入任务和数据分区。分区至少绑定数据集、交易日、来源、采集时间、记录数、Schema 版本和质量状态。
 
-## 三、数据同步服务架构
+## 5. 质量门
 
-### 3.1 服务层结构
+发布前检查按数据集定义执行，常见规则：
 
-```
-backend/app/services/
-├── scheduler_service.py      # 调度服务（APScheduler）
-├── data_sync_service.py      # 数据同步基础服务
-├── daily_sync_service.py     # 天级数据同步
-├── hourly_sync_service.py    # 小时级数据同步
-├── realtime_sync_service.py  # 实时数据同步
-├── news_sync_service.py      # 资讯同步服务
-└── websocket_service.py      # WebSocket 推送服务
-```
+- 交易日和目标日期一致；
+- 证券范围和记录数达到最低覆盖；
+- 主键唯一；
+- OHLC、成交量、价格上下限等字段合法；
+- 缺失率和异常率在阈值内；
+- 来源和 Schema 与目录一致；
+- 关联数据集能够对齐；
+- 不存在未解释的跨源混合。
 
-### 3.2 调度配置
+质量失败的数据可以保留用于诊断，但不能封存为“可用于研究”的快照，也不能触发后续因子计算。
 
-```python
-# scheduler_service.py
+## 6. 数据快照
 
-class SchedulerService:
-    async def initialize(self):
-        # ========== 天级任务 ==========
-        
-        # 股票历史数据 - 每天16:00
-        self.scheduler.add_job(
-            func=self._sync_stock_history,
-            trigger=CronTrigger(hour=16, minute=0),
-            id='daily_stock_history'
-        )
-        
-        # 涨停连板数据 - 每天16:30
-        self.scheduler.add_job(
-            func=self._sync_zt_pool,
-            trigger=CronTrigger(hour=16, minute=30),
-            id='daily_zt_pool'
-        )
-        
-        # 龙虎榜数据 - 每天18:00
-        self.scheduler.add_job(
-            func=self._sync_dragon_tiger,
-            trigger=CronTrigger(hour=18, minute=0),
-            id='daily_dragon_tiger'
-        )
-        
-        # 北向资金 - 每天18:30
-        self.scheduler.add_job(
-            func=self._sync_northbound,
-            trigger=CronTrigger(hour=18, minute=30),
-            id='daily_northbound'
-        )
-        
-        # ========== 小时级任务 ==========
-        
-        # 板块行情 - 交易时间每小时30分
-        self.scheduler.add_job(
-            func=self._sync_sector_realtime,
-            trigger=CronTrigger(minute=30, hour='9-15', day_of_week='mon-fri'),
-            id='hourly_sector'
-        )
-        
-        # 热度排行 - 交易时间每小时00分
-        self.scheduler.add_job(
-            func=self._sync_hot_rank,
-            trigger=CronTrigger(minute=0, hour='9-15', day_of_week='mon-fri'),
-            id='hourly_hot_rank'
-        )
-        
-        # 资金流向 - 交易时间每小时15分
-        self.scheduler.add_job(
-            func=self._sync_fund_flow,
-            trigger=CronTrigger(minute=15, hour='9-15', day_of_week='mon-fri'),
-            id='hourly_fund_flow'
-        )
-        
-        # ========== 分钟级任务 ==========
-        
-        # 全市场行情 - 交易时间每分钟
-        self.scheduler.add_job(
-            func=self._sync_all_stocks_realtime,
-            trigger=CronTrigger(second=0, hour='9-15', day_of_week='mon-fri'),
-            id='minute_stocks'
-        )
-        
-        # 快讯资讯 - 每分钟
-        self.scheduler.add_job(
-            func=self._sync_news,
-            trigger=CronTrigger(second=30),
-            id='minute_news'
-        )
-```
+数据快照是研究输入边界，包含：
 
-### 3.3 数据同步流程
+- 固定分区清单；
+- 数据集与交易日范围；
+- 股票范围/Universe；
+- 来源和回退记录；
+- 知识截止时间；
+- 质量结果；
+- 记录数、哈希和封存状态。
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      调度器 (APScheduler)                    │
-├─────────────────────────────────────────────────────────────┤
-│  触发时间到达                                                 │
-│      ↓                                                       │
-│  ┌─────────────────────┐                                     │
-│  │   同步服务           │                                     │
-│  │   - 检查是否交易日   │                                     │
-│  │   - 调用 AKShare    │                                     │
-│  │   - 数据清洗转换     │                                     │
-│  │   - 写入数据库       │                                     │
-│  └─────────────────────┘                                     │
-│      ↓                                                       │
-│  ┌─────────────────────┐                                     │
-│  │   Postgres 数据库     │                                     │
-│  │   - 实时表          │                                     │
-│  │   - 历史表          │                                     │
-│  └─────────────────────┘                                     │
-│      ↓                                                       │
-│  ┌─────────────────────┐                                     │
-│  │   API 接口          │                                     │
-│  │   - 从数据库读取    │                                     │
-│  │   - 返回给前端      │                                     │
-│  └─────────────────────┘                                     │
-└─────────────────────────────────────────────────────────────┘
-```
+封存后不可修改。Provider 更正或补数通过新分区和新快照发布。旧回测继续读取原快照。
 
----
+## 7. Universe 与点时数据
 
-## 四、API 设计规范
+Universe 快照需要保存：
 
-### 4.1 数据获取 API
+- 股票代码、交易所和名称；
+- 上市、退市、停牌和 ST 状态；
+- 板块/行业分类；
+- 指数成分关系；
+- 状态的有效起止时间。
 
-所有数据获取 API 都应从数据库读取，不直接调用 AKShare：
+回测不能用今天的股票列表回填历史。股票是否存在、是否 ST、是否停牌、属于哪个指数，都必须按模拟时间判断。
 
-```python
-# ❌ 错误做法 - 直接调用 AKShare
-@router.get("/stocks/realtime")
-async def get_stocks_realtime():
-    df = ak.stock_zh_a_spot_em()  # 不推荐
-    return df.to_dict('records')
+## 8. 因子、股票池与回测
 
-# ✅ 正确做法 - 从数据库读取
-@router.get("/stocks/realtime")
-async def get_stocks_realtime():
-    return db.get_all_stocks_realtime()  # 从数据库读取
-```
+- 因子计算绑定数据快照，发布独立因子快照。
+- 股票池绑定数据/因子证据，保存规则和入选原因。
+- 回测绑定策略版本、数据、Universe、因子、股票池、研究协议和成本模型。
+- 回测运行中禁止调用 TuShare/AKShare。
+- 下游对象只引用已发布证据，不隐式“取最新”。
 
-### 4.2 API 路径规范
+## 9. 实时与日终数据
 
-```
-/api/
-├── market/                      # 市场数据
-│   ├── indices                  # 指数行情
-│   ├── stocks                   # 全市场行情
-│   └── summary                  # 市场总览
-├── sectors/                     # 板块数据
-│   ├── industry                 # 行业板块
-│   ├── concept                  # 概念板块
-│   └── geo                      # 地域板块
-├── stocks/{symbol}/             # 个股数据
-│   ├── history                  # 历史K线
-│   ├── fundamentals             # 基本面
-│   ├── fund-flow                # 资金流向
-│   └── factors                  # 因子数据
-├── hot/                         # 热度数据
-│   ├── concepts                 # 热门概念
-│   ├── stocks                   # 热门股票
-│   └── ths                      # 同花顺热榜
-├── news/                        # 资讯数据
-│   ├── stream                   # 快讯流
-│   └── notices                  # 公告
-└── pulse/                       # 复盘中心
-    ├── lianban-history          # 连板历史
-    └── daily-stats              # 每日统计
-```
+### 日终
 
----
+PG 调度默认面向收盘后任务。典型顺序：
 
-## 五、WebSocket 实时推送
+1. 检查交易日；
+2. 获取日线；
+3. 获取复权因子；
+4. 获取估值/换手；
+5. 获取停牌和涨跌停价格；
+6. 获取基准指数；
+7. 运行质量检查；
+8. 原子发布数据快照；
+9. 按配置触发后续研究任务。
 
-对于秒级更新的数据，使用 WebSocket 推送：
+任务使用 PG 锁和持久化水位，避免重复执行。最近交易日可按新快照方式对账更正。
 
-### 5.1 WebSocket 事件
+### 实时
 
-| 事件类型 | 频率 | 数据内容 |
-|----------|------|----------|
-| `stock_tick` | 每秒 | 股票实时价格变动 |
-| `index_tick` | 每秒 | 指数实时行情 |
-| `alert` | 实时 | 盘口异动提醒 |
-| `news` | 实时 | 快讯推送 |
+指数、全市场快照、板块、新闻和盘口按模块配置轮询或按需读取。实时数据与封存研究数据分开表达：
 
-### 5.2 客户端订阅
+- 实时页面显示采集时间和新鲜度；
+- 过期实时数据不能被响应时间刷新；
+- 实时缓存不自动成为回测证据；
+- 需要用于研究时先落 PG、检查并封存。
 
-```javascript
-// 前端订阅示例
-const ws = new WebSocket('ws://localhost:8000/ws');
+## 10. 数据中心状态
 
-ws.onopen = () => {
-  // 订阅股票实时行情
-  ws.send(JSON.stringify({
-    action: 'subscribe',
-    channels: ['stock_tick', 'alert']
-  }));
-};
+数据中心面向操作者展示：
 
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  switch(data.type) {
-    case 'stock_tick':
-      updateStockPrice(data.payload);
-      break;
-    case 'alert':
-      showAlert(data.payload);
-      break;
-  }
-};
-```
+- 研究数据是否可用；
+- 最新交易日和知识截止时间；
+- 阻塞研究的最高优先级问题；
+- 数据集覆盖和质量；
+- 同步任务进度与日志；
+- Provider 权限；
+- 日终计划与最近执行；
+- 快照和表统计。
 
----
+用户主阅读层不展示数据库主键、哈希、任务 UUID 或原始 Provider JSON。详情和审计层可保留内部标识。
 
-## 六、缓存策略
+## 11. 失败与恢复
 
-### 6.1 内存缓存（Redis/内存字典）
+- Provider 超时：任务失败或按合同进行整类回退，保存原因。
+- 部分数据：保存未封存分区，不能发布完整快照。
+- 进程中断：根据 PG 任务状态恢复或显式重试。
+- 重复请求：通过幂等键、唯一约束和任务锁避免重复写。
+- 数据更正：新分区、新快照，不覆盖已使用证据。
+- PG 恢复：备份与恢复演练需核对快照清单、因子、回测和 Paper 账本。
 
-- 全市场实时行情（1分钟TTL）
-- 分时数据（5分钟TTL）
-- 热度排行（10分钟TTL）
+## 12. 数据安全
 
-### 6.2 Postgres 数据库缓存
+- `.env`、Provider Token、数据库备份和导出文件不进入 Git。
+- 数据库查询接口只允许白名单表和受控语句。
+- Agent 写入遵循作用域、幂等和审计规则。
+- 商业数据的缓存、导出和再分发遵循 Provider 授权。
+- 远程数据库迁移或生产同步需要单独明确授权。
 
-- 历史K线数据
-- 财务数据
-- 因子数据
-
-### 6.3 缓存更新策略
-
-```python
-# 写入时更新缓存
-def update_stocks_realtime(stocks: List[Dict]):
-    # 1. 写入数据库
-    db.update_all_stocks_realtime(stocks)
-    
-    # 2. 更新内存缓存
-    cache.set('stocks_realtime', stocks, ttl=60)
-    
-    # 3. 推送 WebSocket
-    await ws_manager.broadcast('stock_tick', stocks)
-```
-
----
-
-## 七、错误处理与重试
-
-### 7.1 AKShare 调用重试
-
-```python
-import time
-from functools import wraps
-
-def retry_on_failure(max_retries=3, delay=1):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            for i in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if i < max_retries - 1:
-                        time.sleep(delay * (i + 1))
-                        continue
-                    raise e
-        return wrapper
-    return decorator
-
-@retry_on_failure(max_retries=3, delay=2)
-def fetch_stock_data():
-    return ak.stock_zh_a_spot_em()
-```
-
-### 7.2 同步状态记录
-
-```sql
-CREATE TABLE IF NOT EXISTS sync_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_name TEXT NOT NULL,
-    sync_date DATE NOT NULL,
-    status TEXT NOT NULL,           -- success/failed/running
-    records_count INTEGER DEFAULT 0,
-    error_message TEXT,
-    duration_ms INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(task_name, sync_date)
-);
-```
-
----
-
-## 八、监控与告警
-
-### 8.1 关键指标监控
-
-- 同步任务执行状态
-- 数据更新延迟
-- 数据库存储空间
-- API 响应时间
-
-### 8.2 告警规则
-
-- 同步任务连续失败 3 次
-- 数据更新延迟超过 30 分钟
-- API 响应时间超过 5 秒
+具体 API 见 [API 指南](api.md)，产品时间与快照规则见 [产品规格](spec.md)。
