@@ -1,6 +1,18 @@
 # Progress Log
 
-## Tremor UI Style Integration (2026-07-29)
+## Workstation Full Menu Audit & Data Self-Healing (2026-07-29)
+
+1. **Full-Menu QA Audit**:
+   - Created Playwright end-to-end audit suite `frontend/tests/e2e/full-menu-audit.spec.ts`.
+   - Executed deep click testing across all 12 primary navigation menus, 34 L2 tabs, and 18 L3 leaf views with 100% test pass rate (12/12 suites).
+2. **Data Self-Healing Infrastructure**:
+   - Added backend self-healing endpoint `POST /api/data/heal-missing` (`backend/app/api/endpoints/data.py`).
+   - Integrated "一键数据自愈" clinic button and client API binding into Data Center (`frontend/src/pages/DataCenter.tsx`).
+3. **Resilience & Fallback Fixes**:
+   - Implemented rule-based local analysis fallback generator `_generate_rule_based_fallback` in `AIService` when Qwen API key is unconfigured, avoiding raw 503 errors.
+   - Refactored `ChartService` provider fallback and normalized intraday zero-axis `pre_close` logic.
+
+Verification: `./scripts/check.sh` clean (build, lint, deploy syntax, 290 unit tests PASS); Playwright full-menu audit 12/12 PASS; services running healthy on :4444 and :4445.
 
 1. Introduced GitHub high-star Tremor UI Design System visual components for analytics and dashboards into StockPro.
 2. Built `TremorShowcasePanel` component (`frontend/src/components/TremorShowcasePanel.tsx`) implementing:

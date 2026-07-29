@@ -1672,3 +1672,38 @@ def _refresh_short_line_indices() -> int:
                 rows,
             )
     return 3
+
+
+class HealDataRequest(BaseModel):
+    days: int = Field(default=30, ge=1, le=365)
+    heal_kline: bool = True
+    heal_market_evidence: bool = True
+
+
+@router.post("/heal-missing")
+async def heal_missing_data(request: HealDataRequest = Body(...)):
+    """
+    Data Self-Healing Endpoint:
+    Checks for gaps in daily bars, short-line metrics, and hot concepts,
+    then automatically triggers asynchronous sync tasks from TuShare / AkShare.
+    """
+    job_name = f"heal-missing-data-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    created_job = kline_sync_service.create_market_daily_sync_job(
+        job_name=job_name,
+        history_days=request.days,
+        include_signals=request.heal_market_evidence,
+        force=True,
+    )
+
+    # 触发实时刷新兜底
+    refreshed_concepts = _refresh_hot_concepts()
+    refreshed_indices = _refresh_short_line_indices()
+
+    return {
+        "status": "success",
+        "message": f"已成功启动数据自愈任务 #{created_job['id']}，正在为您自动补全近 {request.days} 天的数据缺口！",
+        "job_id": created_job["id"],
+        "refreshed_concepts": refreshed_concepts,
+        "refreshed_indices": refreshed_indices,
+    }
+
