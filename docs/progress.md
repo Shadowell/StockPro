@@ -106,6 +106,15 @@ monitor critical; intraday pre_close mapping.
 Verification: provider + API smoke on `SH_600519` (茅台五档 OK); `npx tsc --noEmit`
 OK; services :4444/:4445 healthy.
 
+## Stock Pools Simplification & Modernization (2026-07-29)
+
+1. Reviewed stock pool architecture and consolidated redundant tabs (`mine`, `screener`, `factor`, `sector`, `event`, `snapshots`) down to 3 focused workspaces:
+   - **我的股票池 (`mine`)**: Stock pool rule catalog, status filters, member list, snapshot sealing, and evidence binding.
+   - **基础筛选与建池 (`screener`)**: Unified multi-mode screening builder containing mode selectors: 板块选股 (Sector), 事件选股 (Event), 基础条件 (Basic screener), and 因子选股 (Factor).
+   - **快照与回测 (`snapshots`)**: Immutable stock pool snapshot repository and one-click backtest draft creation.
+2. Modernized `StockPools.tsx` with Financial Operator UI design system & Tremor UI components (`TremorCard`, `TremorCallout`, `TremorBarList`, `TremorDeltaBadge`, `SymbolCell`, `MetricValue`, and `@bitpro/ui` tokens).
+3. Verified full test suite via `./scripts/check.sh` (290/290 backend unit tests PASS, frontend build & lint PASS).
+
 ## StockPro Mark + Dashboard Session Breath (2026-07-29)
 
 Designed StockPro brand mark as rounded dark shell + single sky pulse stroke
