@@ -5,6 +5,15 @@ import clsx from 'clsx';
 import { autoDevelopStrategy, getAICapabilities, getFactorSnapshots, getLatestStrategyVersion, getStrategies, quickRunStrategyVersion, saveStrategy, updateStrategy } from '../api/client';
 import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
 import { StrategyDetailPanel } from '../components/BitProDetailPanels';
+import {
+  CatalogueCard,
+  FilterChipGroup,
+  OperatorFilterBar,
+  OperatorPageHeader,
+  OperatorSearchField,
+  OperatorStatePanel,
+  SegmentedControl,
+} from '../components/OperatorShell';
 import type { AICapabilities, Strategy as StrategyType, StrategyReplayResult, StrategyValidationReport, StrategyVersion } from '../types';
 
 type ListTab = 'my' | 'plaza';
@@ -296,7 +305,7 @@ export function Strategy() {
 
   if (view === 'detail' && selected) {
     return (
-      <div className="min-h-full bg-crypto-bg p-6">
+      <div className="min-h-full bg-crypto-bg p-6" data-operator-page="strategy-detail">
         <StrategyDetailPanel
           strategy={productStrategyCopy(selected)}
           version={activeVersion}
@@ -311,46 +320,47 @@ export function Strategy() {
   }
 
   return (
-    <div className="min-h-full bg-crypto-bg p-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Code2 className="h-6 w-6 text-blue-400" />
-          <h1 className="text-2xl font-bold text-white">策略中心</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={loading || !aiCapabilities?.configured}
-            title={
-              aiCapabilities?.configured
-                ? `Qwen ${aiCapabilities.model || ''}`
-                : aiCapabilities?.reason || 'AI 能力状态读取中'
-            }
-            className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/[0.12] px-4 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-500/45 hover:bg-purple-500/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Zap className="h-4 w-4" />
-            {aiCapabilities?.configured ? 'AI 写策略' : 'AI 未配置'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedId(null);
-              setName('');
-              setDescription('');
-              setScript(emptyCode);
-              setActiveVersion(null);
-              setValidation(null);
-              setReplayResult(null);
-              setShowEditor(true);
-            }}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-          >
-            <Plus className="h-4 w-4" />
-            新建策略
-          </button>
-        </div>
-      </div>
+    <div className="min-h-full bg-crypto-bg p-6" data-operator-page="strategy">
+      <OperatorPageHeader
+        icon={Code2}
+        title="策略中心"
+        subtitle="目录 → 校验/版本 → 回测 → 模拟。子视图：我的策略、策略广场、编辑器、详情。"
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={loading || !aiCapabilities?.configured}
+              title={
+                aiCapabilities?.configured
+                  ? `Qwen ${aiCapabilities.model || ''}`
+                  : aiCapabilities?.reason || 'AI 能力状态读取中'
+              }
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/[0.12] px-4 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-500/45 hover:bg-purple-500/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Zap className="h-4 w-4" />
+              {aiCapabilities?.configured ? 'AI 写策略' : 'AI 未配置'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedId(null);
+                setName('');
+                setDescription('');
+                setScript(emptyCode);
+                setActiveVersion(null);
+                setValidation(null);
+                setReplayResult(null);
+                setShowEditor(true);
+              }}
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              新建策略
+            </button>
+          </>
+        }
+      />
 
       <div className="mb-6 space-y-3">
         <AshareGuardrailStrip
@@ -362,95 +372,73 @@ export function Strategy() {
             { label: '涨跌停 / 停牌过滤', detail: '信号池需剔除不可交易和接近涨跌停的标的。' },
           ]}
         />
-        <div className="inline-flex w-fit items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card p-1">
-          <button
-            type="button"
-            onClick={() => setListTab('my')}
-            className={clsx(
-              'inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors',
-              listTab === 'my' ? 'bg-blue-500/20 text-blue-300' : 'text-gray-500 hover:text-gray-300',
-            )}
-          >
-            <Layers className="h-4 w-4" />
-            我的策略
-          </button>
-          <button
-            type="button"
-            onClick={() => setListTab('plaza')}
-            className={clsx(
-              'inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors',
-              listTab === 'plaza' ? 'bg-purple-500/20 text-purple-300' : 'text-gray-500 hover:text-gray-300',
-            )}
-          >
-            <BookOpen className="h-4 w-4" />
-            策略广场
-          </button>
-        </div>
+        <SegmentedControl<ListTab>
+          aria-label="策略目录"
+          value={listTab}
+          onChange={setListTab}
+          options={[
+            { value: 'my', label: '我的策略', icon: Layers, tone: 'blue', count: strategies.length },
+            { value: 'plaza', label: '策略广场', icon: BookOpen, tone: 'purple', count: plazaTemplates.length + referenceStrategies.length },
+          ]}
+        />
         {listTab === 'my' && (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex h-11 items-center rounded-xl border border-crypto-border bg-crypto-card p-1">
-              {assetFilters.map((option) => {
-                const active = assetFilter === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setAssetFilter(option.value)}
-                    aria-pressed={active}
-                    className={clsx(
-                      'inline-flex h-9 min-w-20 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors',
-                      active ? 'bg-blue-500/20 text-blue-300' : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
-                    )}
-                  >
-                    <span>{option.label}</span>
-                    <span className={clsx('rounded-md px-1.5 py-0.5 text-[10px]', active ? 'bg-blue-400/15 text-blue-200' : 'bg-crypto-bg text-gray-500')}>
-                      {assetCounts[option.value]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="inline-flex h-11 items-center rounded-xl border border-crypto-border bg-crypto-card/80 p-1">
-              {statusFilters.map((option) => {
-                const active = statusFilter === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setStatusFilter(option.value)}
-                    aria-pressed={active}
-                    className={clsx(
-                      'inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors',
-                      active ? 'bg-blue-500/20 text-blue-300' : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
-                    )}
-                  >
+          <OperatorFilterBar>
+            <FilterChipGroup<AssetFilter>
+              aria-label="资产筛选"
+              value={assetFilter}
+              onChange={setAssetFilter}
+              options={assetFilters.map((option) => ({
+                value: option.value,
+                label: option.label,
+                count: assetCounts[option.value],
+              }))}
+            />
+            <FilterChipGroup<StatusFilter>
+              aria-label="状态筛选"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={statusFilters.map((option) => ({
+                value: option.value,
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
                     <span className={clsx('h-1.5 w-1.5 rounded-full', option.dot)} />
-                    <span>{option.label}</span>
-                    <span className={clsx('rounded-md px-1.5 py-0.5 text-[10px]', active ? 'bg-blue-400/15 text-blue-200' : 'bg-crypto-bg text-gray-500')}>
-                      {statusCounts[option.value]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            <label className="relative flex h-11 w-full min-w-[260px] max-w-md items-center rounded-xl border border-crypto-border bg-crypto-card px-3 text-sm text-gray-400 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20 sm:w-[360px]">
-              <Search className="mr-2 h-4 w-4 shrink-0 text-gray-500" />
-              <span className="sr-only">搜索策略</span>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="搜索策略..."
-                className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-gray-200 placeholder:text-gray-600 focus:outline-none"
-              />
-            </label>
-          </div>
+                    {option.label}
+                  </span>
+                ),
+                count: statusCounts[option.value],
+              }))}
+            />
+            <OperatorSearchField
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="搜索策略..."
+              icon={<Search className="h-4 w-4" />}
+            />
+          </OperatorFilterBar>
         )}
       </div>
 
       {message && <div className="mb-4 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300">{message}</div>}
-      {listState === 'error' && <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"><span><strong>加载失败：</strong>{listError}</span><button type="button" onClick={() => void load()} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-red-100"><RefreshCw className="h-3.5 w-3.5" />重试</button></div>}
-      {listState === 'loading' && <div className="rounded-xl border border-crypto-border bg-crypto-card py-20 text-center text-sm text-gray-500"><RefreshCw className="mx-auto mb-3 h-5 w-5 animate-spin" />正在读取策略与版本…</div>}
+      {listState === 'error' && (
+        <OperatorStatePanel
+          kind="error"
+          title="策略目录加载失败"
+          description={listError}
+          action={
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-semibold text-red-100"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              重试
+            </button>
+          }
+        />
+      )}
+      {listState === 'loading' && (
+        <OperatorStatePanel kind="loading" title="正在读取策略与版本…" description="只读加载本地 PostgreSQL 策略目录，不触发同步。" />
+      )}
 
       {listTab === 'my' && listState === 'ready' && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -459,25 +447,17 @@ export function Strategy() {
             const tags = inferTags(item);
             const copy = productStrategyCopy(item);
             return (
-              <article
+              <CatalogueCard
                 key={item.id}
-                data-testid="strategy-card"
+                testId="strategy-card"
+                active={active}
                 onClick={() => setSelectedId(item.id)}
-                className={clsx(
-                  'group self-start overflow-hidden rounded-xl border bg-crypto-card transition-all hover:border-gray-600',
-                  active ? 'border-blue-500/50 shadow-[0_0_0_1px_rgba(59,130,246,0.16)]' : 'border-crypto-border',
-                )}
               >
                 <div className="p-5 pb-3">
                   <div className="mb-2 flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2.5">
                       <span className={clsx('mt-1 h-2 w-2 shrink-0 rounded-full', item.is_running ? 'animate-pulse bg-emerald-400' : 'bg-gray-600')} />
                       <h2 className="truncate text-sm font-semibold text-[#FFAB73]">{copy.name}</h2>
-                      {item.data_purpose !== 'user' && item.data_purpose ? (
-                        <span className="shrink-0 rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-300">
-                          {item.data_purpose === 'acceptance' ? '验收数据' : '种子数据'}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
                   <p className="ml-[18px] line-clamp-2 min-h-[2.25rem] text-xs leading-relaxed text-gray-500">
@@ -531,14 +511,16 @@ export function Strategy() {
                     <span className="truncate">详情</span>
                   </button>
                 </div>
-              </article>
+              </CatalogueCard>
             );
           })}
           {visibleStrategies.length === 0 && (
-            <div className="col-span-full rounded-xl border border-crypto-border bg-crypto-card py-20 text-center">
-              <Code2 className="mx-auto mb-4 h-16 w-16 text-gray-700" />
-              <p className="text-sm text-gray-500">当前筛选下无策略</p>
-              <p className="mt-1 text-xs text-gray-600">切换筛选，或从策略广场选择模板开始</p>
+            <div className="col-span-full">
+              <OperatorStatePanel
+                kind="empty"
+                title="当前筛选下无策略"
+                description="切换筛选条件，或从策略广场选择模板开始。"
+              />
             </div>
           )}
         </div>

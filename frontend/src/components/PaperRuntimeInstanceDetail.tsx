@@ -39,6 +39,7 @@ import type {
 } from "../types";
 import { SymbolCell } from "./SymbolCell";
 import { useSymbolNames } from "../hooks/useSymbolNames";
+import { formatSymbolLabel } from "../utils/symbolDisplay";
 import { marketAdverseToneClass, marketToneClass, type MetricTone } from "../utils/marketColors";
 import { MetricValue } from "./OperatorShell";
 import { COLOR_SCHEMES, useSettingsStore } from "../stores/useSettingsStore";
@@ -650,8 +651,8 @@ export function PaperRuntimeInstanceDetail({
         </Section>
       </div>
 
-      <Section title="买卖点 K线复盘" subtitle="K 线直接读取本实例绑定的 PostgreSQL 封存数据快照；只有真实模拟成交才绘制 B/S 标记。" icon={<CandlestickChart className="mt-0.5 h-5 w-5 text-blue-400" />} action={symbols.length ? <select value={symbol} onChange={(event) => setSymbol(event.target.value)} onClick={(event) => event.stopPropagation()} className="h-8 rounded-md border border-crypto-border bg-crypto-bg px-2 text-xs text-slate-300">{symbols.map((item) => <option key={item}>{item}</option>)}</select> : undefined}>
-        {!symbols.length ? <Empty>当前没有持仓、订单、成交或信号证券，无法确定 K 线标的。</Empty> : klineError ? <Empty>K 线接口失败：{klineError}</Empty> : !kline ? <div className="py-16 text-center text-xs text-slate-500">正在读取封存研究数据…</div> : kline.data_status === "empty" ? <Empty>封存研究数据中没有 {symbol} 的日线数据。</Empty> : <>
+      <Section title="买卖点 K线复盘" subtitle="K 线直接读取本实例绑定的 PostgreSQL 封存数据快照；只有真实模拟成交才绘制 B/S 标记。" icon={<CandlestickChart className="mt-0.5 h-5 w-5 text-blue-400" />} action={symbols.length ? <select value={symbol} onChange={(event) => setSymbol(event.target.value)} onClick={(event) => event.stopPropagation()} className="h-8 max-w-[220px] rounded-md border border-crypto-border bg-crypto-bg px-2 text-xs text-slate-300">{symbols.map((item) => <option key={item} value={item}>{formatSymbolLabel(item, symbolNames[item])}</option>)}</select> : undefined}>
+        {!symbols.length ? <Empty>当前没有持仓、订单、成交或信号证券，无法确定 K 线标的。</Empty> : klineError ? <Empty>K 线接口失败：{klineError}</Empty> : !kline ? <div className="py-16 text-center text-xs text-slate-500">正在读取封存研究数据…</div> : kline.data_status === "empty" ? <Empty>封存研究数据中没有 {formatSymbolLabel(symbol, symbolNames[symbol])} 的日线数据。</Empty> : <>
           <div className="mb-3 flex flex-wrap justify-between gap-2 text-[10px] text-slate-500"><span>{kline.source_label} · 封存研究数据</span><span>数据截止 {dateTime(kline.knowledge_cutoff_at)} · {kline.total} 根</span></div>
           <ReactECharts option={klineOption} style={{ height: 430 }} />
         </>}

@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities } from '../types';
+import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, MessageStreamResponse, MarketCalendarEvent, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -619,6 +619,11 @@ export const searchStocks = async (params: { q: string; limit?: number }): Promi
 
 export const getHotConcepts = async (limit = 50, date?: string): Promise<HotConceptItem[]> => {
   const response = await apiClient.get<HotConceptItem[]>('/market/hot-concepts', { params: { limit, date } });
+  return response.data;
+};
+
+export const getSectorFundFlow = async (limit = 30): Promise<SectorFundFlowResponse> => {
+  const response = await apiClient.get<SectorFundFlowResponse>('/market/sector-fund-flow', { params: { limit } });
   return response.data;
 };
 
@@ -1419,6 +1424,49 @@ export const getDailyReferenceSchedule = async (): Promise<DailyReferenceSchedul
   return response.data;
 };
 
+export const updateDailyReferenceSchedule = async (request: {
+  enabled?: boolean;
+  cron?: string;
+  timezone?: string;
+  catchupDays?: number;
+  maxRetries?: number;
+}): Promise<DailyReferenceSchedule> => {
+  const response = await apiClient.put<DailyReferenceSchedule>('/data/schedules/daily', request);
+  return response.data;
+};
+
+export const runDailyReferenceSchedule = async (request?: {
+  trade_date?: string;
+  symbols?: string[];
+  force?: boolean;
+}): Promise<GenericApiResponse & { status?: string; tradeDate?: string; message?: string }> => {
+  const response = await apiClient.post<GenericApiResponse & { status?: string; tradeDate?: string; message?: string }>(
+    '/data/schedules/daily/run',
+    request || { force: true },
+  );
+  return response.data;
+};
+
+export const syncAllMarketHistory = async (request?: {
+  history_days?: number;
+  start_date?: string;
+  end_date?: string;
+  refresh_universe?: boolean;
+  include_signals?: boolean;
+  job_name?: string;
+}): Promise<GenericApiResponse & {
+  jobId?: string;
+  job_id?: number;
+  tradeDateCount?: number;
+  startDate?: string;
+  endDate?: string;
+  includeSignals?: boolean;
+  mode?: string;
+}> => {
+  const response = await apiClient.post('/data/history/sync-all', request || { history_days: 365, include_signals: true });
+  return response.data;
+};
+
 export const probeTushareEndpoint = async (
   endpointCode: string,
   request: { params?: Record<string, unknown>; fields?: string } = {},
@@ -1454,7 +1502,6 @@ export const addDataSymbol = async (symbol: string): Promise<{ symbol: string; a
   return response.data;
 };
 
-
 export const lookupSymbolNames = async (
   symbols: string[],
 ): Promise<Record<string, string>> => {
@@ -1465,7 +1512,6 @@ export const lookupSymbolNames = async (
   });
   return response.data.names || {};
 };
-
 
 export const removeDataSymbol = async (symbol: string): Promise<{ symbol: string; removed: boolean; defaultSymbols: string[] }> => {
   const response = await apiClient.delete<{ symbol: string; removed: boolean; defaultSymbols: string[] }>('/data/symbols', { data: { symbol } });

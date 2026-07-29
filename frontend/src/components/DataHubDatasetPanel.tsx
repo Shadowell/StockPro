@@ -224,11 +224,11 @@ export const DataHubDatasetPanel: React.FC = () => {
                 <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                   <div className="bg-slate-900/60 rounded px-2 py-1">
                     <div className="text-slate-500">行数</div>
-                    <div className="text-slate-200 font-semibold">{ds.row_count.toLocaleString()}</div>
+                    <div className="text-blue-300 font-semibold tabular-nums">{ds.row_count.toLocaleString()}</div>
                   </div>
                   <div className="bg-slate-900/60 rounded px-2 py-1">
                     <div className="text-slate-500">主键</div>
-                    <div className="text-slate-200 font-semibold">{ds.primary_keys.length}</div>
+                    <div className="text-blue-300 font-semibold tabular-nums">{ds.primary_keys.length}</div>
                   </div>
                   <div className="bg-slate-900/60 rounded px-2 py-1">
                     <div className="text-slate-500">频率</div>

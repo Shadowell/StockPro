@@ -217,6 +217,27 @@ async function mockApi(page: Page) {
       ]));
     }
 
+    if (method === 'GET' && path === '/market/sector-fund-flow') {
+      return route.fulfill(json({
+        limit: 30,
+        unit: '亿',
+        inflows: [
+          { rank: 1, name: '低空经济', change_percent: 6.1, net_inflow_yi: 2.0, inflow_yi: 3.0, outflow_yi: 1.0 },
+        ],
+        outflows: [
+          { rank: 2, name: '机器人', change_percent: 1.7, net_inflow_yi: -0.5, inflow_yi: 0.5, outflow_yi: 1.0 },
+        ],
+        rankings: [
+          { rank: 1, name: '低空经济', change_percent: 6.1, net_inflow_yi: 2.0 },
+          { rank: 2, name: '机器人', change_percent: 1.7, net_inflow_yi: -0.5 },
+        ],
+        updated_at: now,
+        data_status: 'fresh',
+        source_label: 'PostgreSQL hot_concepts_realtime',
+        methodology: '按板块主力净流入排序；连线按流入侧权重分摊。',
+      }));
+    }
+
     if (method === 'GET' && path === '/market/ths-hot') {
       return route.fulfill(json([
         { rank: 1, code: '600000', name: '浦发银行', hot: 10, change_percent: 1.2, price: 10, reason: '银行板块活跃', tags: '金融' },
@@ -460,7 +481,7 @@ async function mockApi(page: Page) {
       start_date: '2023-01-03', end_date: '2025-01-02', initial_cash: 1000000, parameters: {}, universe: { symbols: ['SH_600519'] },
       metrics: { strategy_return: 0.12, annualized_return: 0.06, benchmark_return: 0.04, excess_return: 0.08, maximum_drawdown: 0.09, sharpe: 1.23 },
       input_hash: 'input-hash-abcdef', result_manifest: { manifest_hash: 'result-manifest-abcdef' }, created_at: '2025-01-02T18:00:00+08:00',
-      data_purpose: 'acceptance',
+      data_purpose: 'user',
     };
     const mockMetrics = Object.entries(mockBacktestRun.metrics).map(([metric_code, metric_value]) => ({ metric_code, metric_value, unit: metric_code === 'sharpe' ? 'number' : 'ratio', calculation_version: 'backtest-metrics.v1', input_frequency: '1d', null_reason: null }));
     const mockBacktestJob = {
@@ -495,7 +516,7 @@ async function mockApi(page: Page) {
     if (method === 'GET' && new RegExp(`^/backtest/runs/${mockBacktestRun.id}/(positions|orders|trades|logs|attribution)$`).test(path)) return route.fulfill(json({ items: [] }));
     if (method === 'POST' && path === '/backtest/runs') return route.fulfill(json(mockBacktestRun));
 
-    const mockPool = { id: 'pool-1', name: '动量 Top20', pool_type: 'factor', description: 'fixture', status: 'active', data_purpose: 'acceptance', rule_id: 'rule-1', rule_type: 'factor', rule_version: 1, config: { factor_code: 'momentum_20d', top_n: 20 }, rule_hash: 'rule-hash-abcdef', snapshot_count: 1, current_member_count: 2, latest_generation_id: 'generation-1', latest_dataset_snapshot_id: 10, latest_universe_snapshot_id: 1, latest_factor_snapshot_id: 3, latest_market_evidence_snapshot_id: null, latest_trade_date: '2025-01-02', latest_knowledge_cutoff_at: now, latest_input_hash: 'input-hash' };
+    const mockPool = { id: 'pool-1', name: '动量 Top20', pool_type: 'factor', description: 'fixture', status: 'active', data_purpose: 'user', rule_id: 'rule-1', rule_type: 'factor', rule_version: 1, config: { factor_code: 'momentum_20d', top_n: 20 }, rule_hash: 'rule-hash-abcdef', snapshot_count: 1, current_member_count: 2, latest_generation_id: 'generation-1', latest_dataset_snapshot_id: 10, latest_universe_snapshot_id: 1, latest_factor_snapshot_id: 3, latest_market_evidence_snapshot_id: null, latest_trade_date: '2025-01-02', latest_knowledge_cutoff_at: now, latest_input_hash: 'input-hash' };
     const mockMembers = [{ ordinal: 1, symbol: 'SH_600519', score: 1, reason: '20日动量排名 1', evidence: { factor_snapshot_id: 3 }, evidence_hash: 'member-hash-1', valid_from: '2025-01-02', valid_until: '2025-01-07', generator_version: 'stock-pool-generator.v1' }, { ordinal: 2, symbol: 'SZ_000333', score: 0.95, reason: '20日动量排名 2', evidence: { factor_snapshot_id: 3 }, evidence_hash: 'member-hash-2', valid_from: '2025-01-02', valid_until: '2025-01-07', generator_version: 'stock-pool-generator.v1' }];
     const mockPoolSnapshot = { id: 11, pool_id: 'pool-1', pool_name: '动量 Top20', pool_type: 'factor', trade_date: '2025-01-02', dataset_snapshot_id: 10, universe_snapshot_id: 1, factor_snapshot_id: 3, knowledge_cutoff_at: now, manifest_hash: 'pool-manifest-abcdef', member_count: 2, status: 'sealed' };
     if (method === 'GET' && path === '/pools') return route.fulfill(json({ items: [mockPool], total: 1 }));
@@ -511,7 +532,7 @@ async function mockApi(page: Page) {
     }
 
     const paperInstance = {
-      id: '77777777-7777-7777-7777-777777777777', name: 'MA5 / Paper', status: 'running', data_purpose: 'acceptance',
+      id: '77777777-7777-7777-7777-777777777777', name: 'MA5 / Paper', status: 'running', data_purpose: 'user',
       strategy_version_id: mockBacktestRun.strategy_version_id, dataset_snapshot_id: 10, factor_snapshot_id: 3,
       universe_snapshot_id: 1, pool_snapshot_id: 11, research_protocol_id: mockBacktestRun.research_protocol_id,
       qualifying_backtest_run_id: mockBacktestRun.id, portfolio_id: '88888888-8888-8888-8888-888888888888',
@@ -544,7 +565,7 @@ async function mockApi(page: Page) {
       services: [{ id: 1, service_code: 'paper_runtime', status: 'healthy', freshness: 'fresh', message: '周期处理成功', observed_at: now }],
       data: { dataset: { id: 10, status: 'sealed' }, market: { id: 3, status: 'published' } },
       strategy_instances: [{ status: 'running', count: 1 }],
-      strategy_health: [{ id: paperInstance.id, name: paperInstance.name, status: 'running', health_state: 'fresh', data_purpose: 'acceptance', heartbeat_at: now, last_processed_trade_date: '2025-01-02', latest_cycle_status: 'success', latest_cycle_finished_at: now, latest_equity: 1120000, latest_drawdown: 0, latest_cycle_ledger_difference: 0, order_count: 1, trade_count: 1, risk_event_count: 1, rejected_count: 0 }],
+      strategy_health: [{ id: paperInstance.id, name: paperInstance.name, status: 'running', health_state: 'fresh', data_purpose: 'user', heartbeat_at: now, last_processed_trade_date: '2025-01-02', latest_cycle_status: 'success', latest_cycle_finished_at: now, latest_equity: 1120000, latest_drawdown: 0, latest_cycle_ledger_difference: 0, order_count: 1, trade_count: 1, risk_event_count: 1, rejected_count: 0 }],
       risk_alerts: [],
       active_alerts: [],
       notifications: [{ status: 'delivered', count: 1 }],
@@ -769,7 +790,6 @@ test('backtest center is separated from daily market review center', async ({ pa
   await expect(page.getByRole('heading', { name: '回测实例控制台' })).toBeVisible();
   await expect(page.getByRole('button', { name: '创建回测实例' })).toBeVisible();
   await expect(page.getByTestId('backtest-job-console')).toContainText('任务队列');
-  await page.getByTestId('backtest-scope-test').click();
   await expect(page.getByRole('button', { name: '结果证据' })).toBeVisible();
   await page.getByRole('button', { name: '任务日志' }).click();
   await expect(page.getByTestId('backtest-job-console')).toContainText('回测完成，结果证据已封存');
@@ -872,7 +892,6 @@ test('stock-pool snapshot carries evidence into a backtest draft without copied 
   for (const tab of ['mine', 'screener', 'factor', 'sector', 'event', 'snapshots']) {
     await expect(page.getByTestId(`pool-tab-${tab}`)).toBeVisible();
   }
-  await page.getByTestId('pool-scope-test').click();
   await page.getByTestId('pool-tab-factor').click();
   const evidencePanel = page.getByRole('heading', { name: '当前成员证据' }).locator('xpath=ancestor::section[1]');
   await expect(evidencePanel.getByText('Factor #3')).toBeVisible();
@@ -900,9 +919,6 @@ test('stock-pool catalogue survives optional market-evidence failure', async ({ 
   await page.goto('/pools');
 
   await expect(page.getByRole('heading', { name: '股票池目录' })).toBeVisible();
-  await expect(page.getByText('还没有业务股票池')).toBeVisible();
-  await expect(page.getByRole('button', { name: /动量 Top20/ })).toHaveCount(0);
-  await page.getByTestId('pool-scope-test').click();
   await expect(page.getByRole('button', { name: /动量 Top20/ })).toBeVisible();
   await expect(page.getByText('部分数据降级')).toBeVisible();
   await expect(page.getByText(/市场证据暂不可用/)).toBeVisible();
@@ -920,30 +936,66 @@ test('dashboard shows the realtime market cockpit by default', async ({ page }) 
   await expect(page.getByText('强势股', { exact: true })).toBeVisible();
   await expect(page.getByText('市场情绪', { exact: true }).last()).toBeVisible();
   await expect(page.getByText('成交额', { exact: true })).toBeVisible();
-  await expect(page.getByText('单位未记录').first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: '短线指标', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '热门板块', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '涨停生态', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '板块资金流向', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '热门板块 TOP30', exact: true })).toBeVisible();
   await expect(page.getByText('查看全部')).toBeVisible();
 });
 
-test('dashboard falls back to top hot concepts when no sector is above five percent', async ({ page }) => {
-  await page.route('**/api/market/hot-concepts**', (route) => route.fulfill(json([
-    { rank: 1, name: '存储芯片', change_percent: 3.12, inflow: 10, outflow: 3, net_inflow: 7 },
-    { rank: 2, name: '中芯国际概念', change_percent: 2.8, inflow: 8, outflow: 9, net_inflow: -1 },
-  ])));
+test('dashboard shows sector fund-flow top30 list and loads leaders on click', async ({ page }) => {
+  await page.route('**/api/market/sector-fund-flow**', (route) => route.fulfill(json({
+    limit: 30,
+    unit: '亿',
+    inflows: [{ rank: 1, name: '存储芯片', change_percent: 3.12, net_inflow_yi: 7 }],
+    outflows: [{ rank: 2, name: '中芯国际概念', change_percent: 2.8, net_inflow_yi: -1 }],
+    rankings: [
+      { rank: 1, name: '存储芯片', change_percent: 3.12, net_inflow_yi: 7 },
+      { rank: 2, name: '中芯国际概念', change_percent: 2.8, net_inflow_yi: -1 },
+    ],
+    updated_at: '2026-07-28T10:00:00+08:00',
+    data_status: 'fresh',
+    source_label: 'PostgreSQL hot_concepts_realtime',
+    methodology: '按板块主力净流入排序；连线按流入侧权重分摊。',
+  })));
+  await page.route('**/api/market/hot-concept/leaders**', (route) => {
+    const url = new URL(route.request().url());
+    const name = url.searchParams.get('name') || '';
+    if (name === '中芯国际概念') {
+      return route.fulfill(json([
+        { code: '688981', name: '中芯国际', price: 50.1, change_percent: 4.2, amount: 1.2e9, turnover: 2.1 },
+      ]));
+    }
+    return route.fulfill(json([
+      { code: '603986', name: '兆易创新', price: 100.2, change_percent: 5.1, amount: 8e8, turnover: 3.2 },
+    ]));
+  });
   await loginAsAdmin(page);
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: '热门板块 TOP5' })).toBeVisible();
-  await expect(page.getByText('存储芯片')).toBeVisible();
-  await expect(page.getByText('暂无热门板块数据')).toHaveCount(0);
+  const panel = page.getByTestId('sector-fund-flow');
+  await expect(panel.getByRole('heading', { name: '热门板块 TOP30' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: /存储芯片/ })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: '存储芯片 · 核心龙头' })).toBeVisible();
+  await expect(panel.getByText('兆易创新')).toBeVisible();
+
+  await panel.getByRole('button', { name: /中芯国际概念/ }).click();
+  await expect(panel.getByRole('heading', { name: '中芯国际概念 · 核心龙头' })).toBeVisible();
+  await expect(panel.getByText('中芯国际 688981.SH')).toBeVisible();
 });
 
 test('dashboard marks stale market caches and never presents them as current signals', async ({ page }) => {
   const staleAt = '2025-01-02T15:00:00+08:00';
-  await page.route('**/api/market/hot-concepts**', (route) => route.fulfill(json([
-    { rank: 1, name: '陈旧概念', change_percent: 6.1, net_inflow: 200000000, updated_at: staleAt },
-  ])));
+  await page.route('**/api/market/sector-fund-flow**', (route) => route.fulfill(json({
+    limit: 30,
+    unit: '亿',
+    inflows: [],
+    outflows: [{ rank: 1, name: '陈旧概念', change_percent: 6.1, net_inflow_yi: -2.0, updated_at: staleAt }],
+    rankings: [{ rank: 1, name: '陈旧概念', change_percent: 6.1, net_inflow_yi: -2.0, updated_at: staleAt }],
+    updated_at: staleAt,
+    data_status: 'stale',
+    source_label: 'PostgreSQL hot_concepts_realtime',
+    methodology: '按板块主力净流入排序；连线按流入侧权重分摊。',
+  })));
   await page.route('**/api/market/ths-hot**', (route) => route.fulfill(json([
     { rank: 1, code: '600000', name: '陈旧强势股', change_percent: 9.9, updated_at: staleAt },
   ])));
@@ -956,7 +1008,7 @@ test('dashboard marks stale market caches and never presents them as current sig
   await expect(page.getByText('热榜缓存已陈旧')).toBeVisible();
   await expect(page.getByText('陈旧强势股')).toHaveCount(0);
   await expect(page.getByText('当前接口未提供历史可比值')).toBeVisible();
-  await expect(page.getByText(/陈旧缓存/).first()).toBeVisible();
+  await expect(page.getByText(/陈旧缓存|缓存陈旧/).first()).toBeVisible();
 });
 
 test('dashboard falls back to sealed short-line evidence without calling it realtime', async ({ page }) => {
@@ -994,7 +1046,7 @@ test('primary pages expose usable A-share research workflow anchors', async ({ p
   await page.setViewportSize({ width: 1440, height: 960 });
 
   const pages = [
-    { path: '/', anchors: ['市场大盘', '市场指数', '短线指标', '热门板块'] },
+    { path: '/', anchors: ['市场大盘', '市场指数', '涨停生态', '板块资金流向'] },
     { path: '/market', anchors: ['行情', '市场数据快照', '涨停数'] },
     { path: '/pools', anchors: ['股票池', '股票池目录', '当前成员与入选证据'] },
     { path: '/factors', anchors: ['因子研究', '因子库', '20日动量'] },
@@ -1037,7 +1089,6 @@ test('paper watch and monitor keep separate operator ownership', async ({ page }
   await loginAsAdmin(page);
   await page.goto('/paper');
   await expect(page.getByRole('heading', { name: '策略实例控制台' })).toBeVisible();
-  await page.getByTestId('paper-scope-test').click();
   await page.getByTestId('paper-instance-card').first().getByRole('button', { name: '详情' }).click();
   for (const label of ['信号', '订单', '持仓', '账户', '事件']) await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
   await page.goto('/watch');
@@ -1049,9 +1100,8 @@ test('paper watch and monitor keep separate operator ownership', async ({ page }
   await expect(page.getByRole('heading', { name: '风险决策' })).toBeVisible();
   await page.goto('/monitor');
   for (const label of ['总览', '策略健康', '数据健康', '风险', '通知']) await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
-  await page.getByTestId('monitor-scope-test').click();
   await page.getByRole('button', { name: '策略健康', exact: true }).click();
-  await expect(page.getByText('验收数据')).toBeVisible();
+  await expect(page.getByText('验收数据')).toHaveCount(0);
   await expect(page.getByText('最后心跳')).toBeVisible();
 });
 
@@ -1081,7 +1131,6 @@ test('strategy backtest and paper expose the A-share operator workflow without i
   await page.goto('/paper');
   await expect(page.getByRole('heading', { name: '模拟盘' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '策略实例控制台' })).toBeVisible();
-  await page.getByTestId('paper-scope-test').click();
   await page.getByTestId('paper-instance-card').first().getByRole('button', { name: '详情' }).click();
   await page.getByRole('button', { name: '成交', exact: true }).click();
   await expect(page.getByText('SH_600519')).toBeVisible();
@@ -1112,7 +1161,6 @@ test('paper running state is downgraded when the recorded replay heartbeat is mi
   await loginAsAdmin(page);
   await page.goto('/paper');
 
-  await page.getByTestId('paper-scope-test').click();
   const instanceCard = page.getByTestId('paper-instance-card').first();
   await expect(instanceCard.getByText('心跳陈旧', { exact: true })).toBeVisible();
   await expect(instanceCard.getByText('最后心跳 未记录')).toBeVisible();

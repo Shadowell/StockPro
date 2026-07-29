@@ -353,7 +353,7 @@ export const FactorLibrary = () => {
             </StatusBadge>
           </span>
         }
-        subtitle="六个工作区：因子库 / 计算运行 / 单因子 / 多因子 / 相关性与暴露 / 因子值。"
+        subtitle="专业流程：定义 → 封存计算 → IC/分层成熟 → 相关与暴露 → 因子快照 → 股票池/策略/回测。"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => setAuthorOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-300 hover:border-blue-500/50 hover:text-white">
@@ -375,6 +375,28 @@ export const FactorLibrary = () => {
         value={workspace}
         onChange={setWorkspace}
       />
+
+      <section data-testid="factor-research-workflow" className="mb-4 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+        <div className="grid gap-0 md:grid-cols-5">
+          {([
+            ['1 定义', 'library', '参考因子 + 自定义 Python；校验 lookback/direction'],
+            ['2 计算', 'runs', '仅读封存 dataset/universe；日频调度写 compute runs'],
+            ['3 评价', 'single', 'Rank IC / 分层收益成熟后才算有效证据'],
+            ['4 相关', 'correlation', '剔除高相关冗余，控制组合共线性'],
+            ['5 落地', 'values', '因子快照 → 股票池 / 策略 / 回测'],
+          ] as const).map(([title, target, note], index) => (
+            <button
+              key={title}
+              type="button"
+              onClick={() => setWorkspace(target)}
+              className={`border-crypto-border px-3 py-2.5 text-left transition hover:bg-slate-900/50 ${index ? 'md:border-l' : ''} ${workspace === target ? 'bg-blue-500/10' : ''}`}
+            >
+              <div className={`text-[11px] font-semibold ${workspace === target ? 'text-blue-200' : 'text-slate-300'}`}>{title}</div>
+              <div className="mt-1 text-[10px] leading-4 text-slate-500">{note}</div>
+            </button>
+          ))}
+        </div>
+      </section>
 
       <section data-testid="factor-research-summary" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
         {([
@@ -413,7 +435,7 @@ export const FactorLibrary = () => {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-white">因子目录与评价证据</h2>
-                <p className="mt-1 text-[11px] text-slate-500">点击因子进入单因子分析；收益指标未成熟时明确显示“待成熟”。</p>
+                <p className="mt-1 text-[11px] text-slate-500">系统参考库约 100 个跨族因子（动量/反转/波动/流动性/市值/估值/技术）；点击进入单因子。收益证据未成熟时显示「待成熟」。</p>
               </div>
               <div className="relative w-full sm:w-72">
               <Search size={14} className="absolute left-3 top-2.5 text-gray-600" />

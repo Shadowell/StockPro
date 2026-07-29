@@ -1,6 +1,8 @@
 # Sprint Contract: Research Workshop Page Hardening
 
-> Status: Active from 2026-07-27.
+> Status: Superseded on 2026-07-27 by `active-bitpro-ui-density.md`
+> (all-subpage UI density parity). Honest data-state requirements remain in force
+> via that contract's Done Means.
 
 ## Sprint Name
 

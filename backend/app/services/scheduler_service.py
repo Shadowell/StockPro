@@ -472,8 +472,30 @@ class SchedulerService:
             logger.error(f"Error in daily all A-share kline sync: {str(e)}")
 
     async def _sync_daily_reference_publication(self):
-        """APScheduler entrypoint for the persisted daily-reference schedule."""
-        await self._sync_all_ashare_klines()
+        """APScheduler entrypoint: catch up recent trading days then seal today's pipeline."""
+        try:
+            from datetime import timedelta
+            from zoneinfo import ZoneInfo
+
+            from app.api.endpoints import data as data_module
+            from app.services.tushare_provider import market_data_provider
+
+            schedule = DailyReferenceSyncService(db).get_schedule()
+            catchup_days = max(1, min(10, int(schedule.get("catchupDays") or 5)))
+            now = datetime.now(ZoneInfo(str(schedule.get("timezone") or "Asia/Shanghai"))).date()
+            start = (now - timedelta(days=catchup_days + 14)).isoformat()
+            end = now.isoformat()
+            try:
+                open_dates = market_data_provider.trade_cal_open_dates(start, end)
+            except Exception:
+                logger.warning("Trade calendar unavailable for catchup; falling back to today", exc_info=True)
+                open_dates = [end]
+            targets = open_dates[-catchup_days:] if open_dates else [end]
+            for trade_date in targets:
+                result = await data_module.run_daily_reference_sync(trade_date=trade_date)
+                logger.info("Daily reference catchup %s -> %s", trade_date, result.get("status"))
+        except Exception as e:
+            logger.error("Error in daily reference publication catchup: %s", e)
 
     async def _create_local_pg_backup(self):
         """Create one audited local PG backup without blocking the event loop."""

@@ -113,6 +113,15 @@ class DailyBarsPublicationRequest(BaseModel):
     knowledge_cutoff_at: Optional[datetime] = None
 
 
+class MarketHistorySyncRequest(BaseModel):
+    history_days: int = Field(default=365, ge=1, le=400)
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    refresh_universe: bool = True
+    include_signals: bool = True
+    job_name: Optional[str] = None
+
+
 class DailyReferenceRunRequest(BaseModel):
     trade_date: Optional[str] = None
     symbols: List[str] = Field(default_factory=list)
@@ -985,6 +994,73 @@ async def trigger_history_sync(request: HistorySyncRequest) -> Dict[str, Any]:
     }
 
 
+@router.post("/history/sync-all")
+async def trigger_market_history_sync(request: Optional[MarketHistorySyncRequest] = Body(default=None)) -> Dict[str, Any]:
+    """Download full-market daily bars by trade_date (default: last ~365 calendar days)."""
+    payload = request or MarketHistorySyncRequest()
+    if sync_status.get("is_running"):
+        raise HTTPException(status_code=409, detail="已有数据同步任务正在运行，请稍后再试")
+
+    end_date = (payload.end_date or datetime.now().date().isoformat())[:10]
+    if payload.start_date:
+        start_date = str(payload.start_date)[:10]
+        history_days = max(1, (datetime.fromisoformat(end_date) - datetime.fromisoformat(start_date)).days)
+    else:
+        history_days = _bounded_int(payload.history_days, 365, 1, 400)
+        start_date = (datetime.fromisoformat(end_date).date() - timedelta(days=history_days)).isoformat()
+
+    universe_refresh: Dict[str, Any] = {"skipped": True}
+    if payload.refresh_universe:
+        try:
+            universe_refresh = {"rows": int(_sync_all_stocks()), "skipped": False}
+        except Exception as exc:
+            logger.warning("Universe refresh before market sync failed", exc_info=True)
+            universe_refresh = {"skipped": False, "error": str(exc), "rows": 0}
+
+    try:
+        job_payload = kline_sync_service.create_market_daily_sync_job(
+            start_date=start_date,
+            end_date=end_date,
+            job_name=payload.job_name or f"market-1y-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    job_id = int(job_payload["job_id"])
+    started_at = datetime.now().isoformat(timespec="seconds")
+    sync_status.update(
+        {
+            "is_running": True,
+            "last_started_at": started_at,
+            "message": f"全市场日线下载中（{job_payload.get('tradeDateCount')} 个交易日）",
+        }
+    )
+    asyncio.create_task(
+        _run_market_history_job(
+            job_id,
+            trade_dates=list(job_payload.get("tradeDates") or []),
+            include_signals=bool(payload.include_signals),
+        )
+    )
+    return {
+        "success": True,
+        "message": "全市场近一年日线同步任务已提交（按交易日批量拉取）",
+        "jobId": str(job_id),
+        "job_id": job_id,
+        "job": db.get_sync_job(job_id),
+        "mode": "market_by_trade_date",
+        "historyDays": history_days,
+        "startDate": start_date,
+        "endDate": end_date,
+        "tradeDateCount": job_payload.get("tradeDateCount"),
+        "tradeDates": job_payload.get("tradeDates"),
+        "includeSignals": bool(payload.include_signals),
+        "universeRefresh": universe_refresh,
+    }
+
+
 @router.get("/config")
 async def data_config() -> Dict[str, Any]:
     return _config_payload(db)
@@ -1082,8 +1158,6 @@ async def add_data_symbol(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]
     return {"symbol": symbol, "added": added, "defaultSymbols": _configured_symbols(db)}
 
 
-
-
 @router.post("/symbol-names")
 async def lookup_data_symbol_names(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
     raw = payload.get("symbols") or []
@@ -1098,6 +1172,7 @@ async def lookup_data_symbol_names(payload: Dict[str, Any] = Body(default_factor
     symbols = sorted(set(symbols))
     names = db.lookup_symbol_names(symbols) if hasattr(db, "lookup_symbol_names") else {}
     return {"names": names, "total": len(names)}
+
 
 @router.delete("/symbols")
 async def remove_data_symbol(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
@@ -1217,6 +1292,82 @@ async def _sync_in_background():
 async def _run_history_job(job_id: int):
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: kline_sync_service.run_job(job_id))
+
+
+async def _run_market_history_job(
+    job_id: int,
+    trade_dates: Optional[List[str]] = None,
+    include_signals: bool = True,
+):
+    """Run market-day kline job, optionally backfill market-evidence signals per day."""
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(None, lambda: kline_sync_service.run_job(job_id))
+        signal_summary: Dict[str, Any] = {"skipped": True}
+        if include_signals and str(result.get("status") or "").lower() in {"success", "partial"}:
+            dates = trade_dates or []
+            if not dates:
+                job = db.get_sync_job(job_id) or {}
+                start = str(job.get("start_date") or "")[:10]
+                end = str(job.get("end_date") or "")[:10]
+                if start and end and hasattr(ak, "trade_cal_open_dates"):
+                    try:
+                        dates = ak.trade_cal_open_dates(start, end)
+                    except Exception:
+                        dates = []
+            sealed = 0
+            failed = 0
+            errors: List[str] = []
+            for index, trade_date in enumerate(dates):
+                try:
+                    if index:
+                        await asyncio.sleep(0.35)
+                    evidence = await loop.run_in_executor(
+                        None,
+                        lambda d=trade_date: tushare_catalog_service.sync_market_evidence(d, "all_a"),
+                    )
+                    if evidence.get("snapshot_id") or str(evidence.get("status") or "").lower() in {
+                        "sealed",
+                        "published",
+                        "partial",
+                        "ok",
+                        "success",
+                    }:
+                        sealed += 1
+                    else:
+                        failed += 1
+                        if len(errors) < 5:
+                            errors.append(f"{trade_date}: unexpected evidence payload")
+                except Exception as exc:
+                    failed += 1
+                    if len(errors) < 5:
+                        errors.append(f"{trade_date}: {exc}")
+            signal_summary = {
+                "skipped": False,
+                "tradeDateCount": len(dates),
+                "synced": sealed,
+                "failed": failed,
+                "errors": errors,
+            }
+        finished_at = datetime.now().isoformat(timespec="seconds")
+        sync_status.update(
+            {
+                "is_running": False,
+                "last_finished_at": finished_at,
+                "last_result": {"job": result, "signals": signal_summary},
+                "message": "全市场日线下载完成" if str(result.get("status")).lower() == "success" else f"全市场日线下载结束：{result.get('status')}",
+            }
+        )
+    except Exception as exc:
+        sync_status.update(
+            {
+                "is_running": False,
+                "last_finished_at": datetime.now().isoformat(timespec="seconds"),
+                "last_result": {"error": str(exc)},
+                "message": f"全市场日线下载失败：{exc}",
+            }
+        )
+        logger.exception("Market history sync job failed: job_id=%s", job_id)
 
 
 def _resolve_history_range(start_date: Optional[str], end_date: Optional[str]):

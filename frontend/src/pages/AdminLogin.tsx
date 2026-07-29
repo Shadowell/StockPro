@@ -2,6 +2,7 @@ import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, KeyRound, Loader2, LogIn, ShieldCheck, Ticket, User } from 'lucide-react';
 import { adminLogin, clearAdminToken, getAuthProfile, guestLogin, hasAdminToken } from '../api/client';
+import { SegmentedControl } from '../components/OperatorShell';
 import { useStore } from '../stores/useStore';
 
 const getRedirectTarget = (search: string): string => {
@@ -104,7 +105,7 @@ export const AdminLogin: React.FC = () => {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-crypto-bg px-4 text-slate-200" data-operator-surface="auth">
+    <main className="flex min-h-screen items-center justify-center bg-crypto-bg px-4 text-slate-200" data-operator-page="admin-login" data-operator-surface="auth">
       <section className="relative w-full max-w-md rounded-[12px] border border-crypto-border bg-crypto-card shadow-2xl shadow-black/30">
         <div className="border-b border-crypto-border px-6 py-5">
           <div className="flex items-center gap-3">
@@ -119,24 +120,19 @@ export const AdminLogin: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 border-b border-crypto-border px-6 pt-5">
-          {(['admin', 'guest'] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => {
-                setMode(item);
-                setError('');
-              }}
-              className={`border-b-2 px-3 py-2 text-xs font-bold transition-colors ${
-                mode === item
-                  ? 'border-blue-400 text-blue-200'
-                  : 'border-transparent text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              {item === 'admin' ? '管理员' : '邀请码访客'}
-            </button>
-          ))}
+        <div className="px-6 pt-5">
+          <SegmentedControl<'admin' | 'guest'>
+            aria-label="登录方式"
+            value={mode}
+            onChange={(next) => {
+              setMode(next);
+              setError('');
+            }}
+            options={[
+              { value: 'admin', label: '管理员' },
+              { value: 'guest', label: '邀请码访客', tone: 'amber' },
+            ]}
+          />
         </div>
 
         <form className="space-y-4 px-6 py-6" onSubmit={handleSubmit}>

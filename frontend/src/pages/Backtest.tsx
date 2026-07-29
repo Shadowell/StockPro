@@ -52,11 +52,23 @@ import type {
   BacktestRunRequestV1,
 } from '../types';
 import { orderTypeLabel, sideLabel, statusLabel } from '../utils/presentation';
-import { marketAdverseToneClass, marketToneClass } from '../utils/marketColors';
+import { marketAdverseToneClass, marketToneClass, thresholdToneClass } from '../utils/marketColors';
+import {
+  EvidenceStrip,
+  FilterChipGroup,
+  OperatorFilterBar,
+  OperatorMetricCard,
+  OperatorPageHeader,
+  OperatorStatePanel,
+} from '../components/OperatorShell';
+import { WorkspaceTabs } from '../components/WorkspaceTabs';
+import { SymbolCell } from '../components/SymbolCell';
+import { useSymbolNames } from '../hooks/useSymbolNames';
 
 const panel = 'rounded-2xl border border-crypto-border bg-crypto-card';
 const input = 'h-11 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-gray-200 outline-none transition focus:border-blue-500/70';
-type DataScope = 'business' | 'test';
+const isBusinessPurpose = (item: { data_purpose?: string | null }) =>
+  !item.data_purpose || item.data_purpose === 'user';
 
 const metricLabels: Record<string, string> = {
   strategy_return: '策略收益', annualized_return: '年化收益', benchmark_return: '基准收益', excess_return: '超额收益',
@@ -83,9 +95,6 @@ function StatusBadge({ run }: { run: BacktestRun }) {
     <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${success ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : run.status === 'failed' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
       {success ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
       {run.run_mode === 'quick' ? '快速预检' : '完整回测'} · {statusLabel(run.status)}
-      {run.data_purpose !== 'user' && run.data_purpose
-        ? ` · ${run.data_purpose === 'acceptance' ? '验收数据' : '种子数据'}`
-        : ''}
     </span>
   );
 }
@@ -94,19 +103,65 @@ function Field({ label, children, hint }: { label: string; children: React.React
   return <label className="block"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</span>{children}{hint ? <span className="mt-1.5 block text-xs text-gray-600">{hint}</span> : null}</label>;
 }
 
-function GenericTable({ rows, columns }: { rows: Array<Record<string, unknown>>; columns: Array<[string, string]> }) {
+function GenericTable({
+  rows,
+  columns,
+  symbolNames = {},
+}: {
+  rows: Array<Record<string, unknown>>;
+  columns: Array<[string, string]>;
+  symbolNames?: Record<string, string>;
+}) {
   if (!rows.length) return <div className="flex min-h-48 items-center justify-center text-sm text-gray-600">暂无记录</div>;
-  const displayValue = (key: string, current: unknown) => {
-    if (key === 'status' || key === 'level') return statusLabel(current);
-    if (key === 'side') return sideLabel(current);
-    if (key === 'order_type' || key === 'intent_type') return orderTypeLabel(current);
-    return typeof current === 'object' ? JSON.stringify(current) : String(current ?? '--');
-  };
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[820px] text-left text-sm">
-        <thead><tr className="border-b border-crypto-border text-xs uppercase tracking-wider text-gray-500">{columns.map(([key, label]) => <th key={key} className="px-4 py-3 font-semibold">{label}</th>)}</tr></thead>
-        <tbody>{rows.map((row, index) => <tr key={String(row.id ?? `${index}`)} className="border-b border-white/[0.04] text-gray-300 hover:bg-white/[0.02]">{columns.map(([key]) => <td key={key} className="max-w-[360px] px-4 py-3 text-xs"><span className="line-clamp-2">{displayValue(key, row[key])}</span></td>)}</tr>)}</tbody>
+        <thead>
+          <tr className="border-b border-crypto-border text-xs uppercase tracking-wider text-gray-500">
+            {columns.map(([key, label]) => (
+              <th key={key} className="px-4 py-3 font-semibold">{label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr
+              key={String(row.id ?? `${index}`)}
+              className="border-b border-white/[0.04] text-gray-300 hover:bg-white/[0.02]"
+            >
+              {columns.map(([key]) => {
+                const current = row[key];
+                if (key === 'symbol') {
+                  return (
+                    <td key={key} className="max-w-[360px] px-4 py-3 text-xs">
+                      <SymbolCell
+                        symbol={String(current ?? '')}
+                        name={String(row.name ?? '')}
+                        names={symbolNames}
+                        compact
+                      />
+                    </td>
+                  );
+                }
+                const textValue =
+                  key === 'status' || key === 'level'
+                    ? statusLabel(current)
+                    : key === 'side'
+                      ? sideLabel(current)
+                      : key === 'order_type' || key === 'intent_type'
+                        ? orderTypeLabel(current)
+                        : typeof current === 'object'
+                          ? JSON.stringify(current)
+                          : String(current ?? '--');
+                return (
+                  <td key={key} className="max-w-[360px] px-4 py-3 text-xs">
+                    <span className="line-clamp-2">{textValue}</span>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
       </table>
     </div>
   );
@@ -146,6 +201,15 @@ function BacktestDetail({ runId }: { runId: string }) {
   }, [runId]);
 
   const metricMap = useMemo(() => Object.fromEntries((data?.metrics ?? []).map((item) => [item.metric_code, item])), [data]);
+  const evidenceSymbols = useMemo(() => {
+    if (!data) return [] as string[];
+    return [
+      ...data.positions.map((row) => String(row.symbol ?? '')),
+      ...data.trades.map((row) => String(row.symbol ?? '')),
+      ...data.orders.map((row) => String(row.symbol ?? '')),
+    ];
+  }, [data]);
+  const symbolNames = useSymbolNames(evidenceSymbols);
   const chartOption = useMemo(() => ({
     backgroundColor: 'transparent',
     animation: false,
@@ -166,7 +230,7 @@ function BacktestDetail({ runId }: { runId: string }) {
   const core = ['strategy_return', 'annualized_return', 'benchmark_return', 'excess_return', 'maximum_drawdown', 'sharpe'];
 
   return (
-    <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8">
+    <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-operator-page="backtest-detail">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <button type="button" onClick={() => navigate('/backtest')} className="mb-4 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-blue-300"><ArrowLeft className="h-4 w-4" />返回回测工作台</button>
@@ -175,26 +239,62 @@ function BacktestDetail({ runId }: { runId: string }) {
         </div>
       </div>
 
+      <EvidenceStrip
+        items={[
+          { label: '模式', value: data.run.run_mode === 'quick' ? '快速预检' : '完整回测' },
+          { label: '状态', value: statusLabel(data.run.status), tone: data.run.status === 'success' ? 'green' : data.run.status === 'failed' ? 'red' : 'amber' },
+          { label: '区间', value: `${data.run.start_date} — ${data.run.end_date}` },
+          { label: '策略', value: `${data.run.strategy_name} v${data.run.strategy_version}` },
+        ]}
+      />
+
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {core.map((code) => { const item = metricMap[code]; const directional = ['strategy_return', 'annualized_return', 'benchmark_return', 'excess_return'].includes(code); const tone = code === 'maximum_drawdown' ? marketAdverseToneClass(item?.metric_value) : directional ? marketToneClass(item?.metric_value, 'text-gray-400') : 'text-white'; return <div key={code} className={`${panel} p-4`}><div className="text-xs text-gray-500">{metricLabels[code]}</div><div className={`mt-2 text-xl font-bold ${tone}`}>{formatValue(item?.metric_value, item?.unit)}</div>{item?.metric_value == null ? <div className="mt-2 text-[11px] text-amber-500/80">{item?.null_reason ?? '未定义'}</div> : <div className="mt-2 text-[11px] text-gray-600">{item.calculation_version}</div>}</div>; })}
+        {core.map((code) => {
+          const item = metricMap[code];
+          const directional = ['strategy_return', 'annualized_return', 'benchmark_return', 'excess_return'].includes(code);
+          const toneClass = code === 'maximum_drawdown'
+            ? marketAdverseToneClass(item?.metric_value)
+            : code === 'sharpe'
+              ? thresholdToneClass(item?.metric_value, 1)
+              : directional
+                ? marketToneClass(item?.metric_value)
+                : 'text-blue-300';
+          const tone =
+            toneClass.includes('up') ? 'up'
+              : toneClass.includes('down') ? 'down'
+                : toneClass.includes('blue') ? 'blue'
+                  : 'neutral';
+          return (
+            <OperatorMetricCard
+              key={code}
+              label={metricLabels[code]}
+              tone={tone}
+              value={formatValue(item?.metric_value, item?.unit)}
+              detail={item?.metric_value == null ? (item?.null_reason ?? '未定义') : item.calculation_version}
+            />
+          );
+        })}
       </div>
 
-      <div className={`${panel} mb-5 flex overflow-x-auto px-2`} role="tablist">
-        {detailTabs.map((item) => <button key={item} type="button" role="tab" aria-selected={tab === item} onClick={() => setTab(item)} className={`whitespace-nowrap border-b-2 px-5 py-4 text-sm font-semibold ${tab === item ? 'border-blue-500 text-blue-300' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>{item}</button>)}
-      </div>
+      <WorkspaceTabs<(typeof detailTabs)[number]>
+        ariaLabel="回测详情子页"
+        items={detailTabs.map((item) => ({ id: item, label: item, testId: `backtest-detail-tab-${item}` }))}
+        value={tab}
+        onChange={setTab}
+      />
 
       {tab === '总览' && <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
         <section className={`${panel} p-5`}><div className="mb-3 flex items-center gap-2 text-base font-semibold text-white"><BarChart3 className="h-5 w-5 text-blue-400" />净值与基准</div><ReactECharts option={chartOption} style={{ height: 420 }} /></section>
         <section className={`${panel} p-5`}><h2 className="text-base font-semibold text-white">可复现实验凭证</h2><dl className="mt-5 space-y-4 text-sm">{[
           ['研究数据', data.run.dataset_snapshot_id ? '已绑定封存快照' : '未绑定'], ['股票范围', data.run.universe_snapshot_id ? '已绑定固定范围' : '未绑定'], ['因子输入', data.run.factor_snapshot_id ? '已绑定封存因子' : '未绑定'], ['成本模型', data.run.cost_model_name ?? '未绑定'], ['研究协议', data.run.protocol_name ?? '未绑定'], ['基准', data.run.benchmark_code], ['频率', '日频 / A股收盘信号次日成交'],
         ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-4 border-b border-white/[0.04] pb-3"><dt className="text-gray-500">{label}</dt><dd className="text-right font-medium text-gray-300">{value}</dd></div>)}</dl></section>
-        <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2><div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 text-sm font-semibold ${marketToneClass(item.return, 'text-gray-400')}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div></section>
+        <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2><div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 font-mono text-sm font-bold tabular-nums ${marketToneClass(item.return)}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div></section>
       </div>}
 
       {tab === '收益分析' && <section className={`${panel} overflow-hidden`}><GenericTable rows={data.metrics as unknown as Array<Record<string, unknown>>} columns={[["metric_code", "指标"], ["metric_value", "数值"], ["unit", "单位"], ["calculation_version", "计算版本"], ["input_frequency", "频率"], ["null_reason", "未定义原因"]]} /></section>}
-      {tab === '持仓' && <section className={panel}><GenericTable rows={data.positions} columns={[["trade_date", "日期"], ["symbol", "证券"], ["quantity", "数量"], ["available_quantity", "可卖"], ["avg_cost", "成本"], ["close_price", "收盘"], ["market_value", "市值"], ["weight", "权重"]]} /></section>}
-      {tab === '交易' && <section className={panel}><GenericTable rows={data.trades} columns={[["trade_date", "日期"], ["symbol", "证券"], ["side", "方向"], ["price", "价格"], ["quantity", "数量"], ["amount", "金额"], ["commission", "佣金"], ["tax", "税费"], ["realized_pnl", "已实现盈亏"]]} /></section>}
-      {tab === '订单' && <section className={panel}><GenericTable rows={data.orders} columns={[["signal_at", "信号时间"], ["earliest_fill_at", "最早成交"], ["filled_at", "成交时间"], ["symbol", "证券"], ["intent_type", "意图"], ["status", "状态"], ["filled_quantity", "成交数量"], ["rejection_code", "拒单代码"]]} /></section>}
+      {tab === '持仓' && <section className={panel}><GenericTable rows={data.positions} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["quantity", "数量"], ["available_quantity", "可卖"], ["avg_cost", "成本"], ["close_price", "收盘"], ["market_value", "市值"], ["weight", "权重"]]} /></section>}
+      {tab === '交易' && <section className={panel}><GenericTable rows={data.trades} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["side", "方向"], ["price", "价格"], ["quantity", "数量"], ["amount", "金额"], ["commission", "佣金"], ["tax", "税费"], ["realized_pnl", "已实现盈亏"]]} /></section>}
+      {tab === '订单' && <section className={panel}><GenericTable rows={data.orders} symbolNames={symbolNames} columns={[["signal_at", "信号时间"], ["earliest_fill_at", "最早成交"], ["filled_at", "成交时间"], ["symbol", "证券"], ["intent_type", "意图"], ["status", "状态"], ["filled_quantity", "成交数量"], ["rejection_code", "拒单代码"]]} /></section>}
       {tab === '日志' && <section className={panel}><GenericTable rows={data.logs} columns={[["simulated_at", "模拟时间"], ["level", "级别"], ["source", "来源"], ["message", "消息"], ["payload", "上下文"]]} /></section>}
       {tab === '代码与参数' && <div className="grid gap-5 xl:grid-cols-[2fr_1fr]"><section className={`${panel} overflow-hidden`}><div className="border-b border-crypto-border px-5 py-4 text-sm font-semibold text-white">策略代码 · v{data.run.strategy_version}</div><pre className="max-h-[620px] overflow-auto p-5 text-xs leading-6 text-blue-100"><code>{data.run.script_content}</code></pre></section><section className={`${panel} p-5`}><h2 className="text-sm font-semibold text-white">运行参数</h2><pre className="mt-4 overflow-auto rounded-lg bg-crypto-bg p-4 text-xs leading-6 text-gray-300">{JSON.stringify(data.run.parameters, null, 2)}</pre><h2 className="mt-6 text-sm font-semibold text-white">自定义指标</h2><pre className="mt-4 max-h-72 overflow-auto rounded-lg bg-crypto-bg p-4 text-xs leading-6 text-gray-300">{JSON.stringify(data.custom, null, 2)}</pre></section></div>}
       {tab === '归因' && <section className={panel}><GenericTable rows={data.attribution} columns={[["attribution_type", "类型"], ["attribution_key", "归因项"], ["contribution", "贡献"], ["amount", "金额"], ["payload", "证据"]]} /></section>}
@@ -235,7 +335,6 @@ export function Backtest() {
   const [historyStatus, setHistoryStatus] = useState<'all' | BacktestRun['status']>('all');
   const [historyMode, setHistoryMode] = useState<'all' | BacktestRun['run_mode']>('all');
   const [historySort, setHistorySort] = useState<'created' | 'return' | 'drawdown' | 'sharpe'>('created');
-  const [dataScope, setDataScope] = useState<DataScope>('business');
 
   const load = useCallback(async () => {
     setError('');
@@ -286,13 +385,8 @@ export function Backtest() {
   }, [config, searchParams]);
 
   const scopedRuns = useMemo(
-    () =>
-      runs.filter((run) =>
-        dataScope === 'business'
-          ? !run.data_purpose || run.data_purpose === 'user'
-          : Boolean(run.data_purpose && run.data_purpose !== 'user'),
-      ),
-    [dataScope, runs],
+    () => runs.filter((run) => isBusinessPurpose(run)),
+    [runs],
   );
   const visibleJobs = useMemo(
     () =>
@@ -300,14 +394,9 @@ export function Backtest() {
         const linkedRun = job.backtest_run_id
           ? runs.find((run) => run.id === job.backtest_run_id)
           : undefined;
-        if (dataScope === 'business') {
-          return !linkedRun || !linkedRun.data_purpose || linkedRun.data_purpose === 'user';
-        }
-        return Boolean(
-          linkedRun?.data_purpose && linkedRun.data_purpose !== 'user',
-        );
+        return !linkedRun || isBusinessPurpose(linkedRun);
       }),
-    [dataScope, jobs, runs],
+    [jobs, runs],
   );
   const visibleRuns = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
@@ -436,82 +525,61 @@ export function Backtest() {
   };
 
   return (
-    <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <FlaskConical className="h-7 w-7 text-purple-400" />
-            <h1 className="text-2xl font-bold text-white">回测实例控制台</h1>
-          </div>
-          <p className="mt-2 text-sm text-gray-500">管理多个 A 股回测实例，创建任务后跟踪状态，打开详情查看绩效与成交证据。</p>
-        </div>
-        <button type="button" onClick={openCreate} className="inline-flex h-11 items-center gap-2 rounded-xl bg-purple-600 px-5 text-sm font-semibold text-white shadow-lg shadow-purple-950/30 transition hover:bg-purple-500">
-          <Plus className="h-4 w-4" />创建回测实例
-        </button>
-      </header>
-
-      {error ? <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}
-
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="flex rounded-xl border border-crypto-border bg-crypto-card p-1">
-          <button
-            type="button"
-            data-testid="backtest-scope-business"
-            onClick={() => {
-              setDataScope('business');
-              setSelected([]);
-            }}
-            className={`h-9 rounded-lg px-3 text-xs font-semibold ${dataScope === 'business' ? 'bg-blue-500/20 text-blue-200' : 'text-gray-500 hover:text-gray-300'}`}
-          >
-            我的回测 {runs.filter((run) => !run.data_purpose || run.data_purpose === 'user').length}
+    <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-operator-page="backtest">
+      <OperatorPageHeader
+        icon={FlaskConical}
+        title="回测实例控制台"
+        subtitle="管理多个 A 股回测实例；子面：任务队列、创建向导三步、详情八页签、对比。"
+        actions={
+          <button type="button" onClick={openCreate} className="inline-flex h-11 items-center gap-2 rounded-xl bg-purple-600 px-5 text-sm font-semibold text-white shadow-lg shadow-purple-950/30 transition hover:bg-purple-500">
+            <Plus className="h-4 w-4" />创建回测实例
           </button>
-          <button
-            type="button"
-            data-testid="backtest-scope-test"
-            onClick={() => {
-              setDataScope('test');
-              setSelected([]);
-            }}
-            className={`h-9 rounded-lg px-3 text-xs font-semibold ${dataScope === 'test' ? 'bg-amber-500/15 text-amber-200' : 'text-gray-500 hover:text-gray-300'}`}
-          >
-            测试与验收 {runs.filter((run) => run.data_purpose && run.data_purpose !== 'user').length}
-          </button>
-        </div>
-        <div className="flex rounded-xl border border-crypto-border bg-crypto-card p-1">
-          {([
-            ['all', '全部', modeCounts.all],
-            ['full', '完整回测', modeCounts.full],
-            ['quick', '快速预检', modeCounts.quick],
-          ] as const).map(([value, label, count]) => (
-            <button key={value} type="button" onClick={() => setHistoryMode(value)} className={`flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition ${historyMode === value ? 'bg-blue-500/20 text-blue-200' : 'text-gray-500 hover:text-gray-300'}`}>
-              {label}<span className="rounded bg-black/25 px-1.5 py-0.5 text-[10px]">{count}</span>
+        }
+      />
+
+      {error ? (
+        <OperatorStatePanel
+          kind="error"
+          title="回测工作台加载失败"
+          description={error}
+          className="mb-5"
+          action={
+            <button type="button" onClick={() => void load()} className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-semibold text-red-100">
+              <RefreshCw className="h-3.5 w-3.5" />重试
             </button>
-          ))}
-        </div>
-        <div className="flex rounded-xl border border-crypto-border bg-crypto-card p-1">
-          {([
-            ['all', '全部状态', statusCounts.all],
-            ['running', '运行中', statusCounts.running],
-            ['success', '已完成', statusCounts.success],
-            ['failed', '已失败', statusCounts.failed],
-          ] as const).map(([value, label, count]) => (
-            <button key={value} type="button" onClick={() => setHistoryStatus(value)} className={`flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition ${historyStatus === value ? 'bg-purple-500/20 text-purple-200' : 'text-gray-500 hover:text-gray-300'}`}>
-              {label}<span className="rounded bg-black/25 px-1.5 py-0.5 text-[10px]">{count}</span>
-            </button>
-          ))}
-        </div>
+          }
+        />
+      ) : null}
+
+      <OperatorFilterBar className="mb-5">
+        <FilterChipGroup<'all' | BacktestRun['run_mode']>
+          aria-label="回测模式"
+          value={historyMode}
+          onChange={setHistoryMode}
+          options={[
+            { value: 'all', label: '全部', count: modeCounts.all },
+            { value: 'full', label: '完整回测', count: modeCounts.full },
+            { value: 'quick', label: '快速预检', count: modeCounts.quick },
+          ]}
+        />
+        <FilterChipGroup<'all' | BacktestRun['status']>
+          aria-label="回测状态"
+          value={historyStatus}
+          onChange={setHistoryStatus}
+          options={[
+            { value: 'all', label: '全部状态', count: statusCounts.all },
+            { value: 'running', label: '运行中', count: statusCounts.running },
+            { value: 'success', label: '已完成', count: statusCounts.success },
+            { value: 'failed', label: '已失败', count: statusCounts.failed },
+          ]}
+        />
         <label className="flex h-11 items-center gap-2 rounded-xl border border-crypto-border bg-crypto-card px-3 text-xs text-gray-500">
           <SlidersHorizontal className="h-4 w-4" />
           <select aria-label="回测排序" value={historySort} onChange={(event) => setHistorySort(event.target.value as typeof historySort)} className="bg-transparent text-gray-300 outline-none">
             <option value="created">创建时间 ↓</option><option value="return">收益率 ↓</option><option value="drawdown">回撤 ↓</option><option value="sharpe">Sharpe ↓</option>
           </select>
         </label>
-      </div>
-      {dataScope === 'test' ? (
-        <div className="mb-5 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs text-amber-200/80" role="status">
-          当前仅查看自动化验收与种子回测；这些记录不参与默认业务统计或模拟盘晋级入口。
-        </div>
-      ) : null}
+      </OperatorFilterBar>
 
       <section className={`${panel} mb-5 overflow-hidden`} data-testid="backtest-job-console">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">

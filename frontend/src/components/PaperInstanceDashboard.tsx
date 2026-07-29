@@ -13,8 +13,13 @@ import {
 import clsx from "clsx";
 import type { PaperRuntimeInstance } from "../types";
 import { marketToneClass } from "../utils/marketColors";
+import { formatSymbolLabel } from "../utils/symbolDisplay";
+import { useSymbolNames } from "../hooks/useSymbolNames";
+import {
+  OperatorPageHeader,
+  SegmentedControl,
+} from "./OperatorShell";
 
-type DataScope = "business" | "test";
 type ListView = "preferred" | "all";
 type StatusFilter = "all" | PaperRuntimeInstance["status"] | "stale";
 type MarketFilter = "all" | "main" | "chinext" | "star" | "beijing";
@@ -26,6 +31,8 @@ const FAVORITES_KEY = "stockpro_paper_instance_favorites_v1";
 const HEARTBEAT_SLA_MS = 15 * 60 * 1000;
 
 const numberValue = (value: unknown) => {
+  // Number(null) === 0 in JS — treat missing values as unknown, never as zero equity.
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
@@ -113,6 +120,15 @@ const timeframe = (instance: PaperRuntimeInstance) =>
     .trim()
     .toUpperCase();
 
+const resolveEquity = (instance: PaperRuntimeInstance) => {
+  // Prefer sealed equity snapshots; before the first valuation cycle, cash_balance
+  // is the truthful account equity (cash-only book with no fills).
+  return (
+    numberValue(instance.equity) ??
+    numberValue(instance.cash_balance) ??
+    numberValue(instance.initial_cash)
+  );
+};
 const loadFavorites = () => {
   try {
     const parsed = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]");
@@ -135,11 +151,8 @@ const statusLabel: Record<string, string> = {
 
 interface PaperInstanceDashboardProps {
   instances: PaperRuntimeInstance[];
-  allInstances: PaperRuntimeInstance[];
-  dataScope: DataScope;
   loaded: boolean;
   busy: boolean;
-  onScopeChange: (scope: DataScope) => void;
   onCreate: () => void;
   onOpenDetail: (instance: PaperRuntimeInstance) => void;
   onAction: (
@@ -150,11 +163,8 @@ interface PaperInstanceDashboardProps {
 
 export function PaperInstanceDashboard({
   instances,
-  allInstances,
-  dataScope,
   loaded,
   busy,
-  onScopeChange,
   onCreate,
   onOpenDetail,
   onAction,
@@ -168,8 +178,21 @@ export function PaperInstanceDashboard({
   const [capital, setCapital] = useState<CapitalFilter>("all");
   const [sort, setSort] = useState<SortMode>("return");
 
+  const allSymbols = useMemo(
+    () => instances.flatMap((instance) => symbolsFor(instance)),
+    [instances],
+  );
+  const symbolNames = useSymbolNames(allSymbols);
+
+  const labelSymbols = (codes: string[], limit = 2) => {
+    if (!codes.length) return "证券范围未记录";
+    const labels = codes.map((code) => formatSymbolLabel(code, symbolNames[code]));
+    const shown = labels.slice(0, limit).join(" / ");
+    return labels.length > limit ? `${shown} +${labels.length - limit}` : shown;
+  };
+
   const metrics = (instance: PaperRuntimeInstance) => {
-    const equity = numberValue(instance.equity);
+    const equity = resolveEquity(instance);
     const initial = numberValue(instance.initial_cash);
     const pnl = equity !== null && initial !== null ? equity - initial : null;
     const returnRate = pnl !== null && initial !== null && initial > 0 ? pnl / initial : null;
@@ -253,96 +276,33 @@ export function PaperInstanceDashboard({
     "h-9 rounded-lg border border-crypto-border bg-crypto-card px-3 text-xs text-slate-300 outline-none focus:border-blue-500/60";
 
   return (
-    <div className="space-y-5" data-testid="paper-instance-dashboard">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold text-white">
-            <Activity className="h-6 w-6 text-blue-400" />
-            策略实例控制台
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            管理多路 A 股模拟实例；仅使用 PostgreSQL 快照和模拟成交，不连接真实券商。
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onCreate}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-500"
-        >
-          <Plus className="h-4 w-4" />
-          创建新模拟实例
-        </button>
-      </div>
+    <div className="space-y-5" data-testid="paper-instance-dashboard" data-operator-page="paper-dashboard">
+      <OperatorPageHeader
+        icon={Activity}
+        title="策略实例控制台"
+        subtitle="管理多路 A 股模拟实例；子面：优选/全部、创建向导、实例监控全模块。"
+        actions={
+          <button
+            type="button"
+            onClick={onCreate}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-500"
+          >
+            <Plus className="h-4 w-4" />
+            创建新模拟实例
+          </button>
+        }
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          role="tablist"
+        <SegmentedControl<ListView>
           aria-label="模拟策略视图"
-          className="inline-flex h-11 rounded-xl border border-crypto-border bg-crypto-card p-1"
-        >
-          {([
-            ["preferred", "优选策略", preferredIds.size],
-            ["all", "全部策略", instances.length],
-          ] as const).map(([key, label, count]) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={listView === key}
-              onClick={() => setListView(key)}
-              className={clsx(
-                "inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-semibold",
-                listView === key
-                  ? key === "preferred"
-                    ? "bg-yellow-500/15 text-yellow-200 ring-1 ring-yellow-400/20"
-                    : "bg-blue-500/20 text-blue-200"
-                  : "text-slate-500 hover:bg-white/5 hover:text-slate-200",
-              )}
-            >
-              {key === "preferred" ? <Star className="h-3.5 w-3.5" /> : null}
-              {label}
-              <span className="rounded bg-crypto-bg px-1.5 py-0.5 text-[10px]">
-                {count}
-              </span>
-            </button>
-          ))}
-        </div>
-        <div className="inline-flex rounded-lg border border-crypto-border bg-crypto-card p-1 text-xs">
-          <button
-            type="button"
-            data-testid="paper-scope-business"
-            onClick={() => onScopeChange("business")}
-            className={clsx(
-              "rounded-md px-3 py-1.5 font-semibold",
-              dataScope === "business" ? "bg-blue-600 text-white" : "text-slate-500",
-            )}
-          >
-            业务实例{" "}
-            {
-              allInstances.filter(
-                (item) => !item.data_purpose || item.data_purpose === "user",
-              ).length
-            }
-          </button>
-          <button
-            type="button"
-            data-testid="paper-scope-test"
-            onClick={() => onScopeChange("test")}
-            className={clsx(
-              "rounded-md px-3 py-1.5 font-semibold",
-              dataScope === "test"
-                ? "bg-amber-500/15 text-amber-200"
-                : "text-slate-500",
-            )}
-          >
-            测试与验收{" "}
-            {
-              allInstances.filter(
-                (item) => item.data_purpose && item.data_purpose !== "user",
-              ).length
-            }
-          </button>
-        </div>
+          value={listView}
+          onChange={setListView}
+          options={[
+            { value: "preferred", label: "优选策略", icon: Star, tone: "amber", count: preferredIds.size },
+            { value: "all", label: "全部策略", count: instances.length },
+          ]}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-crypto-border bg-crypto-card p-3">
@@ -420,12 +380,6 @@ export function PaperInstanceDashboard({
         </label>
       </div>
 
-      {dataScope === "test" ? (
-        <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
-          当前只查看测试与验收实例，其盈亏和运行状态不代表业务模拟盘。
-        </div>
-      ) : null}
-
       {!loaded ? (
         <div className="min-h-64 rounded-xl border border-crypto-border bg-crypto-card p-12 text-center text-sm text-slate-500">
           正在读取模拟实例…
@@ -433,7 +387,7 @@ export function PaperInstanceDashboard({
       ) : visible.length ? (
         <div
           data-testid="paper-instance-grid"
-          className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+          className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
         >
           {visible.map((instance) => {
             const runtime = heartbeatState(instance);
@@ -447,20 +401,20 @@ export function PaperInstanceDashboard({
               <article
                 key={instance.id}
                 data-testid="paper-instance-card"
-                className="flex min-h-[292px] flex-col rounded-xl border border-crypto-border bg-crypto-card p-4 hover:border-slate-600"
+                className="flex flex-col rounded-xl border border-crypto-border bg-crypto-card p-3 hover:border-slate-600"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-2">
                   <button
                     type="button"
                     onClick={() => onOpenDetail(instance)}
                     className="min-w-0 text-left"
                   >
-                    <h2 className="line-clamp-2 text-sm font-semibold text-yellow-200">
+                    <h2 className="line-clamp-2 text-xs font-semibold leading-4 text-yellow-200">
                       {instance.name}
                     </h2>
-                    <div className="mt-1 text-[10px] text-slate-500">A股模拟策略</div>
+                    <div className="mt-0.5 text-[10px] text-slate-500">A股模拟策略</div>
                   </button>
-                  <div className="flex shrink-0 items-start gap-2">
+                  <div className="flex shrink-0 items-start gap-1.5">
                     <button
                       type="button"
                       aria-label={favorite ? "取消优选" : "加入优选"}
@@ -474,7 +428,7 @@ export function PaperInstanceDashboard({
                       disabled={autoPreferred}
                       onClick={() => toggleFavorite(instance)}
                       className={clsx(
-                        "rounded-lg p-1.5",
+                        "rounded-md p-1",
                         autoPreferred || favorite
                           ? "text-yellow-300"
                           : "text-slate-600 hover:bg-white/5 hover:text-yellow-200",
@@ -482,23 +436,23 @@ export function PaperInstanceDashboard({
                     >
                       <Star
                         className={clsx(
-                          "h-4 w-4",
+                          "h-3.5 w-3.5",
                           (autoPreferred || favorite) && "fill-current",
                         )}
                       />
                     </button>
                     {running ? (
                       <span
-                        className="relative mt-1 flex h-4 w-4 items-center justify-center"
+                        className="relative mt-0.5 flex h-3.5 w-3.5 items-center justify-center"
                         title="运行中"
                         aria-label="运行中"
                       >
-                        <span className="absolute h-4 w-4 animate-ping rounded-full bg-emerald-400/40" />
-                        <span className="relative h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.85)]" />
+                        <span className="absolute h-3.5 w-3.5 animate-ping rounded-full bg-emerald-400/40" />
+                        <span className="relative h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.85)]" />
                       </span>
                     ) : (
                       <span className={clsx(
-                        "inline-flex min-w-12 justify-center rounded-full px-2 py-0.5 text-[10px] font-bold",
+                        "inline-flex min-w-10 justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold",
                         instance.status === "paused"
                           ? "bg-yellow-500/20 text-yellow-300"
                           : instance.status === "failed"
@@ -511,103 +465,104 @@ export function PaperInstanceDashboard({
                   </div>
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]">
-                  <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-slate-400">
+                <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px]">
+                  <span className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 text-slate-400">
                     {timeframe(instance) || "周期未记录"}
                   </span>
-                  <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-slate-400">
+                  <span className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 text-slate-400">
                     {money(instance.initial_cash)}
                   </span>
                   {heartbeatStale ? (
-                    <span className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-amber-300">
+                    <span className="rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-amber-300">
                       心跳待更新
                     </span>
                   ) : null}
+                  <span
+                    className="min-w-0 truncate text-slate-600"
+                    title={
+                      symbols.length
+                        ? symbols
+                            .map((code) => formatSymbolLabel(code, symbolNames[code]))
+                            .join("、")
+                        : "证券范围未记录"
+                    }
+                  >
+                    · {labelSymbols(symbols)}
+                  </span>
+                  <span className="text-slate-600">· 心跳 {timestamp(instance.heartbeat_at)}</span>
                 </div>
 
-                <div
-                  className="mt-3 truncate text-xs text-slate-500"
-                  title={symbols.join(", ")}
-                >
-                  {symbols.length
-                    ? `证券范围 ${symbols.slice(0, 3).join(" / ")}${symbols.length > 3 ? ` 等 ${symbols.length} 只` : ""}`
-                    : "证券范围未记录"}
-                </div>
-                <div className="mt-1 text-[10px] text-slate-600">
-                  最后心跳 {timestamp(instance.heartbeat_at)}
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3 border-y border-white/[0.05] py-3">
-                  <div>
-                    <div className="text-[10px] text-slate-600">总盈亏</div>
-                    <div
+                <div className="mt-2 grid grid-cols-2 gap-x-3 border-y border-white/[0.05] py-2">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[10px] text-slate-600">总盈亏</span>
+                    <span
                       className={clsx(
-                        "mt-1 font-mono text-lg font-bold",
+                        "font-mono text-sm font-bold tabular-nums",
                         marketToneClass(pnl, "text-slate-500"),
                       )}
                     >
                       {signedMoney(pnl)}
-                    </div>
+                    </span>
                   </div>
-                  <div>
-                    <div className="text-[10px] text-slate-600">收益率</div>
-                    <div
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[10px] text-slate-600">收益率</span>
+                    <span
                       className={clsx(
-                        "mt-1 font-mono text-lg font-bold",
+                        "font-mono text-sm font-bold tabular-nums",
                         marketToneClass(returnRate, "text-slate-500"),
                       )}
                     >
                       {signedPercent(returnRate)}
-                    </div>
+                    </span>
                   </div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+                <div className="mt-2 grid grid-cols-4 gap-1 text-center">
                   {[
                     ["夏普", "未计算", "当前 Paper API 未返回夏普指标"],
                     ["胜率", "未计算", "当前 Paper API 未返回已实现胜率"],
                     ["盈亏比", "未计算", "当前 Paper API 未返回盈亏比"],
                     ["成交", String(instance.trade_count ?? 0), "PostgreSQL 模拟成交计数"],
                   ].map(([label, metric, title]) => (
-                    <div key={label} title={title}>
-                      <div className="truncate text-xs font-semibold text-slate-300">
+                    <div key={label} title={title} className="rounded-md bg-crypto-bg/50 px-1 py-1">
+                      <div className="truncate font-mono text-[11px] font-semibold tabular-nums text-slate-300">
                         {metric}
                       </div>
-                      <div className="mt-1 text-[9px] text-slate-600">{label}</div>
+                      <div className="mt-0.5 text-[9px] text-slate-600">{label}</div>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-auto grid grid-cols-3 gap-2 pt-4">
+                <div className="mt-2 grid grid-cols-3 gap-1.5">
                   {instance.status === "running" ? (
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => onAction(instance, "pause")}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-amber-500/25 text-xs text-amber-200 disabled:opacity-40"
+                      className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-amber-500/25 text-[11px] text-amber-200 disabled:opacity-40"
                     >
                       <PauseCircle className="h-3.5 w-3.5" />
-                      暂停交易
+                      暂停
                     </button>
                   ) : instance.status === "paused" ? (
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => onAction(instance, "resume")}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/25 text-xs text-emerald-200 disabled:opacity-40"
+                      className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-emerald-500/25 text-[11px] text-emerald-200 disabled:opacity-40"
                     >
                       <PlayCircle className="h-3.5 w-3.5" />
-                      继续交易
+                      继续
                     </button>
                   ) : (
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => onAction(instance, "start")}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/25 text-xs text-emerald-200 disabled:opacity-40"
+                      className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-emerald-500/25 text-[11px] text-emerald-200 disabled:opacity-40"
                     >
                       <PlayCircle className="h-3.5 w-3.5" />
-                      启动交易
+                      启动
                     </button>
                   )}
                   <button
@@ -616,15 +571,15 @@ export function PaperInstanceDashboard({
                       busy || !["running", "paused", "failed"].includes(instance.status)
                     }
                     onClick={() => onAction(instance, "stop")}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-500/25 text-xs text-red-200 disabled:opacity-35"
+                    className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-red-500/25 text-[11px] text-red-200 disabled:opacity-35"
                   >
                     <Square className="h-3.5 w-3.5" />
-                    关闭交易
+                    关闭
                   </button>
                   <button
                     type="button"
                     onClick={() => onOpenDetail(instance)}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 text-xs font-semibold text-white"
+                    className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-blue-600 text-[11px] font-semibold text-white"
                   >
                     <Eye className="h-3.5 w-3.5" />
                     详情

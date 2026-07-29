@@ -52,7 +52,7 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
     <nav
       aria-label="主菜单"
       className={clsx(
-        vertical ? 'flex flex-1 flex-col py-2' : 'flex min-w-max items-center gap-1',
+        vertical ? 'flex flex-1 flex-col' : 'flex min-w-max items-center gap-1',
       )}
     >
       {NAV_ITEMS.map((item) => (
@@ -63,21 +63,22 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
           title={item.label}
           className={({ isActive }) =>
             clsx(
-              'group relative flex shrink-0 items-center justify-center text-xs font-semibold transition-colors duration-150',
+              // BitPro MainLayout nav: gray idle / blue active — never white labels
+              'group relative flex shrink-0 items-center justify-center overflow-hidden text-xs transition-colors',
               vertical
-                ? 'h-[52px] w-16 flex-col gap-1 border-l-2'
+                ? 'h-16 w-16 flex-col'
                 : 'h-10 min-w-[58px] gap-1.5 rounded-md px-2',
               isActive
-                ? vertical
-                  ? 'border-blue-400 bg-blue-600/25 text-blue-100 shadow-[inset_0_0_18px_rgba(37,99,235,0.12)]'
-                  : 'border-transparent bg-blue-600/30 text-blue-100'
-                : vertical
-                  ? 'border-transparent text-slate-300 hover:border-slate-600 hover:bg-slate-800/80 hover:text-white'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white',
+                ? 'bg-blue-500/10 text-blue-500'
+                : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
             )
           }
         >
-          <item.Icon className="h-[18px] w-[18px] stroke-[2.2]" />
+          <item.Icon
+            className={clsx(
+              vertical ? 'mb-1 h-5 w-5' : 'h-[18px] w-[18px]',
+            )}
+          />
           <span className={clsx(vertical ? 'text-[10px]' : 'text-[11px]')}>
             {item.label}
           </span>

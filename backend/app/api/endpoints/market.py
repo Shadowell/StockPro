@@ -91,6 +91,16 @@ async def get_hot_concepts(
     rows = await loop.run_in_executor(None, lambda: MarketService.get_hot_concepts(limit, date))
     return [{**row, "source_label": row.get("source_label") or "PG 缓存；上游来源未记录"} for row in rows]
 
+
+@router.get("/sector-fund-flow")
+async def get_sector_fund_flow(
+    limit: int = Query(30, ge=1, le=50),
+) -> Dict[str, Any]:
+    """Homepage sector inflow/outflow board from PG hot-concept money-flow cache."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: MarketService.get_sector_fund_flow(limit))
+
+
 @router.get("/ths-hot")
 async def get_ths_hot(
     limit: int = Query(100, ge=1, le=200),

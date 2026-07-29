@@ -1,5 +1,47 @@
 # Progress Log
 
+## Reference Factor Catalog ×100 (2026-07-29)
+
+1. Added `backend/app/services/reference_factor_catalog.py` with exactly 100
+   sealed-snapshot-computable reference factors across momentum / reversal /
+   volatility / liquidity / size / value / technical.
+2. Selection prioritizes published cross-section hypotheses and spaced lookbacks;
+   removed same-window momentum↔reversal mirrors and valuation transform twins.
+3. `install_reference_factors` now bumps `version_no` when Python content changes
+   (fixes unique constraint on definition+version_no).
+4. Obsolete system factors outside the catalog are deprecated; FactorLibrary
+   shows a 5-step research workflow strip.
+5. Smoke execute on sealed snapshot #10 (20-symbol panel): 100/100 valid;
+   mean |Spearman| ≈ 0.31. Full-universe IC maturity still needs daily schedule
+   + forward windows — not claimed as live alpha proof from this install alone.
+
+Verification: `pytest tests/test_factor_research_service.py` 12 passed; install
+returns 100 system-enabled definitions.
+
+## Homepage Sector Fund-Flow TOP30 (2026-07-28)
+
+1. TuShare 对标：`moneyflow_ind_dc`（东财板块资金流向）、`moneyflow_ind_ths` /
+   `moneyflow_cnt_ths`；无板块间真实迁移矩阵，Sankey 连线按流入权重分摊并明示。
+2. Backend `GET /market/sector-fund-flow` 从 `hot_concepts_realtime` 组装流入/
+   流出/TOP30；龙头同步范围扩到 TOP30 概念。
+3. Dashboard 用 `SectorFundFlowPanel`：ECharts Sankey + TOP30 列表 + 点选加载
+   `hot-concept/leaders` 核心龙头；去掉原先 |涨幅|<5% 只显示 TOP5 的门槛。
+
+Verification: `npx tsc --noEmit` OK; `GET /market/sector-fund-flow?limit=30`
+returns 30 rankings; frontend/backend restarted healthy; e2e
+`sector fund-flow|realtime market cockpit|stale market caches` 3 passed.
+
+## Remaining Symbol Chinese Names Sweep (2026-07-28)
+
+1. Backtest detail `GenericTable` 持仓/交易/订单: `SymbolCell` + `useSymbolNames`.
+2. Paper legacy `DataTable` symbol columns wired the same way.
+3. Paper instance cards「证券范围」and detail K-line `<select>` / empty copy use
+   `formatSymbolLabel` (中文名 + 公开代码).
+4. MarketResearch sector「龙头」column uses `SymbolCell`; BitPro detail panels
+   trade/position/order/strategy-range chips switched to `SymbolCell`.
+
+Verification: `npx tsc --noEmit` passed; frontend/backend restarted healthy.
+
 ## Global Symbol Chinese Names (2026-07-28)
 
 1. Rule: numbered A-share codes must render with 中文名 (primary) + public code
@@ -12,6 +54,15 @@
 
 Verification: pool members API returns `格力电器` for `SZ_000651`; `tsc` OK;
 services healthy.
+
+## Hide Test/Acceptance Scope From Operator UI (2026-07-28)
+
+Removed page-level「测试与验收」scope switches and验收/种子 badges from Paper,
+Backtest, Watch, Monitor, AI Lab, Stock Pools, and Strategy. Pages now always
+filter to business (`user`) data only; acceptance/seed fixtures stay off the
+operator surface. E2E fixtures updated to `data_purpose: 'user'`.
+
+Verification: `npx tsc --noEmit` OK; frontend restarted on :4444.
 
 ## Watch Signal Cards + Chinese Symbol Names (2026-07-28)
 
@@ -28,6 +79,14 @@ services healthy.
 Verification: backend attaches `SZ_000651→格力电器`; frontend/backend restarted;
 `tsc` on changed watch files clean.
 
+## Paper Instance Card Density (2026-07-28)
+
+1. Compacted Paper strategy cards: removed fixed `min-h-[292px]`, tighter padding,
+   inline meta/heartbeat row, label+value PnL row instead of stacked hero metrics,
+   shorter action labels (暂停/关闭/详情), `h-8` buttons.
+
+Verification: `npx tsc --noEmit` passed; frontend `4444` → 200.
+
 ## Data Page Symbol Chinese Names (2026-07-28)
 
 1. Root cause: `/data` 研究数据「数据表统计」丢弃了 coverage 的 `name`，前端只渲染代码。
@@ -39,6 +98,228 @@ Verification: backend attaches `SZ_000651→格力电器`; frontend/backend rest
 
 Verification: `npx tsc --noEmit` passed; frontend/backend restarted healthy;
 `/data` 研究数据「数据表统计」标的列显示中文名 + 公开代码（如 `中科美菱` / `920992.BJ`）。
+
+## Dashboard Market Pulse Cards (2026-07-28)
+
+1. Removed duplicate homepage mini「短线指标」card that echoed the full short-line
+   section; sentiment card no longer repeats the full up/down/flat grid.
+2. Extended `/market/overview` with `market_pulse` from realtime stock cache:
+   rise/fall ratio, median/avg change, ±5%/±7% bands, board-aware limit
+   estimates, Top10 amount share, turnover/amplitude/volume-ratio stats.
+3. Dashboard adds「大盘诊断」KPI row and「涨停生态」section (breadth metrics
+   filtered out of short-line to avoid duplication); index strip now shows
+   资金集中度 instead of the duplicate short-line teaser.
+
+Verification: `pytest tests/test_market_overview_fast_path.py` 3/3 OK;
+`npx tsc --noEmit` OK; services restarted/health OK; authenticated
+`/api/market/overview` returns `market_pulse` on 5533 stocks (e.g. ratio≈0.90,
+median≈-0.11%, limit_up_est=80). Note: realtime cache currently stores
+turnover/amplitude/volume_ratio as 0, so those pulse fields stay `--` until
+the spot sync populates them.
+
+## Market 1Y K-line Backfill Started (2026-07-28)
+
+Triggered `POST /api/data/history/sync-all` job `#46`
+(`market-1y-backfill-20260728`): 243 trade days from 2025-07-28→2026-07-28,
+`include_signals=false`. Early progress ~19/243 success (~5400 bars/day).
+
+## Leader Strategy Research Top5 (2026-07-28)
+
+1. Clarified research-20 pool: sealed `momentum_20d` Top20 on 2025-01-02, but
+   factor coverage was limited to the 20 established large-caps that had a
+   sealed 2023–2025 daily-bar history — so it is a research sample, not a live
+   full-market leader list.
+2. Screened current market leaders from `all_stocks_realtime` (amount / pct
+   leaders: AI/光模块/半导体等活跃方向).
+3. Created 8 dynamic 龙头 strategies on sealed pool#5 / dataset#10 / factor#4;
+   all 8 formal backtests 2023-01-03→2025-01-02 succeeded with positive
+   expectancy. Top5 by annualized return:
+   - 动量龙头Top1 38.70%
+   - 相对强度龙头Top1 38.55%
+   - 振幅突破龙头Top1 33.73%
+   - 强势近板龙头持5日 25.67%
+   - 相对强度三龙头 25.11%
+
+Verification: 8/8 strategy create=`valid`; 8/8 `/api/backtest/runs` success.
+
+## Paper Dashboard False -100% Equity (2026-07-28)
+
+1. Root cause: new Paper instances had no equity snapshot (`equity=null`) while
+   cash still equalled initial capital; dashboard used `Number(null)===0`, so
+   PnL rendered as `-initial` / `-100%` with zero fills.
+2. Fixed `numberValue` null handling, fall back display equity to
+   `cash_balance`/`initial_cash`, and coalesce the same in Paper list/detail APIs.
+
+Verification: `tsc --noEmit` OK; API list now returns equity=`1000000` for
+cash-only instances; services restarted/health OK.
+
+## Data Module Full-Market Sync + Daily Schedule (2026-07-28)
+
+1. Added date-based full-market daily K-line path: TuShare `daily(trade_date=…)`,
+   `KlineSyncService.create_market_daily_sync_job`, and
+   `POST /api/data/history/sync-all` (default ~365d + optional market-evidence
+   signal backfill).
+2. Daily reference orchestration now pulls one market day instead of ~5k
+   per-symbol jobs; `force=True` bypasses a disabled PG schedule for recovery.
+3. Scheduler catchup walks recent open days (`catchupDays`); local
+   `ENABLE_SCHEDULER=true`. Data Center wires 全量下载 / 盘后日终计划 /
+   立即运行日终 to `/history/sync-all` and `/schedules/daily`.
+
+Verification: daily-reference unit tests 11/11 OK; `npx tsc --noEmit` OK;
+services restarted; `/api/health/health` healthy; schedules/daily shows
+`runtimeStatus=running`; smoke `POST /history/sync-all` job#45 (2 trade days)
+status=success in ~5s. Full 365d operator download not executed in this session.
+
+## A-share Profitability Strategy Research + Paper Deploy (2026-07-28)
+
+1. Inventoried StockPro HTTP + `stockpro-mcp-v1` tools and TuShare-backed
+   sealed datasets (`daily_bars`, valuation, limits, factors, pools).
+2. Screened momentum / relative-strength / strong-breakout / volatility-breakout
+   / factor-combo logics on sealed research-20 pool; formal full backtests
+   2023-01-03→2025-01-02 produced 15 strategies with ann≥20% and positive
+   expectancy (win_rate × PL ratio).
+3. Promoted and started top-10 Paper instances against dataset#10 /
+   factor#4 / universe#1 / pool#5 / protocol `01b64adf-…`.
+4. Produced next-session entry zones from latest common bar date 2026-07-16
+   (most pool symbols; two banks fresher to 2026-07-27).
+
+Verification: 22 strategy full runs succeeded via `/api/backtest/runs`; 10/10
+promotion=`paper_eligible` and Paper `running`. No live broker actions.
+
+## Stock Pool Workbench Clarity (2026-07-28)
+
+1. Clarified product purpose: pools turn screening into reproducible,
+   reason-tagged, expiring candidates for backtest handoff.
+2. Added workflow strip (建规则 → 生成成员 → 封存快照 → 送回测), KPI row, and
+   mine-tab “下一步做什么” coach with contextual actions.
+3. Creation tabs lead with type purpose + tip + steps; evidence shows
+   `Factor #` / `Market #`; seal message uses `快照 #id`. Kept six `?tab=` keys.
+
+Verification: `npx tsc --noEmit` passed; frontend `4444` → 200; backend health
+healthy; browser on `/pools` shows workflow strip + next-action coach;
+`/pools?tab=factor` shows type purpose tip and create form.
+
+## Short-line Metric Tone Semantics (2026-07-28)
+
+1. Root cause: Dashboard short-line KPI values were hard-coded `tone="amber"`,
+   so 涨停/跌停/上涨/下跌 all rendered yellow.
+2. Added `shortLineValueTone(code, value)`: up→red, down→green, broken/highest
+   board→amber, seal_rate→blue, rise_fall_ratio by threshold.
+3. Tightened DailyReview risk/trade and FactorLibrary summary tones so
+   operational counts stay blue/green/red instead of blanket amber.
+
+Verification: live DOM on `/` shows 涨停/上涨 `#FF1744`, 跌停/下跌 `#00C853`,
+炸板/最高板 amber, 封板率 blue; `tsc --noEmit` passed.
+
+## Sidebar Nav Color Parity With BitPro (2026-07-28)
+
+1. Matched primary menu to BitPro `MainLayout` nav tokens: idle `text-gray-400`,
+   hover `text-gray-200` + `bg-gray-800`, active `text-blue-500` +
+   `bg-blue-500/10` — removed white / near-white menu labels.
+2. Aligned shell aside to `bg-crypto-card` / `border-crypto-border`; settings /
+   logout use the same gray→blue idle/active treatment.
+3. Softened `WorkspaceTabs` active label from `text-white` to `text-blue-400`.
+
+Verification: `npx tsc --noEmit` passed; frontend `4444` → 200; backend health
+healthy. No backend code change.
+
+## Global White KPI Purge (2026-07-27)
+
+1. Contract: KPI / metric numbers must never use flat white / near-white
+   (`text-white`, `text-slate-100`, `@bitpro/ui` `bp-tone-neutral` ≈ `#edf2f8`).
+2. Shared guardrails: CSS maps `bp-tone-neutral|gray` → `#93c5fd`;
+   `OperatorMetricCard` wraps string/number values in `MetricValue` and remaps
+   `neutral` → `blue`; Paper runtime `Metric` defaults to blue tone.
+3. Pages/components recolored: Dashboard short-line + index cards, Market price,
+   MarketResearch ladder level, DailyReview KPIs, FactorLibrary summary,
+   AIResearchLab pipeline counts, SentimentAnalysis StatCard (static tone map),
+   AIStockAnalysis scores, DataCenter MetricCards + coverage rows,
+   DataQuality/DataHub/BatchImport counts, StockPools member_count,
+   BitProDetailPanels price/qty, ChartPanel change color.
+
+Verification: `npx tsc --noEmit` passed; backend `/api/health/health` + frontend
+`4444` restart follows. Titles / buttons / names intentionally keep white.
+
+## Market Sentiment KPI Contrast Fix (2026-07-27)
+
+1. Root cause: `MarketResearch` Sentiment tab KPI values were hard-coded
+   `text-slate-100` (near-white), so earlier shell/token work never reached
+   this grid — matching the user screenshot (涨停/跌停/炸板/连板高度…).
+2. Wired Sentiment metrics + pool counts through `MetricValue` with
+   up/down/amber/blue tones; Structure headline values now also carry explicit
+   tone classes (not only MetricCard inheritance).
+
+Verification: frontend restart `4444` → 200; backend `/api/health/health` → healthy;
+`tsc --noEmit` passed; live DOM on `?tab=sentiment` shows KPI colors
+`#FF1744` / `#00C853` / amber / blue (no longer near-white).
+
+## BitPro Metric Contrast And Token Alignment (2026-07-27)
+
+1. Matched Tailwind / CSS tokens to BitPro: up `#FF1744`, down `#00C853`,
+   accent `#58a6ff`, Inter-first font stack, mono tabular KPI values.
+2. Added `MetricValue` / `OperatorMetricCard` and expanded `marketColors`
+   helpers (`thresholdTone`, `countTone`) so KPI numbers never default to flat
+   white.
+3. Recolored Backtest detail KPIs (returns up/down, drawdown adverse, Sharpe
+   threshold), Paper/Watch/Monitor/Dashboard/Data counts and PnL, and local
+   detail MetricCards to BitPro semantic tones.
+
+Verification: `tsc --noEmit` passed; frontend/backend restart follows.
+
+## BitPro UI Density — Shell Rollout Across Subpages (2026-07-27)
+
+1. Strategy detail now carries `data-operator-page` and an `EvidenceStrip` for
+   version / validation / dependency / symbol facts.
+2. Backtest dashboard uses shared header + segmented/filter chips; detail uses
+   `WorkspaceTabs` for all eight nested report tabs plus an evidence strip.
+3. Paper dashboard preferred/all views use `SegmentedControl`; Paper/Watch/
+   Monitor/Review/Market/Pools/Factors/AI Lab/Dashboard/Data pages share
+   `OperatorPageHeader` and `data-operator-page` markers so every L2 surface
+   sits under one shell rhythm.
+4. Watch/Monitor scopes moved onto `SegmentedControl` + `EvidenceStrip`.
+5. AdminLogin admin/guest modes and `/data/processing` L2/L3 tabs now use the
+   shared segmented shell.
+
+Verification:
+
+- `npx tsc --noEmit` passed.
+- `git diff --check` clean.
+- Clean restart: backend health `healthy`, frontend `4444` → 200.
+
+Next: deepen intra-tab panel/KPI/table density against BitPro `docs/pages/*`
+(Backtest wizard + Paper detail modules first). Shell layer for all inventory
+routes including AdminLogin and `/data/processing` is in place.
+
+## BitPro UI Density — All Subpages (2026-07-27)
+
+1. Activated `docs/contracts/active-bitpro-ui-density.md` (also mirrored as
+   `docs/contracts/active.md`) requiring every L1 **and every L2/L3 surface** to
+   match BitPro operator density. Superseded
+   `active-research-workshop-page-hardening.md` while retaining its honest
+   data-state Done Means.
+2. Documented the BitPro read-only reference at
+   `/Users/jie.feng/Dev/Github/Private/BitPro` and expanded `docs/spec.md`
+   BitPro UI Contract to cover nested tabs, wizards and detail modes.
+3. Added shared shell primitives in `frontend/src/components/OperatorShell.tsx`:
+   `OperatorPageHeader`, `SegmentedControl`, `FilterChipGroup`,
+   `OperatorFilterBar`, `OperatorSearchField`, `EvidenceStrip`,
+   `OperatorStatePanel`, `CatalogueCard`.
+4. Tightened `WorkspaceTabs` density markers for all URL/`local` L2 tabs.
+5. Migrated Strategy centre list surfaces (`我的策略` / `策略广场`, filters,
+   loading/empty/error, catalogue cards) onto the shared shell as the template
+   page. Editor modal and detail panel remain next within the Strategy batch.
+
+Verification:
+
+- Frontend `tsc --noEmit` passed after Strategy shell migration.
+- ESLint on touched files: 0 errors (1 pre-existing hooks warning on Strategy).
+- `git diff --check` clean.
+- Clean restart: backend `http://127.0.0.1:4445/api/health/health` → healthy;
+  frontend `http://127.0.0.1:4444` → 200. No provider sync or Paper cycle ran.
+
+Next batch: Strategy editor/detail polish, then Backtest + Paper (dashboard /
+wizard / detail nested tabs / preferred-all), with every listed subpage checked
+at desktop and 390px.
 
 ## Cross-page Chinese Presentation Cleanup (2026-07-27)
 

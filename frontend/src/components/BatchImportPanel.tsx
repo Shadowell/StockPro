@@ -516,21 +516,21 @@ export const BatchImportPanel: React.FC = () => {
                 <div className="text-slate-500 text-xs uppercase tracking-wider">
                   {language === 'zh' ? '进度' : 'Progress'}
                 </div>
-                <div className="font-semibold text-gray-200">{importStatus.progress}%</div>
+                <div className="font-semibold tabular-nums text-blue-300">{importStatus.progress}%</div>
               </div>
               
               <div className="bg-slate-800/50 p-3 rounded">
                 <div className="text-slate-500 text-xs uppercase tracking-wider">
                   {language === 'zh' ? '已处理' : 'Current'}
                 </div>
-                <div className="font-semibold text-gray-200">{importStatus.current}</div>
+                <div className="font-semibold tabular-nums text-blue-300">{importStatus.current}</div>
               </div>
               
               <div className="bg-slate-800/50 p-3 rounded">
                 <div className="text-slate-500 text-xs uppercase tracking-wider">
                   {language === 'zh' ? '总计' : 'Total'}
                 </div>
-                <div className="font-semibold text-gray-200">{importStatus.total}</div>
+                <div className="font-semibold tabular-nums text-blue-300">{importStatus.total}</div>
               </div>
             </div>
 
