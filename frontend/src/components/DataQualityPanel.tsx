@@ -111,7 +111,7 @@ export const DataQualityPanel: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded border border-slate-800 bg-[#0d121f] p-3">
               <div className="text-xs text-slate-500">总项</div>
-              <div className="text-xl font-black text-white">{summary.total}</div>
+              <div className="text-xl font-black tabular-nums text-blue-300">{summary.total}</div>
             </div>
             <div className="rounded border border-slate-800 bg-[#0d121f] p-3">
               <div className="text-xs text-slate-500">绿色</div>

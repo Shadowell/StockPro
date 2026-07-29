@@ -481,6 +481,50 @@ class TushareFirstDataProvider:
             )
         return self._normalize_daily_history(df)
 
+    def daily_by_trade_date(self, trade_date: str) -> pd.DataFrame:
+        """Fetch one trading day's unadjusted bars for the full A-share market.
+
+        Returns an AkShare-shaped frame plus ``ts_code`` / ``symbol`` columns so
+        callers can map each row back to StockPro's ``SH_/SZ_/BJ_`` identifiers.
+        """
+        compact = self._compact_date(trade_date)
+        if not compact:
+            raise ValueError("trade_date is required")
+        if not self._tushare_ready():
+            raise RuntimeError("Tushare is not ready for market-daily sync")
+        raw = self._pro_api().daily(trade_date=compact)
+        if not isinstance(raw, pd.DataFrame) or raw.empty:
+            return raw
+        frame = self._normalize_daily_history(raw)
+        ts_code = self._first_series(raw, ["ts_code", "TS_CODE"]).astype(str)
+        frame["ts_code"] = ts_code.reset_index(drop=True)
+        frame["symbol"] = frame["ts_code"].map(self._from_ts_code)
+        return frame
+
+    def trade_cal_open_dates(self, start_date: str, end_date: str, exchange: str = "SSE") -> list[str]:
+        """Return open trade dates as ISO strings between start_date and end_date."""
+        if not self._tushare_ready():
+            raise RuntimeError("Tushare is not ready for trade calendar sync")
+        frame = self._pro_api().trade_cal(
+            exchange=exchange,
+            start_date=self._compact_date(start_date),
+            end_date=self._compact_date(end_date),
+            is_open="1",
+        )
+        if frame is None or frame.empty:
+            return []
+        dates: list[str] = []
+        series = frame.get("cal_date")
+        if series is None:
+            return []
+        for value in series.tolist():
+            text = str(value or "").strip()
+            if len(text) == 8 and text.isdigit():
+                dates.append(f"{text[:4]}-{text[4:6]}-{text[6:8]}")
+            elif text:
+                dates.append(text[:10])
+        return sorted(set(dates))
+
     def _tushare_index_daily(self, symbol: str) -> pd.DataFrame:
         df = self._pro_api().index_daily(ts_code=self._to_index_ts_code(symbol))
         return self._normalize_index_daily(df)
@@ -639,6 +683,26 @@ class TushareFirstDataProvider:
     def _to_plain_code(self, value: Any) -> str:
         text = str(value or "").strip().upper()
         return text.split(".")[0].replace("SH_", "").replace("SZ_", "").replace("BJ_", "")
+
+    def _from_ts_code(self, ts_code: Any) -> str:
+        text = str(ts_code or "").strip().upper()
+        if not text:
+            return ""
+        if "_" in text and text.startswith(("SH_", "SZ_", "BJ_")):
+            return text
+        if "." in text:
+            code, exchange = text.split(".", 1)
+            prefix = {"SH": "SH", "SZ": "SZ", "BJ": "BJ"}.get(exchange, "SZ")
+            digits = "".join(ch for ch in code if ch.isdigit())
+            return f"{prefix}_{digits}" if digits else ""
+        digits = "".join(ch for ch in text if ch.isdigit())
+        if not digits:
+            return ""
+        if digits.startswith("6"):
+            return f"SH_{digits}"
+        if digits.startswith(("8", "4")):
+            return f"BJ_{digits}"
+        return f"SZ_{digits}"
 
     def _to_ts_code(self, symbol: str) -> str:
         raw = str(symbol or "").strip().upper().replace("_", ".")

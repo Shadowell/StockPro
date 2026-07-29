@@ -75,7 +75,7 @@ export const DataHubFeaturePanel: React.FC = () => {
               <span className="text-sm font-semibold text-slate-100">选股特征输出</span>
             </div>
             <div className="text-xs text-slate-500">快照日期</div>
-            <div className="text-lg font-bold text-white">{screener?.snapshot || '-'}</div>
+            <div className="text-lg font-bold tabular-nums text-blue-300">{screener?.snapshot || '-'}</div>
             <div className="text-xs text-slate-500 mt-2">当前命中候选</div>
             <div className="text-lg font-bold text-cyan-400">{screener?.count ?? 0}</div>
             <button
@@ -94,15 +94,15 @@ export const DataHubFeaturePanel: React.FC = () => {
               <span className="text-sm font-semibold text-slate-100">因子特征输出</span>
             </div>
             <div className="text-xs text-slate-500">快照日期</div>
-            <div className="text-lg font-bold text-white">{factors?.snapshot || factors?.latest_date || '-'}</div>
+            <div className="text-lg font-bold tabular-nums text-blue-300">{factors?.snapshot || factors?.latest_date || '-'}</div>
             <div className="grid grid-cols-2 gap-2 mt-3">
               <div className="rounded bg-slate-900/60 p-2 border border-slate-800">
                 <div className="text-xs text-slate-500">因子数量</div>
-                <div className="text-sm font-semibold text-slate-200">{factors?.factor_count ?? 0}</div>
+                <div className="text-sm font-semibold tabular-nums text-blue-300">{factors?.factor_count ?? 0}</div>
               </div>
               <div className="rounded bg-slate-900/60 p-2 border border-slate-800">
                 <div className="text-xs text-slate-500">数据记录</div>
-                <div className="text-sm font-semibold text-slate-200">{(factors?.data_count ?? 0).toLocaleString()}</div>
+                <div className="text-sm font-semibold tabular-nums text-blue-300">{(factors?.data_count ?? 0).toLocaleString()}</div>
               </div>
             </div>
             <button

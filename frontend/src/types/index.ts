@@ -115,6 +115,29 @@ export interface HotConceptItem {
   source_label?: string | null;
 }
 
+export interface SectorFundFlowItem {
+  rank?: number | null;
+  name: string;
+  change_percent?: number | null;
+  net_inflow_yi: number;
+  inflow_yi?: number | null;
+  outflow_yi?: number | null;
+  updated_at?: string | null;
+  source_label?: string | null;
+}
+
+export interface SectorFundFlowResponse {
+  limit: number;
+  unit: string;
+  inflows: SectorFundFlowItem[];
+  outflows: SectorFundFlowItem[];
+  rankings: SectorFundFlowItem[];
+  updated_at?: string | null;
+  data_status: 'fresh' | 'stale' | 'empty' | string;
+  source_label: string;
+  methodology: string;
+}
+
 export interface ConceptIntradayKlineItem {
   time: string;
   open: number;
@@ -279,6 +302,30 @@ export interface MarketIndex {
   change_percent: number;
 }
 
+/** Realtime-cache breadth diagnostics for operator market judgment. */
+export interface MarketPulse {
+  source_label?: string | null;
+  universe_count?: number | null;
+  rise_fall_ratio?: number | null;
+  median_change_percent?: number | null;
+  avg_change_percent?: number | null;
+  strong_up_5?: number | null;
+  strong_up_7?: number | null;
+  weak_down_5?: number | null;
+  weak_down_7?: number | null;
+  limit_up_est?: number | null;
+  limit_down_est?: number | null;
+  amount_top10_share?: number | null;
+  avg_turnover?: number | null;
+  avg_amplitude?: number | null;
+  avg_volume_ratio?: number | null;
+  volume_ratio_gt2?: number | null;
+  active_traded?: number | null;
+  advancing?: number | null;
+  declining?: number | null;
+  unchanged?: number | null;
+}
+
 export interface MarketOverview {
   indices: MarketIndex[];
   sentiment?: {
@@ -302,6 +349,8 @@ export interface MarketOverview {
     down: number | null;
     flat: number | null;
   };
+  /** Derived from all_stocks_realtime; complementary to sealed short-line ecology. */
+  market_pulse?: MarketPulse;
   data_status?: {
     stock_snapshot_state?: 'fresh' | 'stale' | 'unavailable' | string;
     stock_snapshot_count?: number;

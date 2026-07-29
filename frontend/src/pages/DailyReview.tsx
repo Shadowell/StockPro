@@ -21,6 +21,8 @@ import {
   sealDailyReview,
 } from "../api/client";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
+import { MetricValue, OperatorPageHeader } from "../components/OperatorShell";
+import type { MetricTone } from "../utils/marketColors";
 import type { DailyReviewContext, DailyReviewItem } from "../types";
 import { categoryLabel, statusLabel } from "../utils/presentation";
 
@@ -254,55 +256,53 @@ export function DailyReview() {
     <div
       className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8"
       data-testid="daily-review-workbench"
+      data-operator-page="review"
     >
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <NotebookPen className="h-7 w-7 text-fuchsia-400" />
-            <h1 className="text-2xl font-black text-white">复盘中心</h1>
-            <span
-              className={`rounded-md border px-2 py-1 text-xs font-semibold ${reviewStatusTone}`}
-            >
+      <OperatorPageHeader
+        icon={NotebookPen}
+        title={
+          <span className="inline-flex flex-wrap items-center gap-3">
+            复盘中心
+            <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${reviewStatusTone}`}>
               {reviewStatus}
             </span>
-          </div>
-          <p className="mt-2 text-sm text-slate-500">
-            汇总市场、股票池、策略、风险、订单、成交与账户表现。
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="text-[11px] text-slate-500">
-            交易日
-            <select
-              value={tradeDate}
-              onChange={(event) => changeDate(event.target.value)}
-              className="mt-1 block h-10 min-w-36 rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm text-slate-200"
+          </span>
+        }
+        subtitle="汇总市场、股票池、策略、风险、订单、成交与账户表现。五个子页签均需对齐。"
+        actions={
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-[11px] text-slate-500">
+              交易日
+              <select
+                value={tradeDate}
+                onChange={(event) => changeDate(event.target.value)}
+                className="mt-1 block h-10 min-w-36 rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm text-slate-200"
+              >
+                {dates.includes(tradeDate) ? null : (
+                  <option value={tradeDate}>
+                    {tradeDate || "暂无可用交易日"}
+                  </option>
+                )}
+                {dates.map((date) => (
+                  <option key={date} value={date}>
+                    {date}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => void rebuild()}
+              disabled={busy}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400 disabled:cursor-wait disabled:opacity-60"
             >
-              {dates.includes(tradeDate) ? null : (
-                <option value={tradeDate}>
-                  {tradeDate || "暂无可用交易日"}
-                </option>
-              )}
-              {dates.map((date) => (
-                <option key={date} value={date}>
-                  {date}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => void rebuild()}
-            disabled={busy}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400 disabled:cursor-wait disabled:opacity-60"
-          >
-            <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
-            重建时间线
-          </button>
-        </div>
-      </header>
+              <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+              重建时间线
+            </button>
+          </div>
+        }
+      />
       <WorkspaceTabs
-        className="mb-5"
         ariaLabel="复盘中心二级导航"
         items={TABS.map(([id, label]) => ({ id, label, testId: `review-tab-${id}` }))}
         value={tab}
@@ -314,28 +314,31 @@ export function DailyReview() {
         </div>
       ) : null}
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {[
-          ["涨停数", metric("limit_up_count")],
-          ["跌停数", metric("limit_down_count")],
-          ["最高连板", metric("highest_board")],
-          ["股票池快照", context ? context.counts.pool : undefined],
-          ["策略信号", context ? context.counts.strategy : undefined],
+        {(
           [
-            "风险 / 成交",
-            context
-              ? `${context.counts.risk} / ${context.counts.trade}`
-              : undefined,
-          ],
-        ].map(([label, current]) => (
+            ["涨停数", metric("limit_up_count"), "up"],
+            ["跌停数", metric("limit_down_count"), "down"],
+            ["最高连板", metric("highest_board"), "amber"],
+            ["股票池快照", context ? context.counts.pool : undefined, "blue"],
+            ["策略信号", context ? context.counts.strategy : undefined, "blue"],
+            [
+              "风险 / 成交",
+              context
+                ? `${context.counts.risk} / ${context.counts.trade}`
+                : undefined,
+              context && Number(context.counts.risk) > 0 ? "red" : "blue",
+            ],
+          ] as const
+        ).map(([label, current, tone]) => (
           <div
             data-testid={`review-metric-${String(label)}`}
             key={String(label)}
             className={`${panel} p-4`}
           >
             <div className="text-xs text-slate-500">{label}</div>
-            <div className="mt-2 text-xl font-black text-white">
+            <MetricValue tone={tone as MetricTone} size="lg" className="mt-2 block">
               {format(current, 0)}
-            </div>
+            </MetricValue>
           </div>
         ))}
       </div>

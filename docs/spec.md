@@ -4,7 +4,7 @@
 
 StockPro is a locally operated B/S A-share strategy workstation. It provides research, factor development, strategy development, backtesting, live signal monitoring, paper trading and risk controls for a personal research workspace.
 
-Sprint 09 `readonly-runtime-safety`, Sprint 10 `daily-publication-integrity` and Sprint 11 `bitpro-ashare-strategy-workbench` completed locally on 2026-07-17. The 2026-07-27 BitPro-parity work added workflow discovery, guest access, asynchronous PostgreSQL backtest jobs, the authenticated `stockpro-mcp-v1` Agent interface, complete Paper runtime evidence and a real-backend read-only twelve-page acceptance gate. Large synchronization, enabling the scheduler runtime, production scheduling and remote deployment still require separate explicit approval.
+Sprint 09 `readonly-runtime-safety`, Sprint 10 `daily-publication-integrity` and Sprint 11 `bitpro-ashare-strategy-workbench` completed locally on 2026-07-17. The 2026-07-27 BitPro-parity work added workflow discovery, guest access, asynchronous PostgreSQL backtest jobs, the authenticated `stockpro-mcp-v1` Agent interface, complete Paper runtime evidence and a real-backend read-only twelve-page acceptance gate. The 2026-07-28 data-module contract adds full-market date-based daily K-line download (`POST /api/data/history/sync-all`), PG daily-reference schedule control from Data Center, and local `ENABLE_SCHEDULER=true` for post-close catchup. Remote production deployment still requires separate explicit approval.
 
 The current authorized delivery environment is local development only: React on `http://localhost:4444`, FastAPI on `http://localhost:4445`, and PostgreSQL through the local `DATABASE_URL`. Remote-server deployment and production-data changes are deferred to a separate explicit contract.
 
@@ -58,12 +58,12 @@ The required lifecycle is:
 
 ## BitPro UI Contract
 
-- All routed pages, including admin login, render inside the shared financial operator theme; trading, monitoring, and data-admin surfaces must follow `~/.codex/skills/financial-operator-ui/SKILL.md`.
-- Prefer the installed `@bitpro/ui` primitives and theme tokens for generic panels, metrics, and statuses. StockPro owns its business composition and must not copy BitPro business-page source.
+- All routed pages **and every nested L2/L3 surface** (WorkspaceTabs, `?tab=` views, list/editor/detail modes, create wizards, detail nested tabs and drawers), including admin login, render inside the shared financial operator theme; trading, monitoring, and data-admin surfaces must follow `~/.codex/skills/financial-operator-ui/SKILL.md`.
+- Prefer the installed `@bitpro/ui` primitives and theme tokens for generic panels, metrics, and statuses. StockPro owns its business composition and must not copy BitPro business-page source. BitPro reference lives at `/Users/jie.feng/Dev/Github/Private/BitPro`.
 - Reuse the existing `MainLayout`, BitPro-compatible 64px single-column sidebar, page-owned headers, dark design tokens and Lucide icons.
 - The twelve first-level destinations stay flat and stable. Catalogue filters, workflow stages and object details belong inside each page rather than in grouped sidebar sections.
 - User/business objects are the default scope. Seed and acceptance objects are excluded from default catalogue, backtest, AI, Paper, Watch and Monitor views and remain reachable only through a clearly labelled test scope.
-- Primary pages are dense operator workspaces: compact title/status, KPI strip, segmented filters, chart/table split panels, drill-down drawers and linkable object details.
+- Primary pages are dense operator workspaces: compact title/status, KPI strip, segmented filters, chart/table split panels, drill-down drawers and linkable object details. Subpages must share the same density and state semantics as their parent L1.
 - Color, typography, spacing, borders, radii, buttons, status tags and up/down semantics remain consistent across all pages.
 - Do not add gradients, marketing hero layouts, decorative oversized cards, emoji icons, placeholder dashboards or a parallel component system.
 - All data panels implement loading, empty, stale, error and permission-denied states and expose data date, source/snapshot and version.

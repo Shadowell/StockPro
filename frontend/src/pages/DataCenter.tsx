@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { DataPanel, MetricCard, StatusBadge } from '@bitpro/ui';
+import { DataPanel, StatusBadge } from '@bitpro/ui';
+import { OperatorMetricCard } from '../components/OperatorShell';
+import type { MetricTone } from '../utils/marketColors';
 import {
   AlertCircle,
   BarChart3,
@@ -36,9 +38,12 @@ import {
   getTushareEndpoints,
   probeTushareEndpoint,
   removeDataSymbol,
+  runDailyReferenceSchedule,
   searchStocks,
   startDataSync,
+  syncAllMarketHistory,
   triggerDataSync,
+  updateDailyReferenceSchedule,
   updateDataSchedule,
   type DataTableStatsResponse,
   type DataSyncConfigResponse,
@@ -224,10 +229,12 @@ export function DataCenter() {
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleIntervalMinutes, setScheduleIntervalMinutes] = useState(1440);
-  const [scheduleRunHour, setScheduleRunHour] = useState(18);
-  const [scheduleRunMinute, setScheduleRunMinute] = useState(10);
+  const [scheduleRunHour, setScheduleRunHour] = useState(17);
+  const [scheduleRunMinute, setScheduleRunMinute] = useState(30);
   const [scheduleHistoryDays, setScheduleHistoryDays] = useState(365);
+  const [scheduleCatchupDays, setScheduleCatchupDays] = useState(5);
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [runningDailyReference, setRunningDailyReference] = useState(false);
   const [showAddSymbolDialog, setShowAddSymbolDialog] = useState(false);
   const [addSymbolQuery, setAddSymbolQuery] = useState('');
   const [addSymbolResults, setAddSymbolResults] = useState<StockCandidate[]>([]);
@@ -322,7 +329,6 @@ export function DataCenter() {
   const totalRows = dailyTableRows ?? (coverage.length > 0 ? coverageSampleRows : null);
   const totalRowsLabel = dailyTable ? '日线全表统计' : coverage.length > 0 ? '覆盖统计样本合计' : '尚未读取日线统计';
   const isRunning = Boolean(status?.sync?.is_running || syncing || jobs.some((job) => ['pending', 'running', 'syncing'].includes(String(job.status))));
-  const scheduleTimeValue = `${String(scheduleRunHour).padStart(2, '0')}:${String(scheduleRunMinute).padStart(2, '0')}`;
   const lastRunResult = dailyReferenceSchedule?.lastRun?.result as {
     publication?: { actual_source?: string; fallback_reason?: string | null; response_hash?: string; snapshot?: { id?: number } };
     factorSchedule?: { status?: string; factor_snapshot?: { id?: number }; factor_snapshot_id?: number };
@@ -478,11 +484,16 @@ export function DataCenter() {
   }, [addSymbolQuery, showAddSymbolDialog]);
 
   const openScheduleDialog = () => {
-    setScheduleEnabled(Boolean(scheduleConfig?.enabled));
+    const cron = dailyReferenceSchedule?.cron || '30 17 * * 1-5';
+    const parts = cron.trim().split(/\s+/);
+    const minute = Number(parts[0] ?? 30);
+    const hour = Number(parts[1] ?? 17);
+    setScheduleEnabled(Boolean(dailyReferenceSchedule?.enabled ?? scheduleConfig?.enabled));
     setScheduleIntervalMinutes(Number(scheduleConfig?.intervalMinutes || 1440));
-    setScheduleRunHour(Number(scheduleConfig?.runHour ?? 18));
-    setScheduleRunMinute(Number(scheduleConfig?.runMinute ?? 10));
+    setScheduleRunHour(Number.isFinite(hour) ? hour : 17);
+    setScheduleRunMinute(Number.isFinite(minute) ? minute : 30);
     setScheduleHistoryDays(Number(scheduleConfig?.historyDays || defaultHistoryDays));
+    setScheduleCatchupDays(Number(dailyReferenceSchedule?.catchupDays || 5));
     setShowScheduleDialog(true);
   };
 
@@ -508,24 +519,79 @@ export function DataCenter() {
     setSavingSchedule(true);
     setMessage('');
     try {
-      const saved = await updateDataSchedule({
+      const cron = `${Math.max(0, Math.min(59, Number(scheduleRunMinute)))} ${Math.max(0, Math.min(23, Number(scheduleRunHour)))} * * 1-5`;
+      const saved = await updateDailyReferenceSchedule({
         enabled: scheduleEnabled,
-        mode: 'all_ashare_daily',
-        syncAllAshare: true,
-        runHour: scheduleRunHour,
-        runMinute: scheduleRunMinute,
-        intervalMinutes: Math.max(5, Number(scheduleIntervalMinutes || 1440)),
-        historyDays: Math.max(1, Number(scheduleHistoryDays || defaultHistoryDays)),
-        symbols: [],
-        timeframes: defaultTimeframes,
+        cron,
+        timezone: 'Asia/Shanghai',
+        catchupDays: Math.max(1, Math.min(10, Number(scheduleCatchupDays || 5))),
       });
-      setScheduleConfig(saved);
-      setMessage('定时同步已保存');
+      setDailyReferenceSchedule(saved);
+      // Keep legacy JSON schedule aligned for older status cards, but PG schedule is authoritative.
+      try {
+        const legacy = await updateDataSchedule({
+          enabled: scheduleEnabled,
+          mode: 'all_ashare_daily',
+          syncAllAshare: true,
+          runHour: scheduleRunHour,
+          runMinute: scheduleRunMinute,
+          intervalMinutes: Math.max(5, Number(scheduleIntervalMinutes || 1440)),
+          historyDays: Math.max(1, Number(scheduleHistoryDays || defaultHistoryDays)),
+          symbols: [],
+          timeframes: defaultTimeframes,
+        });
+        setScheduleConfig(legacy);
+      } catch {
+        // Legacy schedule is best-effort only.
+      }
+      setMessage(
+        saved.runtimeStatus === 'running'
+          ? '盘后日终计划已保存，调度器在线'
+          : saved.enabled
+            ? '盘后日终计划已保存（若运行器离线，请确认 ENABLE_SCHEDULER=true 并重启后端）'
+            : '盘后日终计划已停用',
+      );
       setShowScheduleDialog(false);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '定时同步保存失败');
     } finally {
       setSavingSchedule(false);
+    }
+  };
+
+  const runDailyNow = async () => {
+    setRunningDailyReference(true);
+    setMessage('');
+    try {
+      const result = await runDailyReferenceSchedule({ force: true });
+      setMessage(result.message || `日终编排已触发：${result.status || 'submitted'}`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '日终编排触发失败');
+    } finally {
+      setRunningDailyReference(false);
+    }
+  };
+
+  const runFullMarketDownload = async () => {
+    setSyncing(true);
+    setMessage('');
+    try {
+      const result = await syncAllMarketHistory({
+        history_days: 365,
+        refresh_universe: true,
+        include_signals: true,
+        job_name: `market-1y-${Date.now()}`,
+      });
+      setMessage(
+        result.message
+          || `全市场下载已提交：${result.tradeDateCount || '?'} 个交易日（含信号回补）`,
+      );
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '全市场下载提交失败');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -645,7 +711,7 @@ export function DataCenter() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto bg-crypto-bg p-4 sm:p-6">
+    <div className="flex h-full min-h-0 flex-col gap-5 overflow-y-auto bg-crypto-bg p-4 sm:p-6" data-operator-page="data">
       <div className="flex shrink-0 flex-col items-stretch gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/20">
@@ -653,7 +719,7 @@ export function DataCenter() {
           </div>
           <div className="min-w-0">
             <h1 className="whitespace-nowrap text-xl font-bold text-white">数据管理中心</h1>
-            <p className="mt-0.5 text-xs text-gray-500">A股 · {format(coverageSymbolCount)} 个覆盖统计样本 · {coverage.length ? syncedTimeframes.length : '--'}/{allTimeframes.length} 周期有数据</p>
+            <p className="mt-0.5 text-xs text-gray-500">五个子区：总览 / 研究数据 / 行情覆盖 / 同步任务 / 数据源 · A股 · {format(coverageSymbolCount)} 个覆盖统计样本</p>
             {loading && (
               <div className="mt-1 flex items-center gap-1.5 text-xs text-blue-300">
                 <RefreshCw className="h-3 w-3 animate-spin" />
@@ -673,9 +739,9 @@ export function DataCenter() {
             </button>
             <div className="pointer-events-none absolute right-0 top-11 z-30 w-[520px] max-w-[calc(100vw-3rem)] translate-y-1 rounded-xl border border-blue-500/25 bg-[#111827] p-4 text-xs leading-relaxed text-gray-400 opacity-0 shadow-2xl shadow-black/40 transition-all duration-150 group-hover/data-help:translate-y-0 group-hover/data-help:opacity-100 group-focus-within/data-help:translate-y-0 group-focus-within/data-help:opacity-100">
               <div className="space-y-1.5">
-                <p><strong className="text-gray-200">同步存储</strong>：历史 K 线写入 PostgreSQL 的 <strong className="text-gray-200">kline_history</strong> 与同步元数据表。</p>
+                <p><strong className="text-gray-200">全量下载</strong>：按交易日批量拉取全市场近一年日 K，并可回补市场证据信号。</p>
+                <p><strong className="text-gray-200">盘后日终</strong>：PostgreSQL 计划 + APScheduler；工作日自动更新 K 线、参考数据与信号。</p>
                 <p><strong className="text-gray-200">自定义同步</strong>：指定股票池和日期范围，提交后台任务。</p>
-                <p><strong className="text-gray-200">增量更新</strong>：沿用当前股票池，拉取最近区间的日线数据。</p>
               </div>
             </div>
           </div>
@@ -686,14 +752,23 @@ export function DataCenter() {
           <button
             type="button"
             onClick={openScheduleDialog}
-            className={clsx('flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-4 text-sm font-medium transition-all', scheduleConfig?.enabled ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200' : isRunning ? 'border-blue-500/35 bg-blue-500/10 text-blue-200' : 'border-crypto-border bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white')}
+            className={clsx('flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-4 text-sm font-medium transition-all', dailyReferenceSchedule?.enabled || scheduleConfig?.enabled ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200' : isRunning ? 'border-blue-500/35 bg-blue-500/10 text-blue-200' : 'border-crypto-border bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white')}
           >
             <span className="relative flex h-2.5 w-2.5 items-center justify-center">
-              {(scheduleConfig?.enabled || isRunning) && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
-              <span className={clsx('relative inline-flex h-2 w-2 rounded-full', scheduleConfig?.enabled ? 'bg-emerald-300' : isRunning ? 'bg-blue-300' : 'bg-gray-500')} />
+              {(dailyReferenceSchedule?.enabled || scheduleConfig?.enabled || isRunning) && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
+              <span className={clsx('relative inline-flex h-2 w-2 rounded-full', dailyReferenceSchedule?.runtimeStatus === 'running' ? 'bg-emerald-300' : dailyReferenceSchedule?.enabled || scheduleConfig?.enabled ? 'bg-amber-300' : isRunning ? 'bg-blue-300' : 'bg-gray-500')} />
             </span>
             <Clock className="h-3.5 w-3.5" />
             定时同步
+          </button>
+          <button
+            type="button"
+            onClick={() => void runDailyNow()}
+            disabled={runningDailyReference || syncing}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {runningDailyReference ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+            立即运行日终
           </button>
           <button onClick={() => void runSync({ start_date: dateOffset(-7), end_date: dateOffset(0), job_name: `kline-incremental-${Date.now()}` })} disabled={syncing} className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 text-sm font-semibold text-blue-300 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50">
             {syncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
@@ -703,9 +778,9 @@ export function DataCenter() {
             <Calendar className="h-3.5 w-3.5" />
             自定义同步
           </button>
-          <button onClick={() => void runSync({ start_date: dateOffset(-365), end_date: dateOffset(0), job_name: `kline-full-${Date.now()}` })} disabled={syncing} className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => void runFullMarketDownload()} disabled={syncing} className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">
             <Play className="h-3.5 w-3.5" />
-            全量同步
+            全量下载
           </button>
         </div>
       </div>
@@ -778,32 +853,32 @@ export function DataCenter() {
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
+          <OperatorMetricCard
             label="研究快照"
             value={latestSealedSnapshot ? '已封存' : '--'}
             icon={<Database className="h-4 w-4" />}
-            color={latestSealedSnapshot ? (researchFreshness.state === 'fresh' ? 'green' : 'amber') : 'red'}
+            tone={(latestSealedSnapshot ? (researchFreshness.state === 'fresh' ? 'green' : 'amber') : 'red') as MetricTone}
             detail={latestSealedSnapshot ? `知识截止 ${compactDate(latestSealedSnapshot.knowledge_cutoff_at)}` : '尚未封存，不能用于回测'}
           />
-          <MetricCard
+          <OperatorMetricCard
             label="日线数据"
             value={format(totalRows)}
             icon={<HardDrive className="h-4 w-4" />}
-            color={totalRows === null ? 'neutral' : 'blue'}
+            tone="blue"
             detail={totalRowsLabel}
           />
-          <MetricCard
+          <OperatorMetricCard
             label="样本覆盖"
             value={healthScore === null ? '--' : `${healthScore}%`}
             icon={<TrendingUp className="h-4 w-4" />}
-            color={healthScore === null ? 'neutral' : healthScore >= 80 ? 'green' : healthScore >= 50 ? 'amber' : 'red'}
+            tone={(healthScore === null ? 'blue' : healthScore >= 80 ? 'green' : healthScore >= 50 ? 'amber' : 'red') as MetricTone}
             detail={healthScore === null ? '尚无覆盖统计' : `${dailyCoverageSymbols}/${uniqueSymbols} 个统计样本有日线`}
           />
-          <MetricCard
+          <OperatorMetricCard
             label="同步任务"
             value={isRunning ? '运行中' : failedJobs > 0 ? `${failedJobs} 失败` : '空闲'}
             icon={<RefreshCw className={clsx('h-4 w-4', isRunning && 'animate-spin')} />}
-            color={isRunning ? 'blue' : failedJobs > 0 ? 'red' : 'green'}
+            tone={(isRunning ? 'blue' : failedJobs > 0 ? 'red' : 'green') as MetricTone}
             detail={latestJob ? `${statusLabel(latestJob.status)} · ${compactDate(latestJob.finished_at || latestJob.created_at)}` : '暂无任务记录'}
           />
         </div>
@@ -877,7 +952,7 @@ export function DataCenter() {
             <div className="grid gap-px border-b border-crypto-border bg-crypto-border sm:grid-cols-4">
               <div className="bg-crypto-card px-4 py-3">
                 <div className="text-[11px] text-gray-500">目录端点</div>
-                <div className="mt-1 text-xl font-bold tabular-nums text-white">{format(catalogItems.length)}</div>
+                <div className="mt-1 text-xl font-bold tabular-nums font-mono text-blue-300">{format(catalogItems.length)}</div>
               </div>
               <div className="bg-crypto-card px-4 py-3">
                 <div className="text-[11px] text-gray-500">当前目录支持</div>
@@ -1203,7 +1278,7 @@ export function DataCenter() {
                       {TIMEFRAME_LABELS[item.timeframe || '1d'] || item.timeframe || '1D'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold text-white">{format(item.recordCount)}</td>
+                  <td className="px-4 py-3 text-right font-semibold tabular-nums text-blue-300">{format(item.recordCount)}</td>
                   <td className="px-4 py-3 text-gray-500">
                     {item.firstTimestamp ? new Date(item.firstTimestamp).toISOString().slice(0, 10) : '--'}
                     <span className="px-1 text-gray-700">至</span>
@@ -1332,7 +1407,7 @@ export function DataCenter() {
                               <span className={clsx('text-[10px] font-medium', hasData ? 'text-white/70' : 'text-gray-600')}>{TIMEFRAME_LABELS[timeframe] || timeframe}</span>
                               <span className={clsx('text-[10px]', hasData ? itemPercent >= 80 ? 'text-emerald-300' : itemPercent >= 50 ? 'text-yellow-300' : 'text-red-300' : 'text-gray-700')}>{hasData ? `${itemPercent}%` : '-'}</span>
                             </div>
-                            <div className={clsx('text-xs font-bold', hasData ? 'text-white' : 'text-gray-600')}>{hasData ? format(item?.rows) : '-'}</div>
+                            <div className={clsx('text-xs font-bold tabular-nums', hasData ? 'text-blue-300' : 'text-gray-600')}>{hasData ? format(item?.rows) : '-'}</div>
                             <div className="mt-1.5 h-0.5 overflow-hidden rounded-full bg-white/5">
                               <div className={clsx('h-full rounded-full', itemPercent >= 80 ? 'bg-emerald-400' : itemPercent >= 50 ? 'bg-yellow-400' : 'bg-red-400')} style={{ width: `${itemPercent}%` }} />
                             </div>
@@ -1344,7 +1419,7 @@ export function DataCenter() {
                     <div className="flex w-44 shrink-0 items-center justify-end gap-3">
                       <div className="text-right">
                         <div className="text-xs text-gray-500">{filledTimeframes}/{allTimeframes.length} 周期</div>
-                        <div className="text-sm font-bold text-white">{format(group.total)}</div>
+                        <div className="text-sm font-bold tabular-nums text-blue-300">{format(group.total)}</div>
                       </div>
                       <ChevronDown className={clsx('h-4 w-4 text-gray-500 transition-transform', isExpanded && 'rotate-180')} />
                     </div>
@@ -1390,7 +1465,7 @@ export function DataCenter() {
                                 {!enabled ? <Clock className="h-3.5 w-3.5 text-gray-500" /> : item?.status === 'failed' ? <AlertCircle className="h-3.5 w-3.5 text-red-400" /> : hasData ? <CheckCircle className="h-3.5 w-3.5 text-emerald-400" /> : <Clock className="h-3.5 w-3.5 text-gray-500" />}
                               </div>
                               <div className="space-y-2">
-                                <div className={clsx('text-lg font-bold', hasData ? 'text-white' : 'text-gray-600')}>{hasData ? format(item?.rows) : '-'}</div>
+                                <div className={clsx('text-lg font-bold tabular-nums', hasData ? 'text-blue-300' : 'text-gray-600')}>{hasData ? format(item?.rows) : '-'}</div>
                                 <div className="space-y-1 text-[10px] text-gray-500">
                                   <div className="flex justify-between"><span>起始</span><span className="text-white/70">{item?.first_date || '--'}</span></div>
                                   <div className="flex justify-between"><span>结束</span><span className="text-white/70">{item?.last_date || '--'}</span></div>
@@ -1399,7 +1474,7 @@ export function DataCenter() {
                                 <div>
                                   <div className="mb-0.5 flex items-center justify-between text-[10px]">
                                     <span className="text-gray-500">覆盖率</span>
-                                    <span className="text-white/60">{itemPercent}%</span>
+                                    <span className={clsx('font-mono tabular-nums', itemPercent >= 80 ? 'text-emerald-300' : itemPercent >= 50 ? 'text-amber-300' : 'text-red-300')}>{itemPercent}%</span>
                                   </div>
                                   <div className="h-1 overflow-hidden rounded-full bg-white/5">
                                     <div className={clsx('h-full rounded-full', itemPercent >= 80 ? 'bg-emerald-400' : itemPercent >= 50 ? 'bg-yellow-400' : 'bg-red-400')} style={{ width: `${itemPercent}%` }} />
@@ -1435,8 +1510,8 @@ export function DataCenter() {
           <section className="w-full max-w-xl overflow-hidden rounded-2xl border border-emerald-500/30 bg-crypto-card shadow-2xl shadow-black/50">
             <div className="flex items-center justify-between border-b border-emerald-500/20 px-6 py-4">
               <div>
-                <h2 className="text-base font-semibold text-white">定时同步设置</h2>
-                <div className="mt-0.5 text-xs text-gray-500">每天收盘后提交全部 A股日 K 同步任务。</div>
+                <h2 className="text-base font-semibold text-white">盘后日终计划</h2>
+                <div className="mt-0.5 text-xs text-gray-500">写入 PostgreSQL 日终编排计划，交易日收盘后自动更新全市场 K 线与信号。</div>
               </div>
               <button onClick={() => setShowScheduleDialog(false)} className="rounded-lg border border-crypto-border p-2 text-gray-500 hover:text-white" aria-label="关闭定时同步设置">
                 <X className="h-4 w-4" />
@@ -1445,8 +1520,8 @@ export function DataCenter() {
             <div className="space-y-4 p-6">
               <label className="flex items-center justify-between rounded-xl border border-crypto-border bg-crypto-bg/55 px-4 py-3">
                 <span>
-                  <span className="block text-sm font-semibold text-white">启用定时同步</span>
-                  <span className="mt-0.5 block text-xs text-gray-500">开启后每天同步全部 A股股票的 1d K线。</span>
+                  <span className="block text-sm font-semibold text-white">启用盘后自动更新</span>
+                  <span className="mt-0.5 block text-xs text-gray-500">工作日按 cron 触发；需 ENABLE_SCHEDULER=true。</span>
                 </span>
                 <input
                   type="checkbox"
@@ -1455,29 +1530,48 @@ export function DataCenter() {
                   className="h-5 w-5 rounded border-crypto-border bg-gray-800 text-emerald-500 focus:ring-emerald-500"
                 />
               </label>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <label className="block">
-                  <span className="mb-2 block text-xs text-gray-400">每日执行时间</span>
-                  <div className="flex h-11 items-center rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm font-semibold text-white">
-                    {scheduleTimeValue} 北京时间
-                  </div>
+                  <span className="mb-2 block text-xs text-gray-400">执行小时</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={scheduleRunHour}
+                    onChange={(event) => setScheduleRunHour(Number(event.target.value))}
+                    className="h-11 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-white outline-none focus:border-emerald-500"
+                  />
                 </label>
                 <label className="block">
-                  <span className="mb-2 block text-xs text-gray-400">历史天数</span>
+                  <span className="mb-2 block text-xs text-gray-400">执行分钟</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={scheduleRunMinute}
+                    onChange={(event) => setScheduleRunMinute(Number(event.target.value))}
+                    className="h-11 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-white outline-none focus:border-emerald-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-xs text-gray-400">回补交易日数</span>
                   <input
                     type="number"
                     min={1}
-                    value={scheduleHistoryDays}
-                    onChange={(event) => setScheduleHistoryDays(Number(event.target.value))}
+                    max={10}
+                    value={scheduleCatchupDays}
+                    onChange={(event) => setScheduleCatchupDays(Number(event.target.value))}
                     className="h-11 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-white outline-none focus:border-emerald-500"
                   />
                 </label>
               </div>
               <div className="rounded-xl border border-crypto-border bg-crypto-bg/45 p-3 text-xs text-gray-500">
-                <div className="font-semibold text-gray-300">同步范围</div>
-                <div className="mt-1">全部 A股股票，来源为实时股票池缓存；缓存为空时自动从行情服务刷新。</div>
-                {scheduleConfig?.lastJobId && <div className="mt-2 text-gray-400">最近任务：已有执行记录</div>}
-                {scheduleConfig?.lastError && <div className="mt-2 text-red-300">最近错误：{scheduleConfig.lastError}</div>}
+                <div className="font-semibold text-gray-300">计划摘要</div>
+                <div className="mt-1">cron：<span className="font-mono text-gray-300">{scheduleRunMinute} {scheduleRunHour} * * 1-5</span>（Asia/Shanghai，工作日）</div>
+                <div className="mt-1">同步内容：全市场日 K（按交易日批量）+ 参考数据/市场证据/因子日终编排。</div>
+                <div className="mt-1">运行器状态：<span className="text-gray-300">{dailyReferenceSchedule?.runtimeStatus || 'unknown'}</span>
+                  {dailyReferenceSchedule?.effectiveNextRunAt ? ` · 下次 ${compactDate(dailyReferenceSchedule.effectiveNextRunAt)}` : ''}
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-crypto-border px-6 py-4">

@@ -401,6 +401,152 @@ class MarketService:
         return (morning_start <= time_val <= morning_end) or (afternoon_start <= time_val <= afternoon_end)
 
     @staticmethod
+    def _empty_market_pulse() -> Dict[str, Any]:
+        return {
+            "source_label": "PostgreSQL realtime cache",
+            "universe_count": None,
+            "rise_fall_ratio": None,
+            "median_change_percent": None,
+            "avg_change_percent": None,
+            "strong_up_5": None,
+            "strong_up_7": None,
+            "weak_down_5": None,
+            "weak_down_7": None,
+            "limit_up_est": None,
+            "limit_down_est": None,
+            "amount_top10_share": None,
+            "avg_turnover": None,
+            "avg_amplitude": None,
+            "avg_volume_ratio": None,
+            "volume_ratio_gt2": None,
+            "active_traded": None,
+        }
+
+    @staticmethod
+    def _limit_threshold_pct(code: Any, name: Any) -> float:
+        text = str(name or "").upper()
+        if "ST" in text:
+            return 4.8
+        digits = "".join(ch for ch in str(code or "") if ch.isdigit())
+        if digits.startswith(("300", "301", "688")):
+            return 19.8
+        if digits.startswith(("8", "4", "92")):
+            return 29.8
+        return 9.8
+
+    @staticmethod
+    def _build_market_pulse(
+        stocks: Sequence[Dict[str, Any]],
+        advancing: int,
+        declining: int,
+        unchanged: int,
+    ) -> Dict[str, Any]:
+        """Derive operator-facing breadth diagnostics from the realtime stock cache.
+
+        Uses board-aware limit thresholds as estimates (not exchange-confirmed seals).
+        Prefer sealed market-evidence short-line metrics for official limit ecology.
+        """
+        pulse = MarketService._empty_market_pulse()
+        pulse["universe_count"] = len(stocks)
+        pulse["active_traded"] = sum(1 for row in stocks if float(row.get("amount") or 0) > 0)
+        if advancing + declining > 0:
+            pulse["rise_fall_ratio"] = round(advancing / declining, 3) if declining else float(advancing)
+
+        changes: List[float] = []
+        strong_up_5 = strong_up_7 = weak_down_5 = weak_down_7 = 0
+        limit_up = limit_down = 0
+        turnovers: List[float] = []
+        amplitudes: List[float] = []
+        volume_ratios: List[float] = []
+        volume_ratio_gt2 = 0
+        amount_rows: List[float] = []
+
+        for row in stocks:
+            raw = row.get("change_percent")
+            if raw is None:
+                continue
+            try:
+                change = float(raw)
+            except (TypeError, ValueError):
+                continue
+            changes.append(change)
+            if change >= 5:
+                strong_up_5 += 1
+            if change >= 7:
+                strong_up_7 += 1
+            if change <= -5:
+                weak_down_5 += 1
+            if change <= -7:
+                weak_down_7 += 1
+            threshold = MarketService._limit_threshold_pct(row.get("code"), row.get("name"))
+            if change >= threshold:
+                limit_up += 1
+            if change <= -threshold:
+                limit_down += 1
+
+            turnover = row.get("turnover")
+            if turnover is not None:
+                try:
+                    turn_value = float(turnover)
+                    if 0 < turn_value < 100:
+                        turnovers.append(turn_value)
+                except (TypeError, ValueError):
+                    pass
+            amplitude = row.get("amplitude")
+            if amplitude is not None:
+                try:
+                    amp_value = float(amplitude)
+                    if 0 < amp_value < 100:
+                        amplitudes.append(amp_value)
+                except (TypeError, ValueError):
+                    pass
+            volume_ratio = row.get("volume_ratio")
+            if volume_ratio is not None:
+                try:
+                    ratio_value = float(volume_ratio)
+                    if 0 < ratio_value < 100:
+                        volume_ratios.append(ratio_value)
+                        if ratio_value >= 2:
+                            volume_ratio_gt2 += 1
+                except (TypeError, ValueError):
+                    pass
+            amount = row.get("amount")
+            if amount is not None:
+                try:
+                    amount_rows.append(float(amount))
+                except (TypeError, ValueError):
+                    pass
+
+        if changes:
+            ordered = sorted(changes)
+            mid = len(ordered) // 2
+            median = ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+            pulse["median_change_percent"] = round(median, 3)
+            pulse["avg_change_percent"] = round(sum(changes) / len(changes), 3)
+            pulse["strong_up_5"] = strong_up_5
+            pulse["strong_up_7"] = strong_up_7
+            pulse["weak_down_5"] = weak_down_5
+            pulse["weak_down_7"] = weak_down_7
+            pulse["limit_up_est"] = limit_up
+            pulse["limit_down_est"] = limit_down
+        if turnovers:
+            pulse["avg_turnover"] = round(sum(turnovers) / len(turnovers), 3)
+        if amplitudes:
+            pulse["avg_amplitude"] = round(sum(amplitudes) / len(amplitudes), 3)
+        if volume_ratios:
+            pulse["avg_volume_ratio"] = round(sum(volume_ratios) / len(volume_ratios), 3)
+            pulse["volume_ratio_gt2"] = volume_ratio_gt2
+        total_amount = sum(amount_rows)
+        if total_amount > 0:
+            top10 = sum(sorted(amount_rows, reverse=True)[:10])
+            pulse["amount_top10_share"] = round(top10 / total_amount * 100, 2)
+        # Keep breadth counts available for consumers that only read pulse.
+        pulse["advancing"] = advancing
+        pulse["declining"] = declining
+        pulse["unchanged"] = unchanged
+        return pulse
+
+    @staticmethod
     def get_market_overview() -> Dict[str, Any]:
         """获取市场概览数据 - 非开盘时间展示昨日数据，开盘时间展示实时数据"""
         now = datetime.now()
@@ -444,6 +590,7 @@ class MarketService:
             "bj_amount": None,
         }
         market_breadth = {"up": None, "down": None, "flat": None}
+        market_pulse: Dict[str, Any] = MarketService._empty_market_pulse()
         
         if stocks:
             # 计算情绪数据
@@ -483,6 +630,7 @@ class MarketService:
                 "unchanged": unchanged
             }
             market_breadth = {"up": advancing, "down": declining, "flat": unchanged}
+            market_pulse = MarketService._build_market_pulse(stocks, advancing, declining, unchanged)
             
             # 计算成交额
             valid_amounts = [float(s["amount"]) for s in stocks if s.get("amount") is not None]
@@ -503,12 +651,15 @@ class MarketService:
                 "sz_amount": round(sum(sz_values) / 100_000_000, 2) if sz_values else None,
                 "bj_amount": round(sum(bj_values) / 100_000_000, 2) if bj_values else None,
             }
+            if market_pulse.get("avg_volume_ratio") is None and avg_ratio is not None:
+                market_pulse["avg_volume_ratio"] = avg_ratio
         
         return {
             "indices": indices_data,
             "sentiment": sentiment_data,
             "volume": volume_data,
             "market_breadth": market_breadth,
+            "market_pulse": market_pulse,
             "data_status": {
                 "stock_snapshot_state": stock_snapshot_state,
                 "stock_snapshot_count": len(stocks),
@@ -1064,6 +1215,99 @@ class MarketService:
         elapsed_time = time.time() - start_time
         logger.info(f"No cached hot concepts available; returned empty list in {elapsed_time:.2f} seconds")
         return []
+
+    @staticmethod
+    def _amount_to_yi(value: Any) -> Optional[float]:
+        """Normalize mixed 元 / 亿 caches into 亿元."""
+        try:
+            amount = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(amount):
+            return None
+        if abs(amount) >= 10_000_000:  # treat as yuan
+            return amount / 100_000_000.0
+        return amount
+
+    @staticmethod
+    def get_sector_fund_flow(limit: int = 30) -> Dict[str, Any]:
+        """
+        Build homepage sector inflow/outflow board from PG hot-concept cache.
+
+        TuShare equivalents (for sync enrichment, not page-side live calls):
+        - moneyflow_ind_dc  东财板块资金流向
+        - moneyflow_ind_ths 同花顺行业资金流向
+        - moneyflow_cnt_ths 同花顺概念资金流向
+        Pairwise sector-migration matrices are not published by these endpoints;
+        Sankey links on the homepage are proportional visualization aids.
+        """
+        limit = max(1, min(int(limit), 50))
+        rows = MarketService.get_hot_concepts(limit=max(limit * 4, 80))
+        prepared: List[Dict[str, Any]] = []
+        updated_at = None
+        for row in rows:
+            name = str(row.get("name") or "").strip()
+            if not name:
+                continue
+            net_yi = MarketService._amount_to_yi(row.get("net_inflow"))
+            inflow_yi = MarketService._amount_to_yi(row.get("inflow"))
+            outflow_yi = MarketService._amount_to_yi(row.get("outflow"))
+            if net_yi is None:
+                if inflow_yi is not None or outflow_yi is not None:
+                    net_yi = (inflow_yi or 0.0) - (outflow_yi or 0.0)
+                else:
+                    continue
+            stamp = row.get("updated_at")
+            if stamp and (updated_at is None or str(stamp) > str(updated_at)):
+                updated_at = stamp
+            prepared.append(
+                {
+                    "rank": row.get("rank"),
+                    "name": name,
+                    "change_percent": row.get("change_percent"),
+                    "net_inflow_yi": round(float(net_yi), 2),
+                    "inflow_yi": round(float(inflow_yi), 2) if inflow_yi is not None else None,
+                    "outflow_yi": round(float(outflow_yi), 2) if outflow_yi is not None else None,
+                    "updated_at": stamp,
+                    "source_label": row.get("source_label") or "PostgreSQL hot_concepts_realtime",
+                }
+            )
+
+        inflows = sorted(
+            [item for item in prepared if item["net_inflow_yi"] > 0],
+            key=lambda item: item["net_inflow_yi"],
+            reverse=True,
+        )[:limit]
+        outflows = sorted(
+            [item for item in prepared if item["net_inflow_yi"] < 0],
+            key=lambda item: item["net_inflow_yi"],
+        )[:limit]
+
+        if updated_at is None:
+            data_status = "empty"
+        elif MarketService._is_stale_timestamp(updated_at, max_age_hours=36):
+            data_status = "stale"
+        else:
+            data_status = "fresh"
+
+        return {
+            "limit": limit,
+            "unit": "亿",
+            "inflows": inflows,
+            "outflows": outflows,
+            "rankings": prepared[:limit],
+            "updated_at": updated_at,
+            "data_status": data_status,
+            "source_label": (
+                prepared[0]["source_label"]
+                if prepared
+                else "PostgreSQL hot_concepts_realtime / TuShare moneyflow_ind_dc 可作同步上游"
+            ),
+            "methodology": (
+                "按板块主力净流入排序；连线按流入侧权重分摊，"
+                "不是 TuShare/东财公布的板块间迁移矩阵。"
+            ),
+        }
 
     @staticmethod
     def get_ths_hot(limit: int = 100, date: Optional[str] = None) -> List[Dict[str, Any]]:

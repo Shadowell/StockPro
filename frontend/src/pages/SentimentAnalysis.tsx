@@ -6,7 +6,7 @@ import { HotConceptItem, ThsHotItem, LianbanLadderResponse } from '@/types';
 import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
 import { COLOR_SCHEMES, useSettingsStore } from '@/stores/useSettingsStore';
-import { marketToneClass } from '@/utils/marketColors';
+import { marketToneClass, metricToneClass, type MetricTone } from '@/utils/marketColors';
 
 // 短线指标类型
 interface ShortLineIndex {
@@ -92,6 +92,17 @@ const SentimentGauge: React.FC<{ score: number; size?: number }> = ({ score, siz
 };
 
 // 统计卡片
+const STAT_TONE: Record<string, MetricTone> = {
+  red: 'up',
+  green: 'down',
+  orange: 'amber',
+  purple: 'amber',
+  blue: 'blue',
+  cyan: 'blue',
+  gray: 'neutral',
+  pink: 'up',
+};
+
 const StatCard: React.FC<{
   icon: React.ReactNode;
   label: string;
@@ -104,7 +115,7 @@ const StatCard: React.FC<{
       {icon}
       <span>{label}</span>
     </div>
-    <div className={`text-2xl font-black text-${color}-400`}>{value}</div>
+    <div className={`text-2xl font-black tabular-nums ${metricToneClass(STAT_TONE[color] ?? 'blue')}`}>{value}</div>
     {subValue && <div className="text-xs text-gray-500 mt-1">{subValue}</div>}
   </div>
 );

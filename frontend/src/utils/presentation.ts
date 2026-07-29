@@ -15,6 +15,10 @@ const STATUS_LABELS: Record<string, string> = {
   info: '提示',
   interrupted: '已中断',
   missing: '缺少数据',
+  new: '待执行',
+  ordered: '已下单',
+  closed: '已闭环',
+  invalidated: '已作废',
   paused: '已暂停',
   pending: '等待中',
   published: '已发布',
@@ -38,6 +42,7 @@ const SOURCE_LABELS: Record<string, string> = {
   market_breadth: '市场宽度',
   postgres: '本地数据库',
   postgresql: '本地数据库',
+  'postgresql paper audit evidence': '本地模拟盘审计证据',
   tushare_daily: '日线行情',
   tushare_kpl_list: '开盘啦热度榜',
   tushare_limit_industry: '涨停行业分类',
@@ -113,6 +118,51 @@ export function snapshotTypeLabel(value: unknown) {
 export function sideLabel(value: unknown) {
   const key = normalize(value);
   return SIDE_LABELS[key] ?? '未标注';
+}
+
+export function sideToneClass(value: unknown) {
+  const key = normalize(value);
+  if (key === 'buy') return 'text-up';
+  if (key === 'sell') return 'text-down';
+  return 'text-gray-300';
+}
+
+/** Localize Paper signal reason tokens such as order_target_percent=1.0 */
+export function signalReasonLabel(value: unknown) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '未标注原因';
+  const percent = raw.match(/^order_target_percent\s*=\s*([-+]?[0-9]*\.?[0-9]+)$/i);
+  if (percent) {
+    const ratio = Number(percent[1]);
+    if (Number.isFinite(ratio)) {
+      const pct = ratio * 100;
+      const pretty = Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
+      return `目标仓位 ${pretty}%`;
+    }
+  }
+  const target = raw.match(/^order_target\s*=\s*(.+)$/i);
+  if (target) return `目标数量 ${target[1].trim()}`;
+  const valueMatch = raw.match(/^order_target_value\s*=\s*(.+)$/i);
+  if (valueMatch) return `目标金额 ${valueMatch[1].trim()}`;
+  const order = raw.match(/^order\s*=\s*(.+)$/i);
+  if (order) return `下单数量 ${order[1].trim()}`;
+  return raw;
+}
+
+export function formatOperatorTime(value: unknown) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '--';
+  const stamp = new Date(raw);
+  if (Number.isNaN(stamp.getTime())) return raw;
+  return stamp.toLocaleString('zh-CN', {
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
 export function orderTypeLabel(value: unknown) {

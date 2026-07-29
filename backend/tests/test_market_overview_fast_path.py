@@ -37,6 +37,8 @@ class MarketOverviewFastPathTests(unittest.TestCase):
         self.assertEqual("unavailable", overview["data_status"]["index_snapshot_state"])
         self.assertIn("response_generated_at", overview)
         self.assertIsNone(overview["last_update"])
+        self.assertIsNone(overview["market_pulse"]["universe_count"])
+        self.assertIsNone(overview["market_pulse"]["rise_fall_ratio"])
 
     def test_market_overview_splits_volume_for_normalized_exchange_codes(self):
         stocks = [
@@ -57,6 +59,13 @@ class MarketOverviewFastPathTests(unittest.TestCase):
         self.assertEqual(2.0, overview["volume"]["sz_amount"])
         self.assertEqual(3.0, overview["volume"]["bj_amount"])
         self.assertIsNone(overview["volume"]["ratio"])
+        pulse = overview["market_pulse"]
+        self.assertEqual(3, pulse["universe_count"])
+        self.assertEqual(1.0, pulse["rise_fall_ratio"])
+        self.assertEqual(1, pulse["advancing"])
+        self.assertEqual(1, pulse["declining"])
+        self.assertEqual(1, pulse["unchanged"])
+        self.assertIn("amount_top10_share", pulse)
 
     def test_market_overview_does_not_invent_neutral_values_for_missing_changes(self):
         stocks = [{"code": "SH_600000", "change_percent": None, "amount": None, "updated_at": "2026-07-27T10:00:00"}]

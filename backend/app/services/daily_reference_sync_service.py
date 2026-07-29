@@ -171,7 +171,7 @@ class DailyReferenceSyncService:
                     }
                 try:
                     schedule = self._schedule_row(cursor)
-                    if not schedule["enabled"]:
+                    if not schedule["enabled"] and not force:
                         return {
                             "status": "disabled",
                             "tradeDate": normalized_date,
@@ -237,13 +237,12 @@ class DailyReferenceSyncService:
                         "universe": universe,
                     }
 
-                    job_id = self.kline_service.create_history_sync_job(
-                        symbols=normalized_symbols,
-                        timeframes=["1d"],
+                    job_id = self.kline_service.create_market_daily_sync_job(
                         start_date=normalized_date,
                         end_date=normalized_date,
                         job_name=f"daily-reference-{compact_trade_date(normalized_date)}",
-                    )
+                        trade_dates=[normalized_date],
+                    )["job_id"]
                     cursor.execute(
                         "UPDATE dataset_orchestration_runs SET sync_job_id = %s, updated_at = NOW() WHERE id = %s",
                         (job_id, run["id"]),

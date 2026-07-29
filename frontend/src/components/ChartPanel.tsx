@@ -580,7 +580,7 @@ export const ChartPanel: React.FC<{ mode?: ChartPanelMode; order?: ChartPanelOrd
   // 计算涨跌幅
   const currentPrice = intradayData && intradayData.length > 0 ? intradayData[intradayData.length - 1].price : null;
   const changePercent = currentPrice && preClose ? ((currentPrice - preClose) / preClose * 100) : null;
-  const changeColor = changePercent !== null ? marketToneClass(changePercent, 'text-gray-300') : 'text-white';
+  const changeColor = changePercent !== null ? marketToneClass(changePercent, 'text-blue-300') : 'text-blue-300';
 
   const items: Array<{ key: ChartPanelMode; node: React.ReactNode }> = [];
   if (mode === 'both' || mode === 'intraday') {

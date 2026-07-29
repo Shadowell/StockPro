@@ -408,8 +408,8 @@ class RealtimeSyncService:
                 db.insert_hot_concepts_history(today, concepts)
                 logger.debug(f"已同步{len(concepts)}个热门概念")
                 
-                # 同步前20个热门概念的龙头股
-                self._sync_concept_leaders(concepts[:20])
+                # 同步前 30 个热门概念的龙头股（首页 TOP30 点选需要）
+                self._sync_concept_leaders(concepts[:30])
                 
         except Exception as e:
             logger.error(f"同步热门概念失败: {e}")

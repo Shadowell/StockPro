@@ -3,7 +3,13 @@ BitPro 风格 K 线同步服务的 A 股 PG 实现。
 
 BitPro 的核心语义是：K 线数据有分周期存储、同步元数据、同步任务和任务项。
 StockPro 使用单一 Postgres 数据通道，把这些语义全部映射到 PostgreSQL。
+
+全市场日线优先按交易日拉取（TuShare ``daily(trade_date=...)``），避免按标的
+逐一请求导致全市场 × 一年不可用。
 """
+from __future__ import annotations
+
+import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -14,6 +20,9 @@ from app.db import db_instance as default_db
 
 
 KlineFetcher = Callable[[str, str, str, str], List[Dict[str, Any]]]
+MARKET_SYMBOL = "__MARKET__"
+# TuShare 积分档常见上限约 200 次/分钟；全市场按日约 250 次/年，保守限流。
+MARKET_DAY_SLEEP_SECONDS = 0.35
 
 
 class KlineSyncService:
@@ -51,20 +60,66 @@ class KlineSyncService:
             source="tushare",
         )
 
+    def create_market_daily_sync_job(
+        self,
+        start_date: str,
+        end_date: str,
+        job_name: Optional[str] = None,
+        trade_dates: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Create one job item per open trade date for full-market daily bars."""
+        dates = list(trade_dates or [])
+        if not dates:
+            if not hasattr(ak, "trade_cal_open_dates"):
+                raise RuntimeError("Market data provider does not expose trade_cal_open_dates")
+            dates = ak.trade_cal_open_dates(start_date, end_date)
+        dates = [str(value).strip()[:10] for value in dates if str(value or "").strip()]
+        dates = sorted(set(dates))
+        if not dates:
+            raise ValueError(f"区间 {start_date} ~ {end_date} 内无交易日，无法创建全市场同步任务")
+        if not hasattr(self.db, "create_market_day_sync_job"):
+            raise RuntimeError("Database does not support market-day sync jobs")
+        name = job_name or f"market-daily-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        job_id = self.db.create_market_day_sync_job(
+            job_name=name,
+            trade_dates=dates,
+            source="tushare",
+            market_symbol=MARKET_SYMBOL,
+        )
+        return {
+            "jobId": job_id,
+            "job_id": job_id,
+            "jobName": name,
+            "startDate": dates[0],
+            "endDate": dates[-1],
+            "tradeDates": dates,
+            "tradeDateCount": len(dates),
+            "mode": "market_by_trade_date",
+        }
+
     def run_job(self, job_id: int) -> Dict[str, Any]:
         self.db.update_sync_job_status(job_id, "running", "K线历史同步运行中")
         items = self.db.get_sync_job_items(job_id)
+        name_map = self._load_symbol_name_map()
+        market_item_seen = False
         for item in items:
             if item["status"] not in {"pending", "running"}:
                 continue
             self.db.update_sync_job_item(item["id"], status="running")
             try:
-                records = self.fetcher(
-                    item["symbol"],
-                    item["timeframe"],
-                    item["start_date"],
-                    item["end_date"],
-                )
+                if self._is_market_item(item["symbol"]):
+                    if market_item_seen:
+                        time.sleep(MARKET_DAY_SLEEP_SECONDS)
+                    market_item_seen = True
+                    trade_date = str(item.get("start_date") or item.get("end_date") or "")[:10]
+                    records = self._fetch_market_day(trade_date, name_map=name_map)
+                else:
+                    records = self.fetcher(
+                        item["symbol"],
+                        item["timeframe"],
+                        item["start_date"],
+                        item["end_date"],
+                    )
                 self.db.insert_klines(records, timeframe=item["timeframe"], exchange=item["exchange"])
                 actual_sources = {str(record.get("source") or "unknown") for record in records}
                 fallback_reasons = {str(record.get("fallback_reason")) for record in records if record.get("fallback_reason")}
@@ -98,6 +153,41 @@ class KlineSyncService:
             self.db.update_sync_job_status(job_id, job["status"], "K线历史同步部分失败" if job["status"] == "partial" else "K线历史同步失败")
             job = self.db.get_sync_job(job_id)
         return job or {"id": job_id, "status": "unknown"}
+
+    def _is_market_item(self, symbol: Any) -> bool:
+        text = str(symbol or "").strip().upper()
+        return text == MARKET_SYMBOL or text.startswith(f"{MARKET_SYMBOL}:")
+
+    def _fetch_market_day(self, trade_date: str, name_map: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+        if not trade_date:
+            raise ValueError("trade_date is required for market-day sync")
+        if not hasattr(ak, "daily_by_trade_date"):
+            raise RuntimeError("Market data provider does not expose daily_by_trade_date")
+        frame = ak.daily_by_trade_date(trade_date)
+        if frame is None or getattr(frame, "empty", True):
+            return []
+        names = name_map or {}
+        records: List[Dict[str, Any]] = []
+        for _, row in frame.iterrows():
+            symbol = str(row.get("symbol") or "").strip().upper()
+            if not symbol:
+                continue
+            records.append(
+                {
+                    "exchange": "cn",
+                    "symbol": symbol,
+                    "name": names.get(symbol, ""),
+                    "date": str(row.get("日期") or trade_date)[:10],
+                    "open": self._float(row.get("开盘")),
+                    "high": self._float(row.get("最高")),
+                    "low": self._float(row.get("最低")),
+                    "close": self._float(row.get("收盘")),
+                    "volume": self._int(row.get("成交量")),
+                    "turnover": self._float(row.get("成交额")),
+                    "source": "tushare",
+                }
+            )
+        return records
 
     def _fetch_from_provider(self, symbol: str, timeframe: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         if self._normalize_timeframe(timeframe) != "1d":
@@ -148,6 +238,21 @@ class KlineSyncService:
                 }
             )
         return records
+
+    def _load_symbol_name_map(self) -> Dict[str, str]:
+        if not hasattr(self.db, "get_all_stocks_realtime"):
+            return {}
+        try:
+            rows = self.db.get_all_stocks_realtime() or []
+        except Exception:
+            return {}
+        mapping: Dict[str, str] = {}
+        for row in rows:
+            symbol = self._normalize_symbol(row.get("code") or row.get("symbol") or "")
+            name = str(row.get("name") or "").strip()
+            if symbol and name:
+                mapping[symbol] = name
+        return mapping
 
     def _normalize_symbol(self, symbol: str) -> str:
         text = str(symbol or "").strip().upper().replace(".", "_")

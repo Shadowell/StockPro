@@ -30,7 +30,7 @@ Do not copy BitPro business-page source into StockPro.
 | --- | --- |
 | `/` | All primary dashboard sections |
 | `/market` | `structure`, `sectors`, `sentiment`, `events`, `calendar`, `stock` |
-| `/pools` | `mine`, `screener`, `factor`, `sector`, `event`, `snapshots` — workflow strip 建规则→生成→封存→回测; mine is workbench with next-action coach; create tabs explain type purpose; snapshots hand off to backtest |
+| `/pools` | `mine`, `screener`, `factor`, `sector`, `event`, `snapshots` — workflow strip 建规则→生成→封存→回测; mine is the operator workbench with next-action guidance; create tabs explain type purpose; `snapshots` is handoff to backtest |
 | `/factors` | `library`, `runs`, `single`, `multi`, `correlation`, `values`, author modal |
 | `/strategy` | `my` / `plaza`, list, editor, detail |
 | `/backtest` | dashboard, wizard steps 1–3, detail tabs 总览/收益分析/持仓/交易/订单/日志/代码与参数/归因, compare |

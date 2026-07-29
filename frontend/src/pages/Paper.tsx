@@ -28,8 +28,15 @@ import {
 import type { BacktestRun, PaperRuntimeInstance } from "../types";
 import { PaperInstanceDashboard } from "../components/PaperInstanceDashboard";
 import { PaperRuntimeInstanceDetail } from "../components/PaperRuntimeInstanceDetail";
+import { MetricValue, OperatorPageHeader } from "../components/OperatorShell";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
-import { marketToneClass } from "../utils/marketColors";
+import { SymbolCell } from "../components/SymbolCell";
+import { useSymbolNames } from "../hooks/useSymbolNames";
+import {
+  countMetricColor,
+  marketMetricColor,
+  type MetricTone,
+} from "../utils/marketColors";
 
 const TABS = [
   ["instances", "实例"],
@@ -42,11 +49,12 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number][0];
 type StatusFilter = "all" | PaperRuntimeInstance["status"] | "stale";
-type DataScope = "business" | "test";
 type PageView = "dashboard" | "create" | "detail";
 const panel = "rounded-xl border border-crypto-border bg-crypto-card";
 const input =
   "h-10 rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-slate-200 outline-none focus:border-blue-500/60";
+const isBusinessPurpose = (item: { data_purpose?: string | null }) =>
+  !item.data_purpose || item.data_purpose === "user";
 const value = (current: unknown, digits = 2) =>
   current === null || current === undefined || current === ""
     ? "--"
@@ -125,10 +133,12 @@ function DataTable({
   rows,
   columns,
   empty,
+  symbolNames = {},
 }: {
   rows: Array<Record<string, unknown>>;
   columns: Array<[string, string]>;
   empty: string;
+  symbolNames?: Record<string, string>;
 }) {
   return (
     <div className={`${panel} overflow-hidden`}>
@@ -152,13 +162,22 @@ function DataTable({
                 {columns.map(([key]) => (
                   <td
                     key={key}
-                    className="max-w-[320px] truncate px-4 py-3 font-mono text-xs text-slate-300"
+                    className="max-w-[320px] truncate px-4 py-3 text-xs text-slate-300"
                   >
-                    {key.includes("_at") || key === "signal_time"
-                      ? time(row[key])
-                      : typeof row[key] === "object"
-                        ? JSON.stringify(row[key])
-                        : value(row[key])}
+                    {key === "symbol" ? (
+                      <SymbolCell
+                        symbol={String(row.symbol ?? "")}
+                        name={String(row.name ?? "")}
+                        names={symbolNames}
+                        compact
+                      />
+                    ) : key.includes("_at") || key === "signal_time" ? (
+                      <span className="font-mono">{time(row[key])}</span>
+                    ) : typeof row[key] === "object" ? (
+                      <span className="font-mono">{JSON.stringify(row[key])}</span>
+                    ) : (
+                      <span className="font-mono">{value(row[key])}</span>
+                    )}
                   </td>
                 ))}
               </tr>
@@ -177,17 +196,19 @@ function Metric({
   label,
   current,
   note,
-  tone = "text-white",
+  tone = "blue",
 }: {
   label: string;
   current: string;
   note?: string;
-  tone?: string;
+  tone?: MetricTone;
 }) {
   return (
     <div className={`${panel} p-4`}>
       <div className="text-[11px] text-slate-500">{label}</div>
-      <div className={`mt-2 text-xl font-bold ${tone}`}>{current}</div>
+      <div className="mt-2">
+        <MetricValue tone={tone}>{current}</MetricValue>
+      </div>
       {note ? (
         <div className="mt-1 truncate text-[10px] text-slate-600">{note}</div>
       ) : null}
@@ -218,17 +239,12 @@ export function Paper() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [dataScope, setDataScope] = useState<DataScope>("business");
 
   const eligible = useMemo(
     () =>
       runs.filter(
         (item) =>
-          (dataScope === "business"
-            ? !item.data_purpose || item.data_purpose === "user"
-            : Boolean(
-                item.data_purpose && item.data_purpose !== "user",
-              )) &&
+          isBusinessPurpose(item) &&
           item.status === "success" &&
           item.run_mode === "full" &&
           item.promotion_status === "paper_eligible" &&
@@ -236,17 +252,12 @@ export function Paper() {
           item.pool_snapshot_id &&
           item.research_protocol_id,
       ),
-    [dataScope, runs],
+    [runs],
   );
   const selectedRun = eligible.find((item) => item.id === runId);
   const scopedInstances = useMemo(
-    () =>
-      instances.filter((item) =>
-        dataScope === "business"
-          ? !item.data_purpose || item.data_purpose === "user"
-          : Boolean(item.data_purpose && item.data_purpose !== "user"),
-      ),
-    [dataScope, instances],
+    () => instances.filter((item) => isBusinessPurpose(item)),
+    [instances],
   );
   const visibleInstances = useMemo(
     () =>
@@ -265,21 +276,38 @@ export function Paper() {
     [query, scopedInstances, statusFilter],
   );
   const summary = useMemo(() => {
-    const validEquity = scopedInstances.filter(
-      (item) =>
-        item.equity !== null &&
-        item.equity !== undefined &&
-        item.initial_cash !== null &&
-        item.initial_cash !== undefined,
-    );
-    const totalEquity = validEquity.length
-      ? validEquity.reduce((sum, item) => sum + Number(item.equity), 0)
+    const equityOf = (item: (typeof scopedInstances)[number]) => {
+      if (item.equity !== null && item.equity !== undefined) {
+        const equity = Number(item.equity);
+        if (Number.isFinite(equity)) return equity;
+      }
+      if (item.cash_balance !== null && item.cash_balance !== undefined) {
+        const cash = Number(item.cash_balance);
+        if (Number.isFinite(cash)) return cash;
+      }
+      if (item.initial_cash !== null && item.initial_cash !== undefined) {
+        const initial = Number(item.initial_cash);
+        if (Number.isFinite(initial)) return initial;
+      }
+      return null;
+    };
+    const valued = scopedInstances
+      .map((item) => ({
+        equity: equityOf(item),
+        initial:
+          item.initial_cash === null || item.initial_cash === undefined
+            ? null
+            : Number(item.initial_cash),
+      }))
+      .filter(
+        (row): row is { equity: number; initial: number } =>
+          row.equity !== null && row.initial !== null && Number.isFinite(row.initial),
+      );
+    const totalEquity = valued.length
+      ? valued.reduce((sum, row) => sum + row.equity, 0)
       : null;
-    const totalPnl = validEquity.length
-      ? validEquity.reduce(
-          (sum, item) => sum + Number(item.equity) - Number(item.initial_cash),
-          0,
-        )
+    const totalPnl = valued.length
+      ? valued.reduce((sum, row) => sum + row.equity - row.initial, 0)
       : null;
     return {
       running: scopedInstances.filter(
@@ -302,11 +330,7 @@ export function Paper() {
       ]);
       setInstances(paper.items);
       setRuns(backtests.items);
-      const scopeInstances = paper.items.filter((item) =>
-        dataScope === "business"
-          ? !item.data_purpose || item.data_purpose === "user"
-          : Boolean(item.data_purpose && item.data_purpose !== "user"),
-      );
+      const scopeInstances = paper.items.filter((item) => isBusinessPurpose(item));
       const id =
         [
           keepId,
@@ -323,11 +347,7 @@ export function Paper() {
         setRunId(
           backtests.items.find(
             (item) =>
-              (dataScope === "business"
-                ? !item.data_purpose || item.data_purpose === "user"
-                : Boolean(
-                    item.data_purpose && item.data_purpose !== "user",
-                  )) &&
+              isBusinessPurpose(item) &&
               item.promotion_status === "paper_eligible" &&
               item.factor_snapshot_id &&
               item.pool_snapshot_id,
@@ -345,28 +365,6 @@ export function Paper() {
   useEffect(() => {
     void load();
   }, []);
-  useEffect(() => {
-    if (!loaded) return;
-    let active = true;
-    const next = scopedInstances[0];
-    setSelected(null);
-    setRunId(eligible[0]?.id ?? "");
-    if (next) {
-      getPaperInstance(next.id)
-        .then((instance) => {
-          if (active) setSelected(instance);
-        })
-        .catch((reason) => {
-          if (active)
-            setError(
-              reason instanceof Error ? reason.message : "实例详情加载失败",
-            );
-        });
-    }
-    return () => {
-      active = false;
-    };
-  }, [dataScope]);
 
   const chooseInstance = async (id: string) => {
     setBusy(true);
@@ -461,10 +459,21 @@ export function Paper() {
     }
   };
 
+  const selectedEquity =
+    selected?.equity !== null && selected?.equity !== undefined
+      ? Number(selected.equity)
+      : selected?.cash_balance !== null && selected?.cash_balance !== undefined
+        ? Number(selected.cash_balance)
+        : selected?.initial_cash !== null && selected?.initial_cash !== undefined
+          ? Number(selected.initial_cash)
+          : null;
   const pnl =
-    selected?.equity === null || selected?.equity === undefined
+    selectedEquity === null ||
+    selected?.initial_cash === null ||
+    selected?.initial_cash === undefined ||
+    !Number.isFinite(selectedEquity)
       ? null
-      : Number(selected.equity) - Number(selected.initial_cash);
+      : selectedEquity - Number(selected.initial_cash);
   const returnRate =
     pnl === null || Number(selected?.initial_cash) <= 0
       ? null
@@ -522,6 +531,11 @@ export function Paper() {
                 ? selected.events
                 : []) ?? [])
     : [];
+  const rowSymbols = useMemo(
+    () => rows.map((row) => String(row.symbol ?? "")),
+    [rows],
+  );
+  const symbolNames = useSymbolNames(rowSymbols);
 
   if (pageView === "detail" && selected) {
     const qualifyingRun =
@@ -553,32 +567,26 @@ export function Paper() {
     <div
       className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8"
       data-testid="paper-runtime-workbench"
+      data-operator-page="paper"
     >
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="inline-flex items-center gap-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-2.5 text-sm font-semibold text-yellow-300">
-            <FlaskConical className="h-4 w-4" />
-            模拟盘
-          </h1>
-          <p className="mt-1.5 text-[11px] text-slate-500">
-            模拟：只处理 PostgreSQL Paper 记录与模拟成交，不触碰真实资金。
-          </p>
-        </div>
-        {pageView !== "dashboard" ? (
-          <span className="rounded-lg border border-crypto-border bg-crypto-card px-2 py-1 text-xs text-slate-400">
-            {pageView === "create" ? "创建向导" : "实例监控"}
-          </span>
-        ) : null}
-      </div>
+      <OperatorPageHeader
+        icon={FlaskConical}
+        title="模拟盘"
+        subtitle="只处理 PostgreSQL Paper 记录与模拟成交，不触碰真实资金。子面：优选/全部、创建、详情。"
+        actions={
+          pageView !== "dashboard" ? (
+            <span className="rounded-lg border border-crypto-border bg-crypto-card px-2 py-1 text-xs text-slate-400">
+              {pageView === "create" ? "创建向导" : "实例监控"}
+            </span>
+          ) : undefined
+        }
+      />
 
       {pageView === "dashboard" ? (
         <PaperInstanceDashboard
           instances={scopedInstances}
-          allInstances={instances}
-          dataScope={dataScope}
           loaded={loaded}
           busy={busy}
-          onScopeChange={setDataScope}
           onCreate={openCreate}
           onOpenDetail={(instance) => void chooseInstance(instance.id)}
           onAction={(instance, next) => void actionFor(instance, next)}
@@ -625,24 +633,6 @@ export function Paper() {
       <section
         className="hidden"
       >
-        <div className="flex rounded-lg border border-crypto-border bg-crypto-bg p-1">
-          <button
-            type="button"
-            data-testid="paper-legacy-scope-business"
-            onClick={() => setDataScope("business")}
-            className={`rounded-md px-3 py-1.5 font-semibold ${dataScope === "business" ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-200"}`}
-          >
-            我的实例 {instances.filter((item) => !item.data_purpose || item.data_purpose === "user").length}
-          </button>
-          <button
-            type="button"
-            data-testid="paper-legacy-scope-test"
-            onClick={() => setDataScope("test")}
-            className={`rounded-md px-3 py-1.5 font-semibold ${dataScope === "test" ? "bg-amber-500/15 text-amber-200" : "text-slate-500 hover:text-slate-200"}`}
-          >
-            测试与验收 {instances.filter((item) => item.data_purpose && item.data_purpose !== "user").length}
-          </button>
-        </div>
         <span className="font-semibold text-slate-300">当前模式：模拟交易</span>
         <span className="text-slate-500">
           数据源：
@@ -658,11 +648,6 @@ export function Paper() {
           陈旧实例：{summary.stale}
         </span>
       </section>
-      {dataScope === "test" ? (
-        <div className="hidden" role="status">
-          当前仅查看自动化验收与种子实例；其权益、盈亏、心跳和成交不会计入默认模拟盘统计。
-        </div>
-      ) : null}
 
       <div className="hidden">
         <Metric
@@ -674,33 +659,31 @@ export function Paper() {
           label="健康运行"
           current={loaded ? value(summary.running, 0) : "--"}
           note="状态 + 心跳 SLA"
-          tone="text-emerald-300"
+          tone="green"
         />
         <Metric
           label="心跳陈旧"
           current={loaded ? value(summary.stale, 0) : "--"}
           note="超过 15 分钟降级"
-          tone={summary.stale ? "text-red-300" : "text-white"}
+          tone={summary.stale ? "red" : "neutral"}
         />
         <Metric
           label="组合权益"
           current={currency(summary.totalEquity)}
           note="仅汇总有权益记录的实例"
+          tone="blue"
         />
         <Metric
           label="累计盈亏"
           current={currency(summary.totalPnl)}
           note="权益 - 初始资金"
-          tone={
-            summary.totalPnl !== null && summary.totalPnl < 0
-              ? "text-red-300"
-              : "text-emerald-300"
-          }
+          tone={marketMetricColor(summary.totalPnl)}
         />
         <Metric
           label="成交记录"
           current={loaded ? value(summary.trades, 0) : "--"}
           note="模拟成交"
+          tone={countMetricColor(summary.trades)}
         />
       </div>
 
@@ -821,13 +804,6 @@ export function Paper() {
                     <div className="truncate font-semibold text-slate-200">
                       {item.name}
                     </div>
-                    {item.data_purpose !== "user" && item.data_purpose ? (
-                      <span className="mt-1 inline-block rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-300">
-                        {item.data_purpose === "acceptance"
-                          ? "验收数据"
-                          : "种子数据"}
-                      </span>
-                    ) : null}
                     <div className="mt-1 truncate font-mono text-[10px] text-slate-600">
                       {item.id}
                     </div>
@@ -895,9 +871,6 @@ export function Paper() {
                 <option value="">请选择</option>
                 {eligible.map((run) => (
                   <option key={run.id} value={run.id}>
-                    {run.data_purpose !== "user" && run.data_purpose
-                      ? `[${run.data_purpose === "acceptance" ? "验收" : "种子"}] `
-                      : ""}
                     {run.name} · {run.strategy_name ?? "策略回测"}
                   </option>
                 ))}
@@ -1027,18 +1000,18 @@ export function Paper() {
           <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <Metric
               label="账户权益"
-              current={currency(selected.equity)}
+              current={currency(selectedEquity ?? selected.equity)}
               note={`快照 ${latestEquity?.trade_date ?? "--"}`}
             />
             <Metric
               label="累计盈亏"
               current={currency(pnl)}
-              tone={marketToneClass(pnl)}
+              tone={marketMetricColor(pnl)}
             />
             <Metric
               label="累计收益"
               current={percent(returnRate)}
-              tone={marketToneClass(returnRate)}
+              tone={marketMetricColor(returnRate)}
             />
             <Metric
               label="可用现金"
@@ -1060,6 +1033,7 @@ export function Paper() {
       {pageView === "detail" && selected && tab === "signals" ? (
         <DataTable
           rows={rows}
+          symbolNames={symbolNames}
           empty="尚无策略信号；这不是 0 信号结论，仅表示当前实例无持久化记录。"
           columns={[
             ["signal_time", "信号时间"],
@@ -1074,6 +1048,7 @@ export function Paper() {
       {pageView === "detail" && selected && tab === "orders" ? (
         <DataTable
           rows={rows}
+          symbolNames={symbolNames}
           empty="尚无订单"
           columns={[
             ["created_at", "创建时间"],
@@ -1089,6 +1064,7 @@ export function Paper() {
       {pageView === "detail" && selected && tab === "positions" ? (
         <DataTable
           rows={rows}
+          symbolNames={symbolNames}
           empty="当前无持仓"
           columns={[
             ["symbol", "证券"],
@@ -1104,6 +1080,7 @@ export function Paper() {
       {pageView === "detail" && selected && tab === "trades" ? (
         <DataTable
           rows={rows}
+          symbolNames={symbolNames}
           empty="尚无成交记录"
           columns={[
             ["traded_at", "成交时间"],

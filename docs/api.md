@@ -204,6 +204,26 @@
 - 实时数据：`hot_concepts_realtime` 表
 - 历史数据：`hot_concepts_history` 表
 - 原始接口：AkShare `stock_board_concept_name_em`
+- TuShare 同步上游可对标：`moneyflow_ind_dc` / `moneyflow_ind_ths` / `moneyflow_cnt_ths`
+
+---
+
+### 1.3b GET /market/sector-fund-flow
+
+首页板块流入/流出看板（净流入排序，金额统一为亿元）。
+
+**请求参数**：
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| limit | int | 否 | 30 | 流入、流出、排行各自上限 (1-50) |
+
+**响应字段**：
+- `inflows` / `outflows`：按净流入正/负排序的板块列表（`net_inflow_yi` 等）
+- `rankings`：热门板块 TOP N（同源缓存顺序截断）
+- `data_status`：`fresh` | `stale` | `empty`
+- `methodology`：说明 Sankey 连线为按流入权重分摊的可视化，不是板块间真实迁移矩阵
+
+**数据来源**：复用 `hot_concepts_realtime` 资金流字段；页面侧不直连 TuShare。
 
 ---
 

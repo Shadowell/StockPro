@@ -143,17 +143,17 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
       data-testid="financial-operator-shell"
       data-auth-role={authProfile?.role || 'unknown'}
     >
-      <aside className="hidden w-16 shrink-0 flex-col overflow-hidden border-r border-slate-800 bg-[#090e15] md:flex">
-        <div className="flex h-16 items-center justify-center border-b border-slate-800">
+      <aside className="hidden w-16 shrink-0 flex-col overflow-hidden border-r border-crypto-border bg-crypto-card md:flex">
+        <div className="flex h-16 items-center justify-center border-b border-crypto-border">
           <StockProMark />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto py-4">
           <Navigation />
         </div>
-        <div className="space-y-1 border-t border-slate-800 p-1">
+        <div className="space-y-1 border-t border-crypto-border p-1">
           <div
             className={clsx(
-              'rounded px-1 py-1 text-center text-[9px] font-semibold',
+              'w-full rounded px-1 py-1 text-center text-[9px] font-semibold',
               authProfile?.role === 'guest'
                 ? 'bg-cyan-500/10 text-cyan-300'
                 : 'bg-emerald-500/10 text-emerald-300',
@@ -165,7 +165,12 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
             <button
               type="button"
               onClick={() => setShowSettings(true)}
-              className="flex h-9 w-full items-center justify-center rounded text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+              className={clsx(
+                'flex h-10 w-full flex-col items-center justify-center rounded text-xs transition-colors',
+                showSettings
+                  ? 'bg-blue-500/10 text-blue-400'
+                  : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
+              )}
               aria-label="设置"
             >
               <Settings className="h-4 w-4" />
@@ -174,7 +179,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           <button
             type="button"
             onClick={logout}
-            className="flex h-9 w-full items-center justify-center rounded text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+            className="flex h-10 w-full flex-col items-center justify-center rounded text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-200"
             aria-label="退出登录"
           >
             <LogOut className="h-4 w-4" />
@@ -186,7 +191,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         className="min-w-0 flex-1 overflow-auto"
         data-operator-surface="page"
       >
-        <div className="sticky top-0 z-30 border-b border-slate-800 bg-[#090e15]/95 px-3 py-2 backdrop-blur md:hidden">
+        <div className="sticky top-0 z-30 border-b border-crypto-border bg-crypto-card/95 px-3 py-2 backdrop-blur md:hidden">
           <div className="flex items-center justify-between gap-3">
             <StockProMark />
             <div className="min-w-0 flex-1 overflow-x-auto">
@@ -195,7 +200,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
             <button
               type="button"
               onClick={logout}
-              className="rounded p-2 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+              className="rounded p-2 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-200"
               aria-label="退出登录"
             >
               <LogOut className="h-4 w-4" />

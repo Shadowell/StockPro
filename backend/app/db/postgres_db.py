@@ -914,6 +914,47 @@ class PostgresDatabase:
                     )
         return job_id
 
+    def create_market_day_sync_job(
+        self,
+        job_name: str,
+        trade_dates: List[str],
+        source: str = "tushare",
+        market_symbol: str = "__MARKET__",
+    ) -> int:
+        """One job item per trade date for date-based full-market daily pulls."""
+        dates = [str(value).strip()[:10] for value in trade_dates if str(value or "").strip()]
+        dates = list(dict.fromkeys(dates))
+        if not dates:
+            raise ValueError("trade_dates is required")
+        start_date = dates[0]
+        end_date = dates[-1]
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO sync_jobs
+                    (job_name, source, start_date, end_date, status, total_items)
+                    VALUES (%s, %s, %s, %s, 'pending', %s)
+                    RETURNING id
+                    """,
+                    (job_name, source, start_date, end_date, len(dates)),
+                )
+                job_id = cursor.fetchone()[0]
+                items = [
+                    (job_id, "cn", market_symbol, "1d", "kline", trade_date, trade_date, "pending")
+                    for trade_date in dates
+                ]
+                psycopg2.extras.execute_values(
+                    cursor,
+                    """
+                    INSERT INTO sync_job_items
+                    (job_id, exchange, symbol, timeframe, data_type, start_date, end_date, status)
+                    VALUES %s
+                    """,
+                    items,
+                )
+        return job_id
+
     def get_sync_job(self, job_id: int) -> Optional[Dict]:
         with self.get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:

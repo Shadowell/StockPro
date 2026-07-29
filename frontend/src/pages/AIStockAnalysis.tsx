@@ -5,6 +5,7 @@ import { analyzeStockByAI, getDailyChart, getIntradayChart, searchStocks, getSto
 import { AIStockAnalyzeResponse, DailyChartData, IntradayChartData, StockCandidate, StockFundamentals } from '@/types';
 import clsx from 'clsx';
 import ReactECharts from 'echarts-for-react';
+import { MetricValue } from '@/components/OperatorShell';
 import { COLOR_SCHEMES, useSettingsStore } from '@/stores/useSettingsStore';
 
 type TooltipAxisParam = { dataIndex?: number };
@@ -16,6 +17,21 @@ const asString = (value: unknown, fallback = ''): string => (typeof value === 's
 const asStringArray = (value: unknown): string[] => (
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 );
+
+const DIMENSION_ACCENT: Record<string, string> = {
+  blue: 'text-blue-400',
+  purple: 'text-purple-400',
+  yellow: 'text-yellow-400',
+  orange: 'text-orange-400',
+};
+
+const dimensionAccentClass = (color: string) => DIMENSION_ACCENT[color] ?? 'text-blue-400';
+
+const scoreMetricTone = (score: number): 'green' | 'amber' | 'red' => {
+  if (score >= 70) return 'green';
+  if (score >= 50) return 'amber';
+  return 'red';
+};
 
 // 评分等级组件
 const RatingBadge: React.FC<{ rating: 'buy' | 'hold' | 'sell' | 'neutral' }> = ({ rating }) => {
@@ -68,7 +84,13 @@ const ScoreDashboard: React.FC<{ score: number; label: string }> = ({ score, lab
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-2xl font-black" style={{ color }}>{score}</span>
+          <MetricValue
+            tone={score >= 80 ? 'green' : score >= 60 ? 'amber' : score >= 40 ? 'amber' : 'red'}
+            size="xl"
+            className="font-black"
+          >
+            {score}
+          </MetricValue>
         </div>
       </div>
       <span className="text-xs text-gray-400 mt-2 font-medium">{label}</span>
@@ -83,18 +105,20 @@ const AnalysisDimension: React.FC<{
   score: number;
   points: string[];
   color: string;
-}> = ({ icon, title, score, points, color }) => (
+}> = ({ icon, title, score, points, color }) => {
+  const accentClass = dimensionAccentClass(color);
+  return (
   <div className="bg-crypto-bg border border-crypto-border rounded-xl p-4">
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
-        <span className={`text-${color}-400`}>{icon}</span>
+        <span className={accentClass}>{icon}</span>
         <h4 className="text-sm font-bold text-gray-200">{title}</h4>
       </div>
       <span className={clsx(
-        "px-2 py-0.5 rounded text-xs font-bold",
-        score >= 70 ? "bg-green-500/20 text-green-400" :
-        score >= 50 ? "bg-yellow-500/20 text-yellow-400" :
-        "bg-red-500/20 text-red-400"
+        'px-2 py-0.5 rounded text-xs font-bold tabular-nums',
+        scoreMetricTone(score) === 'green' ? 'bg-green-500/20 text-green-400'
+          : scoreMetricTone(score) === 'amber' ? 'bg-yellow-500/20 text-yellow-400'
+            : 'bg-red-500/20 text-red-400',
       )}>
         {score}分
       </span>
@@ -102,7 +126,7 @@ const AnalysisDimension: React.FC<{
     <div className="space-y-2">
       {points.map((point, idx) => (
         <div key={idx} className="flex gap-2 text-xs text-gray-400">
-          <ChevronRight size={14} className={`text-${color}-400 flex-shrink-0 mt-0.5`} />
+          <ChevronRight size={14} className={clsx(accentClass, 'flex-shrink-0 mt-0.5')} />
           <span>{point}</span>
         </div>
       ))}
@@ -111,7 +135,8 @@ const AnalysisDimension: React.FC<{
       )}
     </div>
   </div>
-);
+  );
+};
 
 export const AIStockAnalysis: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -699,23 +724,23 @@ export const AIStockAnalysis: React.FC = () => {
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div className="flex justify-between">
                       <span className="text-gray-500">市盈率(PE)</span>
-                      <span className="text-gray-200 font-mono">{fundamentals.pe_dynamic?.toFixed(2) || '--'}</span>
+                      <span className="font-mono tabular-nums text-blue-300">{fundamentals.pe_dynamic?.toFixed(2) || '--'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">市净率(PB)</span>
-                      <span className="text-gray-200 font-mono">{fundamentals.pb?.toFixed(2) || '--'}</span>
+                      <span className="font-mono tabular-nums text-blue-300">{fundamentals.pb?.toFixed(2) || '--'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">换手率</span>
-                      <span className="text-gray-200 font-mono">{fundamentals.turnover_rate?.toFixed(2)}%</span>
+                      <span className="font-mono tabular-nums text-blue-300">{fundamentals.turnover_rate?.toFixed(2)}%</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">量比</span>
-                      <span className="text-gray-200 font-mono">{fundamentals.volume_ratio?.toFixed(2)}</span>
+                      <span className="font-mono tabular-nums text-blue-300">{fundamentals.volume_ratio?.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between col-span-2">
                       <span className="text-gray-500">总市值</span>
-                      <span className="text-gray-200 font-mono">
+                      <span className="font-mono tabular-nums text-blue-300">
                         {fundamentals.total_market_cap ? (fundamentals.total_market_cap / 100000000).toFixed(2) + '亿' : '--'}
                       </span>
                     </div>

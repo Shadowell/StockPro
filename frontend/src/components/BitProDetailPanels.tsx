@@ -29,6 +29,7 @@ import {
   Play,
 } from 'lucide-react';
 import { formatSymbolLabel } from '../utils/symbolDisplay';
+import { SymbolCell } from './SymbolCell';
 import { useSymbolNames } from '../hooks/useSymbolNames';
 import { marketAdverseMetricColor, marketMetricColor, marketToneClass } from '../utils/marketColors';
 import { EvidenceStrip } from './OperatorShell';
@@ -324,7 +325,7 @@ export function StrategyDetailPanel({
             <div className="flex flex-wrap gap-2">
               {symbols.map((symbol) => (
                 <span key={symbol} className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-xs text-gray-300">
-                  {formatSymbolLabel(symbol, symbolNames[symbol])}
+                  <SymbolCell symbol={symbol} names={symbolNames} compact />
                 </span>
               ))}
             </div>
@@ -610,7 +611,14 @@ export function BacktestDetailPanel({ result, onBack }: { result: StrategyBackte
                 {tradeRows.map((trade, index) => (
                   <tr key={`${trade.date}-${trade.symbol}-${index}`} className="border-b border-crypto-border/20 transition-colors hover:bg-white/[0.02]">
                     <td className="py-3 text-sm text-gray-400">{trade.date}</td>
-                    <td className="py-3 text-sm font-medium text-gray-200">{formatSymbolLabel(trade.symbol, trade.name || result.symbol_names?.[trade.symbol])}</td>
+                    <td className="py-3 text-sm font-medium text-gray-200">
+                      <SymbolCell
+                        symbol={trade.symbol}
+                        name={trade.name || result.symbol_names?.[trade.symbol]}
+                        names={result.symbol_names}
+                        compact
+                      />
+                    </td>
                     <td className={clsx('py-3 text-sm font-semibold', trade.side === 'buy' ? 'text-up' : 'text-down')}>
                       {trade.side === 'buy' ? '买入' : '卖出'}
                     </td>
@@ -847,7 +855,9 @@ export function PaperInstanceDetailPanel({
                 <tbody>
                   {positions.map((position) => (
                     <tr key={position.symbol} className="border-b border-crypto-border/60 text-gray-200">
-                      <td className="py-2 pr-2 font-mono">{formatSymbolLabel(position.symbol, position.name)}</td>
+                      <td className="py-2 pr-2">
+                        <SymbolCell symbol={position.symbol} name={position.name} compact />
+                      </td>
                       <td className="py-2 pr-2 text-right tabular-nums">{position.quantity}</td>
                       <td className="py-2 pr-2 text-right tabular-nums">{formatNumber(position.market_value)}</td>
                       <td className="py-2 pr-2 text-right tabular-nums">{formatNumber(position.avg_price)}</td>
@@ -907,7 +917,9 @@ export function PaperInstanceDetailPanel({
                       <tr key={`${order.symbol}-${index}`} className="border-b border-crypto-border/60 text-gray-200">
                         <td className="py-2 pr-2 whitespace-nowrap text-[10px] text-gray-400">{order.created_at || '--'}</td>
                         <td className={clsx('py-2 pr-2 text-center font-semibold', order.side === 'buy' ? 'text-up' : 'text-down')}>{order.side === 'buy' ? '买入' : '卖出'}</td>
-                        <td className="py-2 pr-2 font-mono">{formatSymbolLabel(order.symbol, order.name)}</td>
+                        <td className="py-2 pr-2">
+                          <SymbolCell symbol={order.symbol} name={order.name} compact />
+                        </td>
                         <td className="py-2 pr-2 text-right tabular-nums">{formatNumber(order.price)}</td>
                         <td className="py-2 pr-2 text-right tabular-nums">{order.quantity}</td>
                         <td className="py-2 pr-2 text-right tabular-nums">{formatNumber(order.amount)}</td>
@@ -974,7 +986,7 @@ export function PaperInstanceDetailPanel({
                           {isBuy ? 'B' : 'S'}
                         </div>
                         <div className="max-w-full truncate text-center text-[11px] font-semibold text-gray-300">
-                          {formatSymbolLabel(order.symbol, order.name)}
+                          <SymbolCell symbol={order.symbol} name={order.name} compact />
                         </div>
                         <div className={clsx('text-xs font-bold tabular-nums', isBuy ? 'text-up' : 'text-down')}>
                           {isBuy ? 'B' : 'S'} · {formatNumber(order.price)}
@@ -991,7 +1003,9 @@ export function PaperInstanceDetailPanel({
                   return (
                     <div key={`${order.symbol}-review-${index}`} className="rounded-lg border border-crypto-border bg-crypto-bg px-3 py-2 text-sm">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 truncate text-gray-300">{formatSymbolLabel(order.symbol, order.name)}</span>
+                        <span className="min-w-0 truncate text-gray-300">
+                          <SymbolCell symbol={order.symbol} name={order.name} compact />
+                        </span>
                         <span className={clsx('shrink-0 font-bold', isBuy ? 'text-up' : 'text-down')}>
                           {isBuy ? 'B' : 'S'} · {formatNumber(order.price)}
                         </span>

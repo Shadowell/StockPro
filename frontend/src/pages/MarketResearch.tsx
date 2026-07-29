@@ -9,6 +9,8 @@ import type { MarketCalendarEvent, MarketResearchContext, MessageStreamResponse 
 import { snapshotTypeLabel, sourceKindLabel, sourceLabel, statusLabel } from '../utils/presentation';
 import { metricToneClass, type MetricTone } from '../utils/marketColors';
 import { formatSymbolLabel, toPublicSymbol } from '../utils/symbolDisplay';
+import { SymbolCell } from '../components/SymbolCell';
+import { useSymbolNames } from '../hooks/useSymbolNames';
 import { Market as StockTerminal } from './Market';
 
 const TABS = [
@@ -112,10 +114,63 @@ function Structure({ context }: { context: MarketResearchContext }) {
 
 function Sectors({ context }: { context: MarketResearchContext }) {
   const rows = context.sector_evidence?.items ?? [];
+  const leaderSymbols = useMemo(
+    () => rows.map((row) => String(row.leader_symbol ?? '')),
+    [rows],
+  );
+  const symbolNames = useSymbolNames(leaderSymbols);
   if (rows.length === 0) {
     return <section className={`${panel} p-12 text-center text-sm text-slate-600`}>当前快照没有板块证据；未将缺失排名显示为 0。</section>;
   }
-  return <section className={`${panel} overflow-hidden`}><div className="border-b border-crypto-border px-5 py-4"><h2 className="font-semibold text-white">板块证据榜</h2><p className="mt-1 text-xs text-slate-500">分类依据：{sourceLabel(context.sector_evidence?.classification_system)}；缺失收益或资金流时保持空值。</p></div><div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-sm"><thead><tr className="border-b border-crypto-border text-left text-xs text-slate-500"><th className="px-5 py-3">板块</th><th className="px-4 py-3 text-right">涨停数</th><th className="px-4 py-3 text-right">连板参与</th><th className="px-4 py-3">龙头</th><th className="px-4 py-3 text-right">1 / 5 / 20日</th><th className="px-4 py-3 text-right">成分广度</th><th className="px-4 py-3 text-right">持续性</th><th className="px-4 py-3 text-right">资金流</th><th className="px-5 py-3">来源</th></tr></thead><tbody>{rows.map((row, index) => <tr key={`${String(row.sector_name)}-${index}`} className="border-b border-white/[0.04]"><td className="px-5 py-4 font-semibold text-slate-200">{String(row.sector_name ?? '--')}</td><td className="px-4 py-4 text-right tabular-nums text-up">{format(row.limit_up_count, 0)}</td><td className="px-4 py-4 text-right tabular-nums text-slate-300">{format(row.ladder_participation, 0)}</td><td className="px-4 py-4 tabular-nums text-blue-300">{String(row.leader_symbol ?? '--')}</td><td className="px-4 py-4 text-right text-slate-500">{format(row.return_1d)} / {format(row.return_5d)} / {format(row.return_20d)}</td><td className="px-4 py-4 text-right text-slate-500">{format(row.breadth)}</td><td className="px-4 py-4 text-right text-slate-500">{format(row.persistence)}</td><td className="px-4 py-4 text-right text-slate-500">{format(row.net_flow)}</td><td className="px-5 py-4 text-xs text-slate-500">{sourceLabel(row.source_label)}</td></tr>)}</tbody></table></div></section>;
+  return (
+    <section className={`${panel} overflow-hidden`}>
+      <div className="border-b border-crypto-border px-5 py-4">
+        <h2 className="font-semibold text-white">板块证据榜</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          分类依据：{sourceLabel(context.sector_evidence?.classification_system)}；缺失收益或资金流时保持空值。
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1100px] text-sm">
+          <thead>
+            <tr className="border-b border-crypto-border text-left text-xs text-slate-500">
+              <th className="px-5 py-3">板块</th>
+              <th className="px-4 py-3 text-right">涨停数</th>
+              <th className="px-4 py-3 text-right">连板参与</th>
+              <th className="px-4 py-3">龙头</th>
+              <th className="px-4 py-3 text-right">1 / 5 / 20日</th>
+              <th className="px-4 py-3 text-right">成分广度</th>
+              <th className="px-4 py-3 text-right">持续性</th>
+              <th className="px-4 py-3 text-right">资金流</th>
+              <th className="px-5 py-3">来源</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={`${String(row.sector_name)}-${index}`} className="border-b border-white/[0.04]">
+                <td className="px-5 py-4 font-semibold text-slate-200">{String(row.sector_name ?? '--')}</td>
+                <td className="px-4 py-4 text-right tabular-nums text-up">{format(row.limit_up_count, 0)}</td>
+                <td className="px-4 py-4 text-right tabular-nums text-slate-300">{format(row.ladder_participation, 0)}</td>
+                <td className="px-4 py-4">
+                  <SymbolCell
+                    symbol={String(row.leader_symbol ?? '')}
+                    name={String((row as { leader_name?: string }).leader_name ?? '')}
+                    names={symbolNames}
+                    compact
+                  />
+                </td>
+                <td className="px-4 py-4 text-right text-slate-500">{format(row.return_1d)} / {format(row.return_5d)} / {format(row.return_20d)}</td>
+                <td className="px-4 py-4 text-right text-slate-500">{format(row.breadth)}</td>
+                <td className="px-4 py-4 text-right text-slate-500">{format(row.persistence)}</td>
+                <td className="px-4 py-4 text-right text-slate-500">{format(row.net_flow)}</td>
+                <td className="px-5 py-4 text-xs text-slate-500">{sourceLabel(row.source_label)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 
 function Sentiment({ context }: { context: MarketResearchContext }) {

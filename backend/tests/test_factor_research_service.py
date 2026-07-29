@@ -17,8 +17,10 @@ class FactorPythonValidationTests(unittest.TestCase):
     def test_all_reference_factors_use_valid_dynamic_python_contract(self):
         results = [validate_factor_python(_reference_code(item)) for item in REFERENCE_FACTORS]
 
-        self.assertEqual(len(results), 10)
+        self.assertEqual(len(results), 100)
         self.assertTrue(all(item["valid"] for item in results))
+        codes = [item["code"] for item in REFERENCE_FACTORS]
+        self.assertEqual(len(codes), len(set(codes)))
 
     def test_validator_rejects_import_network_file_and_top_level_execution(self):
         examples = [

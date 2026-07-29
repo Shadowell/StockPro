@@ -16,6 +16,7 @@ import psycopg2.extras
 from app.services.dataset_snapshot_service import DatasetSnapshotService, canonical_hash
 from app.services.data_purpose import infer_data_purpose
 from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService, normalise_trade_date, provider_ts_code
+from app.services.reference_factor_catalog import REFERENCE_FACTORS
 
 
 FORBIDDEN_NAMES = {
@@ -106,60 +107,6 @@ def calculate_forward_return_metrics(
         {"metric_code": "quantile_returns", "horizon": int(horizon), "metric_value": None, "metric_payload": payload},
         {"metric_code": "long_short_return", "horizon": int(horizon), "metric_value": long_short, "metric_payload": payload},
     ]
-
-
-REFERENCE_FACTORS: Sequence[Dict[str, Any]] = (
-    {
-        "code": "momentum_5d", "name": "5日动量", "category": "momentum", "lookback": 6, "direction": 1,
-        "description": "5 个交易日收盘价动量",
-        "body": "close = data.history('close', 6)\n    return close.iloc[-1] / close.iloc[0] - 1",
-    },
-    {
-        "code": "momentum_20d", "name": "20日动量", "category": "momentum", "lookback": 21, "direction": 1,
-        "description": "20 个交易日收盘价动量",
-        "body": "close = data.history('close', 21)\n    return close.iloc[-1] / close.iloc[0] - 1",
-    },
-    {
-        "code": "reversal_5d", "name": "5日反转", "category": "reversal", "lookback": 6, "direction": 1,
-        "description": "5 日动量取反，用于短期反转研究",
-        "body": "close = data.history('close', 6)\n    return -(close.iloc[-1] / close.iloc[0] - 1)",
-    },
-    {
-        "code": "volatility_20d", "name": "20日年化波动", "category": "volatility", "lookback": 21, "direction": -1,
-        "description": "20 日对数收益率年化波动率",
-        "body": "close = data.history('close', 21)\n    returns = np.log(close / close.shift(1))\n    return returns.std() * np.sqrt(252)",
-    },
-    {
-        "code": "turnover_rate", "name": "换手率", "category": "liquidity", "lookback": 1, "direction": 1,
-        "description": "TuShare daily_basic 当日换手率",
-        "body": "return data.current('turnover_rate')",
-    },
-    {
-        "code": "volume_ratio", "name": "量比", "category": "liquidity", "lookback": 1, "direction": 1,
-        "description": "TuShare daily_basic 当日量比",
-        "body": "return data.current('volume_ratio')",
-    },
-    {
-        "code": "size_log_mv", "name": "对数总市值", "category": "size", "lookback": 1, "direction": -1,
-        "description": "总市值的自然对数",
-        "body": "total_mv = data.current('total_mv')\n    return np.log(total_mv.where(total_mv > 0))",
-    },
-    {
-        "code": "earnings_yield", "name": "盈利收益率", "category": "value", "lookback": 1, "direction": 1,
-        "description": "PE_TTM 的倒数，亏损公司保留缺失",
-        "body": "pe = data.current('pe_ttm')\n    return 1 / pe.where(pe > 0)",
-    },
-    {
-        "code": "book_to_price", "name": "账面市值比", "category": "value", "lookback": 1, "direction": 1,
-        "description": "PB 的倒数",
-        "body": "pb = data.current('pb')\n    return 1 / pb.where(pb > 0)",
-    },
-    {
-        "code": "ma_deviation_20d", "name": "20日均线乖离", "category": "technical", "lookback": 20, "direction": 1,
-        "description": "收盘价相对 20 日均线的乖离率",
-        "body": "close = data.history('close', 20)\n    return close.iloc[-1] / close.mean() - 1",
-    },
-)
 
 
 def _reference_code(item: Mapping[str, Any]) -> str:
@@ -332,24 +279,50 @@ class FactorResearchService:
                     validation = validate_factor_python(code)
                     cursor.execute(
                         """
-                        INSERT INTO factor_versions
-                        (factor_definition_id, version_no, python_code, content_hash, declared_lookback,
-                         dependencies, preprocessing, validation_status, validation_result)
-                        VALUES (%s, 1, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (factor_definition_id, content_hash) DO UPDATE SET
-                            validation_status = EXCLUDED.validation_status,
-                            validation_result = EXCLUDED.validation_result
-                        RETURNING id
+                        SELECT id FROM factor_versions
+                        WHERE factor_definition_id = %s AND content_hash = %s
                         """,
-                        (
-                            definition_id, code, content_hash, item["lookback"],
-                            psycopg2.extras.Json(["daily_bars", "daily_valuation", "universe_history"]),
-                            psycopg2.extras.Json({"winsorize": [0.01, 0.99], "missing": "drop", "standardize": True, "minimum_coverage": 0.8}),
-                            "valid" if validation["valid"] else "invalid",
-                            psycopg2.extras.Json(validation),
-                        ),
+                        (definition_id, content_hash),
                     )
-                    version_id = int(cursor.fetchone()["id"])
+                    existing_version = cursor.fetchone()
+                    if existing_version:
+                        version_id = int(existing_version["id"])
+                        cursor.execute(
+                            """
+                            UPDATE factor_versions
+                            SET validation_status = %s, validation_result = %s, declared_lookback = %s
+                            WHERE id = %s
+                            """,
+                            (
+                                "valid" if validation["valid"] else "invalid",
+                                psycopg2.extras.Json(validation),
+                                item["lookback"],
+                                version_id,
+                            ),
+                        )
+                    else:
+                        cursor.execute(
+                            "SELECT COALESCE(MAX(version_no), 0) + 1 AS next_no FROM factor_versions WHERE factor_definition_id = %s",
+                            (definition_id,),
+                        )
+                        next_no = int(cursor.fetchone()["next_no"])
+                        cursor.execute(
+                            """
+                            INSERT INTO factor_versions
+                            (factor_definition_id, version_no, python_code, content_hash, declared_lookback,
+                             dependencies, preprocessing, validation_status, validation_result)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                            """,
+                            (
+                                definition_id, next_no, code, content_hash, item["lookback"],
+                                psycopg2.extras.Json(["daily_bars", "daily_valuation", "universe_history"]),
+                                psycopg2.extras.Json({"winsorize": [0.01, 0.99], "missing": "drop", "standardize": True, "minimum_coverage": 0.8}),
+                                "valid" if validation["valid"] else "invalid",
+                                psycopg2.extras.Json(validation),
+                            ),
+                        )
+                        version_id = int(cursor.fetchone()["id"])
                     cursor.execute("UPDATE factor_definitions SET active_version_id = %s WHERE id = %s", (version_id, definition_id))
                     version_ids.append(version_id)
         return version_ids
@@ -462,6 +435,7 @@ class FactorResearchService:
                         ORDER BY evaluation.knowledge_cutoff_at DESC, evaluation.id DESC LIMIT 1
                     ) mm ON TRUE
                     WHERE d.data_source = 'sealed_dataset_snapshot' AND d.active_version_id IS NOT NULL
+                      AND d.enabled = TRUE
                     GROUP BY d.id, v.id, r.id, r.trade_date, r.status, r.dataset_snapshot_id,
                              r.universe_snapshot_id, r.knowledge_cutoff_at
                     ORDER BY d.category, d.factor_code

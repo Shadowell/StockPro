@@ -642,7 +642,7 @@ export const DataHubJobsPanel: React.FC = () => {
                 </div>
                 <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
                   <div className="text-slate-500">Progress</div>
-                  <div className="text-slate-200">{Math.round(detailJob.progress || 0)}%</div>
+                  <div className="text-blue-300 tabular-nums">{Math.round(detailJob.progress || 0)}%</div>
                 </div>
                 <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
                   <div className="text-slate-500">Created</div>

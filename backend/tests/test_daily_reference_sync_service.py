@@ -83,7 +83,9 @@ class DailyReferenceOrchestrationTests(unittest.TestCase):
             "universe",
             {"status": "sealed", "universe_snapshot_id": 7, "dataset_partition": {"status": "published"}},
         )
-        self.service.kline_service.create_history_sync_job.side_effect = self._event("kline_job", 9)
+        self.service.kline_service.create_market_daily_sync_job.side_effect = self._event(
+            "kline_job", {"job_id": 9, "jobId": 9}
+        )
         self.service.kline_service.run_job.side_effect = self._event("kline_sync", {"status": "success"})
         self.service.snapshot_service.publish_daily_bars.side_effect = self._event(
             "dataset_seal",
@@ -120,7 +122,7 @@ class DailyReferenceOrchestrationTests(unittest.TestCase):
         result = self.service.run("2025-01-02", ["SH_600000"])
 
         self.assertEqual(result["status"], "failed")
-        self.service.kline_service.create_history_sync_job.assert_not_called()
+        self.service.kline_service.create_market_daily_sync_job.assert_not_called()
         self.service.snapshot_service.publish_daily_bars.assert_not_called()
         self.service.factor_service.run_daily_schedule.assert_not_called()
 
@@ -145,7 +147,7 @@ class DailyReferenceOrchestrationTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "not_trading_day")
         self.service.reference_service.sync_trade_calendar_records.assert_not_called()
-        self.service.kline_service.create_history_sync_job.assert_not_called()
+        self.service.kline_service.create_market_daily_sync_job.assert_not_called()
 
     def test_locked_day_never_calls_provider(self):
         self.cursor.fetchone.return_value = {"acquired": False}
@@ -169,6 +171,15 @@ class DailyReferenceOrchestrationTests(unittest.TestCase):
 
         self.assertEqual(self.service.run("2025-01-02", ["SH_600000"])["status"], "disabled")
         self.service.catalog_service.sync_endpoint.assert_not_called()
+
+    def test_force_bypasses_disabled_schedule(self):
+        self.service._schedule_row.return_value = {"enabled": False}
+        self._configure_open_day()
+
+        result = self.service.run("2025-01-02", ["SH_600000"], force=True)
+
+        self.assertEqual(result["status"], "sealed")
+        self.service.kline_service.create_market_daily_sync_job.assert_called_once()
 
 
 if __name__ == "__main__":

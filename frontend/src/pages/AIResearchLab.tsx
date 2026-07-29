@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { getAICapabilities, getStrategies, listBacktestRuns } from "../api/client";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
+import { MetricValue, OperatorPageHeader } from "../components/OperatorShell";
 import type { AICapabilities, BacktestRun, Strategy } from "../types";
 
 const TABS = [
@@ -26,19 +27,13 @@ const TABS = [
   ["optimize", "现有策略优化", "诊断与候选版本"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
-type DataScope = "business" | "test";
 const panel = "rounded-xl border border-crypto-border bg-crypto-card";
 
 const dateTime = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "暂无记录";
 
-const purposeMatches = (
-  item: { data_purpose?: string | null },
-  scope: DataScope,
-) =>
-  scope === "business"
-    ? !item.data_purpose || item.data_purpose === "user"
-    : Boolean(item.data_purpose && item.data_purpose !== "user");
+const isBusinessPurpose = (item: { data_purpose?: string | null }) =>
+  !item.data_purpose || item.data_purpose === "user";
 
 export function AIResearchLab() {
   const [params, setParams] = useSearchParams();
@@ -53,15 +48,14 @@ export function AIResearchLab() {
   const [error, setError] = useState("");
   const [capabilities, setCapabilities] = useState<AICapabilities | null>(null);
   const [capabilityError, setCapabilityError] = useState("");
-  const [dataScope, setDataScope] = useState<DataScope>("business");
 
   const scopedStrategies = useMemo(
-    () => strategies.filter((item) => purposeMatches(item, dataScope)),
-    [strategies, dataScope],
+    () => strategies.filter((item) => isBusinessPurpose(item)),
+    [strategies],
   );
   const scopedRuns = useMemo(
-    () => runs.filter((item) => purposeMatches(item, dataScope)),
-    [runs, dataScope],
+    () => runs.filter((item) => isBusinessPurpose(item)),
+    [runs],
   );
   const fullRuns = scopedRuns.filter((run) => run.run_mode === "full");
   const eligibleRuns = fullRuns.filter(
@@ -116,29 +110,30 @@ export function AIResearchLab() {
     <div
       className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8"
       data-testid="ai-research-lab"
+      data-operator-page="ai-lab"
     >
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <BrainCircuit className="h-7 w-7 text-cyan-400" />
-            <h1 className="text-2xl font-black text-white">AI研发</h1>
+      <OperatorPageHeader
+        icon={BrainCircuit}
+        title={
+          <span className="inline-flex flex-wrap items-center gap-3">
+            AI研发
             <span className="rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold text-cyan-200">
               仅限研究
             </span>
-          </div>
-          <p className="mt-2 text-sm text-slate-500">
-            智能交易代理、受控策略研发和既有策略优化统一入口；所有结果先经过回测与模拟准入。
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-300"
-        >
-          <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
-          刷新
-        </button>
-      </header>
+          </span>
+        }
+        subtitle="三个子工作区：AI自主交易 / 新策略研发 / 现有策略优化。结果先经回测与模拟准入。"
+        actions={
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-300"
+          >
+            <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+            刷新
+          </button>
+        }
+      />
 
       <section className="mb-5 grid gap-px overflow-hidden rounded-xl border border-crypto-border bg-crypto-border md:grid-cols-4">
         {[
@@ -184,42 +179,10 @@ export function AIResearchLab() {
       />
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-lg border border-crypto-border bg-crypto-card p-1 text-xs">
-          <button
-            type="button"
-            data-testid="ai-scope-business"
-            onClick={() => setDataScope("business")}
-            className={`rounded-md px-3 py-1.5 font-semibold ${
-              dataScope === "business"
-                ? "bg-cyan-600 text-white"
-                : "text-slate-500"
-            }`}
-          >
-            我的研发
-          </button>
-          <button
-            type="button"
-            data-testid="ai-scope-test"
-            onClick={() => setDataScope("test")}
-            className={`rounded-md px-3 py-1.5 font-semibold ${
-              dataScope === "test"
-                ? "bg-amber-500/15 text-amber-200"
-                : "text-slate-500"
-            }`}
-          >
-            测试与验收
-          </button>
-        </div>
         <span className="text-xs text-slate-600">
           当前范围 {scopedStrategies.length} 个策略版本 · {scopedRuns.length} 条回测
         </span>
       </div>
-
-      {dataScope === "test" ? (
-        <div className="mb-5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
-          当前仅查看测试与验收证据，不代表可投入业务运行。
-        </div>
-      ) : null}
 
       {tab === "autonomous" ? (
         <div className="grid gap-5 xl:grid-cols-[1fr_0.72fr]">
@@ -329,7 +292,7 @@ export function AIResearchLab() {
                     {count === null ? (
                       <span className="text-xs text-slate-600">未接入</span>
                     ) : (
-                      <span className="font-mono text-lg font-bold text-white">{String(count)}</span>
+                      <MetricValue tone={Number(count) > 0 ? "blue" : "neutral"} size="lg">{String(count)}</MetricValue>
                     )}
                   </div>
                   <p className="mt-2 text-[10px] text-slate-600">{String(note)}</p>
