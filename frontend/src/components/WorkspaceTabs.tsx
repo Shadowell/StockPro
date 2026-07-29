@@ -10,7 +10,11 @@ export type WorkspaceTabItem<T extends string> = {
   testId?: string;
 };
 
-/** Tremor-styled L2 / L3 workspace tabs — capsule chips with smooth micro-animations. */
+/**
+ * Tremor-style L2 / L3 views use an underline tab rail.  A workspace switch
+ * changes the page context, so it must not look like a filter or a row of
+ * primary-action buttons.
+ */
 export function WorkspaceTabs<T extends string>({
   items,
   value,
@@ -30,7 +34,7 @@ export function WorkspaceTabs<T extends string>({
       aria-label={ariaLabel}
       data-operator-workspace-tabs="true"
       className={clsx(
-        'mb-4 flex items-center gap-1.5 overflow-x-auto rounded-xl border border-crypto-border bg-crypto-card/90 p-1.5 backdrop-blur-sm',
+        'mb-5 flex min-w-0 items-end gap-5 overflow-x-auto border-b border-crypto-border px-1',
         className,
       )}
     >
@@ -46,19 +50,19 @@ export function WorkspaceTabs<T extends string>({
             data-testid={item.testId}
             onClick={() => onChange(item.id)}
             className={clsx(
-              'inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3.5 text-xs font-bold transition-all duration-150 active:scale-95',
+              '-mb-px inline-flex h-10 shrink-0 items-center gap-2 border-b-2 px-1 text-xs font-semibold transition-colors sm:text-sm',
               active
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-950/60 border border-blue-400/30'
-                : 'border border-transparent bg-crypto-bg/60 text-gray-400 hover:border-crypto-border hover:bg-slate-800/70 hover:text-gray-200',
+                ? 'border-blue-400 text-slate-100'
+                : 'border-transparent text-gray-500 hover:border-slate-600 hover:text-slate-200',
             )}
           >
-            {Icon ? <Icon className={clsx('h-3.5 w-3.5 transition-transform group-hover:scale-110', active ? 'text-white' : 'text-gray-500')} /> : null}
+            {Icon ? <Icon className={clsx('h-3.5 w-3.5', active ? 'text-blue-300' : 'text-gray-500')} /> : null}
             <span>{item.label}</span>
             {item.badge !== undefined ? (
               <span
                 className={clsx(
-                  'rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
-                  active ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400',
+                  'rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                  active ? 'bg-blue-500/15 text-blue-200' : 'bg-crypto-card text-slate-500',
                 )}
               >
                 {item.badge}

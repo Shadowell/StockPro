@@ -66,10 +66,14 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
               'group relative flex shrink-0 items-center justify-center overflow-hidden text-xs transition-all duration-200',
               vertical
                 ? 'h-14 w-16 flex-col'
-                : 'h-9 min-w-[58px] gap-1.5 rounded-md px-2.5',
+                : 'h-10 min-w-[58px] gap-1.5 border-b-2 border-transparent px-2.5',
               isActive
-                ? 'bg-blue-500/15 font-bold text-blue-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
-                : 'text-gray-400 hover:bg-gray-800/80 hover:text-gray-200',
+                ? vertical
+                  ? 'bg-blue-500/15 font-bold text-blue-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
+                  : 'border-blue-400 font-bold text-blue-300'
+                : vertical
+                  ? 'text-gray-400 hover:bg-gray-800/80 hover:text-gray-200'
+                  : 'text-gray-400 hover:border-slate-600 hover:text-gray-200',
             )
           }
         >
@@ -82,7 +86,7 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
                     'absolute bg-blue-400 shadow-[0_0_8px_rgba(56,189,248,0.7)] transition-all',
                     vertical
                       ? 'left-0 top-2.5 bottom-2.5 w-1 rounded-r-full'
-                      : 'bottom-0 left-2 right-2 h-0.5 rounded-t-full'
+                      : 'hidden'
                   )}
                 />
               )}

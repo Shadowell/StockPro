@@ -1,5 +1,35 @@
 # Progress Log
 
+## Tremor Operator System Alignment (2026-07-29)
+
+1. Replaced the reintroduced capsule-style workspace buttons with Tremor's
+   compact underline tab rail across all shared L2/L3 navigation. Scope,
+   status and sort choices remain segmented controls, so navigation no longer
+   competes with filters or primary actions.
+2. Applied the shared workspace viewport to every routed page through
+   `MainLayout`: dense table rhythm, factual card elevation, consistent focus
+   treatment, tabular figures and responsive overflow rules now originate from
+   one Tremor/BitPro operator surface instead of per-page decoration.
+3. Removed the Dashboard's simulated Tremor showcase. The product now uses the
+   Tremor components only with API-backed or explicit empty/error data; no
+   invented PnL, sector flows, uptime or risk alerts remain on the page.
+4. Updated delta badges to respect the configurable A-share red-up/green-down
+   setting through semantic `text-up` / `text-down` tokens.
+
+Verification: `./scripts/check.sh` passed (frontend build/lint, 290 backend
+tests and Python compilation; 6 pre-existing Hook warnings). Desktop browser
+review covered Dashboard and Monitor; 390px review covered Market Research.
+The read-only capture sweep covered Dashboard, Market sentiment/structure,
+Review, Data Center, Data Processing, Paper and Factor Library: all reported
+the operator marker, no page-level horizontal overflow and no blank metric
+values.
+
+Known QA gap: the broad historical `npm run test:e2e` suite still hard-codes
+superseded page names, sidebar order, button roles and fixture-era snapshot
+values. Its 2026-07-29 run had 21 passing tests, 15 stale assertion failures
+and 7 interrupted after the run was stopped; it is not a valid release gate
+until its product fixtures are reconciled separately.
+
 ## Full Navigation & Page Micro-animations Tremor UI Transformation (2026-07-29)
 
 1. **L1 Sidebar Navigation (`Navigation.tsx` / `MainLayout.tsx`)**:
