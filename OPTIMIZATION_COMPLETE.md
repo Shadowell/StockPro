@@ -1,5 +1,7 @@
 # 优化完成通知
 
+> 状态：早期 Electron/Postgres 迁移记录，已归档。当前产品不是以 Electron 为主，后端也不会在普通启动时自动写入；请以 [技术架构](docs/technical_architecture.md) 和 [本地运行手册](docs/deployment.md) 为准。
+
 ## 优化内容概述
 已成功完成将股票分析应用从 Web 架构迁移到 Electron 桌面应用的优化工作。
 

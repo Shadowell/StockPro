@@ -1,67 +1,92 @@
-# 策略库
+# StockPro 预置策略
 
-本目录存放 StockPro 的量化选股策略脚本。每个 `.py` 文件是一个独立策略，由 `manifest.json` 统一管理元数据。
+`strategies/` 保存用于首次 bootstrap 的预置策略脚本和 `manifest.json`。运行时的策略事实存储在 PostgreSQL 的策略身份与不可变版本中，而不是直接执行这里的工作树文件。
 
-## 策略列表
+## 预置目录
 
-| 文件 | 策略名称 | 说明 | 执行间隔 |
-|------|---------|------|---------|
-| `mainboard_top10.py` | 主板涨幅TOP10 | 实时获取主板涨幅前10股票，排除ST/创业板/科创板 | 60s |
-| `volume_breakout.py` | 放量突破策略 | 近20天无涨停 + 当日放量1.75倍以上的主板股(30-160亿) | 300s |
-| `limit_up_monitor.py` | 涨停板监控 | 实时监控主板涨停股票，按成交额排序 | 30s |
-| `flat_volume_breakout.py` | 平底放量突破首板 | 放量突破 + 低开高走，适合做首板 | 300s |
-| `consecutive_limit_monitor.py` | 连板股监控 | 实时监控2板及以上的连板股票 | 60s |
-| `hot_stocks_top20.py` | 热门股票TOP20 | 东方财富热门股票排行榜 | 120s |
-| `ma_convergence_breakout.py` | 平底均线图突破 | MA5/10/20/30四线粘合，寻找横盘后突破机会 | 600s |
+| 文件 | 名称 | 研究目的 |
+| --- | --- | --- |
+| `mainboard_top10.py` | 主板涨幅 TOP10 | 主板强势股观察 |
+| `volume_breakout.py` | 放量突破 | 成交量扩张与价格突破 |
+| `limit_up_monitor.py` | 涨停板监控 | 涨停生态观察 |
+| `flat_volume_breakout.py` | 平底放量突破首板 | 横盘后放量与首板条件 |
+| `consecutive_limit_monitor.py` | 连板股监控 | 多日涨停连续性 |
+| `hot_stocks_top20.py` | 热门股票 TOP20 | 公开热度排行观察 |
+| `ma_convergence_breakout.py` | 均线粘合突破 | 多均线收敛后的突破 |
 
-## 在新设备上初始化
+这些名称描述筛选逻辑，不代表已验证收益或投资建议。
 
-克隆项目后运行以下命令，将策略导入 Postgres：
+## 初始化
+
+首次准备数据库时，从仓库根目录执行：
 
 ```bash
-cd StockPro
-python scripts/init_strategies.py          # 仅导入缺失的策略
-python scripts/init_strategies.py --force   # 覆盖已有同名策略
+(cd backend && venv/bin/python bootstrap_runtime.py)
 ```
 
-后端启动时也会自动检测并导入缺失的策略，通常无需手动操作。
+该命令应用迁移、安装数据目录、注册研究数据集并导入缺失的预置策略。
 
-## 策略脚本规范
+也可以只处理策略：
 
-每个策略脚本是一段可独立运行的 Python 代码，必须将结果以 JSON 格式输出到 stdout：
+```bash
+backend/venv/bin/python scripts/init_strategies.py
+backend/venv/bin/python scripts/init_strategies.py --force
+```
+
+`--force` 会覆盖同名预置内容，属于数据库写操作；执行前先确认 `DATABASE_URL` 指向目标本地数据库。后端普通启动默认不会自动导入或覆盖策略。
+
+## 新策略的推荐方式
+
+优先在“策略”工作区创建：
+
+1. 编写 `StockPro Strategy API v1` 代码；
+2. 配置参数、依赖和运行限制；
+3. 静态验证；
+4. 保存不可变版本；
+5. 绑定快照运行回测；
+6. 评审证据后决定是否进入 Paper。
+
+运行时版本不能原地修改。修改已有策略会创建子版本，并保留原回测和 Paper 的引用。
+
+## Strategy API v1
+
+最小策略包含：
 
 ```python
-import json
+def initialize(context):
+    context.set_benchmark("SH_000300")
 
-# ... 策略逻辑 ...
 
-output = {
-    "stocks": [
-        {"code": "600519", "name": "贵州茅台", "reason": "放量2.3倍 涨3.5%"},
-        # ...
-    ]
-}
-print(json.dumps(output, ensure_ascii=False))
+def handle_data(context, data):
+    # 通过平台提供的数据和订单 API 研究/交易
+    pass
 ```
 
-**输出格式要求：**
+可选生命周期函数包括 `before_trading_start`、`after_trading_end` 和 `on_strategy_end`。具体可用 API、参数和示例以策略编辑器中的当前模板与后端验证器为准。
 
-- `stocks`: 数组，每个元素包含 `code`（股票代码）、`name`（名称）、`reason`（命中原因）
-- 发生错误时输出 `{"stocks": [], "error": "错误描述"}`
+## 运行限制
 
-## 添加新策略
+- 不允许直接访问 TuShare、AKShare、PostgreSQL、文件写入、网络或券商。
+- 平台控制模拟时间、数据可用时间、订单、A 股撮合、风控和持久化。
+- 回测和 Paper Replay 执行同一个固定策略版本。
+- 运行受 CPU、内存、墙钟时间、日志和事件数量限制。
+- 数据来自已封存 PG 快照，运行时不访问外部 Provider。
+- 遵循 T+1、100 股整数手、涨跌停、停牌、ST、成本和容量规则。
 
-1. 在本目录创建 `.py` 策略文件
-2. 在 `manifest.json` 中添加对应条目：
+## 旧脚本输出
+
+目录中的部分早期预置脚本仍以 stdout JSON 形式输出候选股票，供兼容导入路径使用：
 
 ```json
 {
-  "filename": "your_strategy.py",
-  "name": "策略显示名称",
-  "description": "策略描述",
-  "interval_seconds": 300
+  "stocks": [
+    {
+      "code": "600000",
+      "name": "示例股票",
+      "reason": "明确的筛选条件"
+    }
+  ]
 }
 ```
 
-3. 运行 `python scripts/init_strategies.py` 导入到数据库
-4. 也可以在前端「策略开发」页面直接编写和保存策略
+新策略不要以这个旧格式绕过 Strategy API v1、版本验证和快照证据。
