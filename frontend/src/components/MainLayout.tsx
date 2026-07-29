@@ -214,7 +214,9 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           </div>
         )}
 
-        <Suspense fallback={<PageFallback />}>{children || <Outlet />}</Suspense>
+        <div key={location.pathname} className="animate-fade-in-up flex-1 h-full min-h-0">
+          <Suspense fallback={<PageFallback />}>{children || <Outlet />}</Suspense>
+        </div>
       </main>
 
       {showSettings && (
