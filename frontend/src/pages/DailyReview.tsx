@@ -236,7 +236,7 @@ export function DailyReview() {
     : busy && !context
       ? "读取中"
       : context
-        ? statusLabel(context.status)
+        ? statusLabel(context.status, "数据就绪")
         : "未加载";
   const reviewStatusTone = error
     ? "border-red-500/25 bg-red-500/10 text-red-300"

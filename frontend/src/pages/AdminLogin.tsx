@@ -7,9 +7,9 @@ import { StockProMark } from '../components/StockProMark';
 import { useStore } from '../stores/useStore';
 
 const getRedirectTarget = (search: string): string => {
-  const redirect = new URLSearchParams(search).get('redirect') || '/data';
-  if (!redirect.startsWith('/') || redirect.startsWith('//')) return '/data';
-  if (redirect.startsWith('/admin-login')) return '/data';
+  const redirect = new URLSearchParams(search).get('redirect') || '/';
+  if (!redirect.startsWith('/') || redirect.startsWith('//')) return '/';
+  if (redirect.startsWith('/admin-login')) return '/';
   return redirect;
 };
 
