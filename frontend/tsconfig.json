@@ -26,6 +26,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@bitpro/ui": [
+        "../../BitPro/packages/bitpro-ui"
       ]
     }
   },
