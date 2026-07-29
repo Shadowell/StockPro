@@ -52,7 +52,7 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
     <nav
       aria-label="主菜单"
       className={clsx(
-        vertical ? 'flex flex-1 flex-col' : 'flex min-w-max items-center gap-1',
+        vertical ? 'flex flex-1 flex-col gap-0.5' : 'flex min-w-max items-center gap-1',
       )}
     >
       {NAV_ITEMS.map((item) => (
@@ -63,27 +63,46 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
           title={item.label}
           className={({ isActive }) =>
             clsx(
-              // BitPro MainLayout nav: gray idle / blue active — never white labels
-              'group relative flex shrink-0 items-center justify-center overflow-hidden text-xs transition-colors',
+              'group relative flex shrink-0 items-center justify-center overflow-hidden text-xs transition-all duration-200',
               vertical
-                ? 'h-16 w-16 flex-col'
-                : 'h-10 min-w-[58px] gap-1.5 rounded-md px-2',
+                ? 'h-14 w-16 flex-col'
+                : 'h-9 min-w-[58px] gap-1.5 rounded-md px-2.5',
               isActive
-                ? 'bg-blue-500/10 text-blue-500'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
+                ? 'bg-blue-500/15 font-bold text-blue-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
+                : 'text-gray-400 hover:bg-gray-800/80 hover:text-gray-200',
             )
           }
         >
-          <item.Icon
-            className={clsx(
-              vertical ? 'mb-1 h-5 w-5' : 'h-[18px] w-[18px]',
-            )}
-          />
-          <span className={clsx(vertical ? 'text-[10px]' : 'text-[11px]')}>
-            {item.label}
-          </span>
+          {({ isActive }) => (
+            <>
+              {/* Tremor Active Indicator Bar */}
+              {isActive && (
+                <span
+                  className={clsx(
+                    'absolute bg-blue-400 shadow-[0_0_8px_rgba(56,189,248,0.7)] transition-all',
+                    vertical
+                      ? 'left-0 top-2.5 bottom-2.5 w-1 rounded-r-full'
+                      : 'bottom-0 left-2 right-2 h-0.5 rounded-t-full'
+                  )}
+                />
+              )}
+
+              <item.Icon
+                className={clsx(
+                  'transition-all duration-200 group-hover:scale-110',
+                  vertical ? 'mb-1 h-5 w-5' : 'h-[18px] w-[18px]',
+                  isActive ? 'text-blue-400' : 'text-gray-400 group-hover:text-gray-200'
+                )}
+              />
+              <span className={clsx(vertical ? 'text-[10px]' : 'text-[11px]')}>
+                {item.label}
+              </span>
+            </>
+          )}
         </NavLink>
       ))}
     </nav>
   );
 };
+
+export default Navigation;

@@ -407,4 +407,26 @@ body {
   }
 }
 
+/* Tremor Smooth Animations & Micro-Interactions */
+@keyframes tremorFadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: tremorFadeInUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Tactile button press animation */
+button:active:not(:disabled),
+.btn-primary:active:not(:disabled),
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
 

@@ -62,7 +62,6 @@ export function OperatorMetricCard({
   tone?: MetricTone;
   className?: string;
 }) {
-  // Never hand @bitpro/ui a bare string with neutral/near-white tone; wrap in MetricValue.
   const cardTone: MetricTone = tone === 'neutral' ? 'blue' : tone;
   const renderedValue =
     typeof value === 'string' || typeof value === 'number' ? (
@@ -163,9 +162,9 @@ export function SegmentedControl<T extends string>({
             data-testid={option.testId}
             onClick={() => onChange(option.value)}
             className={clsx(
-              'inline-flex items-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors sm:px-4 sm:text-sm',
+              'inline-flex items-center gap-2 rounded-lg px-3 text-xs font-semibold transition-all duration-150 active:scale-95 sm:px-4 sm:text-sm',
               height,
-              active ? toneActive[tone] : 'text-gray-500 hover:text-gray-300',
+              active ? toneActive[tone] + ' shadow-sm shadow-blue-950/50' : 'text-gray-400 hover:text-gray-200 hover:bg-slate-800/60',
             )}
           >
             {Icon ? <Icon className="h-4 w-4" /> : null}
@@ -403,11 +402,11 @@ export function CatalogueCard({
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       className={clsx(
-        'group w-full self-start overflow-hidden rounded-xl border bg-crypto-card text-left transition-all',
+        'group w-full self-start overflow-hidden rounded-xl border bg-crypto-card text-left transition-all duration-200',
         onClick ? 'cursor-pointer' : null,
         active
-          ? 'border-blue-500/50 shadow-[0_0_0_1px_rgba(59,130,246,0.16)]'
-          : 'border-crypto-border hover:border-blue-500/40',
+          ? 'border-blue-500/50 shadow-md shadow-blue-950/40'
+          : 'border-crypto-border hover:border-blue-500/40 hover:-translate-y-[1px] hover:shadow-lg hover:shadow-blue-500/5',
         className,
       )}
     >

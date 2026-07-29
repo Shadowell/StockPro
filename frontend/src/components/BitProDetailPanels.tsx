@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import clsx from 'clsx';
 import { DataPanel, StatusBadge } from '@bitpro/ui';
+import { OperatorMetricCard } from './OperatorShell';
 import {
   Activity,
   ArrowLeft,
@@ -82,38 +83,7 @@ function BackButton({ label = '返回控制台', onBack }: { label?: string; onB
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  icon,
-  color,
-}: {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  color: 'blue' | 'green' | 'red' | 'yellow' | 'amber' | 'gray' | 'neutral' | 'up' | 'down';
-}) {
-  const colorMap: Record<string, string> = {
-    blue: 'text-blue-300',
-    green: 'text-emerald-300',
-    red: 'text-red-300',
-    yellow: 'text-amber-300',
-    amber: 'text-amber-300',
-    gray: 'text-slate-400',
-    neutral: 'text-slate-300',
-    up: 'text-up',
-    down: 'text-down',
-  };
-  return (
-    <div className="rounded-xl border border-crypto-border bg-crypto-card p-3">
-      <div className="mb-1 flex items-center gap-1.5">
-        <span className={colorMap[color]}>{icon}</span>
-        <span className="text-[10px] text-gray-500">{label}</span>
-      </div>
-      <div className={clsx('font-mono text-lg font-bold tabular-nums tracking-tight', colorMap[color])}>{value}</div>
-    </div>
-  );
-}
+
 
 function LogicSummarySection({
   selection,
@@ -792,14 +762,14 @@ export function PaperInstanceDetailPanel({
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
-        <MetricCard label="账户总额" value={`¥${formatNumber(account.equity)}`} icon={<DollarSign className="h-4 w-4" />} color="blue" />
-        <MetricCard label="总盈亏" value={signedMoney(pnl)} icon={pnl >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={marketMetricColor(pnl)} />
-        <MetricCard label="收益率" value={signedPercent(returnPct)} icon={returnPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} color={marketMetricColor(returnPct)} />
-        <MetricCard label="胜率" value={`${winRate.toFixed(1)}%`} icon={<Activity className="h-4 w-4" />} color="blue" />
-        <MetricCard label="盈亏比" value={formatNumber(profitFactor)} icon={<Zap className="h-4 w-4" />} color="blue" />
-        <MetricCard label="总交易" value={String(orders.length)} icon={<Activity className="h-4 w-4" />} color="blue" />
-        <MetricCard label="最大回撤" value={`${maxDrawdown.toFixed(1)}%`} icon={<TrendingDown className="h-4 w-4" />} color={marketAdverseMetricColor(maxDrawdown)} />
-        <MetricCard label="运行时间" value={paperRuntime(account)} icon={<Activity className="h-4 w-4" />} color="gray" />
+        <OperatorMetricCard label="账户总额" value={`¥${formatNumber(account.equity)}`} icon={<DollarSign className="h-4 w-4" />} tone="blue" />
+        <OperatorMetricCard label="总盈亏" value={signedMoney(pnl)} icon={pnl >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} tone={marketMetricColor(pnl)} />
+        <OperatorMetricCard label="收益率" value={signedPercent(returnPct)} icon={returnPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} tone={marketMetricColor(returnPct)} />
+        <OperatorMetricCard label="胜率" value={`${winRate.toFixed(1)}%`} icon={<Activity className="h-4 w-4" />} tone="blue" />
+        <OperatorMetricCard label="盈亏比" value={formatNumber(profitFactor)} icon={<Zap className="h-4 w-4" />} tone="blue" />
+        <OperatorMetricCard label="总交易" value={String(orders.length)} icon={<Activity className="h-4 w-4" />} tone="blue" />
+        <OperatorMetricCard label="最大回撤" value={`${maxDrawdown.toFixed(1)}%`} icon={<TrendingDown className="h-4 w-4" />} tone={marketAdverseMetricColor(maxDrawdown)} />
+        <OperatorMetricCard label="运行时间" value={paperRuntime(account)} icon={<Activity className="h-4 w-4" />} tone="neutral" />
       </div>
 
       <LogicSummarySection

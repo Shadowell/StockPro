@@ -1,5 +1,18 @@
 # Progress Log
 
+## Full Navigation & Page Micro-animations Tremor UI Transformation (2026-07-29)
+
+1. **L1 Sidebar Navigation (`Navigation.tsx` / `MainLayout.tsx`)**:
+   - Added Tremor Active Accent Indicator Bar (`border-l-2 border-blue-400 bg-blue-500/15 shadow-[0_0_8px_rgba(56,189,248,0.7)]`).
+   - Added icon hover scale animation (`group-hover:scale-110`) and `.animate-fade-in-up` page route transition animation.
+2. **L2/L3 Tabs & Controls (`WorkspaceTabs.tsx` & `OperatorShell.tsx`)**:
+   - Upgraded tabs to Tremor Capsule Pills with blue glow shadow and `active:scale-95` tactile press feedback.
+   - Enhanced `CatalogueCard` with 1px hover lift animation (`hover:-translate-y-[1px] hover:border-blue-500/40 hover:shadow-lg hover:shadow-blue-500/5`).
+3. **Global Tactile Interactions (`index.css`)**:
+   - Injected global button tactile bounce (`active:scale-[0.98] transition-transform`).
+
+Verification: `./scripts/check.sh` clean (build, 0 lint errors, 290 unit tests PASS); services running on :4444 & :4445.
+
 ## MarketSession Badge Static Pill & Brand Logo Redesign (2026-07-29)
 
 1. **Removed Breathing Animations & Glowing Pulses**:
