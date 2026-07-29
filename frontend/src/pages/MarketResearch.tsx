@@ -371,7 +371,9 @@ export function MarketResearch() {
       ]);
       if (research.status === 'fulfilled') {
         setContext(research.value);
-        // Do not lock the date picker to the sealed snapshot — empty means「最新封存」.
+        if (research.value?.snapshot?.trade_date && (!tradeDate || tradeDate === '')) {
+          setTradeDate(research.value.snapshot.trade_date);
+        }
       } else {
         setContext(null);
         setError(research.reason instanceof Error ? research.reason.message : '市场研究快照加载失败');
@@ -438,9 +440,17 @@ export function MarketResearch() {
           </label>
           <button
             type="button"
-            onClick={() => setTradeDate('')}
-            className="h-10 rounded-lg border border-crypto-border px-3 text-xs text-slate-500 hover:text-slate-200"
-            title="清空后加载最新封存证据"
+            onClick={() => {
+              setTradeDate('');
+              void getMarketResearchContext({ market_scope: scope }).then((res) => {
+                setContext(res);
+                if (res?.snapshot?.trade_date) {
+                  setTradeDate(res.snapshot.trade_date);
+                }
+              });
+            }}
+            className="h-10 rounded-lg border border-crypto-border px-3 text-xs text-slate-400 hover:bg-crypto-card hover:text-slate-200"
+            title="加载最新封存证据日期"
           >
             最新
           </button>
