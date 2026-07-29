@@ -214,4 +214,6 @@ npm --prefix frontend run build
 
 ## License
 
-项目保留原仓库许可证约定。使用市场数据、AI 服务和第三方接口时，还需遵守相应 Provider 的授权、频率和再分发规则。
+StockPro 源代码采用 [MIT License](LICENSE)。
+
+MIT 协议只覆盖本仓库拥有授权的源代码和文档。市场数据、AI 服务、第三方接口、依赖库及其输出仍受各自许可证、服务条款、数据授权、调用频率和再分发规则约束。

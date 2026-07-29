@@ -14,6 +14,7 @@
 | 数据研究 | [数据架构](DATA_ARCHITECTURE.md) | Provider、PG、快照、质量和调度 |
 | API/Agent 接入 | [API 指南](api.md) | 鉴权、接口域、写操作规范和 OpenAPI |
 | 策略作者 | [策略开发说明](../strategies/README.md) | 策略 API、版本、验证和运行限制 |
+| 代码使用与分发 | [MIT License](../LICENSE) | 源代码授权范围与免责声明 |
 
 ## 产品事实入口
 
