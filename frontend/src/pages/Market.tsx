@@ -432,13 +432,18 @@ export function Market({ asOfDate }: MarketProps = {}) {
         { left: 56, right: 20, top: '74%', height: '14%' },
       ],
       dataZoom: [
-        { type: 'inside', xAxisIndex: [0, 1], start: visibleDaily.length > 80 ? 45 : 0, end: 100 },
+        {
+          type: 'inside',
+          xAxisIndex: [0, 1],
+          start: visibleDaily.length > 80 ? Math.max(0, Math.floor((1 - 80 / visibleDaily.length) * 100)) : 0,
+          end: 100,
+        },
         {
           type: 'slider',
           xAxisIndex: [0, 1],
           bottom: 8,
           height: 18,
-          start: visibleDaily.length > 80 ? 45 : 0,
+          start: visibleDaily.length > 80 ? Math.max(0, Math.floor((1 - 80 / visibleDaily.length) * 100)) : 0,
           end: 100,
           borderColor: '#30363D',
           fillerColor: 'rgba(88,166,255,0.16)',
@@ -484,6 +489,8 @@ export function Market({ asOfDate }: MarketProps = {}) {
           name: 'K线',
           type: 'candlestick',
           data: candleRows,
+          barMaxWidth: 12,
+          barMinHeight: 2,
           itemStyle: {
             color: upColor,
             color0: downColor,

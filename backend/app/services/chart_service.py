@@ -49,19 +49,47 @@ class ChartService:
         except Exception as exc:
             logger.warning("PostgreSQL daily chart read failed for %s: %s", normalised, exc)
             return []
-        return [
-            {
-                "date": item.get("date"),
-                "open": item.get("open"),
-                "close": item.get("close"),
-                "high": item.get("high"),
-                "low": item.get("low"),
-                "volume": item.get("volume"),
-                "source_label": item.get("source") or "PostgreSQL cache",
-                "updated_at": item.get("updated_at"),
-            }
-            for item in rows
-        ]
+
+        # Sanitize data: filter out extreme outlier noise (e.g., corrupted rows from bad imports)
+        parsed: List[Dict[str, Any]] = []
+        for item in rows:
+            try:
+                c = float(item.get("close"))
+                h = float(item.get("high")) if item.get("high") is not None else c
+                l = float(item.get("low")) if item.get("low") is not None else c
+                o = float(item.get("open")) if item.get("open") is not None else c
+                if c <= 0 or h <= 0 or l <= 0 or o <= 0:
+                    continue
+                parsed.append({
+                    "date": str(item.get("date")),
+                    "open": o,
+                    "close": c,
+                    "high": h,
+                    "low": l,
+                    "volume": float(item.get("volume") or 0.0),
+                    "source_label": item.get("source") or "PostgreSQL cache",
+                    "updated_at": str(item.get("updated_at") or ""),
+                })
+            except (TypeError, ValueError):
+                continue
+
+        if len(parsed) < 10:
+            return parsed
+
+        # Filter out extreme spikes where close > 3x median close of nearest 15 bars
+        sanitized: List[Dict[str, Any]] = []
+        for index, bar in enumerate(parsed):
+            start = max(0, index - 7)
+            end = min(len(parsed), index + 8)
+            window_closes = sorted(b["close"] for b in parsed[start:end])
+            median_val = window_closes[len(window_closes) // 2]
+            if median_val > 0:
+                ratio = bar["close"] / median_val
+                if ratio > 3.0 or ratio < 0.33:
+                    continue
+            sanitized.append(bar)
+
+        return sanitized
 
     @staticmethod
     def _close_plausible(candidate: Optional[float], anchor: Optional[float]) -> bool:
