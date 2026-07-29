@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { StatusBadge } from '@bitpro/ui';
+import { TremorBarList } from '../components/TremorUI';
 import {
   Activity,
   AlertCircle,
@@ -431,6 +432,26 @@ export const FactorLibrary = () => {
 
       {workspace === 'library' && (
         <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+          {factors.length > 0 && (
+            <div className="p-4 border-b border-crypto-border/60 bg-crypto-bg/40">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
+                  <BarChart3 className="h-4 w-4 text-emerald-400" />
+                  因子全池样本覆盖度排行榜 (Tremor BarList 视角)
+                </span>
+                <span className="text-[10px] text-gray-500">按有效覆盖度排序</span>
+              </div>
+              <TremorBarList
+                data={factors.slice(0, 5).map((f) => ({
+                  name: `${f.factor_name} (${f.factor_code})`,
+                  value: Math.round((f.coverage ?? 0) * 100),
+                  subtitle: `选股方向: ${f.direction > 0 ? '正向' : '反向'}`,
+                }))}
+                valueFormatter={(v) => `${v}% 覆盖率`}
+                color="emerald"
+              />
+            </div>
+          )}
           <div className="border-b border-crypto-border px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>

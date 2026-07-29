@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { DataPanel, StatusBadge } from '@bitpro/ui';
 import { OperatorMetricCard } from '../components/OperatorShell';
+import { TremorBarList } from '../components/TremorUI';
 import type { MetricTone } from '../utils/marketColors';
 import {
   AlertCircle,
@@ -1241,10 +1242,30 @@ export function DataCenter() {
       )}
 
       {activeSection === 'datasets' && (
-      <section className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+      <section className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card space-y-4">
+        {tableStats?.tables && tableStats.tables.length > 0 && (
+          <div className="p-4 border-b border-crypto-border/60 bg-crypto-bg/40">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-blue-400" />
+                <span className="text-xs font-bold text-gray-200">数据表存储占比 (Tremor BarList 视角)</span>
+              </div>
+              <span className="text-[10px] text-gray-500">按记录存储规模排序</span>
+            </div>
+            <TremorBarList
+              data={tableStats.tables.slice(0, 5).map((t) => ({
+                name: `${t.tableName} (${toPublicSymbol(t.symbol) || '全量/汇总'})`,
+                value: t.recordCount,
+                subtitle: t.timeframe ? `周期: ${t.timeframe}` : undefined,
+              }))}
+              valueFormatter={(v) => `${format(v)} 条记录`}
+              color="blue"
+            />
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-4 py-3">
           <div>
-            <h2 className="text-base font-semibold text-white">数据表统计</h2>
+            <h2 className="text-base font-semibold text-white">数据表明细</h2>
             <p className="mt-1 text-xs text-gray-500">按表、标的和周期核对 K 线存储规模。</p>
           </div>
           <div className="flex items-center gap-2 text-xs">

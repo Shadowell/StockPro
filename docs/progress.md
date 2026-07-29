@@ -1,5 +1,17 @@
 # Progress Log
 
+## Full-Site Tremor UI Style Transformation (2026-07-29)
+
+1. **Shared Tremor UI Component Library (`frontend/src/components/TremorUI.tsx`)**:
+   - Standardized `TremorCard`, `TremorDeltaBadge`, `TremorTracker`, `TremorBarList`, `TremorCallout`.
+2. **Page Refactors & Style Enhancements**:
+   - **DataCenter.tsx**: Integrated `TremorBarList` for table storage scale visualization.
+   - **Watch.tsx**: Added `TremorDeltaBadge` for signal direction badges and `TremorTracker` for 30-day runtime health monitoring.
+   - **FactorLibrary.tsx**: Added `TremorBarList` for factor universe coverage rankings.
+   - **TremorShowcasePanel.tsx**: Refactored to import from shared `TremorUI`.
+
+Verification: `./scripts/check.sh` clean (build, lint with 0 errors, deploy syntax, 290 unit tests PASS); services running on :4444 & :4445.
+
 ## Workstation Full Menu Audit & Data Self-Healing (2026-07-29)
 
 1. **Full-Menu QA Audit**:
