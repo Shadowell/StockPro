@@ -1,6 +1,46 @@
-<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <title>StockPro</title>
-  <rect x="1.5" y="1.5" width="29" height="29" rx="7" fill="#121a24"/>
-  <rect x="1.5" y="1.5" width="29" height="29" rx="7" stroke="#7DD3FC" stroke-opacity="0.55"/>
-  <path d="M5.5 16.5H10.2L12.4 11.2L15.8 22.4L18.7 8.6L21.4 16.5H26.5" stroke="#7DD3FC" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>StockPro AI</title>
+  <defs>
+    <linearGradient id="spFavBg" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#182335" />
+      <stop offset="50%" stopColor="#0F172A" />
+      <stop offset="100%" stopColor="#080D1A" />
+    </linearGradient>
+    <linearGradient id="spFavTrend" x1="6" y1="38" x2="42" y2="8" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#38BDF8" />
+      <stop offset="45%" stopColor="#60A5FA" />
+      <stop offset="85%" stopColor="#3B82F6" />
+      <stop offset="100%" stopColor="#10B981" />
+    </linearGradient>
+    <linearGradient id="spFavBar1" x1="0" y1="18" x2="0" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#0EA5E9" stopOpacity="0.8" />
+      <stop offset="100%" stopColor="#0284C7" stopOpacity="0.2" />
+    </linearGradient>
+    <linearGradient id="spFavBar2" x1="0" y1="12" x2="0" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.9" />
+      <stop offset="100%" stopColor="#1E40AF" stopOpacity="0.2" />
+    </linearGradient>
+    <linearGradient id="spFavBar3" x1="0" y1="6" x2="0" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#34D399" stopOpacity="0.9" />
+      <stop offset="100%" stopColor="#059669" stopOpacity="0.2" />
+    </linearGradient>
+  </defs>
+
+  {/* Outer Container Frame */}
+  <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#spFavBg)" stroke="#38BDF8" stroke-width="1.5" stroke-opacity="0.4" />
+
+  {/* Quant Candlestick Pillars */}
+  <rect x="10" y="26" width="4.5" height="12" rx="1.5" fill="url(#spFavBar1)" />
+  <rect x="18" y="20" width="4.5" height="18" rx="1.5" fill="url(#spFavBar2)" />
+  <rect x="26" y="14" width="4.5" height="24" rx="1.5" fill="url(#spFavBar2)" />
+  <rect x="34" y="8" width="4.5" height="30" rx="1.5" fill="url(#spFavBar3)" />
+
+  {/* Power Surge Trendline */}
+  <path d="M7 33L16 24L23 29L34 14L41 7" stroke="#030712" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6" />
+  <path d="M7 33L16 24L23 29L34 14L41 7" stroke="url(#spFavTrend)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M34 7H41V14" stroke="url(#spFavTrend)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+
+  {/* Target Signal Spark Node */}
+  <circle cx="41" cy="7" r="2.5" fill="#34D399" />
+  <circle cx="41" cy="7" r="1" fill="#FFFFFF" />
 </svg>
