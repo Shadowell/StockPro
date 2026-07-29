@@ -79,7 +79,7 @@ export const RequireAdmin: React.FC<RequireAdminProps> = ({ children }) => {
 
   if (state === 'checking') {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-[#0b1120] text-slate-300">
+      <div data-testid="session-gate" data-session-loading="true" className="flex min-h-screen w-full items-center justify-center bg-[#0b1120] text-slate-300">
         <div className="flex items-center gap-2 text-sm">
           <Loader2 size={16} className="animate-spin text-emerald-400" />
           <span>正在校验访问会话...</span>
