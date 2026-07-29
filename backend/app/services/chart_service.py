@@ -8,9 +8,9 @@ from app.db import db_instance
 from app.services.tushare_provider import market_data_provider as ak
 
 try:
-    import akshare as akshare_raw
+    import akshare as external_provider_raw
 except Exception:  # pragma: no cover - optional local dep
-    akshare_raw = None
+    external_provider_raw = None
 
 logger = logging.getLogger(__name__)
 
@@ -108,11 +108,11 @@ class ChartService:
         if ChartService._close_plausible(candidate, session_anchor):
             return candidate
 
-        # Provider fallback: prior daily bar from raw AkShare when PG daily is missing/corrupt.
+        # Provider fallback: prior daily bar from raw provider when PG daily is missing/corrupt.
         code = ChartService._public_code(normalised)
         if not code:
             return session_anchor
-        hist = akshare_raw.stock_zh_a_hist if akshare_raw is not None else None
+        hist = external_provider_raw.stock_zh_a_hist if external_provider_raw is not None else None
         if hist is None:
             hist = getattr(ak, "stock_zh_a_hist", None)
         if hist is None:
@@ -150,10 +150,10 @@ class ChartService:
     @staticmethod
     def _fetch_intraday_from_provider(normalised: str) -> List[Dict[str, Any]]:
         """
-        Pull today's (or latest available) 1-minute session from AkShare/Eastmoney.
+        pull today's (or latest available) 1-minute session from spot provider/eastmoney.
 
         TuShare equivalents require separate realtime-minute permission:
-        rt_min / rt_min_daily. Prefer AkShare hist_min_em for workstation completeness.
+        rt_min / rt_min_daily. Prefer spot provider hist_min_em for workstation completeness.
         """
         code = ChartService._public_code(normalised)
         if not code:
@@ -197,7 +197,7 @@ class ChartService:
                 "high": float(row.get(high_col)) if high_col and pd.notna(row.get(high_col)) else close,
                 "low": float(row.get(low_col)) if low_col and pd.notna(row.get(low_col)) else close,
                 "volume": float(row.get(vol_col)) if vol_col and pd.notna(row.get(vol_col)) else 0.0,
-                "source": "akshare_stock_zh_a_hist_min_em",
+                "source": "spot_hist_min_em",
             }
             parsed.append(item)
         if not parsed:
@@ -225,7 +225,7 @@ class ChartService:
 
     @staticmethod
     def get_intraday_data(symbol: str) -> List[Dict[str, Any]]:
-        """Return latest one-minute session; fall back to AkShare when PG 1m is empty."""
+        """Return latest one-minute session; fall back to provider when PG 1m is empty."""
         normalised = ChartService._normalise_symbol(symbol)
         if not normalised:
             return []

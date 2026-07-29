@@ -7,7 +7,6 @@ import {
   Info,
   ShieldAlert,
   BarChart3,
-  Layers,
   Activity,
   ArrowUpRight,
   ArrowDownRight,

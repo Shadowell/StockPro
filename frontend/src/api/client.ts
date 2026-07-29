@@ -1158,6 +1158,10 @@ export const getBacktestEvidence = async (runId: string, kind: 'positions' | 'or
 export const compareBacktestRuns = async (runIds: string[]): Promise<{ runs: BacktestRun[]; series: Record<string, BacktestDailyPoint[]> }> =>
   (await apiClient.post('/backtest/compare', { run_ids: runIds })).data;
 
+export const healMissingData = async (request: { days?: number; heal_kline?: boolean; heal_market_evidence?: boolean }): Promise<Record<string, unknown>> => {
+  return (await apiClient.post('/data/heal-missing', request)).data;
+};
+
 export const createBacktestProtocol = async (request: Record<string, unknown>): Promise<Record<string, unknown>> =>
   (await apiClient.post('/backtest/protocols', request)).data;
 

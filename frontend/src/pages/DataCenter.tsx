@@ -36,6 +36,7 @@ import {
   getResearchDatasetSnapshots,
   getResearchDatasets,
   getTushareEndpoints,
+  healMissingData,
   probeTushareEndpoint,
   removeDataSymbol,
   runDailyReferenceSchedule,
@@ -781,6 +782,24 @@ export function DataCenter() {
           <button onClick={() => void runFullMarketDownload()} disabled={syncing} className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50">
             <Play className="h-3.5 w-3.5" />
             全量下载
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await healMissingData({ days: 30, heal_kline: true, heal_market_evidence: true });
+                setMessage(String(res.message || '已成功启动数据自愈拉取！'));
+                load();
+              } catch (e: unknown) {
+                const errMessage = typeof e === 'object' && e !== null && 'message' in e ? String((e as { message?: string }).message) : '未知错误';
+                setMessage('数据自愈触发失败：' + errMessage);
+              }
+            }}
+            disabled={syncing}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/15 px-4 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Zap className="h-3.5 w-3.5 text-cyan-400" />
+            一键数据自愈
           </button>
         </div>
       </div>
