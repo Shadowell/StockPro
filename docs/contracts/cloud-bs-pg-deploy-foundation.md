@@ -1,5 +1,7 @@
 # Sprint Contract: Cloud B/S Postgres Deployment Foundation
 
+> Status: Active production foundation. On 2026-08-01 the frontend UI package was moved inside the StockPro repository so self-hosted Actions builds no longer depend on a sibling checkout.
+
 ## Sprint Name
 
 `cloud-bs-pg-deploy-foundation`
