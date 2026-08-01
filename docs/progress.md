@@ -1707,3 +1707,12 @@ Verification:
 - Added the repository-level standard MIT license with copyright holder `shadowell`, and linked it from the Chinese README, English README and documentation index.
 - Clarified that the MIT grant covers repository-owned source code and documentation, while market data, AI services, third-party APIs, dependencies and their outputs retain their own licenses and service/data restrictions.
 - Documentation/legal-metadata-only change: no application source changed, no service restart and no remote deployment were required. Verification passed: `git diff --check` and local documentation link validation.
+
+## GitHub Actions deployment recovery (2026-08-01)
+
+- Diagnosed the repeated `Deploy StockPro` failures as two independent faults: the frontend depended on the unavailable sibling path `../../BitPro/packages/bitpro-ui`, then the self-hosted production runner's local PostgreSQL service was stopped while migrations expected `127.0.0.1:5432`.
+- Moved the required `@bitpro/ui` primitives into `frontend/packages/bitpro-ui`, changed the npm file dependency to the repository-contained package, and added a dependency-boundary check to prevent future CI builds from referencing files outside StockPro.
+- Updated the production deploy script to start local PostgreSQL when required and wait for a real database connection before migrations.
+- Local verification passed after a clean frontend/backend restart: `./scripts/check.sh` (frontend build, dependency guard, lint with 6 existing warnings, deploy shell syntax, 290 backend tests and Python compilation) and `git diff --check`.
+- GitHub Actions run `30696038264` succeeded for commit `7b831bc630a7f1b395855227c3d9ac2882221803`: frontend build, server deployment and deployed-SHA recording all passed. The workflow log confirmed PostgreSQL, backend and frontend readiness; the public frontend and `/api/health/health` both returned HTTP 200.
+- A non-blocking Node cache-save warning remains on the self-hosted runner (`tar` exited while saving the npm cache). It did not fail the job or affect the deployed application and should be handled as runner storage/cache maintenance rather than application rollback.
