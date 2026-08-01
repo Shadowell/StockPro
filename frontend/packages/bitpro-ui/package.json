@@ -1,0 +1,26 @@
+{
+  "name": "@bitpro/ui",
+  "version": "0.1.0",
+  "description": "StockPro financial operator UI primitives.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": [
+    "./styles.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    },
+    "./styles.css": "./styles.css"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "styles.css"
+  ],
+  "peerDependencies": {
+    "react": ">=18"
+  }
+}

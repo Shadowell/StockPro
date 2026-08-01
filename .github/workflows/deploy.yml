@@ -137,7 +137,8 @@ jobs:
         env:
           VITE_API_URL: /api
         run: |
-          npm ci
+          node scripts/check-local-dependencies.mjs
+          npm ci --ignore-scripts
           npm run build
 
       - name: Deploy to Server

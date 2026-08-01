@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run check:dependencies && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "check": "tsc -b --noEmit",
+    "check": "npm run check:dependencies && tsc -b --noEmit",
+    "check:dependencies": "node scripts/check-local-dependencies.mjs",
     "test:e2e": "playwright test",
     "test:e2e:mock": "cross-env MOCK_API=true playwright test",
     "test:e2e:real": "cross-env MOCK_API=false E2E_REAL_BACKEND=1 playwright test tests/e2e/real-backend.spec.ts",
@@ -18,7 +19,7 @@
     "electron:dist": "npm run build && electron-builder"
   },
   "dependencies": {
-    "@bitpro/ui": "file:../../BitPro/packages/bitpro-ui",
+    "@bitpro/ui": "file:./packages/bitpro-ui",
     "@monaco-editor/react": "^4.7.0",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
