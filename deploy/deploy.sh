@@ -49,6 +49,47 @@ if [ -z "$DATABASE_URL_VALUE" ]; then
     exit 1
 fi
 
+DATABASE_HOST=$(DATABASE_URL="$DATABASE_URL_VALUE" python - <<'PY'
+import os
+from urllib.parse import urlparse
+
+print(urlparse(os.environ["DATABASE_URL"]).hostname or "")
+PY
+)
+
+if [ "$DATABASE_HOST" = "127.0.0.1" ] || [ "$DATABASE_HOST" = "localhost" ] || [ "$DATABASE_HOST" = "::1" ]; then
+    echo ">>> 启动本机 PostgreSQL..."
+    systemctl enable postgresql >/dev/null 2>&1 || true
+    systemctl start postgresql
+fi
+
+echo -n ">>> 等待 PostgreSQL 就绪"
+for i in $(seq 1 30); do
+    if DATABASE_URL="$DATABASE_URL_VALUE" python - <<'PY' >/dev/null 2>&1
+import os
+import psycopg
+
+with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=2) as connection:
+    connection.execute("SELECT 1")
+PY
+    then
+        echo ""
+        echo "✅ PostgreSQL 就绪"
+        break
+    fi
+
+    sleep 1
+    echo -n "."
+    if [ "$i" -eq 30 ]; then
+        echo ""
+        echo "❌ PostgreSQL 连接超时"
+        if [ "$DATABASE_HOST" = "127.0.0.1" ] || [ "$DATABASE_HOST" = "localhost" ] || [ "$DATABASE_HOST" = "::1" ]; then
+            journalctl -u postgresql --no-pager -n 40 || true
+        fi
+        exit 1
+    fi
+done
+
 DATABASE_URL="$DATABASE_URL_VALUE" python -m app.db.postgres_migrations
 
 echo ">>> 安装 systemd 服务..."
