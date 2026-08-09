@@ -1278,6 +1278,25 @@ test('daily review keeps metrics unavailable when evidence assembly fails', asyn
   await expect(page.getByRole('button', { name: '封存复盘' })).toHaveCount(0);
 });
 
+test('daily review renders absent category counters as zero instead of undefined', async ({ page }) => {
+  await page.route('**/api/review/2025-01-02', (route) => route.fulfill(json({
+    review: null,
+    trade_date: '2025-01-02',
+    status: 'live',
+    source_manifest_hash: 'empty-review-manifest',
+    counts: { market: 1 },
+    metrics: [],
+    items: [],
+  })));
+  await loginAsAdmin(page);
+  await page.goto('/review?date=2025-01-02');
+
+  await expect(page.getByTestId('review-metric-股票池快照').getByText('0', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('review-metric-策略信号').getByText('0', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('review-metric-风险 / 成交').getByText('0 / 0', { exact: true })).toBeVisible();
+  await expect(page.getByText(/undefined/)).toHaveCount(0);
+});
+
 test('data center separates cache coverage from sealed research readiness', async ({ page }) => {
   await page.route('**/api/data/status', (route) => route.fulfill(json({
     status: 'ready',

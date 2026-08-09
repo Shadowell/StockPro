@@ -23,7 +23,27 @@ class DailyReviewUnitTests(unittest.TestCase):
 
     def test_counts_groups_timeline_categories(self):
         result = self.service._counts([{"category": "risk"}, {"category": "risk"}, {"category": "trade"}])
-        self.assertEqual(result, {"risk": 2, "trade": 1})
+        self.assertEqual(result["risk"], 2)
+        self.assertEqual(result["trade"], 1)
+        self.assertEqual(result["market"], 0)
+        self.assertEqual(result["pool"], 0)
+        self.assertEqual(result["strategy"], 0)
+
+    def test_counts_returns_complete_zero_contract_for_empty_timeline(self):
+        self.assertEqual(
+            self.service._counts([]),
+            {
+                "market": 0,
+                "pool": 0,
+                "strategy": 0,
+                "risk": 0,
+                "order": 0,
+                "trade": 0,
+                "position": 0,
+                "performance": 0,
+                "system": 0,
+            },
+        )
 
     def test_add_builds_deterministic_source_reference(self):
         items = []

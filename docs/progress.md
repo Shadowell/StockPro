@@ -1738,3 +1738,19 @@ Verification:
   chunk and FastAPI `on_event` deprecation.
 - This audit did not trigger synchronization, task execution, Paper controls,
   strategy creation, database writes, external Provider calls or deployment.
+
+### SP-004 review counter contract fix
+
+- Changed the daily-review API count contract to return all supported timeline
+  categories with explicit zero values, including an entirely empty timeline.
+- Added a defensive frontend count accessor so older or partial responses also
+  render `0` rather than interpolating JavaScript `undefined`.
+- Added backend regression coverage for grouped and empty counts, plus mocked
+  browser coverage for partial API payloads and failed evidence loading.
+- Completed clean local frontend/backend restart. Both ports listened, the
+  application and PostgreSQL health endpoints were healthy, and the real
+  2026-08-07 Review page displayed `0 / 0` with no undefined value.
+- Verification passed: 13 focused backend tests, 2 focused mocked Playwright
+  tests, `./scripts/check.sh` with 291 backend tests, frontend build/lint and
+  Python compilation. The six pre-existing Hook warnings, large Vite vendor
+  chunk and FastAPI lifespan deprecation remain tracked in SP-016/SP-017.

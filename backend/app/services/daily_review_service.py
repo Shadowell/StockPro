@@ -184,7 +184,20 @@ class DailyReviewService:
 
     @staticmethod
     def _counts(items: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
-        counts: Dict[str, int] = {}
+        counts: Dict[str, int] = {
+            category: 0
+            for category in (
+                "market",
+                "pool",
+                "strategy",
+                "risk",
+                "order",
+                "trade",
+                "position",
+                "performance",
+                "system",
+            )
+        }
         for item in items:
             key = str(item["category"])
             counts[key] = counts.get(key, 0) + 1

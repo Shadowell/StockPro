@@ -231,6 +231,8 @@ export function DailyReview() {
   );
   const metric = (code: string) =>
     context?.metrics.find((item) => item.metric_code === code)?.metric_value;
+  const count = (category: string) =>
+    context ? (context.counts[category] ?? 0) : undefined;
   const reviewStatus = error
     ? "加载失败"
     : busy && !context
@@ -319,14 +321,14 @@ export function DailyReview() {
             ["涨停数", metric("limit_up_count"), "up"],
             ["跌停数", metric("limit_down_count"), "down"],
             ["最高连板", metric("highest_board"), "amber"],
-            ["股票池快照", context ? context.counts.pool : undefined, "blue"],
-            ["策略信号", context ? context.counts.strategy : undefined, "blue"],
+            ["股票池快照", count("pool"), "blue"],
+            ["策略信号", count("strategy"), "blue"],
             [
               "风险 / 成交",
               context
-                ? `${context.counts.risk} / ${context.counts.trade}`
+                ? `${count("risk")} / ${count("trade")}`
                 : undefined,
-              context && Number(context.counts.risk) > 0 ? "red" : "blue",
+              context && Number(count("risk")) > 0 ? "red" : "blue",
             ],
           ] as const
         ).map(([label, current, tone]) => (
