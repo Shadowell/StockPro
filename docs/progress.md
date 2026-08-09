@@ -1754,3 +1754,23 @@ Verification:
   tests, `./scripts/check.sh` with 291 backend tests, frontend build/lint and
   Python compilation. The six pre-existing Hook warnings, large Vite vendor
   chunk and FastAPI lifespan deprecation remain tracked in SP-016/SP-017.
+
+### SP-003 runtime truth presentation fix
+
+- Paper cards now reserve the animated green indicator for a running lifecycle
+  whose heartbeat satisfies the 15-minute SLA. A running database lifecycle
+  with a missing or stale heartbeat is amber and explicitly labelled
+  `生命周期运行中` plus `心跳陈旧`; the detail page uses the same distinction.
+- Replaced Watch's fabricated 30-day, `100% 实时监控中` Tracker with five real
+  evidence domains: instances, signals, orders, trades and alerts. Their color
+  and tooltip now derive from the API's fresh/stale/empty/error state.
+- Monitor now separates the historical cycle result from current freshness,
+  localizes Paper service names, renders missing error codes as `--`, and tones
+  lifecycle status using current runtime health when the two disagree.
+- Added three mocked browser regressions covering a missing Paper heartbeat, a
+  stale Watch snapshot and a historically healthy but currently stale Monitor
+  service. All three pass.
+- Completed clean local frontend/backend restart and verified healthy app/PG
+  endpoints. Real pages show amber lifecycle/heartbeat badges, an amber
+  evidence-based Watch tracker and `正常` + `数据滞后` as separate Monitor
+  columns. `./scripts/check.sh` passed with 291 backend tests.

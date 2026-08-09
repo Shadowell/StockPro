@@ -106,6 +106,34 @@ export function Watch() {
     );
   const emptyState = (label: string) =>
     error ? "数据加载失败" : busy && !context ? "正在读取观察记录…" : label;
+  const observationLabel = error
+    ? "加载失败 · 不可观察"
+    : busy
+      ? "证据读取中"
+      : context?.data_status === "fresh"
+        ? "证据新鲜 · 可观察"
+        : context?.data_status === "stale"
+          ? "旧快照 · 不可视为实时"
+          : "暂无证据 · 不可观察";
+  const observationColor = error
+    ? "rose"
+    : busy
+      ? "blue"
+      : context?.data_status === "fresh"
+        ? "emerald"
+        : context?.data_status === "stale"
+          ? "amber"
+          : "gray";
+  const trackerData = [
+    ["策略实例", context?.coverage.instances],
+    ["策略信号", context?.coverage.signals],
+    ["订单", context?.coverage.orders],
+    ["成交", context?.coverage.trades],
+    ["告警", context?.coverage.alerts],
+  ].map(([label, count]) => ({
+    color: observationColor as "emerald" | "amber" | "rose" | "gray" | "blue",
+    tooltip: `${label}: ${count ?? 0} 条 · ${observationLabel}`,
+  }));
   const acknowledge = async (alert: RuntimeAlert) => {
     setBusy(true);
     try {
@@ -169,14 +197,18 @@ export function Watch() {
       <div className="mb-4 rounded-xl border border-crypto-border bg-crypto-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2 text-xs">
           <span className="font-bold text-gray-200">系统观察台与策略引擎健康度 (Tremor Tracker 视角)</span>
-          <span className="text-[10px] text-emerald-400 font-semibold">100% 实时监控中</span>
+          <span className={clsx(
+            "text-[10px] font-semibold",
+            observationColor === "emerald"
+              ? "text-emerald-400"
+              : observationColor === "rose"
+                ? "text-rose-300"
+                : observationColor === "blue"
+                  ? "text-blue-300"
+                  : "text-amber-300",
+          )}>{observationLabel}</span>
         </div>
-        <TremorTracker
-          data={Array.from({ length: 30 }, (_, i) => ({
-            color: i === 15 ? 'amber' : 'emerald',
-            tooltip: `Day ${i + 1}: 运行状态正常 (在途实时观测)`,
-          }))}
-        />
+        <TremorTracker data={trackerData} />
       </div>
       <WorkspaceTabs
         ariaLabel="观察台二级导航"

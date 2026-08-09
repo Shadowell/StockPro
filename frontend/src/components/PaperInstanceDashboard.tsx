@@ -441,14 +441,23 @@ export function PaperInstanceDashboard({
                         )}
                       />
                     </button>
-                    {running ? (
+                    {running && !heartbeatStale ? (
                       <span
                         className="relative mt-0.5 flex h-3.5 w-3.5 items-center justify-center"
-                        title="运行中"
-                        aria-label="运行中"
+                        title="心跳满足 SLA"
+                        aria-label="健康运行"
                       >
                         <span className="absolute h-3.5 w-3.5 animate-ping rounded-full bg-emerald-400/40" />
                         <span className="relative h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.85)]" />
+                      </span>
+                    ) : running ? (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
+                        title="数据库生命周期仍为运行中，但当前心跳不满足 SLA"
+                        aria-label="生命周期运行中，心跳陈旧"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                        生命周期运行中
                       </span>
                     ) : (
                       <span className={clsx(
@@ -474,7 +483,7 @@ export function PaperInstanceDashboard({
                   </span>
                   {heartbeatStale ? (
                     <span className="rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-amber-300">
-                      心跳待更新
+                      心跳陈旧
                     </span>
                   ) : null}
                   <span
@@ -489,7 +498,7 @@ export function PaperInstanceDashboard({
                   >
                     · {labelSymbols(symbols)}
                   </span>
-                  <span className="text-slate-600">· 心跳 {timestamp(instance.heartbeat_at)}</span>
+                  <span className="text-slate-600">· 最后心跳 {timestamp(instance.heartbeat_at)}</span>
                 </div>
 
                 <div className="mt-2 grid grid-cols-2 gap-x-3 border-y border-white/[0.05] py-2">

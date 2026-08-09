@@ -15,6 +15,10 @@ const text = (value: unknown) => value === null || value === undefined || value 
 const tone = (status: string) => status === 'healthy' || status === 'running' ? 'text-emerald-300' : status === 'critical' || status === 'failed' ? 'text-red-300' : 'text-amber-300';
 const isBusinessPurpose = (item: { data_purpose?: string | null }) =>
   !item.data_purpose || item.data_purpose === 'user';
+const serviceLabels: Record<string, string> = {
+  paper_feed: '模拟行情服务',
+  paper_runtime: '模拟运行服务',
+};
 const snapshotLabels: Record<string, string> = {
   status: '封存状态',
   knowledge_cutoff_at: '知识截止',
@@ -47,11 +51,13 @@ function SnapshotPanel({
 
 function Rows({ rows, keys }: { rows: Array<Record<string, unknown>>; keys: Array<[string, string]> }) {
   const displayValue = (key: string, current: unknown) => {
-    if (key === 'status' || key === 'severity') return statusLabel(current);
+    if (current === null || current === undefined || current === '') return '--';
+    if (key === 'service_code') return serviceLabels[String(current)] ?? String(current);
+    if (key === 'status' || key === 'severity' || key === 'freshness') return statusLabel(current);
     if (key === 'category') return categoryLabel(current);
     return typeof current === 'object' ? JSON.stringify(current) : text(current);
   };
-  return <div className={`${panel} overflow-hidden`}><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b border-crypto-border text-left text-xs text-slate-500">{keys.map(([key, label]) => <th key={key} className="px-4 py-3">{label}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={text(row.id ?? `${row.status}-${index}`)} className="border-b border-white/[0.04]">{keys.map(([key]) => <td key={key} className={`px-4 py-3 ${key === 'status' ? tone(text(row[key])) : 'text-slate-300'}`}>{displayValue(key, row[key])}</td>)}</tr>)}</tbody></table></div>{rows.length === 0 ? <div className="p-12 text-center text-sm text-slate-600">暂无健康记录</div> : null}</div>;
+  return <div className={`${panel} overflow-hidden`}><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b border-crypto-border text-left text-xs text-slate-500">{keys.map(([key, label]) => <th key={key} className="px-4 py-3">{label}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={text(row.id ?? `${row.status}-${index}`)} className="border-b border-white/[0.04]">{keys.map(([key]) => <td key={key} className={`px-4 py-3 ${key === 'status' || key === 'freshness' ? tone(text(row[key])) : 'text-slate-300'}`}>{displayValue(key, row[key])}</td>)}</tr>)}</tbody></table></div>{rows.length === 0 ? <div className="p-12 text-center text-sm text-slate-600">暂无健康记录</div> : null}</div>;
 }
 
 export function Monitor() {
@@ -96,14 +102,14 @@ export function Monitor() {
           <Link to={`/paper?instance=${item.id}`} className="rounded-lg border border-crypto-border px-3 py-2 text-xs text-blue-300">Paper 证据链</Link>
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[['运行状态', item.status], ['最后心跳', item.heartbeat_at], ['最后交易日', item.last_processed_trade_date], ['最后周期', item.latest_cycle_status], ['周期完成', item.latest_cycle_finished_at], ['最新权益', item.latest_equity], ['最新回撤', item.latest_drawdown], ['账本差额', item.latest_cycle_ledger_difference]].map(([label, current]) => { const isState = String(label).includes('状态') || String(label) === '最后周期'; return <div key={String(label)} className="rounded-lg border border-crypto-border bg-crypto-bg p-3"><div className="text-[10px] text-slate-600">{String(label)}</div><div className={`mt-1 break-all text-xs ${isState ? tone(text(current)) : 'text-slate-300'}`}>{isState ? statusLabel(current) : text(current)}</div></div>; })}
+          {[['运行状态', item.status], ['最后心跳', item.heartbeat_at], ['最后交易日', item.last_processed_trade_date], ['最后周期', item.latest_cycle_status], ['周期完成', item.latest_cycle_finished_at], ['最新权益', item.latest_equity], ['最新回撤', item.latest_drawdown], ['账本差额', item.latest_cycle_ledger_difference]].map(([label, current]) => { const isLifecycle = String(label) === '运行状态'; const isState = isLifecycle || String(label) === '最后周期'; const stateTone = isLifecycle && item.health_state !== 'fresh' ? item.health_state : text(current); return <div key={String(label)} className="rounded-lg border border-crypto-border bg-crypto-bg p-3"><div className="text-[10px] text-slate-600">{String(label)}</div><div className={`mt-1 break-all text-xs ${isState ? tone(stateTone) : 'text-slate-300'}`}>{isLifecycle ? `${statusLabel(current)}（生命周期）` : isState ? statusLabel(current) : text(current)}</div></div>; })}
         </div>
         <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500"><span>订单 <strong className="text-slate-300">{item.order_count}</strong></span><span>成交 <strong className="text-slate-300">{item.trade_count}</strong></span><span>风险决策 <strong className="text-slate-300">{item.risk_event_count}</strong></span><span>拒绝 <strong className={item.rejected_count ? 'text-red-300' : 'text-slate-300'}>{item.rejected_count}</strong></span></div>
         {item.latest_cycle_error ? <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-200">{item.latest_cycle_error}</div> : null}
       </article>)}
       {!scopedStrategyHealth.length ? <div className={`${panel} p-12 text-center text-sm text-slate-600`}>{busy ? '正在读取实例健康…' : '没有 Paper 实例健康证据'}</div> : null}
     </div> : null}
-    {tab === 'data' ? <div className="grid gap-5 xl:grid-cols-2"><SnapshotPanel title="研究数据快照" toneClass="text-blue-400" snapshot={health?.data.dataset} /><SnapshotPanel title="市场证据快照" toneClass="text-violet-400" snapshot={health?.data.market} /><div className="xl:col-span-2"><Rows rows={health?.services ?? []} keys={[["service_code","服务"],["status","状态"],["last_success_at","最近成功"],["error_code","错误码"],["message","消息"],["observed_at","观察时间"]]} /></div></div> : null}
+    {tab === 'data' ? <div className="grid gap-5 xl:grid-cols-2"><SnapshotPanel title="研究数据快照" toneClass="text-blue-400" snapshot={health?.data.dataset} /><SnapshotPanel title="市场证据快照" toneClass="text-violet-400" snapshot={health?.data.market} /><div className="xl:col-span-2"><Rows rows={health?.services ?? []} keys={[["service_code","服务"],["status","最近周期结果"],["freshness","当前新鲜度"],["last_success_at","最近成功"],["error_code","错误码"],["message","消息"],["observed_at","观察时间"]]} /></div></div> : null}
     {tab === 'risk' ? <div className="space-y-4"><Rows rows={health?.risk_alerts ?? []} keys={[["severity","级别"],["count","活动告警"]]} /><Rows rows={(health?.active_alerts ?? []) as unknown as Array<Record<string, unknown>>} keys={[["triggered_at","触发时间"],["severity","级别"],["category","类别"],["title","告警"],["instance_name","关联策略"]]} /><div className={`${panel} flex items-center justify-between p-5`}><div><h2 className="font-semibold text-white">风险告警证据</h2><p className="mt-1 text-xs text-slate-500">在观察台确认告警，在模拟盘查看对应实例、订单与规则链。</p></div><Link to="/watch?tab=alerts" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">打开观察台</Link></div></div> : null}
     {tab === 'notifications' ? <Rows rows={health?.notifications ?? []} keys={[["status","投递状态"],["count","数量"]]} /> : null}
   </div>;

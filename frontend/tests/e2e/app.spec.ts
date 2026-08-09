@@ -1211,6 +1211,25 @@ test('paper running state is downgraded when the recorded replay heartbeat is mi
   const instanceCard = page.getByTestId('paper-instance-card').first();
   await expect(instanceCard.getByText('心跳陈旧', { exact: true })).toBeVisible();
   await expect(instanceCard.getByText('最后心跳 未记录')).toBeVisible();
+  await expect(instanceCard.getByLabel('生命周期运行中，心跳陈旧')).toBeVisible();
+  await expect(instanceCard.getByLabel('健康运行')).toHaveCount(0);
+});
+
+test('watch never presents a stale snapshot as one hundred percent realtime', async ({ page }) => {
+  await page.route('**/api/watch/context', (route) => route.fulfill(json({
+    alerts: [], signals: [], orders: [], trades: [], positions: [], risk_events: [],
+    runtime_events: [], pool_moves: [], instances: [],
+    coverage: { instances: 0, signals: 0, orders: 0, trades: 0, alerts: 0 },
+    data_status: 'stale',
+    source_label: 'PostgreSQL Paper audit evidence',
+    source_updated_at: '2026-07-27T15:00:00+08:00',
+    response_generated_at: now,
+  })));
+  await loginAsAdmin(page);
+  await page.goto('/watch');
+
+  await expect(page.getByText('旧快照 · 不可视为实时', { exact: true })).toBeVisible();
+  await expect(page.getByText(/100% 实时监控中/)).toHaveCount(0);
 });
 
 test('watch separates load failure from a legitimate empty signal set', async ({ page }) => {
@@ -1233,6 +1252,33 @@ test('monitor keeps counters unavailable when its health snapshot fails', async 
   for (const label of ['策略实例', '活动风险告警', '通知投递']) {
     await expect(page.getByText(label).locator('..').getByText('--')).toBeVisible();
   }
+});
+
+test('monitor gives stale service freshness precedence over a historical healthy result', async ({ page }) => {
+  await page.route('**/api/monitor/health', (route) => route.fulfill(json({
+    status: 'critical',
+    services: [{
+      id: 1,
+      service_code: 'paper_feed',
+      status: 'healthy',
+      freshness: 'stale',
+      last_success_at: '2026-07-27T15:00:00+08:00',
+      error_code: null,
+      message: '历史周期成功',
+      observed_at: '2026-07-27T15:00:00+08:00',
+    }],
+    data: {}, strategy_instances: [], strategy_health: [], risk_alerts: [],
+    active_alerts: [], notifications: [],
+    source_label: 'PostgreSQL runtime and health evidence',
+    source_updated_at: '2026-07-27T15:00:00+08:00',
+    response_generated_at: now,
+  })));
+  await loginAsAdmin(page);
+  await page.goto('/monitor?tab=data');
+
+  await expect(page.getByText('模拟行情服务', { exact: true })).toBeVisible();
+  await expect(page.getByText('数据滞后', { exact: true })).toBeVisible();
+  await expect(page.getByText('null', { exact: true })).toHaveCount(0);
 });
 
 test('ai lab exposes research state and a real load error', async ({ page }) => {

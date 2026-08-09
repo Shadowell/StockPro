@@ -257,6 +257,14 @@ const runtimeDuration = (instance: PaperRuntimeInstance) => {
   const hours = Math.floor(minutes / 60);
   return hours < 24 ? `${hours} 小时 ${minutes % 60} 分` : `${Math.floor(hours / 24)} 天 ${hours % 24} 小时`;
 };
+const HEARTBEAT_SLA_MS = 15 * 60 * 1000;
+const heartbeatIsStale = (instance: PaperRuntimeInstance, nowMs = Date.now()) => {
+  if (instance.status !== "running") return false;
+  const heartbeatMs = instance.heartbeat_at
+    ? Date.parse(instance.heartbeat_at)
+    : Number.NaN;
+  return !Number.isFinite(heartbeatMs) || nowMs - heartbeatMs > HEARTBEAT_SLA_MS;
+};
 
 export function PaperRuntimeInstanceDetail({
   instance,
@@ -282,6 +290,7 @@ export function PaperRuntimeInstanceDetail({
   const [kline, setKline] = useState<PaperKlineSnapshot | null>(null);
   const [klineError, setKlineError] = useState("");
   const [cycleDate, setCycleDate] = useState(instance.last_processed_trade_date ?? "");
+  const heartbeatStale = heartbeatIsStale(instance);
 
   const positions = instance.positions ?? [];
   const trades = useMemo(() => instance.trades ?? [], [instance.trades]);
@@ -537,14 +546,22 @@ export function PaperRuntimeInstanceDetail({
                   className={clsx(
                     "h-2.5 w-2.5 rounded-full",
                     instance.status === "running"
-                      ? "animate-pulse bg-emerald-400"
+                      ? heartbeatStale
+                        ? "bg-amber-400"
+                        : "animate-pulse bg-emerald-400"
                       : instance.status === "failed"
                         ? "bg-red-400"
                         : "bg-amber-400",
                   )}
                 />
                 {statusLabel[instance.status] ?? instance.status}
+                {instance.status === "running" ? "（生命周期）" : ""}
               </span>
+              {heartbeatStale ? (
+                <span className="rounded border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 font-semibold text-amber-300">
+                  心跳陈旧 · 不代表健康运行
+                </span>
+              ) : null}
               <span>{strategyVersion?.name ?? "策略版本"} · 日线 · A股</span>
               <span>最后交易日 {instance.last_processed_trade_date ?? "--"}</span>
             </div>
