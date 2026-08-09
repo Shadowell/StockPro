@@ -1716,3 +1716,25 @@ Verification:
 - Local verification passed after a clean frontend/backend restart: `./scripts/check.sh` (frontend build, dependency guard, lint with 6 existing warnings, deploy shell syntax, 290 backend tests and Python compilation) and `git diff --check`.
 - GitHub Actions run `30696038264` succeeded for commit `7b831bc630a7f1b395855227c3d9ac2882221803`: frontend build, server deployment and deployed-SHA recording all passed. The workflow log confirmed PostgreSQL, backend and frontend readiness; the public frontend and `/api/health/health` both returned HTTP 200.
 - A non-blocking Node cache-save warning remains on the self-hosted runner (`tar` exited while saving the npm cache). It did not fail the job or affect the deployed application and should be handled as runner storage/cache maintenance rather than application rollback.
+
+## Platform professionalization audit baseline (2026-08-09)
+
+- Started the current `StockPro Platform Professionalization` contract and
+  established `docs/todo.md` as the single prioritized delivery queue.
+- Completed read-only browser coverage of all 12 primary workspaces at 1280px
+  and 390px, all URL-addressable secondary tabs, six Factor workspaces, five
+  Data Center workspaces, Data Processing and compatibility workspaces, eight
+  Backtest detail tabs, and Paper detail.
+- Confirmed two P0 evidence defects: contradictory limit-up evidence on the
+  dashboard and three unexplained prices for the same stock/cutoff on the stock
+  research page.
+- Confirmed P1 operator defects: stale Paper evidence shown as running/real-time,
+  missing review counters rendered as `undefined`, test/acceptance objects in
+  business lists, invisible active mobile navigation, clipped Data Center
+  actions, and non-trading dates in data/review workflows.
+- Baseline `./scripts/check.sh` passed before changes: frontend build and lint,
+  deployment shell syntax, 290 backend tests and Python compilation. Remaining
+  baseline warnings are six React Hook dependency warnings, a large Vite entry
+  chunk and FastAPI `on_event` deprecation.
+- This audit did not trigger synchronization, task execution, Paper controls,
+  strategy creation, database writes, external Provider calls or deployment.

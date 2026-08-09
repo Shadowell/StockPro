@@ -10,6 +10,7 @@
 | 日常使用者 | [用户指南](user_guide.md) | 从数据准备到研究、回测、Paper 和复盘 |
 | 本地开发/运维 | [本地运行手册](deployment.md) | 安装、配置、启动、日志、健康检查和排障 |
 | 产品与研发 | [产品规格](spec.md) | 产品边界、核心对象、工作流和验收规则 |
+| 当前交付 | [专业化交付清单](todo.md) | 当前唯一优先级队列、问题状态与统一验收门槛 |
 | 前后端开发 | [技术架构](technical_architecture.md) | 组件关系、请求链路、安全与扩展边界 |
 | 数据研究 | [数据架构](DATA_ARCHITECTURE.md) | Provider、PG、快照、质量和调度 |
 | API/Agent 接入 | [API 指南](api.md) | 鉴权、接口域、写操作规范和 OpenAPI |
@@ -21,6 +22,8 @@
 - [产品规格](spec.md)：当前产品合同。
 - [开发进度](progress.md)：按时间记录已完成实现、实际验证和已知缺口；不是安装手册。
 - [Sprint 合同](contracts/)：具体迭代的范围、边界和验收证据。文件名包含 `active-` 不代表当前仍在开发，先看正文的 `Status`。
+- [当前专业化合同](contracts/active-platform-professionalization.md)：2026-08-09 起的当前 Active 合同。
+- [专业化交付清单](todo.md)：全页面审计后的 P0/P1/P2 实施顺序与完成证据。
 - [A 股研究路线](ashare-research-roadmap.md)：研究平台专业化路线和长期方向。
 - [API 指南](api.md)：人工维护的稳定入口；完整字段以运行中的 OpenAPI 为准。
 
@@ -40,4 +43,4 @@
 - [历史计划](superpowers/plans/)：已执行或被替代的实施计划。
 - 根目录的 Electron、优化总结、AKShare 接口笔记属于早期历史或 Provider 研究材料，不是当前产品合同。
 
-最后更新：2026-07-30。
+最后更新：2026-08-09。
