@@ -918,12 +918,14 @@ export interface StockPoolSnapshot {
   pool_id: string;
   pool_name: string;
   pool_type: string;
+  data_purpose?: 'user' | 'acceptance' | 'seed';
   trade_date: string;
   dataset_snapshot_id: number;
   universe_snapshot_id: number;
   factor_snapshot_id?: number | null;
   market_evidence_snapshot_id?: number | null;
   knowledge_cutoff_at: string;
+  valid_until?: string | null;
   manifest_hash: string;
   member_count: number;
   status: string;

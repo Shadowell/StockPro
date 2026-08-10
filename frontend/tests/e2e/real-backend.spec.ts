@@ -333,6 +333,54 @@ test('真实主阅读层使用业务标签且诊断仍可追溯原值', async ({
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 
+test('真实股票池快照区分当前有效与历史研究并隔离验收对象', async ({ page }) => {
+  const token = await login(page.request);
+  const headers = { Authorization: `Bearer ${token}` };
+  const response = await page.request.get('/api/pool-snapshots', { headers });
+  expect(response.ok()).toBeTruthy();
+  const snapshots = ((await response.json()) as {
+    items?: Array<{
+      id?: unknown;
+      pool_name?: unknown;
+      data_purpose?: unknown;
+      member_count?: unknown;
+      valid_until?: unknown;
+    }>;
+  }).items ?? [];
+  expect(
+    snapshots
+      .filter((item) => Number(item.member_count) > 0)
+      .every((item) => /^\d{4}-\d{2}-\d{2}$/.test(String(item.valid_until ?? '')))
+  ).toBeTruthy();
+
+  const businessSnapshots = snapshots.filter(
+    (item) => !item.data_purpose || item.data_purpose === 'user'
+  );
+  const auditSnapshots = snapshots.filter(
+    (item) => item.data_purpose === 'acceptance' || item.data_purpose === 'seed'
+  );
+
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  await page.goto('/pools?tab=snapshots', { waitUntil: 'domcontentloaded' });
+  const table = page.getByTestId('pool-snapshot-table');
+  await expect(table).toBeVisible();
+  await expect(page.getByText('正在加载股票池规则与封存快照…')).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  await expect(table.locator('tbody tr')).toHaveCount(businessSnapshots.length);
+  for (const snapshot of auditSnapshots) {
+    await expect(table.getByText(String(snapshot.pool_name), { exact: true })).toHaveCount(0);
+  }
+  for (const snapshot of businessSnapshots) {
+    const availability = page.getByTestId(`pool-snapshot-availability-${snapshot.id}`);
+    const expired = String(snapshot.valid_until) < new Date().toISOString().slice(0, 10);
+    await expect(availability).toContainText(expired ? '历史快照' : '当前有效快照');
+  }
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
 test('真实百因子目录展示独立成熟度分母与研究门禁', async ({ page }) => {
   const token = await login(page.request);
   const response = await page.request.get('/api/factors/research/library', {

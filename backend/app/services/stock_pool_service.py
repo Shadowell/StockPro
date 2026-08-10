@@ -112,33 +112,12 @@ class StockPoolService:
 
     def generate(self, pool_id: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
         pool = self.get_pool(pool_id)
-        dataset = self.datasets.get_snapshot(int(payload.get("dataset_snapshot_id") or 0))
-        universe = self.references.get_universe_snapshot(int(payload.get("universe_snapshot_id") or 0))
-        if not dataset or dataset.get("status") != "sealed":
-            raise ValueError("生成器必须绑定封存数据快照")
-        if not universe or universe.get("status") != "sealed":
-            raise ValueError("生成器必须绑定封存 Universe Snapshot")
-        trade_date = str(payload.get("trade_date") or universe["trade_date"])[:10]
-        if trade_date > str(universe["trade_date"])[:10]:
-            raise ValueError("股票池交易日不能晚于 Universe Snapshot")
-        factor_snapshot = None
-        factor_snapshot_id = payload.get("factor_snapshot_id")
-        if factor_snapshot_id:
-            factor_snapshot = self.factors.get_factor_snapshot(int(factor_snapshot_id))
-            if not factor_snapshot or factor_snapshot.get("status") != "sealed":
-                raise ValueError("因子股票池必须绑定封存因子快照")
-            if int(factor_snapshot["dataset_snapshot_id"]) != int(dataset["id"]) or int(factor_snapshot["universe_snapshot_id"]) != int(universe["id"]):
-                raise ValueError("因子快照与数据/Universe Snapshot 不兼容")
-            if str(factor_snapshot["trade_date"])[:10] != trade_date:
-                raise ValueError("因子快照日期必须与股票池交易日一致")
-        evidence_snapshot = None
-        evidence_snapshot_id = payload.get("market_evidence_snapshot_id")
-        if evidence_snapshot_id:
-            evidence_snapshot = self._row("SELECT * FROM market_evidence_snapshots WHERE id=%s", (int(evidence_snapshot_id),))
-            if not evidence_snapshot:
-                raise ValueError("市场证据快照不存在")
-            if str(evidence_snapshot["trade_date"]) != trade_date:
-                raise ValueError("市场证据日期必须与股票池交易日一致")
+        binding = self._validate_generation_binding(pool, payload)
+        dataset = binding["dataset"]
+        universe = binding["universe"]
+        factor_snapshot = binding["factor_snapshot"]
+        evidence_snapshot = binding["evidence_snapshot"]
+        trade_date = binding["trade_date"]
 
         input_manifest = {
             "pool_id": str(pool["id"]), "pool_type": pool["pool_type"], "rule_id": str(pool["rule_id"]),
@@ -155,12 +134,7 @@ class StockPoolService:
         existing = self._row("SELECT id FROM stock_pool_generations WHERE input_hash=%s AND status='success'", (input_hash,))
         if existing:
             return {**self.get_generation(str(existing["id"])), "reused": True}
-        cutoff_values = [dataset.get("knowledge_cutoff_at"), universe.get("knowledge_cutoff_at")]
-        if factor_snapshot:
-            cutoff_values.append(factor_snapshot.get("knowledge_cutoff_at"))
-        if evidence_snapshot:
-            cutoff_values.append(evidence_snapshot.get("available_at"))
-        cutoff = max(value for value in cutoff_values if value is not None)
+        cutoff = binding["knowledge_cutoff_at"]
         with self.database.get_connection() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
@@ -282,9 +256,32 @@ class StockPoolService:
         generation = self.get_generation(generation_id)
         if str(generation["pool_id"]) != str(pool["id"]) or generation["status"] != "success":
             raise ValueError("生成批次不属于股票池或尚未成功")
+        binding = self._validate_generation_binding(pool, generation)
+        input_manifest = dict(generation.get("input_manifest") or {})
+        expected_manifest = {
+            "dataset_snapshot_id": int(binding["dataset"]["id"]),
+            "dataset_manifest_hash": binding["dataset"]["manifest_hash"],
+            "universe_snapshot_id": int(binding["universe"]["id"]),
+            "universe_manifest_hash": binding["universe"]["manifest_hash"],
+            "factor_snapshot_id": int(binding["factor_snapshot"]["id"]) if binding["factor_snapshot"] else None,
+            "factor_manifest_hash": binding["factor_snapshot"].get("manifest_hash") if binding["factor_snapshot"] else None,
+            "market_evidence_snapshot_id": int(binding["evidence_snapshot"]["id"]) if binding["evidence_snapshot"] else None,
+            "market_evidence_hash": binding["evidence_snapshot"].get("content_hash") if binding["evidence_snapshot"] else None,
+            "trade_date": binding["trade_date"],
+        }
+        if any(input_manifest.get(key) != value for key, value in expected_manifest.items()):
+            raise ValueError("生成批次输入清单与封存证据不一致")
         members = generation["members"]
         if not members:
             raise ValueError("空股票池不能封存快照")
+        trade_date = binding["trade_date"]
+        if any(
+            str(item.get("valid_from") or "")[:10] != trade_date
+            or (item.get("valid_until") and str(item["valid_until"])[:10] < trade_date)
+            or not item.get("evidence_hash")
+            for item in members
+        ):
+            raise ValueError("股票池成员有效期或证据哈希与生成交易日不一致")
         manifest_members = [
             {
                 "ordinal": item["ordinal"], "symbol": item["symbol"], "score": item["score"], "reason": item["reason"],
@@ -342,18 +339,114 @@ class StockPoolService:
 
     def list_snapshots(self, pool_id: Optional[str] = None) -> List[Dict[str, Any]]:
         if pool_id:
-            return self._rows(
-                "SELECT s.*,p.name AS pool_name,p.pool_type FROM stock_pool_snapshots s JOIN stock_pools p ON p.id=s.pool_id WHERE s.pool_id=%s ORDER BY s.id DESC",
+            rows = self._rows(
+                """
+                SELECT s.*,p.name AS pool_name,p.pool_type,p.data_purpose,MIN(m.valid_until) AS valid_until
+                FROM stock_pool_snapshots s JOIN stock_pools p ON p.id=s.pool_id
+                LEFT JOIN stock_pool_snapshot_members m ON m.snapshot_id=s.id
+                WHERE s.pool_id=%s GROUP BY s.id,p.name,p.pool_type,p.data_purpose ORDER BY s.id DESC
+                """,
                 (str(pool_id),),
             )
-        return self._rows(
-            "SELECT s.*,p.name AS pool_name,p.pool_type FROM stock_pool_snapshots s JOIN stock_pools p ON p.id=s.pool_id ORDER BY s.id DESC LIMIT 200"
-        )
+        else:
+            rows = self._rows(
+                """
+                SELECT s.*,p.name AS pool_name,p.pool_type,p.data_purpose,MIN(m.valid_until) AS valid_until
+                FROM stock_pool_snapshots s JOIN stock_pools p ON p.id=s.pool_id
+                LEFT JOIN stock_pool_snapshot_members m ON m.snapshot_id=s.id
+                GROUP BY s.id,p.name,p.pool_type,p.data_purpose ORDER BY s.id DESC LIMIT 200
+                """
+            )
+        for row in rows:
+            row["data_purpose"] = resolve_data_purpose(
+                row.get("data_purpose"),
+                row.get("pool_name"),
+            )
+        return rows
+
+    def _validate_generation_binding(
+        self,
+        pool: Mapping[str, Any],
+        payload: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        dataset = self.datasets.get_snapshot(int(payload.get("dataset_snapshot_id") or 0))
+        universe = self.references.get_universe_snapshot(int(payload.get("universe_snapshot_id") or 0))
+        if not dataset or dataset.get("status") != "sealed":
+            raise ValueError("生成器必须绑定封存数据快照")
+        if not universe or universe.get("status") != "sealed":
+            raise ValueError("生成器必须绑定封存 Universe Snapshot")
+
+        trade_date = str(payload.get("trade_date") or universe.get("trade_date") or "")[:10]
+        if not trade_date:
+            raise ValueError("股票池交易日不能为空")
+        if str(universe.get("trade_date") or "")[:10] != trade_date:
+            raise ValueError("Universe Snapshot 日期必须与股票池交易日一致")
+
+        daily_bar_items = [
+            item
+            for item in dataset.get("items") or []
+            if item.get("dataset_code") == "daily_bars"
+        ]
+        if not any(
+            str(item.get("start_date") or "")[:10] <= trade_date
+            <= str(item.get("end_date") or "")[:10]
+            for item in daily_bar_items
+        ):
+            raise ValueError("数据快照不覆盖股票池交易日")
+
+        pool_type = str(pool.get("pool_type") or "")
+        factor_snapshot = None
+        factor_snapshot_id = payload.get("factor_snapshot_id")
+        if pool_type == "factor" and not factor_snapshot_id:
+            raise ValueError("因子股票池必须绑定封存因子快照")
+        if factor_snapshot_id:
+            factor_snapshot = self.factors.get_factor_snapshot(int(factor_snapshot_id))
+            if not factor_snapshot or factor_snapshot.get("status") != "sealed":
+                raise ValueError("因子股票池必须绑定封存因子快照")
+            if (
+                int(factor_snapshot["dataset_snapshot_id"]) != int(dataset["id"])
+                or int(factor_snapshot["universe_snapshot_id"]) != int(universe["id"])
+            ):
+                raise ValueError("因子快照与数据/Universe Snapshot 不兼容")
+            if str(factor_snapshot["trade_date"])[:10] != trade_date:
+                raise ValueError("因子快照日期必须与股票池交易日一致")
+
+        evidence_snapshot = None
+        evidence_snapshot_id = payload.get("market_evidence_snapshot_id")
+        if pool_type in {"sector", "event"} and not evidence_snapshot_id:
+            raise ValueError("板块/事件股票池必须绑定同交易日市场证据快照")
+        if evidence_snapshot_id:
+            evidence_snapshot = self._row(
+                "SELECT * FROM market_evidence_snapshots WHERE id=%s",
+                (int(evidence_snapshot_id),),
+            )
+            if not evidence_snapshot:
+                raise ValueError("市场证据快照不存在")
+            if str(evidence_snapshot["trade_date"])[:10] != trade_date:
+                raise ValueError("市场证据日期必须与股票池交易日一致")
+
+        cutoff_values = [dataset.get("knowledge_cutoff_at"), universe.get("knowledge_cutoff_at")]
+        if factor_snapshot:
+            cutoff_values.append(factor_snapshot.get("knowledge_cutoff_at"))
+        if evidence_snapshot:
+            cutoff_values.append(evidence_snapshot.get("available_at"))
+        available_cutoffs = [value for value in cutoff_values if value is not None]
+        if len(available_cutoffs) != len(cutoff_values):
+            raise ValueError("生成输入缺少知识截止时间")
+        return {
+            "dataset": dataset,
+            "universe": universe,
+            "factor_snapshot": factor_snapshot,
+            "evidence_snapshot": evidence_snapshot,
+            "trade_date": trade_date,
+            "knowledge_cutoff_at": max(available_cutoffs),
+        }
 
     def get_snapshot(self, snapshot_id: int) -> Dict[str, Any]:
         snapshot = self._row(
             """
-            SELECT s.*,p.name AS pool_name,p.pool_type,g.input_hash,g.input_manifest,g.member_manifest_hash
+            SELECT s.*,p.name AS pool_name,p.pool_type,p.data_purpose,
+                   g.input_hash,g.input_manifest,g.member_manifest_hash
             FROM stock_pool_snapshots s JOIN stock_pools p ON p.id=s.pool_id
             JOIN stock_pool_generations g ON g.id=s.generation_id WHERE s.id=%s
             """,
@@ -361,12 +454,22 @@ class StockPoolService:
         )
         if not snapshot:
             raise ValueError("股票池快照不存在")
+        snapshot["data_purpose"] = resolve_data_purpose(
+            snapshot.get("data_purpose"),
+            snapshot.get("pool_name"),
+        )
         snapshot["members"] = self._attach_member_names(
             self._rows(
                 "SELECT * FROM stock_pool_snapshot_members WHERE snapshot_id=%s ORDER BY ordinal",
                 (int(snapshot_id),),
             )
         )
+        valid_until_values = [
+            str(item["valid_until"])[:10]
+            for item in snapshot["members"]
+            if item.get("valid_until")
+        ]
+        snapshot["valid_until"] = min(valid_until_values) if valid_until_values else None
         return snapshot
 
     def create_backtest_draft(self, snapshot_id: int, payload: Mapping[str, Any]) -> Dict[str, Any]:

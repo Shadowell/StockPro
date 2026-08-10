@@ -107,5 +107,166 @@ class StockPoolFilterTests(unittest.TestCase):
         self.assertNotEqual(canonical_hash(a), canonical_hash(b))
 
 
+class StockPoolBindingGateTests(unittest.TestCase):
+    def setUp(self):
+        self.service = StockPoolService.__new__(StockPoolService)
+        self.service.database = MagicMock()
+        self.service.datasets = MagicMock()
+        self.service.references = MagicMock()
+        self.service.factors = MagicMock()
+        self.service.get_pool = MagicMock(
+            return_value={
+                "id": "pool-1",
+                "pool_type": "factor",
+                "rule_id": "rule-1",
+                "rule_version": 1,
+                "rule_hash": "rule-hash",
+                "config": {"factor_code": "momentum_20d"},
+            }
+        )
+        self.service.datasets.get_snapshot.return_value = {
+            "id": 10,
+            "status": "sealed",
+            "manifest_hash": "dataset-hash",
+            "knowledge_cutoff_at": "2025-01-02T18:00:00+08:00",
+            "items": [
+                {
+                    "dataset_code": "daily_bars",
+                    "start_date": "2024-01-02",
+                    "end_date": "2025-01-02",
+                }
+            ],
+        }
+        self.service.references.get_universe_snapshot.return_value = {
+            "id": 1,
+            "status": "sealed",
+            "trade_date": "2025-01-02",
+            "manifest_hash": "universe-hash",
+            "knowledge_cutoff_at": "2025-01-02T18:00:00+08:00",
+        }
+        self.service.factors.get_factor_snapshot.return_value = {
+            "id": 3,
+            "status": "sealed",
+            "trade_date": "2025-01-02",
+            "dataset_snapshot_id": 10,
+            "universe_snapshot_id": 1,
+            "manifest_hash": "factor-hash",
+            "knowledge_cutoff_at": "2025-01-02T18:00:00+08:00",
+        }
+
+    @staticmethod
+    def _valid_generation():
+        return {
+            "id": "generation-1",
+            "pool_id": "pool-1",
+            "status": "success",
+            "dataset_snapshot_id": 10,
+            "universe_snapshot_id": 1,
+            "factor_snapshot_id": 3,
+            "market_evidence_snapshot_id": None,
+            "trade_date": "2025-01-02",
+            "knowledge_cutoff_at": "2025-01-02T18:00:00+08:00",
+            "input_hash": "input-hash",
+            "input_manifest": {
+                "dataset_snapshot_id": 10,
+                "dataset_manifest_hash": "dataset-hash",
+                "universe_snapshot_id": 1,
+                "universe_manifest_hash": "universe-hash",
+                "factor_snapshot_id": 3,
+                "factor_manifest_hash": "factor-hash",
+                "market_evidence_snapshot_id": None,
+                "market_evidence_hash": None,
+                "trade_date": "2025-01-02",
+            },
+            "members": [
+                {
+                    "ordinal": 1,
+                    "symbol": "SH_600519",
+                    "score": 1.0,
+                    "reason": "top rank",
+                    "evidence": {},
+                    "evidence_hash": "evidence-hash",
+                    "valid_from": "2025-01-02",
+                    "valid_until": "2025-01-07",
+                    "generator_version": GENERATOR_VERSION,
+                }
+            ],
+        }
+
+    def test_generate_rejects_universe_from_a_different_trade_date_before_writing(self):
+        self.service.references.get_universe_snapshot.return_value["trade_date"] = "2025-01-03"
+
+        with self.assertRaisesRegex(ValueError, "Universe Snapshot 日期必须与股票池交易日一致"):
+            self.service.generate(
+                "pool-1",
+                {
+                    "dataset_snapshot_id": 10,
+                    "universe_snapshot_id": 1,
+                    "factor_snapshot_id": 3,
+                    "trade_date": "2025-01-02",
+                },
+            )
+
+        self.service.database.get_connection.assert_not_called()
+
+    def test_generate_rejects_dataset_that_does_not_cover_trade_date_before_writing(self):
+        self.service.datasets.get_snapshot.return_value["items"][0]["end_date"] = "2025-01-01"
+
+        with self.assertRaisesRegex(ValueError, "数据快照不覆盖股票池交易日"):
+            self.service.generate(
+                "pool-1",
+                {
+                    "dataset_snapshot_id": 10,
+                    "universe_snapshot_id": 1,
+                    "factor_snapshot_id": 3,
+                    "trade_date": "2025-01-02",
+                },
+            )
+
+        self.service.database.get_connection.assert_not_called()
+
+    def test_factor_generation_requires_factor_snapshot_before_writing(self):
+        with self.assertRaisesRegex(ValueError, "因子股票池必须绑定封存因子快照"):
+            self.service.generate(
+                "pool-1",
+                {
+                    "dataset_snapshot_id": 10,
+                    "universe_snapshot_id": 1,
+                    "trade_date": "2025-01-02",
+                },
+            )
+
+        self.service.database.get_connection.assert_not_called()
+
+    def test_seal_revalidates_generation_bindings_before_snapshot_write(self):
+        self.service.references.get_universe_snapshot.return_value["trade_date"] = "2025-01-03"
+        self.service.get_generation = MagicMock(return_value=self._valid_generation())
+
+        with self.assertRaisesRegex(ValueError, "Universe Snapshot 日期必须与股票池交易日一致"):
+            self.service.seal_snapshot("pool-1", "generation-1")
+
+        self.service.database.get_connection.assert_not_called()
+
+    def test_seal_rejects_manifest_that_no_longer_matches_sealed_inputs(self):
+        generation = self._valid_generation()
+        generation["input_manifest"]["dataset_manifest_hash"] = "tampered-hash"
+        self.service.get_generation = MagicMock(return_value=generation)
+
+        with self.assertRaisesRegex(ValueError, "生成批次输入清单与封存证据不一致"):
+            self.service.seal_snapshot("pool-1", "generation-1")
+
+        self.service.database.get_connection.assert_not_called()
+
+    def test_seal_rejects_member_without_selection_date_evidence(self):
+        generation = self._valid_generation()
+        generation["members"][0]["valid_from"] = "2025-01-01"
+        self.service.get_generation = MagicMock(return_value=generation)
+
+        with self.assertRaisesRegex(ValueError, "成员有效期或证据哈希与生成交易日不一致"):
+            self.service.seal_snapshot("pool-1", "generation-1")
+
+        self.service.database.get_connection.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

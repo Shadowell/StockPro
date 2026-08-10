@@ -104,6 +104,9 @@ const TYPE_GUIDES: Record<
 const memberIsExpired = (member: StockPoolMember) =>
   Boolean(member.valid_until && member.valid_until < new Date().toISOString().slice(0, 10));
 
+const snapshotIsExpired = (snapshot: StockPoolSnapshot) =>
+  Boolean(snapshot.valid_until && snapshot.valid_until < new Date().toISOString().slice(0, 10));
+
 function PoolTypeBadge({ type }: { type: string }) {
   const deltaType =
     type === "sector"
@@ -206,13 +209,19 @@ export function StockPools() {
     setLoading(true);
     setError("");
     setPartialWarnings([]);
-    const [poolResult, snapshotResult, configResult, marketResult] =
-      await Promise.allSettled([
-        listStockPools(),
-        listStockPoolSnapshots(),
-        getBacktestConfiguration(),
-        getMarketResearchContext(),
-      ]);
+    void getMarketResearchContext()
+      .then((value) => setMarket(value))
+      .catch(() =>
+        setPartialWarnings((current) => [
+          ...current,
+          "市场证据暂不可用，板块/事件池不能生成",
+        ])
+      );
+    const [poolResult, snapshotResult, configResult] = await Promise.allSettled([
+      listStockPools(),
+      listStockPoolSnapshots(),
+      getBacktestConfiguration(),
+    ]);
     const warnings: string[] = [];
     if (poolResult.status === "fulfilled") {
       setPools(poolResult.value.items);
@@ -228,9 +237,7 @@ export function StockPools() {
     else warnings.push("快照仓库暂不可用");
     if (configResult.status === "fulfilled") setConfig(configResult.value);
     else warnings.push("生成输入配置暂不可用");
-    if (marketResult.status === "fulfilled") setMarket(marketResult.value);
-    else warnings.push("市场证据暂不可用，板块/事件池不能生成");
-    setPartialWarnings(warnings);
+    setPartialWarnings((current) => [...current, ...warnings]);
     setLoading(false);
   }, []);
 
@@ -272,6 +279,14 @@ export function StockPools() {
         (item) => !item.data_purpose || item.data_purpose === "user"
       ),
     [pools]
+  );
+
+  const businessSnapshots = useMemo(
+    () =>
+      snapshots.filter(
+        (item) => !item.data_purpose || item.data_purpose === "user"
+      ),
+    [snapshots]
   );
 
   const visiblePools = useMemo(() => {
@@ -321,8 +336,7 @@ export function StockPools() {
       ? config.universe_snapshots.find(
           (item) => item.id === factorSnapshot.universe_snapshot_id
         )
-      : config.universe_snapshots.find((item) => item.trade_date === tradeDate) ??
-        config.universe_snapshots[0];
+      : config.universe_snapshots.find((item) => item.trade_date === tradeDate);
     const datasetSnapshot = factorSnapshot
       ? config.dataset_snapshots.find(
           (item) => item.id === factorSnapshot.dataset_snapshot_id
@@ -332,15 +346,25 @@ export function StockPools() {
             Boolean(tradeDate) &&
             item.start_date <= tradeDate! &&
             item.end_date >= tradeDate!
-        ) ?? config.dataset_snapshots[0];
+        );
     const marketSnapshot =
       needsMarket && market?.snapshot?.trade_date === tradeDate
         ? market.snapshot
         : null;
     let reason = "";
-    if (!datasetSnapshot || !universeSnapshot || !tradeDate)
-      reason = "缺少兼容的数据或股票范围快照";
-    else if (needsFactor && !factorSnapshot) reason = "缺少已封存因子快照";
+    if (needsFactor && !factorSnapshot) reason = "缺少已封存因子快照";
+    else if (!tradeDate) reason = "缺少目标交易日";
+    else if (!universeSnapshot)
+      reason = "缺少与目标交易日一致的股票范围快照";
+    else if (universeSnapshot.trade_date !== tradeDate)
+      reason = "因子快照与股票范围交易日不一致";
+    else if (!datasetSnapshot)
+      reason = "缺少覆盖目标交易日的数据快照";
+    else if (
+      datasetSnapshot.start_date > tradeDate ||
+      datasetSnapshot.end_date < tradeDate
+    )
+      reason = "数据快照不覆盖目标交易日";
     else if (needsMarket && !marketSnapshot) reason = "缺少同交易日市场证据快照";
     return {
       ready: !reason,
@@ -352,6 +376,9 @@ export function StockPools() {
       tradeDate,
     };
   }, [config, market, selectedPool]);
+
+  const currentMembersExpired =
+    members.length > 0 && members.every(memberIsExpired);
 
   const currentEvidence = useMemo(() => {
     if (!selectedPool?.latest_generation_id) {
@@ -369,10 +396,13 @@ export function StockPools() {
     ) {
       return { bound: false, reason: "当前成员未绑定市场证据快照" };
     }
-    return { bound: true, reason: "" };
-  }, [selectedPool]);
+    if (currentMembersExpired) {
+      return { bound: true, expired: true, reason: "成员有效期已结束，仅可用于历史研究" };
+    }
+    return { bound: true, expired: false, reason: "" };
+  }, [currentMembersExpired, selectedPool]);
 
-  const sealedSnapshots = snapshots.length;
+  const sealedSnapshots = businessSnapshots.length;
   const poolsWithMembers = businessPools.filter(
     (item) => item.current_member_count > 0
   ).length;
@@ -944,14 +974,24 @@ export function StockPools() {
                 </div>
                 <span
                   className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${
-                    currentEvidence.bound
+                    currentEvidence.bound && !currentEvidence.expired
                       ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
                       : "border-amber-500/25 bg-amber-500/10 text-amber-300"
                   }`}
                 >
-                  {currentEvidence.bound ? "证据已绑定" : "证据未绑定"}
+                  {currentEvidence.expired
+                    ? "候选已过期"
+                    : currentEvidence.bound
+                      ? "证据已绑定"
+                      : "证据未绑定"}
                 </span>
               </div>
+
+              {currentEvidence.reason ? (
+                <p className="mt-3 text-[11px] text-amber-300">
+                  {currentEvidence.reason}
+                </p>
+              ) : null}
 
               <div className="mt-4 space-y-2.5 text-xs">
                 {[
@@ -1431,13 +1471,23 @@ export function StockPools() {
                 </tr>
               </thead>
               <tbody>
-                {snapshots.map((snapshot) => (
-                  <tr
-                    key={snapshot.id}
-                    className="border-b border-white/[0.04] transition-colors hover:bg-white/[0.02]"
-                  >
-                    <td className="px-5 py-4 text-emerald-400">
-                      已封存快照
+                {businessSnapshots.map((snapshot) => {
+                  const expired = snapshotIsExpired(snapshot);
+                  return (
+                    <tr
+                      key={snapshot.id}
+                      className="border-b border-white/[0.04] transition-colors hover:bg-white/[0.02]"
+                    >
+                    <td
+                      data-testid={`pool-snapshot-availability-${snapshot.id}`}
+                      className={`px-5 py-4 ${expired ? "text-amber-300" : "text-emerald-400"}`}
+                    >
+                      <div>{expired ? "历史快照" : "当前有效快照"}</div>
+                      <div className="mt-1 text-[10px] text-slate-500">
+                        {snapshot.valid_until
+                          ? `成员有效期至 ${snapshot.valid_until}`
+                          : "未提供成员有效期"}
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <div className="font-medium text-slate-200">
@@ -1483,15 +1533,16 @@ export function StockPools() {
                         className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 text-xs font-semibold text-blue-300 hover:bg-blue-500/20 disabled:opacity-40"
                       >
                         <Play className="h-3.5 w-3.5" />
-                        创建回测草稿
+                        {expired ? "创建历史回测草稿" : "创建回测草稿"}
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
 
-            {!loading && snapshots.length === 0 ? (
+            {!loading && businessSnapshots.length === 0 ? (
               <div className="grid min-h-44 place-items-center px-6 text-center text-xs text-slate-600">
                 暂无已封存快照。请先在「我的股票池」生成成员并点击「封存快照存根」。
               </div>

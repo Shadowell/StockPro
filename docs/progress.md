@@ -1923,3 +1923,31 @@ Verification:
   execution, runtime bootstrap and external market fetch disabled. Application
   and isolated `stockpro_dev` storage health passed with 30/30 migrations. No
   factor compute, metric maturity job, database write or deployment ran.
+
+### SP-012 stock-pool validity and binding gates completion
+
+- Stock-pool members and sealed snapshots now distinguish current candidates
+  from expired historical research. Expired snapshots retain reproducible
+  historical backtest handoff but no longer present themselves as currently
+  usable; internal snapshot identifiers remain inside explicit diagnostics.
+- Generation rejects datasets that do not cover the target date, Universe
+  snapshots from another date, missing factor or market evidence, and
+  incompatible factor bindings before writing a generation row. Sealing
+  revalidates the stored input manifest, trade date, member validity and
+  evidence hashes before creating an immutable snapshot.
+- Snapshot responses expose the earliest member validity date and persisted
+  data purpose. The business page filters acceptance and seed snapshots from
+  counts and rows, closing the remaining Stock Pool business/audit display gap.
+- Optional market research evidence now loads progressively. A slow market
+  context can disable sector/event generation without blocking the rule
+  catalogue or sealed snapshot repository.
+- TDD captured the invalid binding, expired snapshot and acceptance-leakage
+  failures before implementation. Verification passed 33 focused Stock Pool
+  backend tests, the complete 45/45 Mock browser suite, one read-only real
+  `stockpro_dev` Stock Pool E2E, and `./scripts/check.sh` with 330 backend tests,
+  production build, zero-warning lint, bundle budget and Python compilation.
+- Both local services were cleanly restarted with scheduler, realtime sync,
+  strategy execution, runtime bootstrap, external market fetch and automatic
+  migration disabled. Application and storage health passed with 30/30
+  migrations; no database write, migration, deployment or remote service
+  mutation ran.

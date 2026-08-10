@@ -537,13 +537,14 @@ async function mockApi(context: BrowserContext) {
 
     const mockPool = { id: 'pool-1', name: '动量 Top20', pool_type: 'factor', description: 'fixture', status: 'active', data_purpose: 'user', rule_id: 'rule-1', rule_type: 'factor', rule_version: 1, config: { factor_code: 'momentum_20d', top_n: 20 }, rule_hash: 'rule-hash-abcdef', snapshot_count: 1, current_member_count: 2, latest_generation_id: 'generation-1', latest_dataset_snapshot_id: 10, latest_universe_snapshot_id: 1, latest_factor_snapshot_id: 3, latest_market_evidence_snapshot_id: null, latest_trade_date: '2025-01-02', latest_knowledge_cutoff_at: now, latest_input_hash: 'input-hash' };
     const mockMembers = [{ ordinal: 1, symbol: 'SH_600519', score: 1, reason: '20日动量排名 1', evidence: { factor_snapshot_id: 3 }, evidence_hash: 'member-hash-1', valid_from: '2025-01-02', valid_until: '2025-01-07', generator_version: 'stock-pool-generator.v1' }, { ordinal: 2, symbol: 'SZ_000333', score: 0.95, reason: '20日动量排名 2', evidence: { factor_snapshot_id: 3 }, evidence_hash: 'member-hash-2', valid_from: '2025-01-02', valid_until: '2025-01-07', generator_version: 'stock-pool-generator.v1' }];
-    const mockPoolSnapshot = { id: 11, pool_id: 'pool-1', pool_name: '动量 Top20', pool_type: 'factor', trade_date: '2025-01-02', dataset_snapshot_id: 10, universe_snapshot_id: 1, factor_snapshot_id: 3, knowledge_cutoff_at: now, manifest_hash: 'pool-manifest-abcdef', member_count: 2, status: 'sealed' };
+    const mockPoolSnapshot = { id: 11, pool_id: 'pool-1', pool_name: '动量 Top20', pool_type: 'factor', data_purpose: 'user', trade_date: '2025-01-02', valid_until: '2025-01-07', dataset_snapshot_id: 10, universe_snapshot_id: 1, factor_snapshot_id: 3, knowledge_cutoff_at: now, manifest_hash: 'pool-manifest-abcdef', member_count: 2, status: 'sealed' };
+    const mockAuditPoolSnapshot = { ...mockPoolSnapshot, id: 99, pool_id: 'pool-audit', pool_name: '验收探针池', data_purpose: 'acceptance', manifest_hash: 'audit-pool-manifest' };
     if (method === 'GET' && path === '/pools') return route.fulfill(json({ items: [mockPool], total: 1 }));
     if (method === 'POST' && path === '/pools') return route.fulfill(json(mockPool));
     if (method === 'GET' && path === '/pools/pool-1/members') return route.fulfill(json({ items: mockMembers, total: 2 }));
     if (method === 'POST' && path === '/pools/pool-1/generate') return route.fulfill(json({ id: 'generation-1', pool_id: 'pool-1', status: 'success', trade_date: '2025-01-02', input_hash: 'input-hash', member_manifest_hash: 'member-manifest', member_count: 2, members: mockMembers, reused: false }));
     if (method === 'POST' && path === '/pools/pool-1/snapshots') return route.fulfill(json(mockPoolSnapshot));
-    if (method === 'GET' && path === '/pool-snapshots') return route.fulfill(json({ items: [mockPoolSnapshot], total: 1 }));
+    if (method === 'GET' && path === '/pool-snapshots') return route.fulfill(json({ items: [mockPoolSnapshot, mockAuditPoolSnapshot], total: 2 }));
     if (method === 'POST' && path === '/pool-snapshots/11/backtests') return route.fulfill(json({ status: 'draft', experiment: { id: 'experiment-1', pool_snapshot_id: 11 }, pool_snapshot: mockPoolSnapshot }));
 
     if (method === 'GET' && path === '/paper/accounts') {
@@ -958,6 +959,10 @@ test('stock-pool snapshot carries evidence into a backtest draft without copied 
   await expect(page.getByText(/股票池快照已成功封存/)).toBeVisible();
   await page.getByTestId('pool-tab-snapshots').click();
   await expect(page.getByTestId('pool-snapshot-table')).toBeVisible();
+  await expect(page.getByText('验收探针池', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('pool-snapshot-availability-11')).toContainText('历史快照');
+  await expect(page.getByTestId('pool-snapshot-availability-11')).toContainText('成员有效期至 2025-01-07');
+  await expect(page.getByTestId('pool-backtest-11')).toContainText('创建历史回测草稿');
   await page.getByTestId('pool-backtest-11').click();
   await expect(page).toHaveURL(/\/backtest\?poolSnapshotId=11&experimentId=experiment-1$/);
   await page.getByRole('button', { name: '创建回测实例' }).click();
