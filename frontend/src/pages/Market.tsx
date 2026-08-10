@@ -695,6 +695,50 @@ export function Market({ asOfDate }: MarketProps = {}) {
         </div>
       ) : null}
 
+      {marketScope === 'a-share' ? (
+        <section
+          aria-labelledby="market-price-basis-heading"
+          data-testid="market-price-basis"
+          className="mb-4 rounded-lg border border-crypto-border bg-crypto-card/70 p-4"
+        >
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 id="market-price-basis-heading" className="text-sm font-semibold text-white">价格口径</h2>
+              <p className="mt-1 text-[11px] text-slate-500">
+                研究价格、估值缓存与可执行盘口分别展示；页面不会静默拼成同一个“最新价”。
+              </p>
+            </div>
+            <span className="text-[10px] text-slate-600">价格均为人民币/股</span>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <article data-testid="market-price-basis-daily" className="rounded-lg border border-blue-500/20 bg-blue-500/[0.05] p-3">
+              <div className="text-[11px] font-semibold text-blue-200">未复权日线（研究基线）</div>
+              <div className="mt-2 text-lg font-bold tabular-nums text-white">{format(latestDaily?.close)}</div>
+              <div className="mt-1 text-[10px] text-slate-500">
+                {latestDaily?.date || '日期未知'} · {latestDaily?.source_label || 'PostgreSQL 日线缓存'}
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-slate-500">用于 K 线与研究诊断；未应用前/后复权，不作为可成交价。</p>
+            </article>
+            <article data-testid="market-price-basis-fundamentals" className="rounded-lg border border-violet-500/20 bg-violet-500/[0.05] p-3">
+              <div className="text-[11px] font-semibold text-violet-200">未复权缓存（估值参考）</div>
+              <div className="mt-2 text-lg font-bold tabular-nums text-white">{format(fundamentals?.current_price)}</div>
+              <div className="mt-1 text-[10px] text-slate-500">
+                {fundamentals?.updated_at?.slice(0, 16) || '时间未知'} · {fundamentals?.source_label || 'PostgreSQL fundamentals cache'}
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-slate-500">仅用于同一缓存快照的估值指标；陈旧或缺失时不回填盘口。</p>
+            </article>
+            <article data-testid="market-price-basis-book" className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] p-3">
+              <div className="text-[11px] font-semibold text-emerald-200">未复权盘口（执行参考）</div>
+              <div className="mt-2 text-lg font-bold tabular-nums text-white">{format(liveBookPrice)}</div>
+              <div className="mt-1 text-[10px] text-slate-500">
+                {[orderBook?.trade_date, orderBook?.trade_time].filter(Boolean).join(' ') || '时间未知'} · {orderBook?.source_label || '盘口快照不可用'}
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-slate-500">仅作执行时点参考；需同时满足新鲜度、停牌和涨跌停约束。</p>
+            </article>
+          </div>
+        </section>
+      ) : null}
+
       {loading && !hasChart && marketRows.length === 0 ? (
         <div className="flex min-h-[560px] items-center justify-center text-gray-400">加载中...</div>
       ) : (

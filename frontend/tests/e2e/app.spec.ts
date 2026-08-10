@@ -1229,6 +1229,13 @@ test('market terminal quarantines a consolidated price when daily and live evide
   await expect(page.getByText(/日线收盘 2.70/)).toBeVisible();
   await expect(page.getByText(/盘口 9.21/)).toBeVisible();
   await expect(page.getByText(/暂停合并价格与派生涨跌幅/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: '价格口径' })).toBeVisible();
+  const dailyBasis = page.getByTestId('market-price-basis-daily');
+  const bookBasis = page.getByTestId('market-price-basis-book');
+  await expect(dailyBasis.getByText('未复权日线（研究基线）')).toBeVisible();
+  await expect(bookBasis.getByText('未复权盘口（执行参考）')).toBeVisible();
+  await expect(dailyBasis.getByText(/2026-08-07 · tushare/)).toBeVisible();
+  await expect(bookBasis.getByText(/2026-08-07 15:00:00 · TuShare 五档快照/)).toBeVisible();
   await expect(page.getByText('¥2.70', { exact: true })).toHaveCount(0);
 });
 

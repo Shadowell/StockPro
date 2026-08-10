@@ -69,6 +69,8 @@ class ChartService:
                     "volume": float(item.get("volume") or 0.0),
                     "source_label": item.get("source") or "PostgreSQL cache",
                     "updated_at": str(item.get("updated_at") or ""),
+                    "price_basis": "unadjusted",
+                    "price_usage": "research_raw_bar",
                 })
             except (TypeError, ValueError):
                 continue

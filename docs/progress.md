@@ -1841,3 +1841,21 @@ Verification:
   Dashboard/Market browser suites 2/2. The post-load health endpoint responded
   in 0.002 seconds. Scheduler, realtime sync and strategy execution remained
   disabled; no database write or deployment was performed.
+
+### SP-002 stock price provenance completion
+
+- Added explicit `price_basis` and `price_usage` metadata to PostgreSQL daily
+  bars, cached valuation snapshots and on-demand order-book responses.
+- The stock terminal now presents three independent evidence cards: unadjusted
+  daily bars for research, an unadjusted valuation cache for same-snapshot
+  fundamentals, and an unadjusted order book for execution-time reference.
+  Each card exposes its source and relevant date/time and explains what the
+  value may and may not be used for.
+- Preserved the existing hard quarantine: when daily and fresh order-book
+  evidence share a trade date but diverge beyond the consistency threshold,
+  the terminal removes the consolidated price/change claim and displays both
+  conflicting sources instead of choosing one silently.
+- Verification passed the fail-first mocked conflict/provenance browser test,
+  the real-backend Market suite across all six tabs, and `./scripts/check.sh`
+  with the production build, lint, bundle budget, 320 backend tests and Python
+  compilation. The post-load health endpoint responded in 0.001 seconds.

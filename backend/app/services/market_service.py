@@ -1091,7 +1091,12 @@ class MarketService:
                 "source_label": "无效标的",
             }
         try:
-            return ak.get_order_book(code)
+            payload = ak.get_order_book(code)
+            return {
+                **(payload if isinstance(payload, dict) else {}),
+                "price_basis": "unadjusted",
+                "price_usage": "execution_quote",
+            }
         except Exception as exc:
             logger.warning("get_order_book failed for %s: %s", code, exc)
             return {
@@ -1104,6 +1109,8 @@ class MarketService:
                 "error": f"{type(exc).__name__}: {exc}",
                 "source_label": "实时盘口不可用",
                 "updated_at": datetime.now().isoformat(timespec="seconds"),
+                "price_basis": "unadjusted",
+                "price_usage": "execution_quote",
             }
 
     @staticmethod
@@ -1143,6 +1150,8 @@ class MarketService:
                         "updated_at": row.get("updated_at"),
                         "source_label": row.get("source_label") or "PostgreSQL fundamentals cache",
                         "data_status": "stale" if MarketService._is_stale_timestamp(row.get("updated_at")) else "fresh",
+                        "price_basis": "unadjusted",
+                        "price_usage": "valuation_snapshot",
                     }
             except Exception as e:
                 logger.warning(f"Error fetching from local DB for {code}: {e}")
@@ -1153,6 +1162,8 @@ class MarketService:
                     "error": "not_available_in_postgresql",
                     "source_label": "PostgreSQL fundamentals cache",
                     "data_status": "empty",
+                    "price_basis": "unadjusted",
+                    "price_usage": "valuation_snapshot",
                     "updated_at": None,
                 }
 

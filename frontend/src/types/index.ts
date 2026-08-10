@@ -57,6 +57,8 @@ export interface StockFundamentals {
   source_label?: string | null;
   data_status?: 'fresh' | 'stale' | 'empty' | 'error' | string;
   error?: string | null;
+  price_basis?: 'unadjusted' | 'qfq' | 'hfq' | string;
+  price_usage?: 'valuation_snapshot' | string;
 }
 
 export interface Sector {
@@ -78,6 +80,8 @@ export interface DailyChartData {
   volume: number;
   source_label?: string | null;
   updated_at?: string | null;
+  price_basis?: 'unadjusted' | 'qfq' | 'hfq' | string;
+  price_usage?: 'research_raw_bar' | string;
 }
 
 export interface IntradayChartData {
@@ -130,6 +134,8 @@ export interface OrderBookSnapshot {
   data_status?: string | null;
   updated_at?: string | null;
   error?: string | null;
+  price_basis?: 'unadjusted' | string;
+  price_usage?: 'execution_quote' | string;
 }
 
 export interface HotConceptItem {
