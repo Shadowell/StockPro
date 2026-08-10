@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Activity, Bell, Database, HeartPulse, RefreshCw, ShieldAlert } from 'lucide-react';
 import { getMonitorHealth } from '../api/client';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
+import { DataScopeControl } from '../components/DataScopeControl';
 import { EvidenceStrip, MetricValue, OperatorPageHeader } from '../components/OperatorShell';
-import type { MonitorHealth } from '../types';
+import type { DataScope, MonitorHealth } from '../types';
 import { categoryLabel, sourceLabel, statusLabel } from '../utils/presentation';
 import { countMetricColor, type MetricTone } from '../utils/marketColors';
 
@@ -13,8 +14,6 @@ type Tab = (typeof TABS)[number][0];
 const panel = 'rounded-xl border border-crypto-border bg-crypto-card';
 const text = (value: unknown) => value === null || value === undefined || value === '' ? '--' : String(value);
 const tone = (status: string) => status === 'healthy' || status === 'running' ? 'text-emerald-300' : status === 'critical' || status === 'failed' ? 'text-red-300' : 'text-amber-300';
-const isBusinessPurpose = (item: { data_purpose?: string | null }) =>
-  !item.data_purpose || item.data_purpose === 'user';
 const serviceLabels: Record<string, string> = {
   paper_feed: '模拟行情服务',
   paper_runtime: '模拟运行服务',
@@ -65,11 +64,13 @@ export function Monitor() {
   const requested = params.get('tab') as Tab | null;
   const tab: Tab = TABS.some(([key]) => key === requested) ? requested! : 'overview';
   const [health, setHealth] = useState<MonitorHealth | null>(null);
+  const [scope, setScope] = useState<DataScope>('business');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const load = async () => { setBusy(true); setError(''); try { setHealth(await getMonitorHealth()); } catch (reason) { setError(reason instanceof Error ? reason.message : '监控上下文加载失败'); } finally { setBusy(false); } };
-  useEffect(() => { void load(); }, []);
-  const scopedStrategyHealth = (health?.strategy_health ?? []).filter((item) => isBusinessPurpose(item));
+  const load = useCallback(async () => { setBusy(true); setError(''); try { setHealth(await getMonitorHealth(scope)); } catch (reason) { setError(reason instanceof Error ? reason.message : '监控上下文加载失败'); } finally { setBusy(false); } }, [scope]);
+  useEffect(() => { void load(); }, [load]);
+  const scopedStrategyHealth = health?.strategy_health ?? [];
+  const excludedCount = Object.values(health?.excluded_counts ?? {}).reduce((sum, count) => sum + Number(count || 0), 0);
   const activeStrategies = health ? scopedStrategyHealth.length : '--';
   const activeRisks = health ? health.risk_alerts.reduce((sum, item) => sum + Number(item.count ?? 0), 0) : '--';
   const delivered = health ? health.notifications.reduce((sum, item) => sum + Number(item.count ?? 0), 0) : '--';
@@ -92,6 +93,7 @@ export function Monitor() {
         { label: '响应生成', value: health?.response_generated_at ?? '--' },
       ]}
     />
+    <DataScopeControl value={scope} onChange={setScope} excludedCount={excludedCount} />
     <WorkspaceTabs ariaLabel="监控中心二级导航" items={TABS.map(([id, label]) => ({ id, label, testId: `monitor-tab-${id}` }))} value={tab} onChange={(id) => setParams({ tab: id })} />
     {error ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{error}</div> : null}
     {tab === 'overview' ? <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[[Activity, '服务状态', health ? statusLabel(health.status) : '--', (health?.status === 'healthy' ? 'green' : health?.status === 'critical' ? 'red' : 'amber') as MetricTone], [HeartPulse, '策略实例', activeStrategies, countMetricColor(typeof activeStrategies === 'number' ? activeStrategies : Number(activeStrategies))], [ShieldAlert, '活动风险告警', activeRisks, (Number(activeRisks) > 0 ? 'red' : 'neutral') as MetricTone], [Bell, '通知投递', delivered, countMetricColor(typeof delivered === 'number' ? delivered : Number(delivered))]].map(([Icon, label, current, tone]) => { const Component = Icon as typeof Activity; return <div key={String(label)} className={`${panel} p-4`}><Component className={`h-5 w-5 ${tone === 'green' ? 'text-emerald-400' : tone === 'red' ? 'text-red-400' : tone === 'amber' ? 'text-amber-400' : 'text-blue-400'}`} /><div className="mt-3 text-xs text-slate-500">{String(label)}</div><div className="mt-2"><MetricValue tone={tone as MetricTone} size="xl">{String(current)}</MetricValue></div></div>; })}</div><section className={`${panel} p-5`}><h2 className="font-semibold text-white">健康边界</h2><div className="mt-4 grid gap-3 md:grid-cols-3"><div className="rounded-lg border border-crypto-border bg-crypto-bg p-4 text-sm text-slate-400">数据陈旧 ≠ 策略失败</div><div className="rounded-lg border border-crypto-border bg-crypto-bg p-4 text-sm text-slate-400">风险拒单保留规则版本</div><div className="rounded-lg border border-crypto-border bg-crypto-bg p-4 text-sm text-slate-400">通知确认不删除原始告警</div></div><p className="mt-4 text-xs text-slate-600">涨跌停风险、停牌、T+1 与参与率均在执行证据链中保留。</p></section></div> : null}

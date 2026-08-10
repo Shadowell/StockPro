@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
@@ -12,5 +12,5 @@ service = PaperRuntimeService(db_instance)
 
 
 @router.get("/health")
-async def monitor_health() -> Dict[str, Any]:
-    return await run_in_threadpool(service.health)
+async def monitor_health(scope: Literal["business", "audit"] = "business") -> Dict[str, Any]:
+    return await run_in_threadpool(service.health, scope)

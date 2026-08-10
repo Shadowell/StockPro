@@ -1250,6 +1250,10 @@ test('paper watch and monitor keep separate operator ownership', async ({ page }
   }
   await page.goto('/watch');
   for (const label of ['策略信号', '订单与成交', '股票池变动', '图表联动', '告警']) await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible();
+  const watchAuditRequest = page.waitForRequest((request) => request.url().includes('/api/watch/context') && request.url().includes('scope=audit'));
+  await page.getByRole('button', { name: '审计视图' }).click();
+  await watchAuditRequest;
+  await expect(page.getByTestId('data-scope-control')).toContainText('不改变原始记录');
   await page.getByRole('tab', { name: '订单与成交', exact: true }).click();
   await expect(page.getByRole('heading', { name: '模拟订单' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '模拟成交' })).toBeVisible();
@@ -1257,6 +1261,11 @@ test('paper watch and monitor keep separate operator ownership', async ({ page }
   await expect(page.getByRole('heading', { name: '风险决策' })).toBeVisible();
   await page.goto('/monitor');
   for (const label of ['总览', '策略健康', '数据健康', '风险', '通知']) await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible();
+  const monitorAuditRequest = page.waitForRequest((request) => request.url().includes('/api/monitor/health') && request.url().includes('scope=audit'));
+  await page.getByRole('button', { name: '审计视图' }).click();
+  await monitorAuditRequest;
+  await expect(page.getByTestId('data-scope-control')).toContainText('验收与种子证据');
+  await page.getByRole('button', { name: '业务视图' }).click();
   await page.getByRole('tab', { name: '策略健康', exact: true }).click();
   await expect(page.getByText('验收数据')).toHaveCount(0);
   await expect(page.getByText('最后心跳')).toBeVisible();
@@ -1297,7 +1306,7 @@ test('strategy backtest and paper expose the A-share operator workflow without i
 });
 
 test('strategy catalogue labels the user-strategy count separately from reference records', async ({ page }) => {
-  await page.route('**/api/strategy/list', (route) => route.fulfill(json([
+  await page.route('**/api/strategy/list*', (route) => route.fulfill(json([
     {
       id: 1,
       name: '用户动量策略',
@@ -1327,8 +1336,11 @@ test('strategy catalogue labels the user-strategy count separately from referenc
   await page.goto('/strategy');
 
   await expect(page.getByRole('tab', { name: /我的策略 1/ })).toBeVisible();
-  await expect(page.getByRole('tab', { name: /策略广场 4/ })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /策略广场 3/ })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /审计证据 1/ })).toBeVisible();
   await expect(page.getByText('Sprint07 acceptance probe')).toHaveCount(0);
+  await page.getByRole('tab', { name: /审计证据 1/ }).click();
+  await expect(page.getByTestId('strategy-audit-scope')).toContainText('Sprint07 acceptance probe');
 });
 
 test('strategy details have a reloadable deep link and visible return path', async ({ page }) => {
@@ -1376,7 +1388,7 @@ test('paper running state is downgraded when the recorded replay heartbeat is mi
 });
 
 test('watch never presents a stale snapshot as one hundred percent realtime', async ({ page }) => {
-  await page.route('**/api/watch/context', (route) => route.fulfill(json({
+  await page.route('**/api/watch/context*', (route) => route.fulfill(json({
     alerts: [], signals: [], orders: [], trades: [], positions: [], risk_events: [],
     runtime_events: [], pool_moves: [], instances: [],
     coverage: { instances: 0, signals: 0, orders: 0, trades: 0, alerts: 0 },
@@ -1393,7 +1405,7 @@ test('watch never presents a stale snapshot as one hundred percent realtime', as
 });
 
 test('watch separates load failure from a legitimate empty signal set', async ({ page }) => {
-  await page.route('**/api/watch/context', (route) => route.fulfill(json({ detail: 'watch unavailable' }, 503)));
+  await page.route('**/api/watch/context*', (route) => route.fulfill(json({ detail: 'watch unavailable' }, 503)));
   await loginAsAdmin(page);
   await page.goto('/watch');
 
@@ -1403,7 +1415,7 @@ test('watch separates load failure from a legitimate empty signal set', async ({
 });
 
 test('monitor keeps counters unavailable when its health snapshot fails', async ({ page }) => {
-  await page.route('**/api/monitor/health', (route) => route.fulfill(json({ detail: 'monitor unavailable' }, 503)));
+  await page.route('**/api/monitor/health*', (route) => route.fulfill(json({ detail: 'monitor unavailable' }, 503)));
   await loginAsAdmin(page);
   await page.goto('/monitor');
 
@@ -1415,7 +1427,7 @@ test('monitor keeps counters unavailable when its health snapshot fails', async 
 });
 
 test('monitor gives stale service freshness precedence over a historical healthy result', async ({ page }) => {
-  await page.route('**/api/monitor/health', (route) => route.fulfill(json({
+  await page.route('**/api/monitor/health*', (route) => route.fulfill(json({
     status: 'critical',
     services: [{
       id: 1,
@@ -1442,7 +1454,7 @@ test('monitor gives stale service freshness precedence over a historical healthy
 });
 
 test('ai lab exposes research state and a real load error', async ({ page }) => {
-  await page.route('**/api/strategy/list', (route) => route.fulfill(json({ detail: 'strategy unavailable' }, 503)));
+  await page.route('**/api/strategy/list*', (route) => route.fulfill(json({ detail: 'strategy unavailable' }, 503)));
   await loginAsAdmin(page);
   await page.goto('/ai-lab');
 

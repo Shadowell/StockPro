@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   BellRing,
@@ -14,13 +14,14 @@ import clsx from "clsx";
 import { DataPanel, StatusBadge } from "@bitpro/ui";
 import { acknowledgeRuntimeAlert, getWatchContext } from "../api/client";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
+import { DataScopeControl } from "../components/DataScopeControl";
 import {
   EvidenceStrip,
   MetricValue,
   OperatorPageHeader,
 } from "../components/OperatorShell";
 import { TremorDeltaBadge, TremorTracker } from "../components/TremorUI";
-import type { RuntimeAlert, WatchContext } from "../types";
+import type { DataScope, RuntimeAlert, WatchContext } from "../types";
 import {
   formatOperatorTime,
   orderTypeLabel,
@@ -63,41 +64,42 @@ export function Watch() {
     ? requested!
     : "signals";
   const [context, setContext] = useState<WatchContext | null>(null);
+  const [scope, setScope] = useState<DataScope>("business");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const load = async () => {
+  const load = useCallback(async () => {
     setBusy(true);
     setError("");
     try {
-      setContext(await getWatchContext());
+      setContext(await getWatchContext(scope));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "观察台加载失败");
     } finally {
       setBusy(false);
     }
-  };
+  }, [scope]);
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
   const instanceById = useMemo(
     () => new Map((context?.instances ?? []).map((item) => [item.id, item])),
     [context],
   );
   const symbolNames = context?.symbol_names ?? {};
-  const isBusiness = (row: Record<string, unknown>) =>
-    !row.data_purpose || row.data_purpose === "user";
   const scoped = {
-    alerts: (context?.alerts ?? []).filter((row) =>
-      isBusiness(row as unknown as Record<string, unknown>),
-    ),
-    signals: (context?.signals ?? []).filter(isBusiness),
-    orders: (context?.orders ?? []).filter(isBusiness),
-    trades: (context?.trades ?? []).filter(isBusiness),
-    positions: (context?.positions ?? []).filter(isBusiness),
-    risk_events: (context?.risk_events ?? []).filter(isBusiness),
-    runtime_events: (context?.runtime_events ?? []).filter(isBusiness),
-    pool_moves: (context?.pool_moves ?? []).filter(isBusiness),
+    alerts: context?.alerts ?? [],
+    signals: context?.signals ?? [],
+    orders: context?.orders ?? [],
+    trades: context?.trades ?? [],
+    positions: context?.positions ?? [],
+    risk_events: context?.risk_events ?? [],
+    runtime_events: context?.runtime_events ?? [],
+    pool_moves: context?.pool_moves ?? [],
   };
+  const excludedCount = Object.values(context?.excluded_counts ?? {}).reduce(
+    (sum, count) => sum + Number(count || 0),
+    0,
+  );
   const latestObservedAt =
     scoped.alerts[0]?.triggered_at ??
     text(
@@ -194,6 +196,7 @@ export function Watch() {
           { label: "来源", value: sourceLabel(context?.source_label) },
         ]}
       />
+      <DataScopeControl value={scope} onChange={setScope} excludedCount={excludedCount} />
       <div className="mb-4 rounded-xl border border-crypto-border bg-crypto-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2 text-xs">
           <span className="font-bold text-gray-200">系统观察台与策略引擎健康度 (Tremor Tracker 视角)</span>

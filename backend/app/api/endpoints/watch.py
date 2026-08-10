@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
@@ -12,8 +12,8 @@ service = PaperRuntimeService(db_instance)
 
 
 @router.get("/context")
-async def watch_context() -> Dict[str, Any]:
-    return await run_in_threadpool(service.watch_context)
+async def watch_context(scope: Literal["business", "audit"] = "business") -> Dict[str, Any]:
+    return await run_in_threadpool(service.watch_context, scope)
 
 
 @router.get("/alerts")

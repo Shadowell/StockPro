@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Activity, AlertCircle, BarChart3, BookOpen, CalendarDays, CheckCircle2, Code2, Layers, Play, Plus, RefreshCw, Save, Search, TrendingUp, Zap, X } from 'lucide-react';
+import { Activity, AlertCircle, BarChart3, BookOpen, CalendarDays, CheckCircle2, Code2, Layers, Play, Plus, RefreshCw, Save, Search, ShieldCheck, TrendingUp, Zap, X } from 'lucide-react';
 import clsx from 'clsx';
 import { autoDevelopStrategy, getAICapabilities, getFactorSnapshots, getLatestStrategyVersion, getStrategies, quickRunStrategyVersion, saveStrategy, updateStrategy } from '../api/client';
 import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
@@ -16,7 +16,7 @@ import {
 } from '../components/OperatorShell';
 import type { AICapabilities, Strategy as StrategyType, StrategyReplayResult, StrategyValidationReport, StrategyVersion } from '../types';
 
-type ListTab = 'my' | 'plaza';
+type ListTab = 'my' | 'plaza' | 'audit';
 type StatusFilter = 'all' | 'running' | 'not_started';
 type AssetFilter = 'all' | 'ashare' | 'strategy_v1';
 
@@ -142,7 +142,11 @@ export function Strategy() {
     [strategies],
   );
   const referenceStrategies = useMemo(
-    () => strategies.filter((item) => item.data_purpose && item.data_purpose !== 'user'),
+    () => strategies.filter((item) => item.data_purpose === 'seed'),
+    [strategies],
+  );
+  const auditStrategies = useMemo(
+    () => strategies.filter((item) => item.data_purpose === 'acceptance'),
     [strategies],
   );
   const statusCounts = useMemo(
@@ -181,7 +185,7 @@ export function Strategy() {
     setListError('');
     try {
       const [data, capabilities] = await Promise.all([
-        getStrategies(),
+        getStrategies('audit'),
         getAICapabilities().catch(() => null),
       ]);
       setStrategies(data);
@@ -272,7 +276,7 @@ export function Strategy() {
     setMessage('');
     try {
       if (selectedId) {
-        const saved = await updateStrategy(selectedId, { name, description, script_content: script, interval_seconds: 60 });
+        const saved = await updateStrategy(selectedId, { name, description, script_content: script, interval_seconds: 60, data_purpose: selected?.data_purpose });
         setStrategies((prev) => prev.map((item) => (item.id === saved.id ? ({ ...item, ...saved } as StrategyType) : item)));
         setActiveVersion(saved.strategy_version ?? null);
         setValidation(saved.validation ?? null);
@@ -398,6 +402,7 @@ export function Strategy() {
           options={[
             { value: 'my', label: '我的策略', icon: Layers, tone: 'blue', count: businessStrategies.length },
             { value: 'plaza', label: '策略广场', icon: BookOpen, tone: 'purple', count: plazaTemplates.length + referenceStrategies.length },
+            { value: 'audit', label: '审计证据', icon: ShieldCheck, tone: 'amber', count: auditStrategies.length },
           ]}
         />
         {listTab === 'my' && (
@@ -643,6 +648,34 @@ export function Strategy() {
             );
           })}
         </div>
+      )}
+
+      {listTab === 'audit' && listState === 'ready' && (
+        <section className="space-y-4" data-testid="strategy-audit-scope">
+          <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3 text-xs text-amber-200">
+            此处仅展示验收对象，业务策略数量、运行状态和默认选择均不包含这些记录；原始证据不会被删除。
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {auditStrategies.map((strategy) => (
+              <article key={`audit-${strategy.id}`} className="rounded-xl border border-amber-500/20 bg-crypto-card p-5" data-testid="strategy-audit-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-sm font-semibold text-white">{strategy.name}</h3>
+                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-500">{strategy.description || '验收策略证据'}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">验收</span>
+                </div>
+                <dl className="mt-4 grid grid-cols-2 gap-2 text-[10px]">
+                  <div className="rounded-lg border border-crypto-border bg-crypto-bg p-2"><dt className="text-slate-600">记录 ID</dt><dd className="mt-1 text-slate-400">{strategy.id}</dd></div>
+                  <div className="rounded-lg border border-crypto-border bg-crypto-bg p-2"><dt className="text-slate-600">运行状态</dt><dd className="mt-1 text-slate-400">{strategy.is_running ? '运行中' : '未运行'}</dd></div>
+                </dl>
+              </article>
+            ))}
+            {auditStrategies.length === 0 ? (
+              <OperatorStatePanel kind="empty" title="暂无验收对象" description="业务视图保持干净，后续验收记录会在此保留审计证据。" />
+            ) : null}
+          </div>
+        </section>
       )}
 
       {showEditor && (

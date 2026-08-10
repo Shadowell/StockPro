@@ -903,8 +903,8 @@ export const getTableData = async (tableName: string, limit: number = 100): Prom
 
 // ============ Strategy API ============
 
-export const getStrategies = async (): Promise<Strategy[]> => {
-  const response = await apiClient.get<Strategy[]>('/strategy/list');
+export const getStrategies = async (scope: 'business' | 'audit' = 'business'): Promise<Strategy[]> => {
+  const response = await apiClient.get<Strategy[]>('/strategy/list', { params: { scope } });
   return response.data;
 };
 
@@ -1233,8 +1233,8 @@ export const paperInstanceAction = async (instanceId: string, action: 'start' | 
 export const processPaperCycle = async (instanceId: string, request: { trade_date: string; data_available_at?: string; observed_at?: string; cycle_key?: string }): Promise<Record<string, unknown>> =>
   (await apiClient.post<Record<string, unknown>>(`/paper/instances/${instanceId}/cycles`, request)).data;
 
-export const getWatchContext = async (): Promise<WatchContext> =>
-  (await apiClient.get<WatchContext>('/watch/context')).data;
+export const getWatchContext = async (scope: 'business' | 'audit' = 'business'): Promise<WatchContext> =>
+  (await apiClient.get<WatchContext>('/watch/context', { params: { scope } })).data;
 
 export const listRuntimeAlerts = async (status?: string): Promise<{ items: RuntimeAlert[]; total: number }> =>
   (await apiClient.get<{ items: RuntimeAlert[]; total: number }>('/watch/alerts', { params: status ? { status } : {} })).data;
@@ -1242,8 +1242,8 @@ export const listRuntimeAlerts = async (status?: string): Promise<{ items: Runti
 export const acknowledgeRuntimeAlert = async (alertId: string): Promise<RuntimeAlert> =>
   (await apiClient.post<RuntimeAlert>(`/watch/alerts/${alertId}/acknowledge`)).data;
 
-export const getMonitorHealth = async (): Promise<MonitorHealth> =>
-  (await apiClient.get<MonitorHealth>('/monitor/health')).data;
+export const getMonitorHealth = async (scope: 'business' | 'audit' = 'business'): Promise<MonitorHealth> =>
+  (await apiClient.get<MonitorHealth>('/monitor/health', { params: { scope } })).data;
 
 export const getDailyReviewDates = async (): Promise<{ items: string[]; total: number }> =>
   (await apiClient.get<{ items: string[]; total: number }>('/review/dates')).data;

@@ -1907,23 +1907,25 @@ class PostgresDatabase:
         description: str = "",
         interval_seconds: int = 60,
         enabled: bool = True,
+        data_purpose: str = "user",
     ) -> int:
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
                     INSERT INTO strategy_scripts
-                    (name, script_content, description, interval_seconds, enabled)
-                    VALUES (%s, %s, %s, %s, %s)
+                    (name, script_content, description, interval_seconds, enabled, data_purpose)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (name) DO UPDATE SET
                         script_content = EXCLUDED.script_content,
                         description = EXCLUDED.description,
                         interval_seconds = EXCLUDED.interval_seconds,
                         enabled = EXCLUDED.enabled,
+                        data_purpose = EXCLUDED.data_purpose,
                         updated_at = CURRENT_TIMESTAMP
                     RETURNING id
                     """,
-                    (name, script_content, description, interval_seconds, enabled),
+                    (name, script_content, description, interval_seconds, enabled, data_purpose),
                 )
                 return cursor.fetchone()[0]
 
@@ -1933,7 +1935,7 @@ class PostgresDatabase:
                 cursor.execute(
                     """
                     SELECT id, name, description, script_content, interval_seconds,
-                           enabled, is_running, created_at, updated_at
+                           enabled, is_running, data_purpose, created_at, updated_at
                     FROM strategy_scripts
                     ORDER BY updated_at DESC, id DESC
                     """
@@ -1947,7 +1949,7 @@ class PostgresDatabase:
                 cursor.execute(
                     """
                     SELECT id, name, description, script_content, interval_seconds,
-                           enabled, is_running, created_at, updated_at
+                           enabled, is_running, data_purpose, created_at, updated_at
                     FROM strategy_scripts
                     WHERE id = %s
                     """,
@@ -1969,6 +1971,7 @@ class PostgresDatabase:
         script_content: str,
         description: str = "",
         interval_seconds: int = 60,
+        data_purpose: Optional[str] = None,
     ) -> Optional[Dict]:
         with self.get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -1979,12 +1982,13 @@ class PostgresDatabase:
                         script_content = %s,
                         description = %s,
                         interval_seconds = %s,
+                        data_purpose = COALESCE(%s, data_purpose),
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     RETURNING id, name, description, script_content, interval_seconds,
-                              enabled, is_running, created_at, updated_at
+                              enabled, is_running, data_purpose, created_at, updated_at
                     """,
-                    (name, script_content, description, interval_seconds, strategy_id),
+                    (name, script_content, description, interval_seconds, data_purpose, strategy_id),
                 )
                 row = cursor.fetchone()
         return self._strategy_row(row) if row else None
@@ -2061,6 +2065,7 @@ class PostgresDatabase:
             description="A股多标的策略，遵循 100 股整数手、T+1 与只做多约束。",
             script_content=self._preset_strategy_code(),
             interval_seconds=60,
+            data_purpose="seed",
         )
 
     # ================================================================

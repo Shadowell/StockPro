@@ -516,7 +516,10 @@ export interface SaveStrategyRequest {
   script_content: string;
   description?: string;
   interval_seconds?: number;
+  data_purpose?: 'user' | 'acceptance' | 'seed';
 }
+
+export type DataScope = 'business' | 'audit';
 
 export interface StrategyValidationReport {
   valid: boolean;
@@ -1081,6 +1084,8 @@ export interface RuntimeAlert {
 }
 
 export interface WatchContext {
+  scope: DataScope;
+  excluded_counts: Record<string, number>;
   alerts: RuntimeAlert[];
   signals: Array<Record<string, unknown>>;
   orders: Array<Record<string, unknown>>;
@@ -1124,6 +1129,8 @@ export interface StrategyRuntimeHealth {
 }
 
 export interface MonitorHealth {
+  scope: DataScope;
+  excluded_counts: Record<string, number>;
   status: 'healthy' | 'warning' | 'critical' | 'unavailable';
   services: Array<Record<string, unknown>>;
   data: { dataset?: Record<string, unknown> | null; market?: Record<string, unknown> | null };

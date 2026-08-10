@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Iterable, Mapping
+
+
+DATA_PURPOSES = frozenset({"user", "acceptance", "seed"})
+DATA_SCOPES = frozenset({"business", "audit"})
 
 
 _ACCEPTANCE_PATTERNS = (
@@ -35,3 +39,22 @@ def infer_data_purpose(*values: Any) -> str:
     ):
         return "seed"
     return "user"
+
+
+def resolve_data_purpose(persisted: Any, *legacy_values: Any) -> str:
+    """Prefer an explicit persisted contract and infer only for legacy rows."""
+    value = str(persisted or "").strip().lower()
+    return value if value in DATA_PURPOSES else infer_data_purpose(*legacy_values)
+
+
+def filter_records_for_scope(
+    records: Iterable[Mapping[str, Any]],
+    scope: str,
+) -> list[dict[str, Any]]:
+    """Return business records by default while preserving a complete audit view."""
+    if scope not in DATA_SCOPES:
+        raise ValueError(f"unsupported data scope: {scope}")
+    items = [dict(item) for item in records]
+    if scope == "audit":
+        return items
+    return [item for item in items if item.get("data_purpose") == "user"]

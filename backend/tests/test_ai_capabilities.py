@@ -4,7 +4,11 @@ from fastapi import HTTPException
 
 from app.api.endpoints.ai import _require_ai_configuration, ai_capabilities
 from app.core.config import settings
-from app.services.data_purpose import infer_data_purpose
+from app.services.data_purpose import (
+    filter_records_for_scope,
+    infer_data_purpose,
+    resolve_data_purpose,
+)
 
 
 class AICapabilityTests(unittest.IsolatedAsyncioTestCase):
@@ -42,6 +46,19 @@ class DataPurposeTests(unittest.TestCase):
         self.assertEqual("user", infer_data_purpose("backtest momentum"))
         self.assertEqual("seed", infer_data_purpose("demo strategy"))
         self.assertEqual("user", infer_data_purpose("红利低波"))
+
+    def test_persisted_data_purpose_wins_over_legacy_name_inference(self):
+        self.assertEqual("user", resolve_data_purpose("user", "TEST 用户策略"))
+        self.assertEqual("acceptance", resolve_data_purpose(None, "Sprint07 probe"))
+
+    def test_business_scope_excludes_non_business_records_without_deleting_audit_evidence(self):
+        records = [
+            {"id": 1, "data_purpose": "user"},
+            {"id": 2, "data_purpose": "acceptance"},
+            {"id": 3, "data_purpose": "seed"},
+        ]
+        self.assertEqual([1], [item["id"] for item in filter_records_for_scope(records, "business")])
+        self.assertEqual([1, 2, 3], [item["id"] for item in filter_records_for_scope(records, "audit")])
 
 
 if __name__ == "__main__":

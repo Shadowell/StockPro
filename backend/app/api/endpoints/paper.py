@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -32,6 +32,7 @@ class PaperInstanceRequest(BaseModel):
     parameters: Dict[str, Any] = Field(default_factory=dict)
     capacity_limits: Dict[str, Any] = Field(default_factory=dict)
     feed_config: Dict[str, Any] = Field(default_factory=dict)
+    data_purpose: Literal["user", "acceptance", "seed"] = "user"
 
 
 class PaperCycleRequest(BaseModel):

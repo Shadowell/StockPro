@@ -3,13 +3,13 @@
 """
 from fastapi import APIRouter, HTTPException
 from starlette.concurrency import run_in_threadpool
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Literal, Optional
 from pydantic import BaseModel
 import logging
 
 from app.services.strategy_execution_service import strategy_execution_service
 from app.services.strategy_lab_service import strategy_lab_service
-from app.services.data_purpose import infer_data_purpose
+from app.services.data_purpose import filter_records_for_scope, resolve_data_purpose
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -22,6 +22,7 @@ class SaveStrategyRequest(BaseModel):
     script_content: str
     description: Optional[str] = ''
     interval_seconds: Optional[int] = 60
+    data_purpose: Optional[Literal["user", "acceptance", "seed"]] = None
 
 
 class StartStrategyRequest(BaseModel):
@@ -52,16 +53,17 @@ class AutoDevelopRequest(BaseModel):
 
 @router.get("")
 @router.get("/list")
-async def get_strategies() -> List[Dict[str, Any]]:
+async def get_strategies(scope: Literal["business", "audit"] = "business") -> List[Dict[str, Any]]:
     """获取所有策略列表"""
     try:
         strategies = await run_in_threadpool(strategy_execution_service.get_strategies)
         for strategy in strategies:
-            strategy["data_purpose"] = infer_data_purpose(
+            strategy["data_purpose"] = resolve_data_purpose(
+                strategy.get("data_purpose"),
                 strategy.get("name"),
                 strategy.get("description"),
             )
-        return strategies
+        return filter_records_for_scope(strategies, scope)
     except Exception as e:
         logger.error(f"Error getting strategies: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -74,7 +76,8 @@ async def get_strategy(strategy_id: int) -> Dict[str, Any]:
         strategy = strategy_execution_service.get_strategy(strategy_id)
         if not strategy:
             raise HTTPException(status_code=404, detail="Strategy not found")
-        strategy["data_purpose"] = infer_data_purpose(
+        strategy["data_purpose"] = resolve_data_purpose(
+            strategy.get("data_purpose"),
             strategy.get("name"),
             strategy.get("description"),
         )
@@ -102,7 +105,8 @@ async def save_strategy(request: SaveStrategyRequest) -> Dict[str, Any]:
             name=request.name.strip(),
             script_content=request.script_content,
             description=request.description or '',
-            interval_seconds=interval_seconds
+            interval_seconds=interval_seconds,
+            data_purpose=request.data_purpose or "user",
         )
         
         if result.get('success'):
@@ -135,6 +139,7 @@ async def update_strategy(strategy_id: int, request: SaveStrategyRequest) -> Dic
             script_content=request.script_content,
             description=request.description or '',
             interval_seconds=interval_seconds,
+            data_purpose=request.data_purpose,
         )
         if result.get("success"):
             return result

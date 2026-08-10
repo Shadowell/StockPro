@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 import psycopg2.extras
 
 from app.services.dataset_snapshot_service import DatasetSnapshotService, canonical_hash
-from app.services.data_purpose import infer_data_purpose
+from app.services.data_purpose import resolve_data_purpose
 from app.services.factor_research_service import FactorResearchService
 from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService
 
@@ -35,10 +35,15 @@ class StockPoolService:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO stock_pools(name,pool_type,description,status)
-                    VALUES (%s,%s,%s,'active') RETURNING *
+                    INSERT INTO stock_pools(name,pool_type,description,status,data_purpose)
+                    VALUES (%s,%s,%s,'active',%s) RETURNING *
                     """,
-                    (name, pool_type, str(payload.get("description") or "")),
+                    (
+                        name,
+                        pool_type,
+                        str(payload.get("description") or ""),
+                        str(payload.get("data_purpose") or "user"),
+                    ),
                 )
                 pool = dict(cursor.fetchone())
                 cursor.execute(
@@ -79,7 +84,8 @@ class StockPoolService:
             """
         )
         for row in rows:
-            row["data_purpose"] = infer_data_purpose(
+            row["data_purpose"] = resolve_data_purpose(
+                row.get("data_purpose"),
                 row.get("name"),
                 row.get("description"),
             )
@@ -97,7 +103,8 @@ class StockPoolService:
         )
         if not row:
             raise ValueError("股票池不存在")
-        row["data_purpose"] = infer_data_purpose(
+        row["data_purpose"] = resolve_data_purpose(
+            row.get("data_purpose"),
             row.get("name"),
             row.get("description"),
         )

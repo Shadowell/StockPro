@@ -37,7 +37,7 @@ class AsyncReadEndpointSafetyTests(unittest.TestCase):
         async def exercise():
             event_loop_thread = threading.get_ident()
 
-            def blocking_read():
+            def blocking_read(_scope):
                 return {"worker_thread": threading.get_ident()}
 
             with patch.object(watch.service, "watch_context", side_effect=blocking_read):
@@ -51,7 +51,7 @@ class AsyncReadEndpointSafetyTests(unittest.TestCase):
         async def exercise():
             event_loop_thread = threading.get_ident()
 
-            def blocking_read():
+            def blocking_read(_scope):
                 return {"worker_thread": threading.get_ident()}
 
             with patch.object(monitor_runtime.service, "health", side_effect=blocking_read):

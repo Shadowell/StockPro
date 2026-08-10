@@ -1,5 +1,5 @@
 """Versioned stock-pool generation, evidence, snapshot, and backtest handoff APIs."""
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -19,6 +19,7 @@ class PoolCreateRequest(BaseModel):
     description: str = ""
     rule_type: Optional[str] = None
     config: Dict[str, Any] = Field(default_factory=dict)
+    data_purpose: Literal["user", "acceptance", "seed"] = "user"
 
 
 class PoolGenerateRequest(BaseModel):

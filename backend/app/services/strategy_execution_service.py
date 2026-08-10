@@ -57,14 +57,15 @@ class StrategyExecutionService:
     # ============ 策略管理 ============
     
     def save_strategy(self, name: str, script_content: str, description: str = '',
-                      interval_seconds: int = 60) -> Dict[str, Any]:
+                      interval_seconds: int = 60, data_purpose: str = "user") -> Dict[str, Any]:
         """保存策略脚本"""
         try:
             strategy_id = db.save_strategy(
                 name=name,
                 script_content=script_content,
                 description=description,
-                interval_seconds=interval_seconds
+                interval_seconds=interval_seconds,
+                data_purpose=data_purpose,
             )
             from app.services.strategy_runtime_service import StrategyRuntimeService
             version_result = StrategyRuntimeService(db).ensure_legacy_version(
@@ -100,6 +101,7 @@ class StrategyExecutionService:
         script_content: str,
         description: str = "",
         interval_seconds: int = 60,
+        data_purpose: Optional[str] = None,
     ) -> Dict[str, Any]:
         """按 ID 更新策略脚本"""
         try:
@@ -109,6 +111,7 @@ class StrategyExecutionService:
                 script_content=script_content,
                 description=description,
                 interval_seconds=interval_seconds,
+                data_purpose=data_purpose,
             )
             if not strategy:
                 return {"success": False, "error": "Strategy not found"}
@@ -177,7 +180,8 @@ class StrategyExecutionService:
                     name=strategy['name'],
                     script_content=strategy['script_content'],
                     description=strategy['description'],
-                    interval_seconds=interval_seconds
+                    interval_seconds=interval_seconds,
+                    data_purpose=strategy.get("data_purpose", "user"),
                 )
             
             success = self._schedule_strategy(strategy_id, interval)

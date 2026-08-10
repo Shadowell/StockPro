@@ -228,6 +228,77 @@ test('真实策略页面展示生命周期编辑器且无浏览器错误', async
   expect(consoleErrors, consoleErrors.join('\n')).toEqual([]);
 });
 
+test('真实 Strategy Watch Monitor 默认隔离业务对象并保留审计证据', async ({ page }) => {
+  const token = await login(page.request);
+  const headers = { Authorization: `Bearer ${token}` };
+  const [strategyBusinessResp, strategyAuditResp, watchBusinessResp, watchAuditResp, monitorBusinessResp, monitorAuditResp] = await Promise.all([
+    page.request.get('/api/strategy/list?scope=business', { headers }),
+    page.request.get('/api/strategy/list?scope=audit', { headers }),
+    page.request.get('/api/watch/context?scope=business', { headers }),
+    page.request.get('/api/watch/context?scope=audit', { headers }),
+    page.request.get('/api/monitor/health?scope=business', { headers }),
+    page.request.get('/api/monitor/health?scope=audit', { headers }),
+  ]);
+  for (const response of [strategyBusinessResp, strategyAuditResp, watchBusinessResp, watchAuditResp, monitorBusinessResp, monitorAuditResp]) {
+    expect(response.ok()).toBeTruthy();
+  }
+
+  const strategyBusiness = (await strategyBusinessResp.json()) as Array<{ name?: unknown; data_purpose?: unknown }>;
+  const strategyAudit = (await strategyAuditResp.json()) as Array<{ name?: unknown; data_purpose?: unknown }>;
+  const watchBusiness = (await watchBusinessResp.json()) as {
+    scope?: unknown;
+    instances?: Array<{ name?: unknown; data_purpose?: unknown }>;
+    coverage?: Record<string, number>;
+  };
+  const watchAudit = (await watchAuditResp.json()) as {
+    scope?: unknown;
+    instances?: Array<{ name?: unknown; data_purpose?: unknown }>;
+    coverage?: Record<string, number>;
+  };
+  const monitorBusiness = (await monitorBusinessResp.json()) as {
+    scope?: unknown;
+    strategy_health?: Array<{ name?: unknown; data_purpose?: unknown }>;
+  };
+  const monitorAudit = (await monitorAuditResp.json()) as {
+    scope?: unknown;
+    strategy_health?: Array<{ name?: unknown; data_purpose?: unknown }>;
+  };
+
+  expect(strategyBusiness.every((item) => item.data_purpose === 'user')).toBeTruthy();
+  expect((watchBusiness.instances ?? []).every((item) => item.data_purpose === 'user')).toBeTruthy();
+  expect((monitorBusiness.strategy_health ?? []).every((item) => item.data_purpose === 'user')).toBeTruthy();
+  expect(watchBusiness.scope).toBe('business');
+  expect(watchAudit.scope).toBe('audit');
+  expect(monitorBusiness.scope).toBe('business');
+  expect(monitorAudit.scope).toBe('audit');
+  expect(strategyAudit.length).toBeGreaterThanOrEqual(strategyBusiness.length);
+  expect(Number(watchAudit.coverage?.instances ?? 0)).toBeGreaterThanOrEqual(Number(watchBusiness.coverage?.instances ?? 0));
+  expect((monitorAudit.strategy_health ?? []).length).toBeGreaterThanOrEqual((monitorBusiness.strategy_health ?? []).length);
+
+  const acceptanceStrategies = strategyAudit.filter((item) => item.data_purpose === 'acceptance');
+  const acceptanceInstances = (watchAudit.instances ?? []).filter((item) => item.data_purpose === 'acceptance');
+  expect(acceptanceStrategies.length + acceptanceInstances.length).toBeGreaterThan(0);
+
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  await page.goto('/strategy', { waitUntil: 'networkidle' });
+  await expect(page.getByRole('tab', { name: /审计证据/ })).toBeVisible();
+  await page.getByRole('tab', { name: /审计证据/ }).click();
+  await expect(page.getByTestId('strategy-audit-scope')).toBeVisible();
+  if (acceptanceStrategies[0]?.name) {
+    await expect(page.getByTestId('strategy-audit-scope')).toContainText(String(acceptanceStrategies[0].name));
+  }
+
+  await page.goto('/watch', { waitUntil: 'networkidle' });
+  await expect(page.getByTestId('data-scope-control')).toContainText('业务视图');
+  await page.getByRole('button', { name: '审计视图' }).click();
+  await expect(page.getByTestId('data-scope-control')).toContainText('不改变原始记录');
+
+  await page.goto('/monitor', { waitUntil: 'networkidle' });
+  await expect(page.getByTestId('data-scope-control')).toContainText('业务视图');
+  await page.getByRole('button', { name: '审计视图' }).click();
+  await expect(page.getByTestId('data-scope-control')).toContainText('验收与种子证据');
+});
+
 test('真实完整回测展示八类证据且收盘信号不会同日成交', async ({ page }) => {
   const token = await login(page.request);
   const headers = { Authorization: `Bearer ${token}` };
@@ -305,8 +376,8 @@ test('真实 Paper 五日链路在执行观察监控三页共享审计对象', a
   const [detailResp, eventsResp, watchResp, healthResp] = await Promise.all([
     page.request.get(`/api/paper/instances/${instanceId}`, { headers }),
     page.request.get(`/api/paper/instances/${instanceId}/events`, { headers }),
-    page.request.get('/api/watch/context', { headers }),
-    page.request.get('/api/monitor/health', { headers }),
+    page.request.get('/api/watch/context?scope=audit', { headers }),
+    page.request.get('/api/monitor/health?scope=audit', { headers }),
   ]);
   for (const response of [detailResp, eventsResp, watchResp, healthResp]) expect(response.ok()).toBeTruthy();
   const detail = (await detailResp.json()) as {

@@ -1859,3 +1859,26 @@ Verification:
   the real-backend Market suite across all six tabs, and `./scripts/check.sh`
   with the production build, lint, bundle budget, 320 backend tests and Python
   compilation. The post-load health endpoint responded in 0.001 seconds.
+
+### SP-005 business/audit isolation completion
+
+- Added a persisted `data_purpose` contract for strategy definitions, Paper
+  instances and stock pools, with legacy acceptance/seed backfill in migration
+  `202608100001_business_audit_scope.sql`.
+- Strategy, Watch and Monitor APIs now default to `scope=business`; explicit
+  `scope=audit` preserves and returns acceptance/seed evidence without mixing it
+  into business lists, counts, alert totals or notification totals.
+- Added compact business/audit controls to all three operator pages. Strategy
+  acceptance records now have a dedicated audit tab and no longer enter My
+  Strategies or the reference-template count.
+- TDD verification passed 35 focused backend contracts, the repository check
+  with 324 backend tests, production build/lint/bundle budget, and the complete
+  43-test mocked browser suite. Both local services were cleanly restarted with
+  scheduler, realtime sync and strategy execution disabled.
+- After explicit operator approval, applied only
+  `202608100001_business_audit_scope.sql` to the isolated `stockpro_dev`
+  database. Storage health reports 30 migration files and 30 applied.
+- Real API/browser acceptance verified that business scope returns only `user`
+  objects, audit scope preserves acceptance evidence, all three pages can switch
+  scope, and the existing Paper-to-Watch-to-Monitor evidence chain remains
+  resolvable. No deployment or production service mutation was performed.

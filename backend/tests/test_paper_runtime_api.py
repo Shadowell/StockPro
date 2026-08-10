@@ -97,6 +97,12 @@ class PaperRuntimeApiContractTests(unittest.TestCase):
     def test_watch_context_endpoint(self):
         self.watch.watch_context.return_value = {"alerts": [], "signals": [], "pool_moves": [], "instances": []}
         self.assertIn("signals", self.client.get("/watch/context").json())
+        self.watch.watch_context.assert_called_once_with("business")
+
+    def test_watch_context_explicit_audit_scope_preserves_acceptance_evidence(self):
+        self.watch.watch_context.return_value = {"scope": "audit", "alerts": [], "signals": [], "pool_moves": [], "instances": []}
+        self.assertEqual(self.client.get("/watch/context?scope=audit").json()["scope"], "audit")
+        self.watch.watch_context.assert_called_once_with("audit")
 
     def test_alert_list_endpoint(self):
         self.watch.list_alerts.return_value = [{"id": "alert-1"}]
@@ -109,6 +115,10 @@ class PaperRuntimeApiContractTests(unittest.TestCase):
     def test_health_endpoint(self):
         self.monitor.health.return_value = {"status": "healthy", "services": []}
         self.assertEqual(self.client.get("/monitor/health").json()["status"], "healthy")
+        self.monitor.health.assert_called_once_with("business")
+
+    def test_health_endpoint_rejects_unknown_scope(self):
+        self.assertEqual(self.client.get("/monitor/health?scope=everything").status_code, 422)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import psycopg2.extras
 
 from app.services.dataset_snapshot_service import DatasetSnapshotService, canonical_hash
-from app.services.data_purpose import infer_data_purpose
+from app.services.data_purpose import filter_records_for_scope, resolve_data_purpose
 from app.services.strategy_runtime_service import STRATEGY_API_VERSION, StrategyRuntimeService
 
 
@@ -100,8 +100,8 @@ class PaperRuntimeService:
                     INSERT INTO paper_instances
                     (name,strategy_version_id,dataset_snapshot_id,factor_snapshot_id,universe_snapshot_id,pool_snapshot_id,
                      research_protocol_id,qualifying_backtest_run_id,portfolio_id,parameters,capacity_limits,feed_config,
-                     status,runtime_version)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'draft',%s) RETURNING id
+                     status,runtime_version,data_purpose)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'draft',%s,%s) RETURNING id
                     """,
                     (
                         str(payload.get("name") or f"{version['name']} / Paper"), expected["strategy_version_id"],
@@ -109,6 +109,7 @@ class PaperRuntimeService:
                         expected["pool_snapshot_id"], expected["research_protocol_id"], qualifying["id"], portfolio_id,
                         psycopg2.extras.Json(payload.get("parameters") or {}), psycopg2.extras.Json(capacity_limits),
                         psycopg2.extras.Json(feed_config), PAPER_RUNTIME_VERSION,
+                        str(payload.get("data_purpose") or "user"),
                     ),
                 )
                 instance_id = str(cursor.fetchone()["id"])
@@ -293,7 +294,7 @@ class PaperRuntimeService:
             """
         )
         for row in rows:
-            row["data_purpose"] = infer_data_purpose(row.get("name"))
+            row["data_purpose"] = resolve_data_purpose(row.get("data_purpose"), row.get("name"))
             # Before the first valuation cycle there is no equity snapshot; cash is the book.
             if row.get("equity") is None:
                 row["equity"] = row.get("cash_balance") if row.get("cash_balance") is not None else row.get("initial_cash")
@@ -301,7 +302,7 @@ class PaperRuntimeService:
 
     def get_instance(self, instance_id: str) -> Dict[str, Any]:
         instance = self._instance(instance_id)
-        instance["data_purpose"] = infer_data_purpose(instance.get("name"))
+        instance["data_purpose"] = resolve_data_purpose(instance.get("data_purpose"), instance.get("name"))
         instance["signals"] = self._rows("SELECT * FROM strategy_signals WHERE paper_instance_id=%s ORDER BY signal_time DESC,id DESC", (instance_id,))
         instance["orders"] = self._rows("SELECT * FROM orders WHERE paper_instance_id=%s ORDER BY created_at DESC", (instance_id,))
         instance["trades"] = self._rows("SELECT * FROM trades WHERE paper_instance_id=%s ORDER BY traded_at DESC", (instance_id,))
@@ -416,7 +417,7 @@ class PaperRuntimeService:
         self._execute("UPDATE notification_deliveries SET status='acknowledged',acknowledged_at=NOW() WHERE alert_id=%s AND status='delivered'", (alert_id,))
         return self._row("SELECT * FROM alerts WHERE id=%s", (alert_id,)) or {}
 
-    def watch_context(self) -> Dict[str, Any]:
+    def watch_context(self, scope: str = "business") -> Dict[str, Any]:
         alerts = self.list_alerts(None)
         signals = self._rows("SELECT * FROM strategy_signals WHERE paper_instance_id IS NOT NULL ORDER BY signal_time DESC LIMIT 200")
         orders = self._rows(
@@ -461,7 +462,8 @@ class PaperRuntimeService:
         )
         pool_moves = self._rows(
                 """
-                SELECT s.id AS snapshot_id,s.pool_id,p.name AS pool_name,s.trade_date,s.member_count,s.manifest_hash
+                SELECT s.id AS snapshot_id,s.pool_id,p.name AS pool_name,p.data_purpose,
+                       s.trade_date,s.member_count,s.manifest_hash
                 FROM stock_pool_snapshots s JOIN stock_pools p ON p.id=s.pool_id
                 WHERE s.status='sealed' ORDER BY s.trade_date DESC,s.id DESC LIMIT 100
                 """
@@ -477,7 +479,8 @@ class PaperRuntimeService:
                 instance_id = item.get("paper_instance_id")
                 item["data_purpose"] = instance_purpose.get(
                     str(instance_id),
-                    infer_data_purpose(
+                    resolve_data_purpose(
+                        item.get("data_purpose"),
                         item.get("instance_name"),
                         item.get("title"),
                         item.get("message"),
@@ -495,7 +498,38 @@ class PaperRuntimeService:
         ):
             attach_instance_purpose(evidence_rows)
         for item in pool_moves:
-            item["data_purpose"] = infer_data_purpose(item.get("pool_name"))
+            item["data_purpose"] = resolve_data_purpose(
+                item.get("data_purpose"), item.get("pool_name")
+            )
+
+        evidence = {
+            "alerts": alerts,
+            "signals": signals,
+            "orders": orders,
+            "trades": trades,
+            "positions": positions,
+            "risk_events": risk_events,
+            "runtime_events": runtime_events,
+            "pool_moves": pool_moves,
+            "instances": instances,
+        }
+        selected = {
+            key: filter_records_for_scope(rows, scope)
+            for key, rows in evidence.items()
+        }
+        excluded_counts = {
+            key: len(evidence[key]) - len(selected[key])
+            for key in evidence
+        }
+        alerts = selected["alerts"]
+        signals = selected["signals"]
+        orders = selected["orders"]
+        trades = selected["trades"]
+        positions = selected["positions"]
+        risk_events = selected["risk_events"]
+        runtime_events = selected["runtime_events"]
+        pool_moves = selected["pool_moves"]
+        instances = selected["instances"]
 
         symbol_names = self._attach_symbol_names(signals, orders, trades, positions)
 
@@ -520,6 +554,8 @@ class PaperRuntimeService:
         else:
             data_status = "fresh"
         return {
+            "scope": scope,
+            "excluded_counts": excluded_counts,
             "alerts": alerts,
             "signals": signals,
             "orders": orders,
@@ -545,7 +581,7 @@ class PaperRuntimeService:
             "response_generated_at": now,
         }
 
-    def health(self) -> Dict[str, Any]:
+    def health(self, scope: str = "business") -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
         services = self._rows(
             """
@@ -562,10 +598,9 @@ class PaperRuntimeService:
                 if (now - observed_at).total_seconds() > 36 * 60 * 60
                 else "fresh"
             )
-        active_alerts = self._rows("SELECT severity,COUNT(*)::INTEGER AS count FROM alerts WHERE status='active' GROUP BY severity ORDER BY severity")
         active_alert_details = self._rows(
             """
-            SELECT a.*,i.name AS instance_name
+            SELECT a.*,i.name AS instance_name,COALESCE(i.data_purpose,'user') AS data_purpose
             FROM alerts a LEFT JOIN paper_instances i ON i.id=a.paper_instance_id
             WHERE a.status='active'
             ORDER BY CASE a.severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
@@ -574,10 +609,9 @@ class PaperRuntimeService:
         )
         data = self._row("SELECT id,status,knowledge_cutoff_at,manifest_hash FROM dataset_snapshots WHERE status='sealed' ORDER BY id DESC LIMIT 1")
         market = self._row("SELECT id,status,trade_date,available_at,content_hash FROM market_evidence_snapshots ORDER BY trade_date DESC,id DESC LIMIT 1")
-        instances = self._rows("SELECT status,COUNT(*)::INTEGER AS count FROM paper_instances GROUP BY status ORDER BY status")
         strategy_health = self._rows(
             """
-            SELECT i.id,i.name,i.status,i.runtime_version,i.heartbeat_at,i.last_processed_trade_date,
+            SELECT i.id,i.name,i.data_purpose,i.status,i.runtime_version,i.heartbeat_at,i.last_processed_trade_date,
                    i.error_message,i.updated_at,i.feed_config,p.cash_balance,p.initial_cash,
                    c.id AS latest_cycle_id,c.status AS latest_cycle_status,c.trade_date AS latest_cycle_trade_date,
                    c.finished_at AS latest_cycle_finished_at,c.error_message AS latest_cycle_error,
@@ -605,7 +639,7 @@ class PaperRuntimeService:
             """
         )
         for item in strategy_health:
-            item["data_purpose"] = infer_data_purpose(item.get("name"))
+            item["data_purpose"] = resolve_data_purpose(item.get("data_purpose"), item.get("name"))
             heartbeat = self._timestamp(item["heartbeat_at"]) if item.get("heartbeat_at") else None
             item["heartbeat_age_seconds"] = int((now - heartbeat).total_seconds()) if heartbeat else None
             if item["status"] in {"stopped", "draft"}:
@@ -618,7 +652,45 @@ class PaperRuntimeService:
                 item["health_state"] = "stale"
             else:
                 item["health_state"] = "fresh"
-        notification = self._rows("SELECT status,COUNT(*)::INTEGER AS count FROM notification_deliveries GROUP BY status ORDER BY status")
+        notification_details = self._rows(
+            """
+            SELECT n.status,COALESCE(i.data_purpose,'user') AS data_purpose
+            FROM notification_deliveries n
+            JOIN alerts a ON a.id=n.alert_id
+            LEFT JOIN paper_instances i ON i.id=a.paper_instance_id
+            """
+        )
+        all_strategy_health = strategy_health
+        all_active_alert_details = active_alert_details
+        all_notification_details = notification_details
+        strategy_health = filter_records_for_scope(strategy_health, scope)
+        active_alert_details = filter_records_for_scope(active_alert_details, scope)
+        notification_details = filter_records_for_scope(notification_details, scope)
+
+        instances_by_status: Dict[str, int] = {}
+        for item in strategy_health:
+            status = str(item.get("status") or "unknown")
+            instances_by_status[status] = instances_by_status.get(status, 0) + 1
+        instances = [
+            {"status": status, "count": count}
+            for status, count in sorted(instances_by_status.items())
+        ]
+        alerts_by_severity: Dict[str, int] = {}
+        for item in active_alert_details:
+            severity = str(item.get("severity") or "unknown")
+            alerts_by_severity[severity] = alerts_by_severity.get(severity, 0) + 1
+        active_alerts = [
+            {"severity": severity, "count": count}
+            for severity, count in sorted(alerts_by_severity.items())
+        ]
+        notifications_by_status: Dict[str, int] = {}
+        for item in notification_details:
+            status = str(item.get("status") or "unknown")
+            notifications_by_status[status] = notifications_by_status.get(status, 0) + 1
+        notification = [
+            {"status": status, "count": count}
+            for status, count in sorted(notifications_by_status.items())
+        ]
         source_candidates = [
             *(item.get("observed_at") for item in services),
             *(item.get("triggered_at") for item in active_alert_details),
@@ -646,6 +718,12 @@ class PaperRuntimeService:
             else "healthy"
         )
         return {
+            "scope": scope,
+            "excluded_counts": {
+                "strategy_health": len(all_strategy_health) - len(strategy_health),
+                "active_alerts": len(all_active_alert_details) - len(active_alert_details),
+                "notifications": len(all_notification_details) - len(notification_details),
+            },
             "status": overall,
             "services": services,
             "data": {"dataset": data, "market": market},
