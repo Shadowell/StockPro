@@ -333,6 +333,26 @@ test('真实主阅读层使用业务标签且诊断仍可追溯原值', async ({
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 
+test('真实百因子目录展示独立成熟度分母与研究门禁', async ({ page }) => {
+  const token = await login(page.request);
+  const response = await page.request.get('/api/factors/research/library', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(response.ok()).toBeTruthy();
+  const factors = ((await response.json()) as { items?: unknown[] }).items ?? [];
+  expect(factors).toHaveLength(100);
+
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  await page.goto('/factors', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('factor-stage-defined')).toContainText('100', { timeout: 30_000 });
+  await expect(page.getByTestId('factor-stage-computed')).toBeVisible();
+  await expect(page.getByTestId('factor-stage-evaluated')).toBeVisible();
+  await expect(page.getByTestId('factor-stage-eligible')).toBeVisible();
+  for (const id of ['factor-check-cross-sectional', 'factor-check-time-series', 'factor-check-out-of-sample', 'factor-check-leakage']) {
+    await expect(page.getByTestId(id)).toBeVisible();
+  }
+});
+
 test('真实完整回测展示八类证据且收盘信号不会同日成交', async ({ page }) => {
   const token = await login(page.request);
   const headers = { Authorization: `Bearer ${token}` };

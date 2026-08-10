@@ -1640,8 +1640,8 @@ test('factor research exposes six PG-backed workspaces and explicit pending evid
   await expect(page.getByTestId('factor-research-summary')).toBeVisible();
   await expect(page.getByText('2025-01-02', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('已发布', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/天前样本/)).toBeVisible();
-  await expect(page.getByText('收益窗口待成熟')).toBeVisible();
+  await expect(page.getByText(/研究日 2025-01-02/)).toBeVisible();
+  await expect(page.getByText('未来收益窗口未成熟')).toBeVisible();
   await expect(page.getByText('待成熟').first()).toBeVisible();
 
   await page.getByRole('row', { name: /20日动量 momentum_20d/ }).click();
@@ -1652,6 +1652,26 @@ test('factor research exposes six PG-backed workspaces and explicit pending evid
   await page.getByRole('tab', { name: '因子值' }).click();
   await expect(page.getByText('600000.SH')).toBeVisible();
   await expect(page.getByText('点时因子值')).toBeVisible();
+});
+
+test('factor maturity uses independent denominators and explains unavailable research gates', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/factors');
+
+  await expect(page.getByTestId('factor-stage-defined')).toContainText('1');
+  await expect(page.getByTestId('factor-stage-computed')).toContainText('1/1');
+  await expect(page.getByTestId('factor-stage-evaluated')).toContainText('0/1');
+  await expect(page.getByTestId('factor-stage-evaluated')).toContainText('未来收益窗口未成熟');
+  await expect(page.getByTestId('factor-stage-eligible')).toContainText('--');
+  await expect(page.getByTestId('factor-stage-eligible')).toContainText('没有已评估因子，暂不形成分母');
+
+  await expect(page.getByTestId('factor-check-cross-sectional')).toContainText('1/1');
+  await expect(page.getByTestId('factor-check-time-series')).toContainText('--');
+  await expect(page.getByTestId('factor-check-time-series')).toContainText('至少需要两个成熟交易日');
+  await expect(page.getByTestId('factor-check-out-of-sample')).toContainText('--');
+  await expect(page.getByTestId('factor-check-out-of-sample')).toContainText('尚无封存样本外通过证据');
+  await expect(page.getByTestId('factor-check-leakage')).toContainText('1/1');
+  await expect(page.getByText('0%', { exact: true })).toHaveCount(0);
 });
 
 test('factor research keeps core library usable when optional correlation data fails', async ({ page }) => {

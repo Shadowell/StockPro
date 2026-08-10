@@ -125,13 +125,6 @@ const factorDescriptionText = (value?: string | null) => (value || '暂无研究
   .replace(/PE_TTM 的倒数/g, '滚动市盈率的倒数')
   .replace(/PB 的倒数/g, '市净率的倒数');
 
-const researchAgeDays = (tradeDate?: string | null) => {
-  if (!tradeDate) return null;
-  const parsed = new Date(`${tradeDate}T00:00:00+08:00`);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 86_400_000));
-};
-
 const statusStyle = (status?: string | null) => {
   if (status === 'published' || status === 'sealed' || status === 'valid') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300';
   if (status === 'failed' || status === 'blocked' || status === 'invalid') return 'border-red-500/30 bg-red-500/10 text-red-300';
@@ -270,20 +263,28 @@ export const FactorLibrary = () => {
       if (dateOrder !== 0) return dateOrder;
       return String(right.knowledge_cutoff_at ?? '').localeCompare(String(left.knowledge_cutoff_at ?? ''));
     })[0], [factors]);
-  const publishedCount = factors.filter((item) => item.publication_state === 'published').length;
-  const validCount = factors.filter((item) => item.validation_status === 'valid').length;
-  const evaluatedCount = factors.filter((item) =>
+  const computedFactors = factors.filter((item) =>
+    item.publication_state === 'published'
+    && Boolean(item.dataset_snapshot_id)
+    && Boolean(item.universe_snapshot_id)
+    && Boolean(item.last_trade_date),
+  );
+  const evaluatedFactors = computedFactors.filter((item) =>
     [item.rank_ic, item.icir, item.long_short_return, item.turnover].some((value) => typeof value === 'number' && Number.isFinite(value)),
-  ).length;
-  const coverageValues = factors
-    .map((item) => item.coverage)
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
-    .sort((left, right) => left - right);
-  const medianCoverage = coverageValues.length
-    ? coverageValues[Math.floor((coverageValues.length - 1) / 2)]
-    : null;
-  const sampleAge = researchAgeDays(latestFactor?.last_trade_date);
-  const latestRun = runs.reduce<FactorComputeRun | null>((current, item) => !current || item.id > current.id ? item : current, null);
+  );
+  const eligibleFactors = evaluatedFactors.filter((item) => item.research_status === 'paper_eligible');
+  const crossSectionalChecked = computedFactors.filter((item) => typeof item.coverage === 'number' && Number.isFinite(item.coverage));
+  const timeSeriesChecked = computedFactors.filter((item) =>
+    [item.icir, item.turnover, item.decay].some((value) => typeof value === 'number' && Number.isFinite(value)),
+  );
+  const leakageChecked = computedFactors.filter((item) =>
+    item.validation_status === 'valid'
+    && Boolean(item.dataset_snapshot_id)
+    && Boolean(item.universe_snapshot_id)
+    && Boolean(item.knowledge_cutoff_at),
+  );
+  const stageValue = (count: number, denominator: number) => denominator ? `${count}/${denominator}` : '--';
+  const checkValue = (count: number, denominator: number) => count > 0 ? stageValue(count, denominator) : '--';
 
   const selectFactor = (item: ResearchFactor, nextWorkspace: Workspace = 'single') => {
     setSelectedId(item.id);
@@ -399,21 +400,42 @@ export const FactorLibrary = () => {
         </div>
       </section>
 
-      <section data-testid="factor-research-summary" className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      <section data-testid="factor-research-summary" className="mb-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
         {([
-          ['因子总数', factors.length, `${categories.length} 个分类`, 'blue'],
-          ['校验通过', `${validCount}/${factors.length}`, validCount === factors.length && factors.length ? '定义可计算' : '存在待处理定义', validCount === factors.length && factors.length ? 'green' : 'blue'],
-          ['已发布计算', `${publishedCount}/${factors.length}`, latestRun ? `最新交易日 ${latestRun.trade_date}` : '暂无运行', 'blue'],
-          ['有效性已评估', `${evaluatedCount}/${factors.length}`, evaluatedCount ? '已有收益证据' : '收益窗口待成熟', 'blue'],
-          ['中位覆盖率', medianCoverage === null ? '--' : percentageText(medianCoverage), '横截面可用样本', medianCoverage === null ? 'neutral' : medianCoverage >= 0.8 ? 'green' : medianCoverage >= 0.5 ? 'amber' : 'red'],
-          ['研究交易日', latestFactor?.last_trade_date ?? '--', sampleAge === null ? '暂无研究样本' : sampleAge <= 5 ? '近期样本' : `${sampleAge} 天前样本`, sampleAge === null ? 'neutral' : sampleAge <= 5 ? 'blue' : 'amber'],
-        ] as const).map(([label, value, note, tone]) => (
-          <div key={label} className="min-w-0 rounded-lg border border-crypto-border bg-crypto-card px-3 py-2.5">
+          ['factor-stage-defined', '因子定义', factors.length, `${categories.length} 个分类；定义总数不等于研究成熟数`, 'blue'],
+          ['factor-stage-computed', '已计算', stageValue(computedFactors.length, factors.length), computedFactors.length ? `封存计算 ${computedFactors.length} 个` : '尚无封存计算运行', computedFactors.length ? 'blue' : 'neutral'],
+          ['factor-stage-evaluated', '已评估', stageValue(evaluatedFactors.length, computedFactors.length), evaluatedFactors.length ? 'Rank IC / 分层收益已有数值' : computedFactors.length ? '未来收益窗口未成熟' : '没有已计算因子，暂不形成分母', evaluatedFactors.length ? 'green' : 'amber'],
+          ['factor-stage-eligible', '可用于策略', stageValue(eligibleFactors.length, evaluatedFactors.length), eligibleFactors.length ? '已通过封存样本外晋级门禁' : evaluatedFactors.length ? '尚无封存样本外通过证据' : '没有已评估因子，暂不形成分母', eligibleFactors.length ? 'green' : 'neutral'],
+        ] as const).map(([testId, label, value, note, tone]) => (
+          <div key={label} data-testid={testId} className="min-w-0 rounded-lg border border-crypto-border bg-crypto-card px-3 py-2.5">
             <div className="text-[10px] font-medium text-slate-500">{label}</div>
             <MetricValue tone={tone as MetricTone} size="lg" className="mt-1 block truncate" title={String(value)}>{value}</MetricValue>
             <div className="mt-0.5 truncate text-[10px] text-slate-600" title={String(note)}>{note}</div>
           </div>
         ))}
+      </section>
+
+      <section data-testid="factor-research-gates" className="mb-4 rounded-xl border border-crypto-border bg-crypto-card p-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xs font-semibold text-slate-200">研究有效性门禁</h2>
+            <p className="mt-1 text-[10px] text-slate-600">检查结果只统计已封存计算；缺少成熟样本时不显示 0% 结论。</p>
+          </div>
+          <span className="text-[10px] text-slate-600">研究日 {latestFactor?.last_trade_date ?? '--'}</span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {([
+            ['factor-check-cross-sectional', '横截面检查', checkValue(crossSectionalChecked.length, computedFactors.length), crossSectionalChecked.length ? '覆盖、缺失与异常值已计算' : computedFactors.length ? '覆盖诊断缺失' : '等待首个封存计算'],
+            ['factor-check-time-series', '时序检查', checkValue(timeSeriesChecked.length, computedFactors.length), timeSeriesChecked.length ? '稳定度、换手与衰减已有证据' : computedFactors.length ? '至少需要两个成熟交易日' : '等待首个封存计算'],
+            ['factor-check-out-of-sample', '样本外检查', checkValue(eligibleFactors.length, evaluatedFactors.length), eligibleFactors.length ? '封存协议与样本外评价已通过' : evaluatedFactors.length ? '样本外证据未通过或未封存' : '尚无封存样本外通过证据'],
+            ['factor-check-leakage', '防泄漏检查', checkValue(leakageChecked.length, computedFactors.length), leakageChecked.length ? '点时快照与知识截止已绑定' : computedFactors.length ? '缺少点时输入或知识截止' : '等待首个封存计算'],
+          ] as const).map(([testId, label, value, note]) => (
+            <div key={label} data-testid={testId} className="rounded-lg border border-white/[0.05] bg-crypto-bg px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500"><span>{label}</span><span className="font-mono text-slate-300">{value}</span></div>
+              <div className="mt-1 text-[10px] leading-4 text-slate-600">{note}</div>
+            </div>
+          ))}
+        </div>
       </section>
 
       {error && (

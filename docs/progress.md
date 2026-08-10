@@ -1905,3 +1905,21 @@ Verification:
   evidence. The isolated business scope currently has no Stock Pool record, so
   the real page truthfully verified its empty state; populated binding behavior
   remains covered by the Mock fixture. No database write or deployment ran.
+
+### SP-011 factor maturity funnel completion
+
+- Replaced the shared definition denominator with a research maturity funnel:
+  factor definitions, sealed computations, matured evaluations and strategy-
+  eligible factors now have explicit, stage-specific denominators.
+- Added independent cross-sectional, time-series, out-of-sample and point-in-
+  time leakage gates. Missing mature evidence renders `--` plus the blocking
+  reason rather than a misleading 0% performance conclusion.
+- TDD captured the missing maturity contract before implementation. The full
+  Mock browser suite passed 45/45, and read-only real-backend acceptance
+  confirmed all 100/100 installed factor definitions plus the four visible
+  gates. `./scripts/check.sh` passed build, zero-warning lint, bundle budget,
+  324 backend tests and Python compilation.
+- Both services were cleanly restarted with scheduler, realtime sync, strategy
+  execution, runtime bootstrap and external market fetch disabled. Application
+  and isolated `stockpro_dev` storage health passed with 30/30 migrations. No
+  factor compute, metric maturity job, database write or deployment ran.
