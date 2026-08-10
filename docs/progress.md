@@ -1818,3 +1818,26 @@ Verification:
   development database at the hour boundary. Every final validation restart
   used `ENABLE_SCHEDULER=false`; no deployment, data repair or production
   mutation was performed.
+
+### SP-001 A-share price-limit evidence completion
+
+- Replaced the legacy global `ST = 5%` estimate with the exchange rules in
+  force from 2026-07-06: Shanghai/Shenzhen main board including risk-warning
+  stocks 10%, STAR/ChiNext 20%, and Beijing 30%.
+- Enriched the PostgreSQL realtime stock cache read with point-in-time security
+  status plus published trading-calendar evidence. Shanghai/Shenzhen IPOs are
+  excluded for their first five trading days and Beijing IPOs for their first
+  trading day. Official `N`/`C` security-name markers are a conservative
+  fallback when the local security master has not yet published a new symbol.
+- Kept the operator boundary explicit: sealed `limit_pool_members` remain the
+  only formal limit-board membership; cache-derived counts remain labelled as
+  estimates and are withheld if any stock has unknown rule evidence.
+- A read-only real-data verification covered all 5,540 cached stocks: 5,537
+  had active price limits, three IPO-stage stocks were excluded, and zero had
+  unknown rule state. The resulting diagnostic estimate was 89 limit-up and
+  six limit-down securities; the three excluded names were not counted.
+- Verification passed 14 focused backend tests, `./scripts/check.sh` with 320
+  backend tests, clean frontend build/lint/bundle budget, and the real-backend
+  Dashboard/Market browser suites 2/2. The post-load health endpoint responded
+  in 0.002 seconds. Scheduler, realtime sync and strategy execution remained
+  disabled; no database write or deployment was performed.

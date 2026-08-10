@@ -6,6 +6,132 @@ from app.services.market_service import MarketService
 
 
 class MarketOverviewFastPathTests(unittest.TestCase):
+    def test_current_board_rules_do_not_apply_legacy_five_percent_st_limit(self):
+        main_st = MarketService._price_limit_rule(
+            "600001",
+            "ST 测试",
+            listing_trade_days=100,
+            is_st=True,
+        )
+        chinext_st = MarketService._price_limit_rule(
+            "300001",
+            "ST 创业板",
+            listing_trade_days=100,
+            is_st=True,
+        )
+
+        self.assertEqual(10.0, main_st["threshold_pct"])
+        self.assertEqual("sh_sz_main_10", main_st["rule_id"])
+        self.assertEqual(20.0, chinext_st["threshold_pct"])
+        self.assertEqual("star_chinext_20", chinext_st["rule_id"])
+
+    def test_ipo_no_limit_windows_follow_board_specific_trading_days(self):
+        main_day_five = MarketService._price_limit_rule(
+            "001234",
+            "主板新股",
+            listing_trade_days=5,
+            is_st=False,
+        )
+        main_day_six = MarketService._price_limit_rule(
+            "001234",
+            "主板新股",
+            listing_trade_days=6,
+            is_st=False,
+        )
+        beijing_day_one = MarketService._price_limit_rule(
+            "920001",
+            "北交新股",
+            listing_trade_days=1,
+            is_st=False,
+        )
+        beijing_day_two = MarketService._price_limit_rule(
+            "920001",
+            "北交新股",
+            listing_trade_days=2,
+            is_st=False,
+        )
+
+        self.assertFalse(main_day_five["has_price_limit"])
+        self.assertTrue(main_day_six["has_price_limit"])
+        self.assertFalse(beijing_day_one["has_price_limit"])
+        self.assertTrue(beijing_day_two["has_price_limit"])
+        self.assertEqual(30.0, beijing_day_two["threshold_pct"])
+
+    def test_exchange_new_stock_marker_is_a_safe_no_limit_fallback(self):
+        first_day = MarketService._price_limit_rule(
+            "301707",
+            "N展芯",
+            listing_trade_days=None,
+            is_st=None,
+        )
+        day_two_to_five = MarketService._price_limit_rule(
+            "603468",
+            "C津富",
+            listing_trade_days=None,
+            is_st=None,
+        )
+
+        self.assertIs(first_day["has_price_limit"], False)
+        self.assertIs(day_two_to_five["has_price_limit"], False)
+
+    def test_market_pulse_withholds_full_market_limit_estimate_when_rule_coverage_is_incomplete(self):
+        stocks = [
+            {
+                "code": "600001",
+                "name": "未知上市阶段",
+                "change_percent": 10.1,
+                "listing_trade_days": None,
+            },
+            {
+                "code": "001234",
+                "name": "主板新股",
+                "change_percent": 44.0,
+                "listing_trade_days": 3,
+                "is_st": False,
+            },
+        ]
+
+        pulse = MarketService._build_market_pulse(stocks, 2, 0, 0)
+
+        self.assertIsNone(pulse["limit_up_est"])
+        self.assertIsNone(pulse["limit_down_est"])
+        self.assertEqual(1, pulse["price_limit_rule_unknown"])
+        self.assertEqual(1, pulse["price_limit_rule_excluded"])
+        self.assertEqual(0, pulse["price_limit_rule_covered"])
+
+    def test_market_pulse_counts_only_securities_with_an_active_price_limit(self):
+        stocks = [
+            {
+                "code": "600001",
+                "name": "主板股票",
+                "change_percent": 10.1,
+                "listing_trade_days": 100,
+                "is_st": False,
+            },
+            {
+                "code": "300001",
+                "name": "创业板股票",
+                "change_percent": -20.1,
+                "listing_trade_days": 100,
+                "is_st": False,
+            },
+            {
+                "code": "920001",
+                "name": "北交新股",
+                "change_percent": 65.0,
+                "listing_trade_days": 1,
+                "is_st": False,
+            },
+        ]
+
+        pulse = MarketService._build_market_pulse(stocks, 2, 1, 0)
+
+        self.assertEqual(1, pulse["limit_up_est"])
+        self.assertEqual(1, pulse["limit_down_est"])
+        self.assertEqual(2, pulse["price_limit_rule_covered"])
+        self.assertEqual(1, pulse["price_limit_rule_excluded"])
+        self.assertEqual(0, pulse["price_limit_rule_unknown"])
+
     def test_market_overview_does_not_fetch_providers_when_realtime_cache_is_empty(self):
         indices = [
             {

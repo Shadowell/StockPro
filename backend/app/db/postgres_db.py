@@ -170,11 +170,69 @@ class PostgresDatabase:
     def get_all_stocks_realtime(self) -> List[Dict]:
         return self._fetch_all(
             """
-            SELECT code, name, price, change_percent, volume, amount, turnover,
-                   volume_ratio, pe_dynamic, pb, total_market_cap,
-                   float_market_cap, amplitude, updated_at
-            FROM all_stocks_realtime
-            ORDER BY amount DESC NULLS LAST, code ASC
+            WITH latest_status AS (
+                SELECT DISTINCT ON (symbol)
+                       symbol, effective_from, listing_status, is_st
+                FROM security_status_history
+                WHERE effective_from <= CURRENT_DATE
+                  AND (effective_to IS NULL OR effective_to >= CURRENT_DATE)
+                ORDER BY symbol, effective_from DESC, id DESC
+            ), recent_open_days AS (
+                SELECT DISTINCT (records.payload->>'trade_date')::DATE AS trade_date
+                FROM dataset_partition_records records
+                JOIN dataset_partitions partitions ON partitions.id = records.partition_id
+                JOIN dataset_definitions datasets ON datasets.id = partitions.dataset_id
+                WHERE datasets.code = 'trade_calendar'
+                  AND partitions.status = 'published'
+                  AND records.payload ? 'trade_date'
+                  AND LOWER(COALESCE(records.payload->>'is_open', 'false'))
+                      IN ('1', 'true', 't', 'y', 'yes', 'open')
+                  AND (records.payload->>'trade_date')::DATE
+                      BETWEEN CURRENT_DATE - INTERVAL '90 days' AND CURRENT_DATE
+            )
+            SELECT stocks.code, stocks.name, stocks.price, stocks.change_percent,
+                   stocks.volume, stocks.amount, stocks.turnover,
+                   stocks.volume_ratio, stocks.pe_dynamic, stocks.pb,
+                   stocks.total_market_cap, stocks.float_market_cap,
+                   stocks.amplitude, stocks.updated_at,
+                   status.effective_from AS list_date,
+                   status.listing_status,
+                   status.is_st,
+                   CASE
+                     WHEN status.effective_from IS NULL THEN NULL
+                     WHEN status.effective_from < CURRENT_DATE - INTERVAL '90 days' THEN 6
+                     WHEN NOT EXISTS (
+                         SELECT 1 FROM recent_open_days open_day
+                         WHERE open_day.trade_date >= status.effective_from
+                           AND open_day.trade_date <= LEAST(
+                               COALESCE(stocks.updated_at::DATE, CURRENT_DATE),
+                               CURRENT_DATE
+                           )
+                     ) THEN NULL
+                     ELSE (
+                         SELECT COUNT(*)::INTEGER FROM recent_open_days open_day
+                         WHERE open_day.trade_date >= status.effective_from
+                           AND open_day.trade_date <= LEAST(
+                               COALESCE(stocks.updated_at::DATE, CURRENT_DATE),
+                               CURRENT_DATE
+                           )
+                     )
+                   END AS listing_trade_days
+            FROM all_stocks_realtime stocks
+            LEFT JOIN latest_status status
+              ON status.symbol = CASE
+                   WHEN LEFT(UPPER(stocks.code), 3) IN ('SH_', 'SZ_', 'BJ_')
+                     THEN UPPER(stocks.code)
+                   WHEN LEFT(RIGHT(REGEXP_REPLACE(stocks.code, '\\D', '', 'g'), 6), 1)
+                        IN ('4', '8')
+                     OR LEFT(RIGHT(REGEXP_REPLACE(stocks.code, '\\D', '', 'g'), 6), 2) = '92'
+                     THEN 'BJ_' || RIGHT(REGEXP_REPLACE(stocks.code, '\\D', '', 'g'), 6)
+                   WHEN LEFT(RIGHT(REGEXP_REPLACE(stocks.code, '\\D', '', 'g'), 6), 1)
+                        IN ('6', '9')
+                     THEN 'SH_' || RIGHT(REGEXP_REPLACE(stocks.code, '\\D', '', 'g'), 6)
+                   ELSE 'SZ_' || RIGHT(REGEXP_REPLACE(stocks.code, '\\D', '', 'g'), 6)
+                 END
+            ORDER BY stocks.amount DESC NULLS LAST, stocks.code ASC
             """
         )
 

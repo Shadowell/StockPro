@@ -453,6 +453,9 @@ class MarketService:
             "weak_down_7": None,
             "limit_up_est": None,
             "limit_down_est": None,
+            "price_limit_rule_covered": 0,
+            "price_limit_rule_excluded": 0,
+            "price_limit_rule_unknown": 0,
             "amount_top10_share": None,
             "avg_turnover": None,
             "avg_amplitude": None,
@@ -462,16 +465,72 @@ class MarketService:
         }
 
     @staticmethod
+    def _price_limit_rule(
+        code: Any,
+        name: Any,
+        *,
+        listing_trade_days: Any = None,
+        is_st: Any = None,
+    ) -> Dict[str, Any]:
+        """Return the current exchange price-limit rule for an A-share cache row.
+
+        Since 2026-07-06, Shanghai and Shenzhen main-board risk-warning
+        securities use the same 10% limit as other main-board stocks. STAR and
+        ChiNext use 20%, while Beijing uses 30%. IPOs have no price limit for
+        their first five trading days on Shanghai/Shenzhen and first trading
+        day on Beijing. Unknown listing-stage evidence stays unknown so a
+        partial cache cannot be presented as a full-market limit estimate.
+        """
+        digits = "".join(ch for ch in str(code or "") if ch.isdigit())[-6:]
+        exchange = MarketService._exchange_from_code(digits)
+        risk_warning = bool(is_st) if is_st is not None else "ST" in str(name or "").upper()
+        if exchange in {"STAR", "CHINEXT"}:
+            rule_id = "star_chinext_20"
+            threshold = 20.0
+            no_limit_days = 5
+        elif exchange == "BJ":
+            rule_id = "bj_30"
+            threshold = 30.0
+            no_limit_days = 1
+        elif exchange in {"SH", "SZ"}:
+            rule_id = "sh_sz_main_10"
+            threshold = 10.0
+            no_limit_days = 5
+        else:
+            rule_id = "unknown"
+            threshold = None
+            no_limit_days = None
+
+        try:
+            trading_days = int(listing_trade_days) if listing_trade_days is not None else None
+        except (TypeError, ValueError):
+            trading_days = None
+        new_stock_marker = str(name or "").strip().upper()[:1]
+        if trading_days is not None and no_limit_days is not None:
+            has_price_limit = trading_days > no_limit_days
+        elif new_stock_marker == "N" or (
+            new_stock_marker == "C" and exchange in {"SH", "SZ", "STAR", "CHINEXT"}
+        ):
+            has_price_limit = False
+        else:
+            has_price_limit = None
+        return {
+            "rule_id": rule_id,
+            "exchange": exchange,
+            "threshold_pct": threshold,
+            "has_price_limit": has_price_limit,
+            "listing_trade_days": trading_days,
+            "is_st": risk_warning,
+        }
+
+    @staticmethod
     def _limit_threshold_pct(code: Any, name: Any) -> float:
-        text = str(name or "").upper()
-        if "ST" in text:
-            return 4.8
-        digits = "".join(ch for ch in str(code or "") if ch.isdigit())
-        if digits.startswith(("300", "301", "688")):
-            return 19.8
-        if digits.startswith(("8", "4", "92")):
-            return 29.8
-        return 9.8
+        rule = MarketService._price_limit_rule(
+            code,
+            name,
+            listing_trade_days=6,
+        )
+        return float(rule.get("threshold_pct") or 10.0) - 0.2
 
     @staticmethod
     def _build_market_pulse(
@@ -494,6 +553,9 @@ class MarketService:
         changes: List[float] = []
         strong_up_5 = strong_up_7 = weak_down_5 = weak_down_7 = 0
         limit_up = limit_down = 0
+        price_limit_rule_covered = 0
+        price_limit_rule_excluded = 0
+        price_limit_rule_unknown = 0
         turnovers: List[float] = []
         amplitudes: List[float] = []
         volume_ratios: List[float] = []
@@ -517,11 +579,23 @@ class MarketService:
                 weak_down_5 += 1
             if change <= -7:
                 weak_down_7 += 1
-            threshold = MarketService._limit_threshold_pct(row.get("code"), row.get("name"))
-            if change >= threshold:
-                limit_up += 1
-            if change <= -threshold:
-                limit_down += 1
+            rule = MarketService._price_limit_rule(
+                row.get("code"),
+                row.get("name"),
+                listing_trade_days=row.get("listing_trade_days"),
+                is_st=row.get("is_st"),
+            )
+            if rule.get("has_price_limit") is True:
+                price_limit_rule_covered += 1
+                threshold = float(rule.get("threshold_pct") or 0.0) - 0.2
+                if change >= threshold:
+                    limit_up += 1
+                if change <= -threshold:
+                    limit_down += 1
+            elif rule.get("has_price_limit") is False:
+                price_limit_rule_excluded += 1
+            else:
+                price_limit_rule_unknown += 1
 
             turnover = row.get("turnover")
             if turnover is not None:
@@ -566,8 +640,12 @@ class MarketService:
             pulse["strong_up_7"] = strong_up_7
             pulse["weak_down_5"] = weak_down_5
             pulse["weak_down_7"] = weak_down_7
-            pulse["limit_up_est"] = limit_up
-            pulse["limit_down_est"] = limit_down
+            if price_limit_rule_unknown == 0:
+                pulse["limit_up_est"] = limit_up
+                pulse["limit_down_est"] = limit_down
+            pulse["price_limit_rule_covered"] = price_limit_rule_covered
+            pulse["price_limit_rule_excluded"] = price_limit_rule_excluded
+            pulse["price_limit_rule_unknown"] = price_limit_rule_unknown
         if turnovers:
             pulse["avg_turnover"] = round(sum(turnovers) / len(turnovers), 3)
         if amplitudes:
@@ -1435,7 +1513,7 @@ class MarketService:
 
     @staticmethod
     def _limit_board_from_realtime_estimate() -> Dict[str, List[Dict[str, Any]]]:
-        """Last-resort board members from all_stocks_realtime ±9.8% thresholds."""
+        """Diagnostic-only board estimates from cache rows with complete rule evidence."""
         try:
             rows = db.get_all_stocks_realtime() or []
         except Exception as exc:
@@ -1453,6 +1531,14 @@ class MarketService:
             digits = "".join(ch for ch in code if ch.isdigit())[-6:]
             if not digits:
                 continue
+            rule = MarketService._price_limit_rule(
+                digits,
+                row.get("name"),
+                listing_trade_days=row.get("listing_trade_days"),
+                is_st=row.get("is_st"),
+            )
+            if rule.get("has_price_limit") is not True:
+                continue
             if digits.startswith("6"):
                 symbol = f"{digits}.SH"
             elif digits.startswith(("8", "4")) or digits.startswith("92"):
@@ -1467,11 +1553,14 @@ class MarketService:
                 "change_percent": change,
                 "limit_times": None,
                 "industry": row.get("industry"),
-                "source_label": "PostgreSQL all_stocks_realtime (±9.8% 估计，非交易所封板名单)",
+                "rule_id": rule.get("rule_id"),
+                "threshold_pct": rule.get("threshold_pct"),
+                "source_label": "PostgreSQL all_stocks_realtime (板块/上市阶段规则估计，非交易所封板名单)",
             }
-            if change >= 9.8:
+            threshold = float(rule.get("threshold_pct") or 0.0) - 0.2
+            if change >= threshold:
                 up.append({**item, "pool_kind": "up"})
-            elif change <= -9.8:
+            elif change <= -threshold:
                 down.append({**item, "pool_kind": "down"})
         up.sort(key=lambda item: (item.get("change_percent") is None, -(item.get("change_percent") or 0)))
         down.sort(key=lambda item: (item.get("change_percent") is None, item.get("change_percent") or 0))
@@ -1990,32 +2079,32 @@ class MarketService:
             return "SH"
         if c.startswith("0") or c.startswith("3"):
             return "SZ"
-        if c.startswith("4") or c.startswith("8"):
+        if c.startswith(("4", "8", "92")):
             return "BJ"
         return "UNKNOWN"
 
     @staticmethod
     def _abnormal_rules() -> List[Dict[str, Any]]:
         return [
-            {"id": "sh_sz_main_10", "exchange": "SH/SZ", "threshold_pct": 10.0, "name": "沪深主板涨跌停板"},
-            {"id": "st_5", "exchange": "SH/SZ", "threshold_pct": 5.0, "name": "ST/＊ST 涨跌停板"},
+            {"id": "sh_sz_main_10", "exchange": "SH/SZ", "threshold_pct": 10.0, "name": "沪深主板（含风险警示）涨跌停板"},
             {"id": "star_chinext_20", "exchange": "STAR/CHINEXT", "threshold_pct": 20.0, "name": "科创/创业涨跌停板"},
             {"id": "bj_30", "exchange": "BJ", "threshold_pct": 30.0, "name": "北交所涨跌幅限制"},
         ]
 
     @staticmethod
-    def _threshold_for_stock(code: str, name: str) -> Dict[str, Any]:
-        ex = MarketService._exchange_from_code(code)
-        is_st = "ST" in str(name or "").upper()
-        if is_st and ex in {"SH", "SZ"}:
-            return {"rule_id": "st_5", "exchange": ex, "threshold_pct": 5.0}
-        if ex in {"STAR", "CHINEXT"}:
-            return {"rule_id": "star_chinext_20", "exchange": ex, "threshold_pct": 20.0}
-        if ex == "BJ":
-            return {"rule_id": "bj_30", "exchange": ex, "threshold_pct": 30.0}
-        if ex in {"SH", "SZ"}:
-            return {"rule_id": "sh_sz_main_10", "exchange": ex, "threshold_pct": 10.0}
-        return {"rule_id": "unknown", "exchange": ex, "threshold_pct": 10.0}
+    def _threshold_for_stock(
+        code: str,
+        name: str,
+        *,
+        listing_trade_days: Any = None,
+        is_st: Any = None,
+    ) -> Dict[str, Any]:
+        return MarketService._price_limit_rule(
+            code,
+            name,
+            listing_trade_days=listing_trade_days,
+            is_st=is_st,
+        )
 
     @staticmethod
     def _upsert_abnormal_events(events: List[Dict[str, Any]]) -> None:
@@ -2071,7 +2160,14 @@ class MarketService:
             if not code:
                 continue
             pct = float(pd.to_numeric(s.get("change_percent"), errors="coerce") or 0.0)
-            rule = MarketService._threshold_for_stock(code, name)
+            rule = MarketService._threshold_for_stock(
+                code,
+                name,
+                listing_trade_days=s.get("listing_trade_days"),
+                is_st=s.get("is_st"),
+            )
+            if rule.get("has_price_limit") is not True:
+                continue
             threshold = float(rule.get("threshold_pct") or 10.0)
             abs_pct = abs(pct)
             item = {
