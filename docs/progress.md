@@ -1882,3 +1882,26 @@ Verification:
   objects, audit scope preserves acceptance evidence, all three pages can switch
   scope, and the existing Paper-to-Watch-to-Monitor evidence chain remains
   resolvable. No deployment or production service mutation was performed.
+
+### SP-010 primary reading layer localization completion
+
+- Added one compact diagnostic disclosure for operator pages. Stock Pool input
+  bindings and sealed snapshots now use business descriptions instead of
+  `Dataset #` / `Universe #` / `Factor #` / `Market #`; raw identifiers remain
+  available only after explicitly expanding the diagnostic row.
+- Daily Review localizes standalone timeline enum tokens such as `post_close`,
+  `all_a`, `published`, `buy` and `sell` without changing the persisted audit
+  record. Monitor keeps service codes and actual null values in diagnostics
+  while the main table shows Chinese service labels and `--`.
+- TDD evidence captured the original `Dataset #10` failure before the fix.
+  Focused Mock acceptance then passed, followed by the complete 44/44 Mock
+  browser suite and `./scripts/check.sh` with a production build, zero-warning
+  lint, bundle budget, 324 backend tests and Python compilation.
+- Both local services were cleanly restarted with scheduler, realtime sync,
+  strategy execution, runtime bootstrap and external market fetch disabled.
+  Application health and isolated `stockpro_dev` storage health passed with
+  30/30 migrations.
+- Read-only real-browser acceptance passed for Review and Monitor business/raw
+  evidence. The isolated business scope currently has no Stock Pool record, so
+  the real page truthfully verified its empty state; populated binding behavior
+  remains covered by the Mock fixture. No database write or deployment ran.

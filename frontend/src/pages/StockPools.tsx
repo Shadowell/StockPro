@@ -26,6 +26,7 @@ import {
   sealStockPoolSnapshot,
 } from "../api/client";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
+import { DiagnosticDetails } from "../components/DiagnosticDetails";
 import {
   EvidenceStrip,
   FilterChipGroup,
@@ -533,7 +534,7 @@ export function StockPools() {
         lastGenerationId || undefined
       );
       await load();
-      setMessage(`快照 #${snapshot.id} 已成功封存，包含 ${snapshot.member_count} 只标的`);
+      setMessage(`股票池快照已成功封存，包含 ${snapshot.member_count} 只标的`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "封存失败");
     } finally {
@@ -963,7 +964,7 @@ export function StockPools() {
                     "数据/股票范围",
                     selectedPool?.latest_dataset_snapshot_id &&
                     selectedPool.latest_universe_snapshot_id
-                      ? `Dataset #${selectedPool.latest_dataset_snapshot_id} · Universe #${selectedPool.latest_universe_snapshot_id}`
+                      ? "研究数据快照已绑定 · 历史股票范围已绑定"
                       : "--",
                   ],
                   [
@@ -976,13 +977,13 @@ export function StockPools() {
                         : "候选来源",
                     selectedPool?.pool_type === "factor"
                       ? selectedPool.latest_factor_snapshot_id
-                        ? `Factor #${selectedPool.latest_factor_snapshot_id}`
+                        ? "因子快照已绑定"
                         : "未绑定"
                       : ["sector", "event"].includes(
                           selectedPool?.pool_type ?? ""
                         )
                         ? selectedPool?.latest_market_evidence_snapshot_id
-                          ? `Market #${selectedPool.latest_market_evidence_snapshot_id}`
+                          ? "盘后市场证据已绑定"
                           : "未绑定"
                         : "全市场/定义范围",
                   ],
@@ -996,6 +997,18 @@ export function StockPools() {
                   </div>
                 ))}
               </div>
+
+              {selectedPool ? (
+                <DiagnosticDetails
+                  ariaLabel="输入绑定诊断原值"
+                  fields={[
+                    ["dataset_snapshot_id", selectedPool.latest_dataset_snapshot_id == null ? null : `Dataset #${selectedPool.latest_dataset_snapshot_id}`],
+                    ["universe_snapshot_id", selectedPool.latest_universe_snapshot_id == null ? null : `Universe #${selectedPool.latest_universe_snapshot_id}`],
+                    ["factor_snapshot_id", selectedPool.latest_factor_snapshot_id == null ? null : `Factor #${selectedPool.latest_factor_snapshot_id}`],
+                    ["market_evidence_snapshot_id", selectedPool.latest_market_evidence_snapshot_id == null ? null : `Market #${selectedPool.latest_market_evidence_snapshot_id}`],
+                  ]}
+                />
+              ) : null}
 
               {barListData.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-crypto-border/60">
@@ -1409,7 +1422,7 @@ export function StockPools() {
             >
               <thead>
                 <tr className="border-b border-crypto-border text-left text-xs text-slate-500">
-                  <th className="px-5 py-3">快照 ID / 状态</th>
+                  <th className="px-5 py-3">封存状态</th>
                   <th className="px-4 py-3">股票池规则</th>
                   <th className="px-4 py-3">交易日</th>
                   <th className="px-4 py-3 text-right">成员数量</th>
@@ -1423,8 +1436,8 @@ export function StockPools() {
                     key={snapshot.id}
                     className="border-b border-white/[0.04] transition-colors hover:bg-white/[0.02]"
                   >
-                    <td className="px-5 py-4 font-mono text-emerald-400">
-                      #{snapshot.id} · 已封存
+                    <td className="px-5 py-4 text-emerald-400">
+                      已封存快照
                     </td>
                     <td className="px-4 py-4">
                       <div className="font-medium text-slate-200">
@@ -1442,16 +1455,25 @@ export function StockPools() {
                     </td>
                     <td className="px-4 py-4 text-xs text-slate-400">
                       <div>
-                        Dataset #{snapshot.dataset_snapshot_id} · Universe #
-                        {snapshot.universe_snapshot_id}
+                        研究数据快照已绑定 · 历史股票范围已绑定
                       </div>
                       <div className="mt-0.5 text-[11px] text-slate-500">
                         {snapshot.factor_snapshot_id
-                          ? `Factor #${snapshot.factor_snapshot_id}`
+                          ? "因子快照已绑定"
                           : snapshot.market_evidence_snapshot_id
-                            ? `Market #${snapshot.market_evidence_snapshot_id}`
+                            ? "盘后市场证据已绑定"
                             : "基础规则出池"}
                       </div>
+                      <DiagnosticDetails
+                        ariaLabel="快照诊断原值"
+                        fields={[
+                          ["snapshot_id", `Pool Snapshot #${snapshot.id}`],
+                          ["dataset_snapshot_id", `Dataset #${snapshot.dataset_snapshot_id}`],
+                          ["universe_snapshot_id", `Universe #${snapshot.universe_snapshot_id}`],
+                          ["factor_snapshot_id", snapshot.factor_snapshot_id == null ? null : `Factor #${snapshot.factor_snapshot_id}`],
+                          ["market_evidence_snapshot_id", snapshot.market_evidence_snapshot_id == null ? null : `Market #${snapshot.market_evidence_snapshot_id}`],
+                        ]}
+                      />
                     </td>
                     <td className="px-5 py-4 text-right">
                       <button

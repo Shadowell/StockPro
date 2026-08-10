@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Activity, Bell, Database, HeartPulse, RefreshCw, ShieldAlert } from 'lucide-react';
 import { getMonitorHealth } from '../api/client';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
+import { DiagnosticDetails } from '../components/DiagnosticDetails';
 import { DataScopeControl } from '../components/DataScopeControl';
 import { EvidenceStrip, MetricValue, OperatorPageHeader } from '../components/OperatorShell';
 import type { DataScope, MonitorHealth } from '../types';
@@ -48,7 +49,7 @@ function SnapshotPanel({
   </section>;
 }
 
-function Rows({ rows, keys }: { rows: Array<Record<string, unknown>>; keys: Array<[string, string]> }) {
+function Rows({ rows, keys, diagnosticsLabel }: { rows: Array<Record<string, unknown>>; keys: Array<[string, string]>; diagnosticsLabel?: string }) {
   const displayValue = (key: string, current: unknown) => {
     if (current === null || current === undefined || current === '') return '--';
     if (key === 'service_code') return serviceLabels[String(current)] ?? String(current);
@@ -56,7 +57,7 @@ function Rows({ rows, keys }: { rows: Array<Record<string, unknown>>; keys: Arra
     if (key === 'category') return categoryLabel(current);
     return typeof current === 'object' ? JSON.stringify(current) : text(current);
   };
-  return <div className={`${panel} overflow-hidden`}><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b border-crypto-border text-left text-xs text-slate-500">{keys.map(([key, label]) => <th key={key} className="px-4 py-3">{label}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={text(row.id ?? `${row.status}-${index}`)} className="border-b border-white/[0.04]">{keys.map(([key]) => <td key={key} className={`px-4 py-3 ${key === 'status' || key === 'freshness' ? tone(text(row[key])) : 'text-slate-300'}`}>{displayValue(key, row[key])}</td>)}</tr>)}</tbody></table></div>{rows.length === 0 ? <div className="p-12 text-center text-sm text-slate-600">暂无健康记录</div> : null}</div>;
+  return <div className={`${panel} overflow-hidden`}><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b border-crypto-border text-left text-xs text-slate-500">{keys.map(([key, label]) => <th key={key} className="px-4 py-3">{label}</th>)}{diagnosticsLabel ? <th className="px-4 py-3">诊断</th> : null}</tr></thead><tbody>{rows.map((row, index) => <tr key={text(row.id ?? `${row.status}-${index}`)} className="border-b border-white/[0.04]">{keys.map(([key]) => <td key={key} className={`px-4 py-3 ${key === 'status' || key === 'freshness' ? tone(text(row[key])) : 'text-slate-300'}`}>{displayValue(key, row[key])}</td>)}{diagnosticsLabel ? <td className="px-4 py-3"><DiagnosticDetails ariaLabel={diagnosticsLabel} fields={keys.map(([key]) => [key, row[key]])} /></td> : null}</tr>)}</tbody></table></div>{rows.length === 0 ? <div className="p-12 text-center text-sm text-slate-600">暂无健康记录</div> : null}</div>;
 }
 
 export function Monitor() {
@@ -111,7 +112,7 @@ export function Monitor() {
       </article>)}
       {!scopedStrategyHealth.length ? <div className={`${panel} p-12 text-center text-sm text-slate-600`}>{busy ? '正在读取实例健康…' : '没有 Paper 实例健康证据'}</div> : null}
     </div> : null}
-    {tab === 'data' ? <div className="grid gap-5 xl:grid-cols-2"><SnapshotPanel title="研究数据快照" toneClass="text-blue-400" snapshot={health?.data.dataset} /><SnapshotPanel title="市场证据快照" toneClass="text-violet-400" snapshot={health?.data.market} /><div className="xl:col-span-2"><Rows rows={health?.services ?? []} keys={[["service_code","服务"],["status","最近周期结果"],["freshness","当前新鲜度"],["last_success_at","最近成功"],["error_code","错误码"],["message","消息"],["observed_at","观察时间"]]} /></div></div> : null}
+    {tab === 'data' ? <div className="grid gap-5 xl:grid-cols-2"><SnapshotPanel title="研究数据快照" toneClass="text-blue-400" snapshot={health?.data.dataset} /><SnapshotPanel title="市场证据快照" toneClass="text-violet-400" snapshot={health?.data.market} /><div className="xl:col-span-2"><Rows rows={health?.services ?? []} keys={[["service_code","服务"],["status","最近周期结果"],["freshness","当前新鲜度"],["last_success_at","最近成功"],["error_code","错误码"],["message","消息"],["observed_at","观察时间"]]} diagnosticsLabel="服务诊断原值" /></div></div> : null}
     {tab === 'risk' ? <div className="space-y-4"><Rows rows={health?.risk_alerts ?? []} keys={[["severity","级别"],["count","活动告警"]]} /><Rows rows={(health?.active_alerts ?? []) as unknown as Array<Record<string, unknown>>} keys={[["triggered_at","触发时间"],["severity","级别"],["category","类别"],["title","告警"],["instance_name","关联策略"]]} /><div className={`${panel} flex items-center justify-between p-5`}><div><h2 className="font-semibold text-white">风险告警证据</h2><p className="mt-1 text-xs text-slate-500">在观察台确认告警，在模拟盘查看对应实例、订单与规则链。</p></div><Link to="/watch?tab=alerts" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">打开观察台</Link></div></div> : null}
     {tab === 'notifications' ? <Rows rows={health?.notifications ?? []} keys={[["status","投递状态"],["count","数量"]]} /> : null}
   </div>;

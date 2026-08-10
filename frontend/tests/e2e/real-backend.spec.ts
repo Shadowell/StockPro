@@ -299,6 +299,40 @@ test('真实 Strategy Watch Monitor 默认隔离业务对象并保留审计证�
   await expect(page.getByTestId('data-scope-control')).toContainText('验收与种子证据');
 });
 
+test('真实主阅读层使用业务标签且诊断仍可追溯原值', async ({ page }) => {
+  const token = await login(page.request);
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  const pageErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  await page.goto('/review?date=2025-01-02&tab=market', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByText('市场证据 · 盘后', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('全A · 已发布', { exact: true })).toBeVisible();
+  const reviewDiagnostics = page.getByRole('group', { name: '时间线诊断原值' }).first();
+  await reviewDiagnostics.getByText('查看诊断原值', { exact: true }).click();
+  await expect(reviewDiagnostics.getByText('市场证据 · post_close', { exact: true })).toBeVisible();
+
+  await page.goto('/monitor?tab=data', { waitUntil: 'domcontentloaded' });
+  const serviceDiagnostics = page.getByRole('group', { name: '服务诊断原值' }).first();
+  await expect(serviceDiagnostics).toBeVisible();
+  await serviceDiagnostics.getByText('查看诊断原值', { exact: true }).click();
+  await expect(serviceDiagnostics.getByText(/paper_(feed|runtime)/)).toBeVisible();
+  await expect(page.getByText(/模拟(行情|运行)服务/, { exact: true }).first()).toBeVisible();
+
+  await page.goto('/pools', { waitUntil: 'domcontentloaded' });
+  const poolEvidence = page.getByRole('heading', { name: '输入绑定与证据状态' }).locator('xpath=ancestor::section[1]');
+  const poolDiagnostics = poolEvidence.getByRole('group', { name: '输入绑定诊断原值' });
+  if (await poolDiagnostics.count()) {
+    await expect(poolEvidence.getByText('研究数据快照已绑定 · 历史股票范围已绑定')).toBeVisible();
+    await poolDiagnostics.getByText('查看诊断原值', { exact: true }).click();
+    await expect(poolDiagnostics.getByText(/Dataset #\d+/)).toBeVisible();
+  } else {
+    await expect(page.getByText('还没选中股票池')).toBeVisible();
+  }
+
+  expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+});
+
 test('真实完整回测展示八类证据且收盘信号不会同日成交', async ({ page }) => {
   const token = await login(page.request);
   const headers = { Authorization: `Bearer ${token}` };

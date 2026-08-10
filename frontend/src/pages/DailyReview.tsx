@@ -21,10 +21,11 @@ import {
   sealDailyReview,
 } from "../api/client";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
+import { DiagnosticDetails } from "../components/DiagnosticDetails";
 import { MetricValue, OperatorPageHeader } from "../components/OperatorShell";
 import type { MetricTone } from "../utils/marketColors";
 import type { DailyReviewContext, DailyReviewItem } from "../types";
-import { categoryLabel, statusLabel } from "../utils/presentation";
+import { businessTextLabel, categoryLabel, statusLabel } from "../utils/presentation";
 
 const TABS = [
   ["market", "市场复盘"],
@@ -86,15 +87,25 @@ function Timeline({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-sm font-semibold text-slate-200">
-                  {item.title}
+                  {businessTextLabel(item.title)}
                 </h3>
                 <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-slate-500">
                   {categoryLabel(item.category)}
                 </span>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                {item.summary || "无补充摘要"}
+                {businessTextLabel(item.summary, "无补充摘要")}
               </p>
+              <DiagnosticDetails
+                ariaLabel="时间线诊断原值"
+                fields={[
+                  ["title", item.title],
+                  ["summary", item.summary],
+                  ["source_object_type", item.source_object_type],
+                  ["source_object_id", item.source_object_id],
+                  ["resolution_status", item.resolution_status],
+                ]}
+              />
             </div>
             {item.source_route ? (
               <Link

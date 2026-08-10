@@ -88,6 +88,19 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   market: '市价',
 };
 
+const BUSINESS_TOKEN_LABELS: Record<string, string> = {
+  all_a: '全A',
+  buy: '买入',
+  intraday: '盘中',
+  null: '--',
+  paper_feed: '模拟行情服务',
+  paper_runtime: '模拟运行服务',
+  post_close: '盘后',
+  pre_open: '盘前',
+  published: '已发布',
+  sell: '卖出',
+};
+
 const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase();
 
 export function statusLabel(value: unknown, fallback = '状态未知') {
@@ -168,4 +181,14 @@ export function formatOperatorTime(value: unknown) {
 export function orderTypeLabel(value: unknown) {
   const key = normalize(value);
   return ORDER_TYPE_LABELS[key] ?? '未标注';
+}
+
+/** Replace standalone internal enum tokens while preserving surrounding business copy. */
+export function businessTextLabel(value: unknown, fallback = '--') {
+  const raw = String(value ?? '').trim();
+  if (!raw) return fallback;
+  return Object.entries(BUSINESS_TOKEN_LABELS).reduce((result, [token, label]) => {
+    const pattern = new RegExp(`(^|[\\s·/:,;，。()（）])${token}(?=$|[\\s·/:,;，。()（）])`, 'gi');
+    return result.replace(pattern, (_match, prefix: string) => `${prefix}${label}`);
+  }, raw);
 }

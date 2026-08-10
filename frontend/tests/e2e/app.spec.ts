@@ -947,14 +947,15 @@ test('stock-pool snapshot carries evidence into a backtest draft without copied 
     await expect(page.getByTestId(`pool-tab-${tab}`)).toBeVisible();
   }
   const evidencePanel = page.getByRole('heading', { name: '输入绑定与证据状态' }).locator('xpath=ancestor::section[1]');
-  await expect(evidencePanel.getByText('Factor #3')).toBeVisible();
+  await expect(evidencePanel.getByText('因子快照已绑定')).toBeVisible();
+  await expect(evidencePanel.getByText('Factor #3', { exact: true })).toBeHidden();
   await expect(evidencePanel.getByText(/Market #/)).toHaveCount(0);
   await expect(page.getByText('20日动量排名 1').first()).toBeVisible();
   await expect(page.getByText('600519.SH', { exact: true })).toBeVisible();
   await page.getByTestId('generate-pool').click();
   await expect(page.getByText(/已完成筛选，入选 2 只标的/)).toBeVisible();
   await page.getByTestId('seal-pool').click();
-  await expect(page.getByText(/快照 #11 已成功封存/)).toBeVisible();
+  await expect(page.getByText(/股票池快照已成功封存/)).toBeVisible();
   await page.getByTestId('pool-tab-snapshots').click();
   await expect(page.getByTestId('pool-snapshot-table')).toBeVisible();
   await page.getByTestId('pool-backtest-11').click();
@@ -1450,7 +1451,56 @@ test('monitor gives stale service freshness precedence over a historical healthy
 
   await expect(page.getByText('模拟行情服务', { exact: true })).toBeVisible();
   await expect(page.getByText('数据滞后', { exact: true })).toBeVisible();
-  await expect(page.getByText('null', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('null', { exact: true })).toBeHidden();
+});
+
+test('primary reading surfaces localize internal values and keep raw evidence in diagnostics', async ({ page }) => {
+  await loginAsAdmin(page);
+
+  await page.goto('/pools');
+  const poolEvidence = page.getByRole('heading', { name: '输入绑定与证据状态' }).locator('xpath=ancestor::section[1]');
+  await expect(poolEvidence.getByText('研究数据快照已绑定 · 历史股票范围已绑定')).toBeVisible();
+  await expect(poolEvidence.getByText('因子快照已绑定')).toBeVisible();
+  const poolDiagnostics = poolEvidence.getByRole('group', { name: '输入绑定诊断原值' });
+  await expect(poolDiagnostics.getByText('Dataset #10', { exact: true })).toBeHidden();
+  await poolDiagnostics.getByText('查看诊断原值', { exact: true }).click();
+  await expect(poolDiagnostics.getByText('Dataset #10', { exact: true })).toBeVisible();
+  await expect(poolDiagnostics.getByText('Universe #1', { exact: true })).toBeVisible();
+
+  await page.goto('/review?date=2025-01-02&tab=market');
+  await expect(page.getByText('市场证据 · 盘后', { exact: true })).toBeVisible();
+  await expect(page.getByText('全A · 已发布', { exact: true })).toBeVisible();
+  const reviewDiagnostics = page.getByRole('group', { name: '时间线诊断原值' }).first();
+  await expect(reviewDiagnostics.getByText('市场证据 · post_close', { exact: true })).toBeHidden();
+  await reviewDiagnostics.getByText('查看诊断原值', { exact: true }).click();
+  await expect(reviewDiagnostics.getByText('市场证据 · post_close', { exact: true })).toBeVisible();
+  await expect(reviewDiagnostics.getByText('all_a · published', { exact: true })).toBeVisible();
+
+  await page.route('**/api/monitor/health*', (route) => route.fulfill(json({
+    status: 'critical',
+    services: [{
+      id: 1,
+      service_code: 'paper_feed',
+      status: 'healthy',
+      freshness: 'stale',
+      last_success_at: now,
+      error_code: null,
+      message: '历史周期成功',
+      observed_at: now,
+    }],
+    data: {}, strategy_instances: [], strategy_health: [], risk_alerts: [],
+    active_alerts: [], notifications: [],
+    source_label: 'PostgreSQL runtime and health evidence',
+    source_updated_at: now,
+    response_generated_at: now,
+  })));
+  await page.goto('/monitor?tab=data');
+  await expect(page.getByText('模拟行情服务', { exact: true })).toBeVisible();
+  const serviceDiagnostics = page.getByRole('group', { name: '服务诊断原值' });
+  await expect(serviceDiagnostics.getByText('paper_feed', { exact: true })).toBeHidden();
+  await serviceDiagnostics.getByText('查看诊断原值', { exact: true }).click();
+  await expect(serviceDiagnostics.getByText('paper_feed', { exact: true })).toBeVisible();
+  await expect(serviceDiagnostics.getByText('null', { exact: true })).toBeVisible();
 });
 
 test('ai lab exposes research state and a real load error', async ({ page }) => {
