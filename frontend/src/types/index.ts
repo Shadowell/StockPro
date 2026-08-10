@@ -647,6 +647,40 @@ export interface BacktestMetric {
   metric_payload?: Record<string, unknown>;
 }
 
+export interface BacktestProtocolEvaluation {
+  sample_label: 'train' | 'validation' | 'out_of_sample';
+  start_date: string;
+  end_date: string;
+  metrics: Record<string, number | null>;
+  status: 'passed' | 'rejected' | 'not_applicable';
+  reason?: string | null;
+}
+
+export interface BacktestPromotionCheck {
+  check_code: string;
+  status: 'passed' | 'failed' | 'pending';
+  reason?: string | null;
+  evidence?: Record<string, unknown>;
+}
+
+export interface ResearchProtocol {
+  id: string;
+  name: string;
+  hypothesis: string;
+  status: string;
+  benchmark_code: string;
+  train_start: string;
+  train_end: string;
+  validation_start?: string | null;
+  validation_end?: string | null;
+  out_of_sample_start: string;
+  out_of_sample_end: string;
+  embargo_days: number;
+  capacity_rules: Record<string, number>;
+  promotion_thresholds: Record<string, number>;
+  content_hash?: string;
+}
+
 export interface BacktestRun {
   id: string;
   name: string;
@@ -675,6 +709,11 @@ export interface BacktestRun {
   universe: { symbols?: string[] };
   metrics?: Record<string, number | null>;
   core_metrics?: BacktestMetric[];
+  protocol?: ResearchProtocol | null;
+  protocol_evaluations?: BacktestProtocolEvaluation[];
+  promotion_checks?: BacktestPromotionCheck[];
+  promotion_gate_complete?: boolean;
+  capacity_evidence?: { peak_capacity_ratio?: number | null };
   result_manifest?: Record<string, unknown>;
   input_hash?: string;
   error_message?: string | null;
@@ -765,12 +804,7 @@ export interface BacktestConfiguration {
     version: number;
     content_hash: string;
   }>;
-  protocols: Array<{
-    id: string;
-    name: string;
-    hypothesis: string;
-    status: string;
-  }>;
+  protocols: ResearchProtocol[];
 }
 
 export interface BacktestDailyPoint {

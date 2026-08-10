@@ -401,20 +401,28 @@ test('真实百因子目录展示独立成熟度分母与研究门禁', async ({
   }
 });
 
-test('真实完整回测展示八类证据且收盘信号不会同日成交', async ({ page }) => {
+test('真实完整回测展示八类证据、研究门禁且收盘信号不会同日成交', async ({ page }) => {
+  test.setTimeout(120_000);
   const token = await login(page.request);
   const headers = { Authorization: `Bearer ${token}` };
   const runsResp = await page.request.get('/api/backtest/runs?limit=100', { headers });
   expect(runsResp.ok()).toBeTruthy();
-  const runs = ((await runsResp.json()) as { items?: Array<{ id?: unknown; status?: unknown; run_mode?: unknown }> }).items ?? [];
+  const runs = ((await runsResp.json()) as { items?: Array<{ id?: unknown; status?: unknown; run_mode?: unknown; promotion_gate_complete?: unknown }> }).items ?? [];
+  expect(runs.filter((item) => item.promotion_gate_complete === true).every((item) => item.status === 'success' && item.run_mode === 'full')).toBeTruthy();
   const run = runs.find((item) => item.status === 'success' && item.run_mode === 'full');
   test.skip(!run, '本地 PG 尚无成功的完整回测');
   const runId = String(run?.id ?? '');
 
+  const detailResp = await page.request.get(`/api/backtest/runs/${runId}`, { headers });
   const metricsResp = await page.request.get(`/api/backtest/runs/${runId}/metrics`, { headers });
   const ordersResp = await page.request.get(`/api/backtest/runs/${runId}/orders`, { headers });
+  expect(detailResp.ok()).toBeTruthy();
   expect(metricsResp.ok()).toBeTruthy();
   expect(ordersResp.ok()).toBeTruthy();
+  const detail = (await detailResp.json()) as { promotion_gate_complete?: unknown; promotion_checks?: Array<{ check_code?: unknown; status?: unknown }> };
+  if (detail.promotion_gate_complete === true) {
+    expect((detail.promotion_checks ?? []).filter((item) => item.status === 'passed')).toHaveLength(11);
+  }
   const metrics = ((await metricsResp.json()) as { items?: unknown[] }).items ?? [];
   const orders = ((await ordersResp.json()) as { items?: Array<{ signal_at?: unknown; filled_at?: unknown }> }).items ?? [];
   expect(metrics.length).toBeGreaterThanOrEqual(41);
@@ -423,11 +431,21 @@ test('真实完整回测展示八类证据且收盘信号不会同日成交', as
   await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  await page.goto(`/backtest/${runId}`, { waitUntil: 'networkidle' });
+  await page.goto(`/backtest/${runId}`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('tab', { name: '总览' })).toBeVisible({ timeout: 60_000 });
   for (const tab of ['总览', '绩效指标', '持仓', '交易', '订单', '日志', '代码与参数', '归因']) {
     await expect(page.getByRole('tab', { name: tab })).toBeVisible();
   }
   await expect(page.getByText('可复现实验凭证')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '研究晋级门禁' })).toBeVisible();
+  for (const label of ['训练区间', '验证区间', '样本外区间', '成本证据', '容量约束', '基准证据']) {
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
+  }
+  if (detail.promotion_gate_complete === true) {
+    await expect(page.getByText('Paper Eligible', { exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByText('Paper Eligible', { exact: true })).toHaveCount(0);
+  }
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 

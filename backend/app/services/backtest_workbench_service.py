@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 import psycopg2.extras
@@ -19,6 +19,21 @@ from app.services.strategy_runtime_service import STRATEGY_API_VERSION, Strategy
 
 class BacktestCancelled(RuntimeError):
     pass
+
+
+PAPER_PROMOTION_CHECK_CODES = (
+    "FULL_SEALED_RUN",
+    "SEALED_PROTOCOL",
+    "TRAIN_PASS",
+    "VALIDATION_PASS",
+    "OUT_OF_SAMPLE_PASS",
+    "COST_MODEL_PASS",
+    "CAPACITY_RULES_DEFINED",
+    "CAPACITY_PASS",
+    "PROMOTION_THRESHOLDS_DEFINED",
+    "BENCHMARK_PASS",
+    "DATA_QUALITY_PASS",
+)
 
 
 class BacktestWorkbenchService:
@@ -103,6 +118,62 @@ class BacktestWorkbenchService:
         required = ("name", "hypothesis", "train_start", "train_end", "out_of_sample_start", "out_of_sample_end")
         if any(not payload.get(item) for item in required):
             raise ValueError("研究协议缺少名称、假设或训练/样本外区间")
+        status = str(payload.get("status") or "sealed")
+        if status not in {"draft", "sealed"}:
+            raise ValueError("研究协议状态只能为 draft 或 sealed")
+        validation_start = payload.get("validation_start")
+        validation_end = payload.get("validation_end")
+        if bool(validation_start) != bool(validation_end):
+            raise ValueError("验证区间必须同时提供开始和结束日期")
+        if status == "sealed" and not validation_start:
+            raise ValueError("封存研究协议必须包含验证区间")
+
+        try:
+            train_start = date.fromisoformat(str(payload["train_start"])[:10])
+            train_end = date.fromisoformat(str(payload["train_end"])[:10])
+            validation_start_date = date.fromisoformat(str(validation_start)[:10]) if validation_start else None
+            validation_end_date = date.fromisoformat(str(validation_end)[:10]) if validation_end else None
+            out_of_sample_start = date.fromisoformat(str(payload["out_of_sample_start"])[:10])
+            out_of_sample_end = date.fromisoformat(str(payload["out_of_sample_end"])[:10])
+        except ValueError as exc:
+            raise ValueError("研究协议日期必须使用 YYYY-MM-DD") from exc
+        embargo_days = int(payload.get("embargo_days") or 0)
+        if embargo_days < 0:
+            raise ValueError("研究协议 embargo_days 不能为负数")
+        embargo = timedelta(days=embargo_days)
+        if train_start > train_end or out_of_sample_start > out_of_sample_end:
+            raise ValueError("训练、验证、样本外区间必须按时间顺序且区间合法")
+        if validation_start_date and validation_end_date:
+            if (
+                validation_start_date > validation_end_date
+                or validation_start_date <= train_end + embargo
+                or out_of_sample_start <= validation_end_date + embargo
+            ):
+                raise ValueError("训练、验证、样本外区间必须按时间顺序并满足隔离期")
+        elif out_of_sample_start <= train_end + embargo:
+            raise ValueError("训练、验证、样本外区间必须按时间顺序并满足隔离期")
+
+        benchmark_code = str(payload.get("benchmark_code") or "000300.SH").strip().upper()
+        if not benchmark_code:
+            raise ValueError("研究协议必须指定基准")
+        capacity_rules = dict(payload.get("capacity_rules") or {})
+        promotion_thresholds = dict(payload.get("promotion_thresholds") or {})
+        if status == "sealed":
+            participation_limit = capacity_rules.get("max_participation_ratio", capacity_rules.get("max_participation_rate"))
+            weight_limit = capacity_rules.get("max_single_symbol_weight")
+            if not self._positive_ratio(participation_limit) or not self._positive_ratio(weight_limit):
+                raise ValueError("封存研究协议必须定义有效的容量规则：参与率与单票权重上限")
+            required_thresholds = ("min_return", "min_sharpe", "max_drawdown")
+            if any(promotion_thresholds.get(item) is None for item in required_thresholds):
+                raise ValueError("封存研究协议必须定义收益、夏普和回撤晋级阈值")
+            try:
+                float(promotion_thresholds["min_return"])
+                float(promotion_thresholds["min_sharpe"])
+                max_drawdown = float(promotion_thresholds["max_drawdown"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("晋级阈值必须是数值") from exc
+            if max_drawdown < 0:
+                raise ValueError("最大回撤晋级阈值不能为负数")
         content = {
             key: payload.get(key)
             for key in (
@@ -111,10 +182,13 @@ class BacktestWorkbenchService:
                 "capacity_rules", "promotion_thresholds", "rejected_candidates", "selection_rationale",
             )
         }
+        content.update({
+            "benchmark_code": benchmark_code,
+            "embargo_days": embargo_days,
+            "capacity_rules": capacity_rules,
+            "promotion_thresholds": promotion_thresholds,
+        })
         content_hash = canonical_hash(content)
-        status = str(payload.get("status") or "sealed")
-        if status not in {"draft", "sealed"}:
-            raise ValueError("研究协议状态只能为 draft 或 sealed")
         with self.database.get_connection() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
@@ -130,11 +204,11 @@ class BacktestWorkbenchService:
                     """,
                     (
                         payload["name"], payload["hypothesis"], payload.get("universe_description") or "",
-                        payload.get("benchmark_code") or "000300.SH", payload["train_start"], payload["train_end"],
+                        benchmark_code, payload["train_start"], payload["train_end"],
                         payload.get("validation_start"), payload.get("validation_end"), payload["out_of_sample_start"],
-                        payload["out_of_sample_end"], int(payload.get("embargo_days") or 0),
-                        psycopg2.extras.Json(payload.get("capacity_rules") or {}),
-                        psycopg2.extras.Json(payload.get("promotion_thresholds") or {}),
+                        payload["out_of_sample_end"], embargo_days,
+                        psycopg2.extras.Json(capacity_rules),
+                        psycopg2.extras.Json(promotion_thresholds),
                         psycopg2.extras.Json(payload.get("rejected_candidates") or []),
                         payload.get("selection_rationale"), content_hash, status, status,
                     ),
@@ -261,6 +335,8 @@ class BacktestWorkbenchService:
         end_date = str(payload.get("end_date") or "")
         if not start_date or not end_date or start_date > end_date:
             raise ValueError("回测开始/结束日期必填且顺序合法")
+        if mode == "full" and prepared.get("protocol"):
+            self._validate_protocol_run_window(start_date, end_date, prepared["protocol"])
         initial_cash = float(payload.get("initial_cash") or 1_000_000)
         if initial_cash <= 0:
             raise ValueError("初始资金必须为正数")
@@ -336,6 +412,8 @@ class BacktestWorkbenchService:
             self._persist_result(run_id, replay, records, result, input_manifest)
             if mode == "full" and payload.get("research_protocol_id"):
                 self._evaluate_protocol_segments(run_id, str(payload["research_protocol_id"]), result)
+            if mode == "full":
+                self.evaluate_promotion(run_id)
             return self.get_run(run_id)
         except BacktestCancelled:
             self._execute(
@@ -353,7 +431,17 @@ class BacktestWorkbenchService:
         rows = self._rows(
             """
             SELECT r.*,v.name AS strategy_name,v.version AS strategy_version,v.content_hash AS strategy_content_hash,
-                   c.name AS cost_model_name,p.name AS protocol_name
+                   c.name AS cost_model_name,p.name AS protocol_name,
+                   (
+                       SELECT COUNT(*) = 11
+                       FROM backtest_promotion_checks pc
+                       WHERE pc.backtest_run_id=r.id AND pc.status='passed'
+                         AND pc.check_code IN (
+                             'FULL_SEALED_RUN','SEALED_PROTOCOL','TRAIN_PASS','VALIDATION_PASS',
+                             'OUT_OF_SAMPLE_PASS','COST_MODEL_PASS','CAPACITY_RULES_DEFINED','CAPACITY_PASS',
+                             'PROMOTION_THRESHOLDS_DEFINED','BENCHMARK_PASS','DATA_QUALITY_PASS'
+                         )
+                   ) AS promotion_gate_complete
             FROM backtest_runs r
             LEFT JOIN strategy_versions v ON v.id=r.strategy_version_id
             LEFT JOIN backtest_cost_models c ON c.id=r.cost_model_id
@@ -394,6 +482,28 @@ class BacktestWorkbenchService:
         run["core_metrics"] = self._rows(
             "SELECT * FROM backtest_metrics WHERE backtest_run_id=%s ORDER BY metric_code", (run_id,)
         )
+        run["protocol"] = (
+            self._row("SELECT * FROM research_protocols WHERE id=%s", (run["research_protocol_id"],))
+            if run.get("research_protocol_id") else None
+        )
+        run["protocol_evaluations"] = self._rows(
+            "SELECT * FROM backtest_protocol_evaluations WHERE backtest_run_id=%s ORDER BY start_date,sample_label",
+            (run_id,),
+        )
+        run["promotion_checks"] = self._rows(
+            "SELECT * FROM backtest_promotion_checks WHERE backtest_run_id=%s ORDER BY id",
+            (run_id,),
+        )
+        passed_check_codes = {
+            item["check_code"] for item in run["promotion_checks"] if item.get("status") == "passed"
+        }
+        run["promotion_gate_complete"] = all(
+            item in passed_check_codes for item in PAPER_PROMOTION_CHECK_CODES
+        )
+        run["capacity_evidence"] = self._row(
+            "SELECT MAX(capacity_ratio) AS peak_capacity_ratio FROM backtest_orders WHERE backtest_run_id=%s",
+            (run_id,),
+        ) or {"peak_capacity_ratio": None}
         return run
 
     def metrics(self, run_id: str) -> List[Dict[str, Any]]:
@@ -445,34 +555,130 @@ class BacktestWorkbenchService:
 
     def evaluate_promotion(self, run_id: str) -> Dict[str, Any]:
         run = self.get_run(run_id)
+        if run["run_mode"] == "quick":
+            return {
+                "run_id": run_id,
+                "promotion_status": "not_eligible_quick",
+                "checks": [{
+                    "check_code": "QUICK_PREVIEW_ONLY",
+                    "status": "failed",
+                    "reason": "快速预检仅用于诊断，不产生 Paper 晋级证据",
+                    "evidence": {"run_mode": "quick"},
+                }],
+            }
         metrics = {item["metric_code"]: item["metric_value"] for item in run["core_metrics"]}
-        oos = self._row(
-            "SELECT * FROM backtest_protocol_evaluations WHERE backtest_run_id=%s AND sample_label='out_of_sample'",
+        protocol = self._row(
+            "SELECT * FROM research_protocols WHERE id=%s",
+            (run.get("research_protocol_id"),),
+        ) if run.get("research_protocol_id") else None
+        evaluations = {
+            item["sample_label"]: item
+            for item in self._rows(
+                "SELECT * FROM backtest_protocol_evaluations WHERE backtest_run_id=%s",
+                (run_id,),
+            )
+        }
+        capacity_evidence = self._row(
+            "SELECT MAX(capacity_ratio) AS peak_capacity_ratio FROM backtest_orders WHERE backtest_run_id=%s",
             (run_id,),
+        ) or {"peak_capacity_ratio": None}
+        capacity_rules = dict((protocol or {}).get("capacity_rules") or {})
+        promotion_thresholds = dict((protocol or {}).get("promotion_thresholds") or {})
+        participation_limit = capacity_rules.get("max_participation_ratio", capacity_rules.get("max_participation_rate"))
+        weight_limit = capacity_rules.get("max_single_symbol_weight")
+        capacity_rules_defined = self._positive_ratio(participation_limit) and self._positive_ratio(weight_limit)
+        peak_capacity_ratio = capacity_evidence.get("peak_capacity_ratio")
+        peak_single_weight = metrics.get("peak_single_symbol_weight")
+        capacity_passed = bool(
+            capacity_rules_defined
+            and metrics.get("capacity_warnings") is not None
+            and float(metrics["capacity_warnings"]) == 0
+            and peak_capacity_ratio is not None
+            and float(peak_capacity_ratio) <= float(participation_limit)
+            and peak_single_weight is not None
+            and float(peak_single_weight) <= float(weight_limit)
         )
+        thresholds_defined = all(
+            promotion_thresholds.get(item) is not None
+            for item in ("min_return", "min_sharpe", "max_drawdown")
+        )
+        benchmark_matches = bool(
+            protocol
+            and str(protocol.get("benchmark_code") or "").strip().upper()
+            == str(run.get("benchmark_code") or "").strip().upper()
+        )
+        benchmark_passed = benchmark_matches and metrics.get("benchmark_return") is not None
+        cost_passed = bool(
+            run.get("cost_model_id")
+            and run.get("cost_model_hash")
+            and metrics.get("total_cost") is not None
+        )
+        full_sealed = bool(
+            run["run_mode"] == "full"
+            and run["status"] == "success"
+            and (run.get("result_manifest") or {}).get("manifest_hash")
+        )
+        protocol_sealed = bool(
+            protocol and protocol.get("status") == "sealed" and protocol.get("content_hash")
+        )
+        segment_passed = {
+            label: bool(evaluations.get(label) and evaluations[label].get("status") == "passed")
+            for label in ("train", "validation", "out_of_sample")
+        }
+        segment_evidence = {
+            label: self._promotion_evaluation_evidence(evaluations.get(label))
+            for label in ("train", "validation", "out_of_sample")
+        }
         checks = [
-            ("FULL_SEALED_RUN", run["run_mode"] == "full" and run["status"] == "success", "必须是成功封存的完整回测"),
-            ("SEALED_PROTOCOL", bool(run.get("research_protocol_id")), "必须绑定封存研究协议"),
-            ("OUT_OF_SAMPLE_PASS", bool(oos and oos["status"] == "passed"), "必须通过未触碰样本外区间"),
-            ("CAPACITY_PASS", float(metrics.get("capacity_warnings") or 0) == 0, "容量/参与率警告必须为零"),
-            ("DATA_QUALITY_PASS", float(metrics.get("data_quality_warnings") or 0) == 0, "交易规则和成交额数据必须完整"),
+            ("FULL_SEALED_RUN", full_sealed, "必须是成功且结果清单已封存的完整回测", {"manifest_hash": (run.get("result_manifest") or {}).get("manifest_hash")}),
+            ("SEALED_PROTOCOL", protocol_sealed, "必须绑定内容哈希已封存的研究协议", {"protocol_id": str(run["research_protocol_id"]) if run.get("research_protocol_id") else None, "content_hash": (protocol or {}).get("content_hash")}),
+            ("TRAIN_PASS", segment_passed["train"], "训练区间评估必须通过", segment_evidence["train"]),
+            ("VALIDATION_PASS", segment_passed["validation"], "验证区间评估必须通过", segment_evidence["validation"]),
+            ("OUT_OF_SAMPLE_PASS", segment_passed["out_of_sample"], "未触碰样本外区间评估必须通过", segment_evidence["out_of_sample"]),
+            ("COST_MODEL_PASS", cost_passed, "必须绑定成本模型哈希并产生成本指标", {"cost_model_id": str(run["cost_model_id"]) if run.get("cost_model_id") else None, "cost_model_hash": run.get("cost_model_hash"), "total_cost": metrics.get("total_cost")}),
+            ("CAPACITY_RULES_DEFINED", capacity_rules_defined, "协议必须定义参与率和单票权重上限", capacity_rules),
+            ("CAPACITY_PASS", capacity_passed, "实际参与率、单票权重或容量警告未通过协议约束", {"peak_capacity_ratio": peak_capacity_ratio, "peak_single_symbol_weight": peak_single_weight, "capacity_warnings": metrics.get("capacity_warnings"), **capacity_rules}),
+            ("PROMOTION_THRESHOLDS_DEFINED", thresholds_defined, "协议必须定义收益、夏普和回撤晋级阈值", promotion_thresholds),
+            ("BENCHMARK_PASS", benchmark_passed, "回测基准必须与协议一致且基准收益可计算", {"run_benchmark": run.get("benchmark_code"), "protocol_benchmark": (protocol or {}).get("benchmark_code"), "benchmark_return": metrics.get("benchmark_return")}),
+            ("DATA_QUALITY_PASS", metrics.get("data_quality_warnings") is not None and float(metrics["data_quality_warnings"]) == 0, "交易规则和成交额数据必须完整", {"data_quality_warnings": metrics.get("data_quality_warnings")}),
         ]
+        existing_checks = {
+            item["check_code"]: item
+            for item in self._rows(
+                "SELECT * FROM backtest_promotion_checks WHERE backtest_run_id=%s",
+                (run_id,),
+            )
+        }
         with self.database.get_connection() as connection:
             with connection.cursor() as cursor:
-                for code, passed, reason in checks:
+                for code, passed, reason, evidence in checks:
+                    if code in existing_checks:
+                        continue
                     cursor.execute(
                         """
                         INSERT INTO backtest_promotion_checks(backtest_run_id,check_code,status,reason,evidence)
                         VALUES (%s,%s,%s,%s,%s)
                         ON CONFLICT(backtest_run_id,check_code) DO NOTHING
                         """,
-                        (run_id, code, "passed" if passed else "failed", None if passed else reason, psycopg2.extras.Json({})),
+                        (run_id, code, "passed" if passed else "failed", None if passed else reason, psycopg2.extras.Json(evidence)),
                     )
-                promotion_status = "paper_eligible" if all(item[1] for item in checks) else "rejected"
+                effective_passes = {
+                    code: existing_checks.get(code, {}).get("status", "passed" if passed else "failed") == "passed"
+                    for code, passed, _reason, _evidence in checks
+                }
+                promotion_status = "paper_eligible" if all(effective_passes.values()) else "rejected"
                 cursor.execute("UPDATE backtest_runs SET promotion_status=%s WHERE id=%s", (promotion_status, run_id))
         return {
             "run_id": run_id, "promotion_status": promotion_status,
-            "checks": [{"check_code": code, "status": "passed" if passed else "failed", "reason": None if passed else reason} for code, passed, reason in checks],
+            "checks": [
+                existing_checks.get(code) or {
+                    "check_code": code,
+                    "status": "passed" if passed else "failed",
+                    "reason": None if passed else reason,
+                    "evidence": evidence,
+                }
+                for code, passed, reason, evidence in checks
+            ],
         }
 
     def _prepare_inputs(self, payload: Mapping[str, Any], require_protocol: bool) -> Dict[str, Any]:
@@ -545,6 +751,8 @@ class BacktestWorkbenchService:
         elif require_protocol:
             raise ValueError("完整可晋级回测必须绑定研究协议")
         benchmark_code = str(payload.get("benchmark_code") or (protocol or {}).get("benchmark_code") or "000300.SH")
+        if protocol and benchmark_code.strip().upper() != str(protocol.get("benchmark_code") or "").strip().upper():
+            raise ValueError("回测基准必须与封存研究协议一致")
         benchmark_symbol = self._normalize_symbol(benchmark_code)
         return {
             "version": version, "dataset_snapshot": snapshot, "universe": universe,
@@ -777,11 +985,14 @@ class BacktestWorkbenchService:
                 metrics_map = {item["metric_code"]: item["metric_value"] for item in metrics}
                 passed = True
                 if thresholds.get("min_return") is not None:
-                    passed &= (metrics_map.get("strategy_return") or -999) >= float(thresholds["min_return"])
+                    actual_return = metrics_map.get("strategy_return")
+                    passed &= actual_return is not None and actual_return >= float(thresholds["min_return"])
                 if thresholds.get("min_sharpe") is not None:
-                    passed &= (metrics_map.get("sharpe") or -999) >= float(thresholds["min_sharpe"])
+                    actual_sharpe = metrics_map.get("sharpe")
+                    passed &= actual_sharpe is not None and actual_sharpe >= float(thresholds["min_sharpe"])
                 if thresholds.get("max_drawdown") is not None:
-                    passed &= (metrics_map.get("maximum_drawdown") or 999) <= float(thresholds["max_drawdown"])
+                    actual_drawdown = metrics_map.get("maximum_drawdown")
+                    passed &= actual_drawdown is not None and actual_drawdown <= float(thresholds["max_drawdown"])
                 status, reason = ("passed", None) if passed else ("rejected", "未达到研究协议阈值")
             self._execute(
                 """
@@ -820,6 +1031,34 @@ class BacktestWorkbenchService:
         with self.database.get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(query, params)
+
+    @staticmethod
+    def _positive_ratio(value: Any) -> bool:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return False
+        return 0 < numeric <= 1
+
+    @staticmethod
+    def _promotion_evaluation_evidence(evaluation: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+        if not evaluation:
+            return {}
+        return {
+            "sample_label": evaluation.get("sample_label"),
+            "status": evaluation.get("status"),
+            "start_date": str(evaluation["start_date"]) if evaluation.get("start_date") else None,
+            "end_date": str(evaluation["end_date"]) if evaluation.get("end_date") else None,
+            "metrics": dict(evaluation.get("metrics") or {}),
+            "reason": evaluation.get("reason"),
+        }
+
+    @staticmethod
+    def _validate_protocol_run_window(start_date: str, end_date: str, protocol: Mapping[str, Any]) -> None:
+        protocol_start = str(protocol.get("train_start") or "")[:10]
+        protocol_end = str(protocol.get("out_of_sample_end") or "")[:10]
+        if not protocol_start or not protocol_end or start_date > protocol_start or end_date < protocol_end:
+            raise ValueError("完整回测区间必须覆盖研究协议的训练、验证和样本外区间")
 
     @staticmethod
     def _normalize_symbol(value: str) -> str:

@@ -9,6 +9,7 @@ import psycopg2.extras
 from app.services.dataset_snapshot_service import DatasetSnapshotService, canonical_hash
 from app.services.data_purpose import filter_records_for_scope, resolve_data_purpose
 from app.services.strategy_runtime_service import STRATEGY_API_VERSION, StrategyRuntimeService
+from app.services.backtest_workbench_service import PAPER_PROMOTION_CHECK_CODES
 
 
 PAPER_RUNTIME_VERSION = "paper-runtime.v1"
@@ -66,16 +67,18 @@ class PaperRuntimeService:
             or int(pool["universe_snapshot_id"]) != expected["universe_snapshot_id"]
         ):
             raise ValueError("股票池快照与数据/因子/Universe 不兼容")
-        oos = self._row(
-            "SELECT id FROM backtest_protocol_evaluations WHERE backtest_run_id=%s AND sample_label='out_of_sample' AND status='passed'",
+        promotion_checks = self._rows(
+            "SELECT check_code,status FROM backtest_promotion_checks WHERE backtest_run_id=%s",
             (qualifying["id"],),
         )
-        capacity = self._row(
-            "SELECT id FROM backtest_promotion_checks WHERE backtest_run_id=%s AND check_code IN ('CAPACITY_PASS','capacity') AND status='passed'",
-            (qualifying["id"],),
-        )
-        if not oos or not capacity:
-            raise ValueError("Paper 启动需要通过样本外评估和容量检查")
+        passed_checks = {
+            str(item["check_code"])
+            for item in promotion_checks
+            if item.get("status") == "passed"
+        }
+        missing_checks = [item for item in PAPER_PROMOTION_CHECK_CODES if item not in passed_checks]
+        if missing_checks:
+            raise ValueError(f"Paper 启动需要通过完整晋级门禁: {','.join(missing_checks)}")
         initial_cash = float(payload.get("initial_cash") or 1_000_000)
         if initial_cash <= 0:
             raise ValueError("初始资金必须为正数")

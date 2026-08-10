@@ -487,7 +487,7 @@ async function mockApi(context: BrowserContext) {
         factor_snapshots: [{ id: 3, name: 'daily-alpha', trade_date: '2025-01-02', dataset_snapshot_id: 10, universe_snapshot_id: 1, manifest_hash: 'factor-manifest' }],
         pool_snapshots: [{ id: 11, pool_id: 'pool-1', pool_name: '动量 Top20', pool_type: 'factor', trade_date: '2025-01-02', dataset_snapshot_id: 10, universe_snapshot_id: 1, factor_snapshot_id: 3, knowledge_cutoff_at: now, manifest_hash: 'pool-manifest', member_count: 20, status: 'sealed' }],
         cost_models: [{ id: '44444444-4444-4444-4444-444444444444', code: 'cn_stock_default', name: 'A股默认成本', version: 1, content_hash: 'cost-hash' }],
-        protocols: [{ id: '55555555-5555-5555-5555-555555555555', name: '样本外研究协议', hypothesis: '趋势溢价', status: 'sealed' }],
+        protocols: [{ id: '55555555-5555-5555-5555-555555555555', name: '样本外研究协议', hypothesis: '趋势溢价', status: 'sealed', benchmark_code: '000300.SH', train_start: '2023-01-03', train_end: '2023-12-29', validation_start: '2024-01-08', validation_end: '2024-06-28', out_of_sample_start: '2024-07-08', out_of_sample_end: '2025-01-02', embargo_days: 7, capacity_rules: { max_participation_ratio: 0.1, max_single_symbol_weight: 0.25 }, promotion_thresholds: { min_return: 0, min_sharpe: 0.5, max_drawdown: 0.2 } }],
       }));
     }
 
@@ -498,9 +498,23 @@ async function mockApi(context: BrowserContext) {
       factor_snapshot_id: 3, pool_snapshot_id: 11, universe_snapshot_id: 1, research_protocol_id: '55555555-5555-5555-5555-555555555555', protocol_name: '样本外研究协议',
       cost_model_id: '44444444-4444-4444-4444-444444444444', cost_model_name: 'A股默认成本', benchmark_code: '000300.SH',
       start_date: '2023-01-03', end_date: '2025-01-02', initial_cash: 1000000, parameters: {}, universe: { symbols: ['SH_600519'] },
-      metrics: { strategy_return: 0.12, annualized_return: 0.06, benchmark_return: 0.04, excess_return: 0.08, maximum_drawdown: 0.09, sharpe: 1.23 },
+      metrics: { strategy_return: 0.12, annualized_return: 0.06, benchmark_return: 0.04, excess_return: 0.08, maximum_drawdown: 0.09, sharpe: 1.23, total_cost: 128.5, peak_single_symbol_weight: 0.2, capacity_warnings: 0, data_quality_warnings: 0 },
       input_hash: 'input-hash-abcdef', result_manifest: { manifest_hash: 'result-manifest-abcdef' }, created_at: '2025-01-02T18:00:00+08:00',
       data_purpose: 'user',
+      protocol: { id: '55555555-5555-5555-5555-555555555555', name: '样本外研究协议', status: 'sealed', benchmark_code: '000300.SH', train_start: '2023-01-03', train_end: '2023-12-29', validation_start: '2024-01-08', validation_end: '2024-06-28', out_of_sample_start: '2024-07-08', out_of_sample_end: '2025-01-02', embargo_days: 7, capacity_rules: { max_participation_ratio: 0.1, max_single_symbol_weight: 0.25 }, promotion_thresholds: { min_return: 0, min_sharpe: 0.5, max_drawdown: 0.2 } },
+      protocol_evaluations: [{ sample_label: 'train', status: 'passed', start_date: '2023-01-03', end_date: '2023-12-29', metrics: { strategy_return: 0.08, sharpe: 1.1, maximum_drawdown: 0.08 } }, { sample_label: 'validation', status: 'passed', start_date: '2024-01-08', end_date: '2024-06-28', metrics: { strategy_return: 0.03, sharpe: 0.9, maximum_drawdown: 0.07 } }, { sample_label: 'out_of_sample', status: 'passed', start_date: '2024-07-08', end_date: '2025-01-02', metrics: { strategy_return: 0.04, sharpe: 0.8, maximum_drawdown: 0.09 } }],
+      promotion_checks: ['FULL_SEALED_RUN', 'SEALED_PROTOCOL', 'TRAIN_PASS', 'VALIDATION_PASS', 'OUT_OF_SAMPLE_PASS', 'COST_MODEL_PASS', 'CAPACITY_RULES_DEFINED', 'CAPACITY_PASS', 'PROMOTION_THRESHOLDS_DEFINED', 'BENCHMARK_PASS', 'DATA_QUALITY_PASS'].map((check_code) => ({ check_code, status: 'passed', evidence: {} })),
+      promotion_gate_complete: true,
+      capacity_evidence: { peak_capacity_ratio: 0.05 },
+    };
+    const mockQuickBacktestRun = {
+      ...mockBacktestRun,
+      id: '99999999-9999-9999-9999-999999999999',
+      name: 'MA5 快速预检',
+      run_mode: 'quick',
+      promotion_status: 'not_eligible_quick',
+      protocol_evaluations: [],
+      promotion_checks: [],
     };
     const mockMetrics = Object.entries(mockBacktestRun.metrics).map(([metric_code, metric_value]) => ({ metric_code, metric_value, unit: metric_code === 'sharpe' ? 'number' : 'ratio', calculation_version: 'backtest-metrics.v1', input_frequency: '1d', null_reason: null }));
     const mockBacktestJob = {
@@ -528,11 +542,15 @@ async function mockApi(context: BrowserContext) {
     if (method === 'GET' && path === '/backtest/jobs') return route.fulfill(json({ items: [mockBacktestJob], total: 1 }));
     if (method === 'POST' && path === '/backtest/jobs') return route.fulfill(json(mockBacktestJob, 202));
     if (method === 'GET' && path === `/backtest/jobs/${mockBacktestJob.job_id}/logs`) return route.fulfill(json({ items: [{ id: 1, job_id: mockBacktestJob.job_id, level: 'info', phase: 'completed', message: mockBacktestJob.message, payload: { progress: 100 }, created_at: now }] }));
-    if (method === 'GET' && path === '/backtest/runs') return route.fulfill(json({ items: [mockBacktestRun], total: 1 }));
+    if (method === 'GET' && path === '/backtest/runs') return route.fulfill(json({ items: [mockBacktestRun, mockQuickBacktestRun], total: 2 }));
     if (method === 'GET' && path === `/backtest/runs/${mockBacktestRun.id}`) return route.fulfill(json({ ...mockBacktestRun, core_metrics: mockMetrics }));
+    if (method === 'GET' && path === `/backtest/runs/${mockQuickBacktestRun.id}`) return route.fulfill(json({ ...mockQuickBacktestRun, core_metrics: mockMetrics }));
     if (method === 'GET' && path === `/backtest/runs/${mockBacktestRun.id}/metrics`) return route.fulfill(json({ items: mockMetrics }));
+    if (method === 'GET' && path === `/backtest/runs/${mockQuickBacktestRun.id}/metrics`) return route.fulfill(json({ items: mockMetrics }));
     if (method === 'GET' && path === `/backtest/runs/${mockBacktestRun.id}/series`) return route.fulfill(json({ daily: [{ trade_date: '2025-01-01', strategy_nav: 1, benchmark_nav: 1, excess_nav: 1, equity: 1000000, cash: 1000000, market_value: 0, gross_exposure: 0, position_count: 0, drawdown: 0 }, { trade_date: '2025-01-02', strategy_nav: 1.12, benchmark_nav: 1.04, excess_nav: 1.0769, equity: 1120000, cash: 100000, market_value: 1020000, gross_exposure: 0.91, position_count: 1, drawdown: 0 }], custom_records: [], monthly_returns: [{ month: '2025-01', return: 0.12 }, { month: '2025-02', return: -0.04 }, { month: '2025-03', return: 0 }] }));
+    if (method === 'GET' && path === `/backtest/runs/${mockQuickBacktestRun.id}/series`) return route.fulfill(json({ daily: [{ trade_date: '2025-01-02', strategy_nav: 1, benchmark_nav: 1, excess_nav: 1, equity: 1000000, cash: 1000000, market_value: 0, gross_exposure: 0, position_count: 0, drawdown: 0 }], custom_records: [], monthly_returns: [] }));
     if (method === 'GET' && new RegExp(`^/backtest/runs/${mockBacktestRun.id}/(positions|orders|trades|logs|attribution)$`).test(path)) return route.fulfill(json({ items: [] }));
+    if (method === 'GET' && new RegExp(`^/backtest/runs/${mockQuickBacktestRun.id}/(positions|orders|trades|logs|attribution)$`).test(path)) return route.fulfill(json({ items: [] }));
     if (method === 'POST' && path === '/backtest/runs') return route.fulfill(json(mockBacktestRun));
 
     const mockPool = { id: 'pool-1', name: '动量 Top20', pool_type: 'factor', description: 'fixture', status: 'active', data_purpose: 'user', rule_id: 'rule-1', rule_type: 'factor', rule_version: 1, config: { factor_code: 'momentum_20d', top_n: 20 }, rule_hash: 'rule-hash-abcdef', snapshot_count: 1, current_member_count: 2, latest_generation_id: 'generation-1', latest_dataset_snapshot_id: 10, latest_universe_snapshot_id: 1, latest_factor_snapshot_id: 3, latest_market_evidence_snapshot_id: null, latest_trade_date: '2025-01-02', latest_knowledge_cutoff_at: now, latest_input_hash: 'input-hash' };
@@ -873,6 +891,27 @@ test('backtest result exposes six core cards and eight evidence tabs', async ({ 
   }
   await page.getByRole('tab', { name: '代码与参数' }).click();
   await expect(page.getByText('策略代码 · v1')).toBeVisible();
+  await page.getByRole('tab', { name: '订单' }).click();
+  await expect(page.getByText('暂无记录', { exact: true })).toBeVisible();
+});
+
+test('full backtest exposes protocol segments and immutable Paper promotion gates', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/backtest/66666666-6666-6666-6666-666666666666');
+
+  await expect(page.getByRole('heading', { name: '研究晋级门禁' })).toBeVisible();
+  for (const label of ['训练区间', '验证区间', '样本外区间', '成本证据', '容量约束', '基准证据']) {
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText('Paper Eligible', { exact: true })).toBeVisible();
+});
+
+test('quick backtest is visibly isolated from Paper promotion', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/backtest/99999999-9999-9999-9999-999999999999');
+
+  await expect(page.getByText('快速预检不可晋级 Paper', { exact: true })).toBeVisible();
+  await expect(page.getByText('Paper Eligible', { exact: true })).toHaveCount(0);
 });
 
 test('configured market colors apply to gains, losses and neutral values', async ({ page }) => {

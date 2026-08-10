@@ -81,6 +81,20 @@ const metricLabels: Record<string, string> = {
   peak_single_symbol_weight: '单票最高权重', capacity_warnings: '容量警告', data_quality_warnings: '数据质量警告',
 };
 
+const promotionCheckLabels: Record<string, string> = {
+  FULL_SEALED_RUN: '完整回测已封存',
+  SEALED_PROTOCOL: '研究协议已封存',
+  TRAIN_PASS: '训练区间通过',
+  VALIDATION_PASS: '验证区间通过',
+  OUT_OF_SAMPLE_PASS: '样本外区间通过',
+  COST_MODEL_PASS: '成本模型证据完整',
+  CAPACITY_RULES_DEFINED: '容量规则已定义',
+  CAPACITY_PASS: '容量实测通过',
+  PROMOTION_THRESHOLDS_DEFINED: '晋级阈值已定义',
+  BENCHMARK_PASS: '基准证据完整',
+  DATA_QUALITY_PASS: '数据质量通过',
+};
+
 const unitLabels: Record<string, string> = {
   ratio: '比率 / %',
   ratio_per_year: '年化比率',
@@ -352,18 +366,45 @@ function BacktestDetail({ runId }: { runId: string }) {
   const [data, setData] = useState<DetailData | null>(null);
   const [tab, setTab] = useState<(typeof detailTabs)[number]>('总览');
   const [error, setError] = useState('');
+  const [evidenceStatus, setEvidenceStatus] = useState<Record<string, 'loading' | 'loaded' | 'failed'>>({});
+  const [seriesStatus, setSeriesStatus] = useState<'loading' | 'loaded' | 'failed'>('loading');
 
   useEffect(() => {
     let live = true;
     Promise.all([
-      getBacktestRun(runId), getBacktestMetrics(runId), getBacktestSeries(runId),
-      getBacktestEvidence(runId, 'positions'), getBacktestEvidence(runId, 'orders'), getBacktestEvidence(runId, 'trades'),
-      getBacktestEvidence(runId, 'logs'), getBacktestEvidence(runId, 'attribution'),
-    ]).then(([run, metrics, series, positions, orders, trades, logs, attribution]) => {
-      if (live) setData({ run, metrics, daily: series.daily, monthly: series.monthly_returns, custom: series.custom_records, positions, orders, trades, logs, attribution });
+      getBacktestRun(runId), getBacktestMetrics(runId),
+    ]).then(([run, metrics]) => {
+      if (live) setData({ run, metrics, daily: [], monthly: [], custom: [], positions: [], orders: [], trades: [], logs: [], attribution: [] });
     }).catch((reason: unknown) => live && setError(reason instanceof Error ? reason.message : '回测证据加载失败'));
     return () => { live = false; };
   }, [runId]);
+
+  useEffect(() => {
+    if (!data || seriesStatus !== 'loading') return;
+    void getBacktestSeries(runId).then((series) => {
+      setData((current) => current ? { ...current, daily: series.daily, monthly: series.monthly_returns, custom: series.custom_records } : current);
+      setSeriesStatus('loaded');
+    }).catch(() => setSeriesStatus('failed'));
+  }, [data, runId, seriesStatus]);
+
+  useEffect(() => {
+    const kindByTab: Partial<Record<(typeof detailTabs)[number], 'positions' | 'orders' | 'trades' | 'logs' | 'attribution'>> = {
+      持仓: 'positions',
+      交易: 'trades',
+      订单: 'orders',
+      日志: 'logs',
+      归因: 'attribution',
+    };
+    const kind = kindByTab[tab];
+    if (!data || !kind || evidenceStatus[kind]) return;
+    setEvidenceStatus((current) => ({ ...current, [kind]: 'loading' }));
+    void getBacktestEvidence(runId, kind).then((items) => {
+      setData((current) => current ? { ...current, [kind]: items } : current);
+      setEvidenceStatus((current) => ({ ...current, [kind]: 'loaded' }));
+    }).catch(() => {
+      setEvidenceStatus((current) => ({ ...current, [kind]: 'failed' }));
+    });
+  }, [data, evidenceStatus, runId, tab]);
 
   const metricMap = useMemo(() => Object.fromEntries((data?.metrics ?? []).map((item) => [item.metric_code, item])), [data]);
   const evidenceSymbols = useMemo(() => {
@@ -393,6 +434,15 @@ function BacktestDetail({ runId }: { runId: string }) {
   if (error) return <div className="p-8 text-red-300">{error}</div>;
   if (!data) return <div className="flex min-h-[60vh] items-center justify-center text-gray-500"><RefreshCw className="mr-3 h-5 w-5 animate-spin" />正在读取封存结果…</div>;
   const core = ['strategy_return', 'annualized_return', 'benchmark_return', 'excess_return', 'maximum_drawdown', 'sharpe'];
+  const evaluationMap = Object.fromEntries((data.run.protocol_evaluations ?? []).map((item) => [item.sample_label, item]));
+  const gateChecks = data.run.promotion_checks ?? [];
+  const paperEligible = data.run.run_mode === 'full' && data.run.promotion_status === 'paper_eligible'
+    && Object.keys(promotionCheckLabels).every((code) => gateChecks.some((check) => check.check_code === code && check.status === 'passed'));
+  const protocolSegments = [
+    ['train', '训练区间'],
+    ['validation', '验证区间'],
+    ['out_of_sample', '样本外区间'],
+  ] as const;
 
   return (
     <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-operator-page="backtest-detail">
@@ -449,11 +499,45 @@ function BacktestDetail({ runId }: { runId: string }) {
       />
 
       {tab === '总览' && <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-        <section className={`${panel} p-5`}><div className="mb-3 flex items-center gap-2 text-base font-semibold text-white"><BarChart3 className="h-5 w-5 text-blue-400" />净值与基准</div><ReactECharts option={chartOption} style={{ height: 420 }} /></section>
+        <section className={`${panel} p-5`}><div className="mb-3 flex items-center gap-2 text-base font-semibold text-white"><BarChart3 className="h-5 w-5 text-blue-400" />净值与基准</div>{seriesStatus === 'loaded' ? <ReactECharts option={chartOption} style={{ height: 420 }} /> : <EvidenceLedgerState status={seriesStatus === 'failed' ? 'failed' : 'loading'} />}</section>
         <section className={`${panel} p-5`}><h2 className="text-base font-semibold text-white">可复现实验凭证</h2><dl className="mt-5 space-y-4 text-sm">{[
           ['研究数据', data.run.dataset_snapshot_id ? '已绑定封存快照' : '未绑定'], ['股票范围', data.run.universe_snapshot_id ? '已绑定固定范围' : '未绑定'], ['因子输入', data.run.factor_snapshot_id ? '已绑定封存因子' : '未绑定'], ['成本模型', data.run.cost_model_name ?? '未绑定'], ['研究协议', data.run.protocol_name ?? '未绑定'], ['基准', data.run.benchmark_code], ['频率', '日频 / A股收盘信号次日成交'],
         ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-4 border-b border-white/[0.04] pb-3"><dt className="text-gray-500">{label}</dt><dd className="text-right font-medium text-gray-300">{value}</dd></div>)}</dl></section>
-        <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2><div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 font-mono text-sm font-bold tabular-nums ${marketToneClass(item.return)}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div></section>
+        {data.run.run_mode === 'quick' ? (
+          <section className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] p-5 xl:col-span-2">
+            <div className="flex items-start gap-3">
+              <Zap className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+              <div><h2 className="font-semibold text-amber-100">快速预检不可晋级 Paper</h2><p className="mt-2 text-sm leading-6 text-amber-200/70">该结果只用于检查策略能否运行及早期诊断；不产生训练、验证、样本外、成本和容量晋级证据，也不会进入模拟盘候选。</p></div>
+            </div>
+          </section>
+        ) : (
+          <section className={`${panel} p-5 xl:col-span-2`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h2 className="text-base font-semibold text-white">研究晋级门禁</h2><p className="mt-1 text-xs text-gray-500">评估证据封存后只读；门禁必须全部通过才可进入 Paper 候选。</p></div>
+              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${paperEligible ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>{paperEligible ? 'Paper Eligible' : data.run.promotion_status === 'rejected' ? '未通过晋级' : data.run.promotion_status === 'paper_eligible' ? '门禁证据不完整' : '尚未评估'}</span>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              {protocolSegments.map(([code, label]) => {
+                const evaluation = evaluationMap[code];
+                const protocol = data.run.protocol;
+                const start = evaluation?.start_date ?? (code === 'train' ? protocol?.train_start : code === 'validation' ? protocol?.validation_start : protocol?.out_of_sample_start);
+                const end = evaluation?.end_date ?? (code === 'train' ? protocol?.train_end : code === 'validation' ? protocol?.validation_end : protocol?.out_of_sample_end);
+                const passed = evaluation?.status === 'passed';
+                return <div key={code} className="rounded-xl border border-white/[0.06] bg-black/10 p-4"><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold text-gray-200">{label}</h3>{evaluation ? passed ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <CircleAlert className="h-4 w-4 text-amber-400" /> : <Clock3 className="h-4 w-4 text-gray-600" />}</div><div className="mt-3 font-mono text-xs tabular-nums text-gray-400">{start ?? '--'} — {end ?? '--'}</div><p className={`mt-2 text-xs ${passed ? 'text-emerald-300' : evaluation ? 'text-amber-300' : 'text-gray-600'}`}>{passed ? '评估通过' : evaluation?.reason ?? '证据不可用'}</p></div>;
+              })}
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-white/[0.06] bg-black/10 p-4"><div className="text-xs text-gray-500">成本证据</div><div className="mt-2 text-sm font-medium text-gray-200">{data.run.cost_model_name ?? '未绑定成本模型'}</div><div className="mt-1 text-xs text-gray-500">总成本 {formatValue(metricMap.total_cost?.metric_value, 'CNY')}</div></div>
+              <div className="rounded-xl border border-white/[0.06] bg-black/10 p-4"><div className="text-xs text-gray-500">容量约束</div><div className="mt-2 text-sm font-medium text-gray-200">峰值参与率 {formatValue(data.run.capacity_evidence?.peak_capacity_ratio, 'ratio')}</div><div className="mt-1 text-xs text-gray-500">单票峰值 {formatValue(metricMap.peak_single_symbol_weight?.metric_value, 'ratio')}</div></div>
+              <div className="rounded-xl border border-white/[0.06] bg-black/10 p-4"><div className="text-xs text-gray-500">基准证据</div><div className="mt-2 text-sm font-medium text-gray-200">{data.run.benchmark_code}</div><div className="mt-1 text-xs text-gray-500">基准收益 {formatValue(metricMap.benchmark_return?.metric_value, 'ratio')}</div></div>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {gateChecks.map((check) => <div key={check.check_code} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${check.status === 'passed' ? 'border-emerald-500/20 bg-emerald-500/[0.05] text-emerald-300' : check.status === 'failed' ? 'border-red-500/20 bg-red-500/[0.05] text-red-300' : 'border-amber-500/20 bg-amber-500/[0.05] text-amber-300'}`}>{check.status === 'passed' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <CircleAlert className="h-3.5 w-3.5 shrink-0" />}<span>{promotionCheckLabels[check.check_code] ?? check.check_code}</span></div>)}
+              {!gateChecks.length ? <div className="text-xs text-gray-600 sm:col-span-2">尚无封存的晋级检查证据。</div> : null}
+            </div>
+          </section>
+        )}
+        <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2>{seriesStatus === 'loaded' ? <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 font-mono text-sm font-bold tabular-nums ${marketToneClass(item.return)}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div> : <div className="text-sm text-gray-600">净值序列正在按需读取，研究门禁与核心指标不受影响。</div>}</section>
       </div>}
 
       {tab === '绩效指标' && (
@@ -478,14 +562,19 @@ function BacktestDetail({ runId }: { runId: string }) {
           />
         </section>
       )}
-      {tab === '持仓' && <section className={panel}><GenericTable rows={data.positions} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["quantity", "数量"], ["available_quantity", "可卖"], ["avg_cost", "成本"], ["close_price", "收盘"], ["market_value", "市值"], ["weight", "权重"]]} /></section>}
-      {tab === '交易' && <section className={panel}><GenericTable rows={data.trades} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["side", "方向"], ["price", "价格"], ["quantity", "数量"], ["amount", "金额"], ["commission", "佣金"], ["tax", "税费"], ["realized_pnl", "已实现盈亏"]]} /></section>}
-      {tab === '订单' && <section className={panel}><GenericTable rows={data.orders} symbolNames={symbolNames} columns={[["signal_at", "信号时间"], ["earliest_fill_at", "最早成交"], ["filled_at", "成交时间"], ["symbol", "证券"], ["intent_type", "意图"], ["status", "状态"], ["filled_quantity", "成交数量"], ["rejection_code", "拒单代码"]]} /></section>}
-      {tab === '日志' && <section className={panel}><GenericTable rows={data.logs} columns={[["simulated_at", "模拟时间"], ["level", "级别"], ["source", "来源"], ["message", "消息"], ["payload", "上下文"]]} /></section>}
+      {tab === '持仓' && <section className={panel}>{evidenceStatus.positions === 'loaded' ? <GenericTable rows={data.positions} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["quantity", "数量"], ["available_quantity", "可卖"], ["avg_cost", "成本"], ["close_price", "收盘"], ["market_value", "市值"], ["weight", "权重"]]} /> : <EvidenceLedgerState status={evidenceStatus.positions} />}</section>}
+      {tab === '交易' && <section className={panel}>{evidenceStatus.trades === 'loaded' ? <GenericTable rows={data.trades} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["side", "方向"], ["price", "价格"], ["quantity", "数量"], ["amount", "金额"], ["commission", "佣金"], ["tax", "税费"], ["realized_pnl", "已实现盈亏"]]} /> : <EvidenceLedgerState status={evidenceStatus.trades} />}</section>}
+      {tab === '订单' && <section className={panel}>{evidenceStatus.orders === 'loaded' ? <GenericTable rows={data.orders} symbolNames={symbolNames} columns={[["signal_at", "信号时间"], ["earliest_fill_at", "最早成交"], ["filled_at", "成交时间"], ["symbol", "证券"], ["intent_type", "意图"], ["status", "状态"], ["filled_quantity", "成交数量"], ["rejection_code", "拒单代码"]]} /> : <EvidenceLedgerState status={evidenceStatus.orders} />}</section>}
+      {tab === '日志' && <section className={panel}>{evidenceStatus.logs === 'loaded' ? <GenericTable rows={data.logs} columns={[["simulated_at", "模拟时间"], ["level", "级别"], ["source", "来源"], ["message", "消息"], ["payload", "上下文"]]} /> : <EvidenceLedgerState status={evidenceStatus.logs} />}</section>}
       {tab === '代码与参数' && <div className="grid gap-5 xl:grid-cols-[2fr_1fr]"><section className={`${panel} overflow-hidden`}><div className="border-b border-crypto-border px-5 py-4 text-sm font-semibold text-white">策略代码 · v{data.run.strategy_version}</div><pre className="max-h-[620px] overflow-auto p-5 text-xs leading-6 text-blue-100"><code>{data.run.script_content}</code></pre></section><section className={`${panel} p-5`}><h2 className="text-sm font-semibold text-white">运行参数</h2><pre className="mt-4 overflow-auto rounded-lg bg-crypto-bg p-4 text-xs leading-6 text-gray-300">{JSON.stringify(data.run.parameters, null, 2)}</pre><h2 className="mt-6 text-sm font-semibold text-white">自定义指标</h2><pre className="mt-4 max-h-72 overflow-auto rounded-lg bg-crypto-bg p-4 text-xs leading-6 text-gray-300">{JSON.stringify(data.custom, null, 2)}</pre></section></div>}
-      {tab === '归因' && <section className={panel}><GenericTable rows={data.attribution} columns={[["attribution_type", "类型"], ["attribution_key", "归因项"], ["contribution", "贡献"], ["amount", "金额"], ["payload", "证据"]]} /></section>}
+      {tab === '归因' && <section className={panel}>{evidenceStatus.attribution === 'loaded' ? <GenericTable rows={data.attribution} columns={[["attribution_type", "类型"], ["attribution_key", "归因项"], ["contribution", "贡献"], ["amount", "金额"], ["payload", "证据"]]} /> : <EvidenceLedgerState status={evidenceStatus.attribution} />}</section>}
     </div>
   );
+}
+
+function EvidenceLedgerState({ status }: { status?: 'loading' | 'loaded' | 'failed' }) {
+  if (status === 'failed') return <div className="flex min-h-48 items-center justify-center gap-2 p-6 text-sm text-red-300"><CircleAlert className="h-4 w-4" />证据账读取失败，请刷新页面后重试。</div>;
+  return <div className="flex min-h-48 items-center justify-center gap-2 p-6 text-sm text-gray-500"><RefreshCw className="h-4 w-4 animate-spin" />正在按需读取证据账…</div>;
 }
 
 export function Backtest() {
@@ -624,7 +713,7 @@ export function Backtest() {
     factor_snapshot_id: factorSnapshotId || null, cost_model_id: costModelId, research_protocol_id: protocolId || null,
     pool_snapshot_id: poolSnapshotId || null,
     symbols: poolSnapshotId ? [] : symbols.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean), start_date: startDate, end_date: endDate,
-    initial_cash: initialCash, benchmark_code: '000300.SH', parameters: JSON.parse(parameters || '{}') as Record<string, unknown>, event_limit: 30,
+    initial_cash: initialCash, benchmark_code: selectedProtocol?.benchmark_code ?? '000300.SH', parameters: JSON.parse(parameters || '{}') as Record<string, unknown>, event_limit: 30,
   });
 
   const execute = async (mode: 'quick' | 'full') => {
@@ -906,13 +995,13 @@ export function Backtest() {
               <Field label="因子快照" hint="可选，且须与数据及股票范围兼容"><select className={input} value={factorSnapshotId} onChange={(event) => setFactorSnapshotId(Number(event.target.value))}><option value={0}>不绑定</option>{config.factor_snapshots.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
               <Field label="股票池快照"><select className={input} value={poolSnapshotId} onChange={(event) => { const id = Number(event.target.value); setPoolSnapshotId(id); const pool = config.pool_snapshots.find((item) => item.id === id); if (pool) { setDatasetSnapshotId(pool.dataset_snapshot_id); setUniverseSnapshotId(pool.universe_snapshot_id); setFactorSnapshotId(pool.factor_snapshot_id ?? 0); setSymbols(''); } }}><option value={0}>不绑定</option>{config.pool_snapshots.map((item) => <option key={item.id} value={item.id}>{item.pool_name} · {item.member_count}只</option>)}</select></Field>
               <Field label="成本模型"><select className={input} value={costModelId} onChange={(event) => setCostModelId(event.target.value)}>{config.cost_models.map((item) => <option key={item.id} value={item.id}>{item.name} · v{item.version}</option>)}</select></Field>
-              <Field label="研究协议" hint="不绑定则不能晋级模拟盘"><select className={input} value={protocolId} onChange={(event) => setProtocolId(event.target.value)}><option value="">不绑定</option>{config.protocols.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+              <Field label="研究协议" hint="不绑定则不能晋级模拟盘"><select className={input} value={protocolId} onChange={(event) => { const id = event.target.value; setProtocolId(id); const protocol = config.protocols.find((item) => item.id === id); if (protocol) { setStartDate(protocol.train_start); setEndDate(protocol.out_of_sample_end); } }}><option value="">不绑定</option>{config.protocols.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
               <Field label="股票代码" hint={poolSnapshotId ? '由股票池快照提供' : '英文逗号分隔，例如 600519.SH'}><input className={input} value={poolSnapshotId ? `${selectedPool?.pool_name ?? '已选股票池'} · ${selectedPool?.member_count ?? '--'}只` : symbols} readOnly={Boolean(poolSnapshotId)} onChange={(event) => setSymbols(event.target.value)} /></Field>
               <Field label="开始日期"><input type="date" className={input} value={startDate} onChange={(event) => setStartDate(event.target.value)} /></Field>
               <Field label="结束日期"><input type="date" className={input} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></Field>
               <Field label="初始资金"><input type="number" min={10000} step={10000} className={input} value={initialCash} onChange={(event) => setInitialCash(Number(event.target.value))} /></Field>
               <Field label="策略参数 JSON"><input className={input} value={parameters} onChange={(event) => setParameters(event.target.value)} /></Field>
-              <Field label="基准"><input className={input} value="000300.SH 沪深300" readOnly /></Field>
+              <Field label="基准"><input className={input} value={selectedProtocol?.benchmark_code ?? '000300.SH'} readOnly /></Field>
             </div> : null}
             {createStep === 3 ? <div className="grid gap-5 xl:grid-cols-[1.05fr_.95fr]">
               <div className="space-y-4">

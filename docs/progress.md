@@ -1951,3 +1951,36 @@ Verification:
   migration disabled. Application and storage health passed with 30/30
   migrations; no database write, migration, deployment or remote service
   mutation ran.
+
+### SP-013 strategy research protocol and Paper promotion gates completion
+
+- Sealed research protocols now require ordered train, validation and untouched
+  out-of-sample windows, explicit embargo days, a fixed benchmark, capacity
+  limits and return/Sharpe/drawdown promotion thresholds. Full runs bound to a
+  protocol must cover every segment and use the protocol benchmark.
+- Successful full runs automatically seal eleven independent promotion checks:
+  full-result manifest, protocol, all three sample segments, cost evidence,
+  capacity rule definition and observed capacity, threshold definition,
+  benchmark evidence and data quality. Zero-valued metrics remain valid values
+  rather than falling through as missing.
+- Paper candidate lists require the complete passed check set, and Paper
+  creation rechecks the same set server-side. Legacy or partial
+  `paper_eligible` labels cannot bypass the gate. Quick previews remain
+  diagnostic-only and explicitly show that they cannot enter Paper.
+- Backtest detail now presents the immutable protocol intervals and promotion
+  evidence. Core results load first, the NAV series follows independently, and
+  positions/orders/trades/logs/attribution load only when their tab opens. This
+  removed the real-data page stall caused by eagerly reading five large ledgers.
+- TDD captured invalid protocol windows, missing validation/capacity/threshold
+  contracts, zero-threshold handling, missing cost/benchmark evidence,
+  capacity overflow, incomplete Paper checks and quick-preview leakage before
+  implementation. Verification passed 47 focused backend contract assertions,
+  the complete 47/47 Mock browser suite, one read-only real `stockpro_dev`
+  full-backtest browser acceptance, and `./scripts/check.sh` with 341 backend
+  tests, production build, zero-warning lint, bundle budget and Python
+  compilation.
+- Both local services were cleanly restarted with scheduler, realtime sync,
+  strategy execution, runtime bootstrap, external market fetch, automatic
+  migration and Paper recovery disabled. Application and storage health passed
+  with 30/30 migrations; no database write, migration, deployment or remote
+  service mutation ran.

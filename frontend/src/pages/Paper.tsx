@@ -248,6 +248,7 @@ export function Paper() {
           item.status === "success" &&
           item.run_mode === "full" &&
           item.promotion_status === "paper_eligible" &&
+          item.promotion_gate_complete === true &&
           item.factor_snapshot_id &&
           item.pool_snapshot_id &&
           item.research_protocol_id,

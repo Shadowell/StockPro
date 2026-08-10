@@ -150,5 +150,53 @@ class PaperCycleAndRecoveryTests(unittest.TestCase):
         self.service._event_cursor.assert_not_called()
 
 
+class PaperPromotionGateTests(unittest.TestCase):
+    def setUp(self):
+        self.service = PaperRuntimeService.__new__(PaperRuntimeService)
+        self.service.database = MagicMock()
+
+    @staticmethod
+    def request():
+        return {
+            "strategy_version_id": "strategy-1",
+            "dataset_snapshot_id": 10,
+            "factor_snapshot_id": 20,
+            "universe_snapshot_id": 30,
+            "pool_snapshot_id": 40,
+            "research_protocol_id": "protocol-1",
+            "qualifying_backtest_run_id": "run-1",
+        }
+
+    @staticmethod
+    def qualifying():
+        return {
+            "id": "run-1",
+            "strategy_version_id": "strategy-1",
+            "dataset_snapshot_id": 10,
+            "factor_snapshot_id": 20,
+            "universe_snapshot_id": 30,
+            "pool_snapshot_id": 40,
+            "research_protocol_id": "protocol-1",
+        }
+
+    def test_paper_rejects_incomplete_promotion_check_set(self):
+        rows = [
+            self.qualifying(),
+            {"id": 40, "dataset_snapshot_id": 10, "factor_snapshot_id": 20, "universe_snapshot_id": 30},
+            {"id": 20},
+            {"id": 30},
+            {"id": 10},
+            {"id": "protocol-1"},
+            {"id": "strategy-1", "name": "策略"},
+        ]
+        self.service._row = MagicMock(side_effect=rows)
+        self.service._rows = MagicMock(return_value=[
+            {"check_code": "OUT_OF_SAMPLE_PASS", "status": "passed"},
+            {"check_code": "CAPACITY_PASS", "status": "passed"},
+        ])
+        with self.assertRaisesRegex(ValueError, "完整晋级门禁"):
+            self.service.create_instance(self.request())
+        self.service.database.get_connection.assert_not_called()
+
 if __name__ == "__main__":
     unittest.main()
