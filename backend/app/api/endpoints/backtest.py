@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from app.db import db_instance
 from app.services.backtest_workbench_service import BacktestWorkbenchService
@@ -101,12 +102,12 @@ def _http_error(exc: ValueError, status_code: int = 400) -> HTTPException:
 
 @router.get("/cost-models")
 async def list_cost_models() -> Dict[str, Any]:
-    return {"items": service.list_cost_models()}
+    return {"items": await run_in_threadpool(service.list_cost_models)}
 
 
 @router.get("/configuration")
 async def get_configuration() -> Dict[str, Any]:
-    return service.configuration()
+    return await run_in_threadpool(service.configuration)
 
 
 @router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)
@@ -272,7 +273,7 @@ async def full_run(request: BacktestRunRequest, http_request: Request) -> Dict[s
 
 @router.get("/runs")
 async def list_runs(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
-    items = service.list_runs(limit)
+    items = await run_in_threadpool(service.list_runs, limit)
     return {"items": items, "total": len(items)}
 
 

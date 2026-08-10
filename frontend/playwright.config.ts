@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const mockApiMode = process.env.MOCK_API !== 'false';
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60_000,
@@ -16,6 +18,12 @@ export default defineConfig({
     url: process.env.E2E_BASE_URL || 'http://127.0.0.1:4444',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {
+      ...process.env,
+      ...(mockApiMode
+        ? { VITE_DEV_API_PROXY_TARGET: 'http://127.0.0.1:1' }
+        : {}),
+    },
   },
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:4444',

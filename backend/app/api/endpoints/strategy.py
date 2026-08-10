@@ -2,6 +2,7 @@
 策略管理API端点
 """
 from fastapi import APIRouter, HTTPException
+from starlette.concurrency import run_in_threadpool
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 import logging
@@ -54,7 +55,7 @@ class AutoDevelopRequest(BaseModel):
 async def get_strategies() -> List[Dict[str, Any]]:
     """获取所有策略列表"""
     try:
-        strategies = strategy_execution_service.get_strategies()
+        strategies = await run_in_threadpool(strategy_execution_service.get_strategies)
         for strategy in strategies:
             strategy["data_purpose"] = infer_data_purpose(
                 strategy.get("name"),

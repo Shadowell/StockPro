@@ -1,5 +1,5 @@
-import type { ComponentType } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useEffect, useRef, type ComponentType } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   Activity,
   Bot,
@@ -47,9 +47,22 @@ const NAV_ITEMS: NavItem[] = [
 
 export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
   const vertical = orientation === 'vertical';
+  const location = useLocation();
+  const navigationRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (vertical) return;
+    const frame = window.requestAnimationFrame(() => {
+      navigationRef.current
+        ?.querySelector<HTMLElement>('[aria-current="page"]')
+        ?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, vertical]);
 
   return (
     <nav
+      ref={navigationRef}
       aria-label="主菜单"
       className={clsx(
         vertical ? 'flex flex-1 flex-col gap-0.5' : 'flex min-w-max items-center gap-1',

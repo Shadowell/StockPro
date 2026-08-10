@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
 import {
@@ -320,7 +320,8 @@ export function Paper() {
     };
   }, [scopedInstances]);
 
-  const load = async (keepId?: string) => {
+  const requestedInstanceId = params.get("instance");
+  const load = useCallback(async (keepId?: string) => {
     setBusy(true);
     setError("");
     try {
@@ -334,8 +335,7 @@ export function Paper() {
       const id =
         [
           keepId,
-          selected?.id,
-          params.get("instance"),
+          requestedInstanceId,
           scopeInstances[0]?.id,
         ].find(
           (candidate) =>
@@ -343,16 +343,17 @@ export function Paper() {
             scopeInstances.some((item) => item.id === candidate),
         ) ?? undefined;
       setSelected(id ? await getPaperInstance(id) : null);
-      if (!runId)
-        setRunId(
+      setRunId((current) =>
+        current ||
           backtests.items.find(
             (item) =>
               isBusinessPurpose(item) &&
               item.promotion_status === "paper_eligible" &&
               item.factor_snapshot_id &&
               item.pool_snapshot_id,
-          )?.id ?? "",
-        );
+          )?.id ||
+          "",
+      );
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Paper 工作台加载失败",
@@ -361,10 +362,10 @@ export function Paper() {
       setBusy(false);
       setLoaded(true);
     }
-  };
+  }, [requestedInstanceId]);
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   const chooseInstance = async (id: string) => {
     setBusy(true);
@@ -518,19 +519,23 @@ export function Paper() {
     }),
     [selected],
   );
-  const rows = selected
-    ? ((tab === "signals"
-        ? selected.signals
-        : tab === "orders"
-          ? selected.orders
-          : tab === "positions"
-            ? selected.positions
-            : tab === "trades"
-              ? selected.trades
-              : tab === "events"
-                ? selected.events
-                : []) ?? [])
-    : [];
+  const rows = useMemo(
+    () =>
+      selected
+        ? ((tab === "signals"
+            ? selected.signals
+            : tab === "orders"
+              ? selected.orders
+              : tab === "positions"
+                ? selected.positions
+                : tab === "trades"
+                  ? selected.trades
+                  : tab === "events"
+                    ? selected.events
+                    : []) ?? [])
+        : [],
+    [selected, tab],
+  );
   const rowSymbols = useMemo(
     () => rows.map((row) => String(row.symbol ?? "")),
     [rows],

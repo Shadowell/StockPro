@@ -187,7 +187,7 @@ export function LimitBoardPanel() {
           })
         ) : (
           <div className="flex h-40 items-center justify-center px-4 text-center text-sm text-gray-500">
-            当前{tab === 'up' ? '涨停' : '跌停'}名单为空；等市场证据封存或实时快照写入后可见
+            当前封存交易日的{tab === 'up' ? '涨停' : '跌停'}正式名单为 0 家；未封存时不使用涨跌幅估算替代
           </div>
         )}
       </div>

@@ -89,6 +89,38 @@ class TushareProviderTests(unittest.TestCase):
         self.assertEqual(source, "akshare")
         self.assertEqual(fallback_reason, "tushare_not_ready")
 
+    def test_market_daily_keeps_each_symbol_bound_to_its_own_bar(self):
+        from app.services.tushare_provider import TushareFirstDataProvider
+
+        raw_rows = [
+            {
+                "ts_code": f"{600000 + index}.SH",
+                "trade_date": "20260807",
+                "open": index + 1,
+                "close": index + 1,
+                "high": index + 1,
+                "low": index + 1,
+                "vol": 100 + index,
+                "amount": 1000 + index,
+            }
+            for index in range(20)
+        ]
+        pro = types.SimpleNamespace(daily=Mock(return_value=pd.DataFrame(raw_rows)))
+        tushare = types.SimpleNamespace(set_token=Mock(), pro_api=Mock(return_value=pro))
+        provider = TushareFirstDataProvider(
+            tushare_module=tushare,
+            akshare_module=types.SimpleNamespace(),
+            token="token",
+        )
+
+        frame = provider.daily_by_trade_date("2026-08-07")
+
+        symbol_to_close = dict(zip(frame["symbol"], frame["收盘"]))
+        self.assertEqual(symbol_to_close["SH_600000"], 1)
+        self.assertEqual(symbol_to_close["SH_600001"], 2)
+        self.assertEqual(symbol_to_close["SH_600017"], 18)
+        self.assertEqual(symbol_to_close["SH_600019"], 20)
+
 
 if __name__ == "__main__":
     unittest.main()

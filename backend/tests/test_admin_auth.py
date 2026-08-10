@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.api.api import create_api_router
 from app.core import admin_auth
 from app.core.config import settings
+from app.services.market_service import MarketService
 
 
 class AdminAuthTests(unittest.TestCase):
@@ -103,10 +105,11 @@ class AdminAuthTests(unittest.TestCase):
         self.assertEqual(401, missing_response.status_code)
 
         token = admin_auth.create_admin_token("admin")
-        authed_response = client.get(
-            "/api/market/overview",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        with patch.object(MarketService, "get_market_overview", return_value={"status": "available"}):
+            authed_response = client.get(
+                "/api/market/overview",
+                headers={"Authorization": f"Bearer {token}"},
+            )
         self.assertNotEqual(401, authed_response.status_code)
 
 

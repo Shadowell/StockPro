@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Activity, AlertCircle, BarChart3, BookOpen, CalendarDays, CheckCircle2, Code2, Layers, Play, Plus, RefreshCw, Save, Search, TrendingUp, Zap, X } from 'lucide-react';
 import clsx from 'clsx';
 import { autoDevelopStrategy, getAICapabilities, getFactorSnapshots, getLatestStrategyVersion, getStrategies, quickRunStrategyVersion, saveStrategy, updateStrategy } from '../api/client';
@@ -113,6 +113,9 @@ const inferTags = (strategy: StrategyType) => {
 
 export function Strategy() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedStrategyId = Number(searchParams.get('strategy')) || null;
+  const detailRequested = searchParams.get('view') === 'detail';
   const [strategies, setStrategies] = useState<StrategyType[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [name, setName] = useState('');
@@ -122,7 +125,7 @@ export function Strategy() {
   const [loading, setLoading] = useState(false);
   const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [listError, setListError] = useState('');
-  const [view, setView] = useState<'editor' | 'detail'>('editor');
+  const [view, setView] = useState<'editor' | 'detail'>(detailRequested ? 'detail' : 'editor');
   const [searchQuery, setSearchQuery] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [listTab, setListTab] = useState<ListTab>('my');
@@ -173,7 +176,7 @@ export function Strategy() {
     });
   }, [assetFilter, businessStrategies, searchQuery, statusFilter]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setListState('loading');
     setListError('');
     try {
@@ -186,25 +189,38 @@ export function Strategy() {
       const firstBusiness = data.find(
         (item) => !item.data_purpose || item.data_purpose === 'user',
       );
-      if (
-        !selectedId ||
-        !data.some(
+      setSelectedId((current) =>
+        current &&
+        data.some(
           (item) =>
-            item.id === selectedId &&
+            item.id === current &&
             (!item.data_purpose || item.data_purpose === 'user'),
         )
-      )
-        setSelectedId(firstBusiness?.id ?? null);
+          ? current
+          : firstBusiness?.id ?? null,
+      );
       setListState('ready');
     } catch (error) {
       setListState('error');
       setListError(error instanceof Error ? error.message : '策略记录加载失败');
     }
-  };
+  }, []);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
+
+  useEffect(() => {
+    if (detailRequested && requestedStrategyId) {
+      const requested = businessStrategies.find((item) => item.id === requestedStrategyId);
+      if (requested) {
+        setSelectedId(requested.id);
+        setView('detail');
+      }
+      return;
+    }
+    setView('editor');
+  }, [businessStrategies, detailRequested, requestedStrategyId]);
 
   useEffect(() => {
     if (!selected) return;
@@ -310,7 +326,10 @@ export function Strategy() {
           strategy={productStrategyCopy(selected)}
           version={activeVersion}
           validation={validation}
-          onBack={() => setView('editor')}
+          onBack={() => {
+            setSearchParams({});
+            setView('editor');
+          }}
           onEdit={() => setShowEditor(true)}
           onBacktest={() => navigate('/backtest')}
           onPaper={() => navigate('/paper')}
@@ -377,7 +396,7 @@ export function Strategy() {
           value={listTab}
           onChange={setListTab}
           options={[
-            { value: 'my', label: '我的策略', icon: Layers, tone: 'blue', count: strategies.length },
+            { value: 'my', label: '我的策略', icon: Layers, tone: 'blue', count: businessStrategies.length },
             { value: 'plaza', label: '策略广场', icon: BookOpen, tone: 'purple', count: plazaTemplates.length + referenceStrategies.length },
           ]}
         />
@@ -503,6 +522,7 @@ export function Strategy() {
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedId(item.id);
+                      setSearchParams({ strategy: String(item.id), view: 'detail' });
                       setView('detail');
                     }}
                     className="flex h-11 min-w-0 items-center justify-center gap-1.5 px-3 text-xs text-gray-400 transition-colors hover:bg-blue-500/5 hover:text-blue-400"

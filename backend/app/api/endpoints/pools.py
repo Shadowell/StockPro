@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from app.db import db_instance
 from app.services.stock_pool_service import StockPoolService
@@ -51,14 +52,17 @@ def _error(exc: ValueError, status_code: int = 400) -> HTTPException:
 
 @router.get("/pools")
 async def list_pools() -> Dict[str, Any]:
-    items = service.list_pools()
+    items = await run_in_threadpool(service.list_pools)
     return {"items": items, "total": len(items)}
 
 
 @router.post("/pools")
 async def create_pool(request: PoolCreateRequest) -> Dict[str, Any]:
     try:
-        return service.create_pool(request.model_dump(exclude_none=True))
+        return await run_in_threadpool(
+            service.create_pool,
+            request.model_dump(exclude_none=True),
+        )
     except ValueError as exc:
         raise _error(exc) from exc
 
@@ -66,7 +70,7 @@ async def create_pool(request: PoolCreateRequest) -> Dict[str, Any]:
 @router.get("/pools/{pool_id}")
 async def get_pool(pool_id: str) -> Dict[str, Any]:
     try:
-        return service.get_pool(pool_id)
+        return await run_in_threadpool(service.get_pool, pool_id)
     except ValueError as exc:
         raise _error(exc, 404) from exc
 
@@ -74,7 +78,11 @@ async def get_pool(pool_id: str) -> Dict[str, Any]:
 @router.post("/pools/{pool_id}/generate")
 async def generate_pool(pool_id: str, request: PoolGenerateRequest) -> Dict[str, Any]:
     try:
-        return service.generate(pool_id, request.model_dump(exclude_none=True))
+        return await run_in_threadpool(
+            service.generate,
+            pool_id,
+            request.model_dump(exclude_none=True),
+        )
     except ValueError as exc:
         raise _error(exc) from exc
 
@@ -82,7 +90,7 @@ async def generate_pool(pool_id: str, request: PoolGenerateRequest) -> Dict[str,
 @router.get("/pools/{pool_id}/members")
 async def list_members(pool_id: str, generation_id: Optional[str] = Query(None)) -> Dict[str, Any]:
     try:
-        items = service.members(pool_id, generation_id)
+        items = await run_in_threadpool(service.members, pool_id, generation_id)
         return {"items": items, "total": len(items)}
     except ValueError as exc:
         raise _error(exc, 404) from exc
@@ -91,21 +99,25 @@ async def list_members(pool_id: str, generation_id: Optional[str] = Query(None))
 @router.post("/pools/{pool_id}/snapshots")
 async def seal_snapshot(pool_id: str, request: PoolSnapshotRequest) -> Dict[str, Any]:
     try:
-        return service.seal_snapshot(pool_id, request.generation_id)
+        return await run_in_threadpool(
+            service.seal_snapshot,
+            pool_id,
+            request.generation_id,
+        )
     except ValueError as exc:
         raise _error(exc) from exc
 
 
 @router.get("/pool-snapshots")
 async def list_snapshots(pool_id: Optional[str] = Query(None)) -> Dict[str, Any]:
-    items = service.list_snapshots(pool_id)
+    items = await run_in_threadpool(service.list_snapshots, pool_id)
     return {"items": items, "total": len(items)}
 
 
 @router.get("/pool-snapshots/{snapshot_id}")
 async def get_snapshot(snapshot_id: int) -> Dict[str, Any]:
     try:
-        return service.get_snapshot(snapshot_id)
+        return await run_in_threadpool(service.get_snapshot, snapshot_id)
     except ValueError as exc:
         raise _error(exc, 404) from exc
 
@@ -114,6 +126,10 @@ async def get_snapshot(snapshot_id: int) -> Dict[str, Any]:
 @router.post("/pool-snapshots/{snapshot_id}/backtests")
 async def create_backtest_draft(snapshot_id: int, request: PoolBacktestDraftRequest) -> Dict[str, Any]:
     try:
-        return service.create_backtest_draft(snapshot_id, request.model_dump(exclude_none=True))
+        return await run_in_threadpool(
+            service.create_backtest_draft,
+            snapshot_id,
+            request.model_dump(exclude_none=True),
+        )
     except ValueError as exc:
         raise _error(exc) from exc

@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from app.services.data_hub_service import data_hub_service
 
@@ -23,13 +24,15 @@ class RunQualityRequest(BaseModel):
 
 @router.get("/datasets")
 async def list_datasets() -> Dict[str, Any]:
-    return {"status": "success", "data": data_hub_service.list_datasets()}
+    datasets = await run_in_threadpool(data_hub_service.list_datasets)
+    return {"status": "success", "data": datasets}
 
 
 @router.get("/datasets/{dataset_id}/freshness")
 async def get_dataset_freshness(dataset_id: str) -> Dict[str, Any]:
     try:
-        return {"status": "success", "data": data_hub_service.get_dataset_freshness(dataset_id)}
+        freshness = await run_in_threadpool(data_hub_service.get_dataset_freshness, dataset_id)
+        return {"status": "success", "data": freshness}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -37,7 +40,8 @@ async def get_dataset_freshness(dataset_id: str) -> Dict[str, Any]:
 @router.post("/jobs")
 async def create_job(request: CreateDataHubJobRequest) -> Dict[str, Any]:
     try:
-        job = data_hub_service.create_job(
+        job = await run_in_threadpool(
+            data_hub_service.create_job,
             action=request.action,
             scope=request.scope,
             params=request.params,
@@ -55,7 +59,8 @@ async def list_jobs(
     parent_job_key: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500),
 ) -> Dict[str, Any]:
-    jobs = data_hub_service.list_jobs(
+    jobs = await run_in_threadpool(
+        data_hub_service.list_jobs,
         action=action,
         status=status,
         scope=scope,
@@ -67,7 +72,7 @@ async def list_jobs(
 
 @router.get("/jobs/{job_key}")
 async def get_job(job_key: str) -> Dict[str, Any]:
-    job = data_hub_service.get_job(job_key)
+    job = await run_in_threadpool(data_hub_service.get_job, job_key)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"status": "success", "data": job}
@@ -75,7 +80,7 @@ async def get_job(job_key: str) -> Dict[str, Any]:
 
 @router.get("/jobs/{job_key}/logs")
 async def get_job_logs(job_key: str, limit: int = Query(200, ge=1, le=500)) -> Dict[str, Any]:
-    job = data_hub_service.get_job(job_key)
+    job = await run_in_threadpool(data_hub_service.get_job, job_key)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     logs = job.get("logs") or []
@@ -85,7 +90,7 @@ async def get_job_logs(job_key: str, limit: int = Query(200, ge=1, le=500)) -> D
 @router.post("/jobs/{job_key}/rerun")
 async def rerun_job(job_key: str) -> Dict[str, Any]:
     try:
-        job = data_hub_service.rerun_job(job_key)
+        job = await run_in_threadpool(data_hub_service.rerun_job, job_key)
         return {"status": "success", "data": job}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -94,7 +99,7 @@ async def rerun_job(job_key: str) -> Dict[str, Any]:
 @router.post("/jobs/{job_key}/cancel")
 async def cancel_job(job_key: str) -> Dict[str, Any]:
     try:
-        job = data_hub_service.cancel_job(job_key)
+        job = await run_in_threadpool(data_hub_service.cancel_job, job_key)
         return {"status": "success", "data": job}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -102,13 +107,13 @@ async def cancel_job(job_key: str) -> Dict[str, Any]:
 
 @router.post("/quality/run")
 async def run_quality(request: RunQualityRequest) -> Dict[str, Any]:
-    report = data_hub_service.run_quality_checks(request.datasets)
+    report = await run_in_threadpool(data_hub_service.run_quality_checks, request.datasets)
     return {"status": "success", "data": report}
 
 
 @router.get("/quality/report")
 async def get_latest_quality_report() -> Dict[str, Any]:
-    report = data_hub_service.get_latest_quality_report()
+    report = await run_in_threadpool(data_hub_service.get_latest_quality_report)
     if report is None:
         return {"status": "success", "data": None}
     return {"status": "success", "data": report}
@@ -123,7 +128,8 @@ async def get_screener_features(
     max_price: float = Query(100.0, ge=1),
     limit: int = Query(50, ge=1, le=200),
 ) -> Dict[str, Any]:
-    result = data_hub_service.get_screener_features(
+    result = await run_in_threadpool(
+        data_hub_service.get_screener_features,
         {
             "days": days,
             "max_range_pct": max_range_pct,
@@ -144,7 +150,8 @@ async def get_factor_features(
     ascending: bool = Query(False),
     category: Optional[str] = Query(None),
 ) -> Dict[str, Any]:
-    result = data_hub_service.get_factor_features(
+    result = await run_in_threadpool(
+        data_hub_service.get_factor_features,
         factor_code=factor_code,
         date=date,
         limit=limit,

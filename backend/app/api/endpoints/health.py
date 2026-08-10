@@ -22,7 +22,7 @@ async def health_check() -> Dict[str, str]:
 
 
 @router.get("/storage", tags=["Health"])
-async def storage_health_check() -> Dict[str, Any]:
+def storage_health_check() -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "status": "healthy",
         "database": "postgres",
@@ -33,7 +33,7 @@ async def storage_health_check() -> Dict[str, Any]:
         return {**result, "status": "error", "message": "DATABASE_URL is required"}
 
     try:
-        with psycopg.connect(settings.DATABASE_URL) as connection:
+        with psycopg.connect(settings.DATABASE_URL, connect_timeout=3) as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT COUNT(*) FROM schema_migrations")
                 row = cursor.fetchone()

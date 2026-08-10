@@ -9,6 +9,7 @@ from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
 import numpy as np
 from app.db import db_instance
+from app.services.trading_date_service import TradingDateService
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,10 @@ class FactorSyncService:
     
     def __init__(self):
         self.db = db_instance
+        self.trading_dates = TradingDateService(self.db)
+
+    def _resolve_trade_date(self, value: Optional[str]) -> str:
+        return self.trading_dates.resolve_market_data_date(value)
         
     def init_factor_definitions(self):
         """初始化因子定义（首次运行时调用）"""
@@ -41,7 +46,7 @@ class FactorSyncService:
         数据源：ak.stock_zh_a_spot_em()
         """
         start_time = time.time()
-        date = date or datetime.now().strftime('%Y-%m-%d')
+        date = self._resolve_trade_date(date)
         
         try:
             logger.info(f"[FactorSync] Starting sync_spot_factors for date {date}")
@@ -162,7 +167,7 @@ class FactorSyncService:
         由于API限制，这里只同步部分股票
         """
         start_time = time.time()
-        date = date or datetime.now().strftime('%Y-%m-%d')
+        date = self._resolve_trade_date(date)
         
         try:
             logger.info(f"Starting sync_indicator_factors for date {date}")
@@ -285,7 +290,7 @@ class FactorSyncService:
         数据源：ak.stock_zh_a_hist() 计算得出
         """
         start_time = time.time()
-        date = date or datetime.now().strftime('%Y-%m-%d')
+        date = self._resolve_trade_date(date)
         
         try:
             logger.info(f"[FactorSync] Starting sync_technical_factors for date {date}")
@@ -474,7 +479,7 @@ class FactorSyncService:
         """
         同步所有因子数据
         """
-        date = date or datetime.now().strftime('%Y-%m-%d')
+        date = self._resolve_trade_date(date)
         logger.info(f"Starting sync_all_factors for date {date}")
         
         results = {

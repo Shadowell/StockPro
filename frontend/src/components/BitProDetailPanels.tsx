@@ -661,9 +661,13 @@ export function PaperInstanceDetailPanel({
   const [logTab, setLogTab] = useState<'trades' | 'events'>('trades');
   const pnl = account.equity - account.initial_capital;
   const returnPct = account.initial_capital ? (pnl / account.initial_capital) * 100 : 0;
-  const curveRows = account.equity_curve?.length
-    ? account.equity_curve
-    : [{ time: account.updated_at || account.created_at, equity: account.equity, cash: account.cash }];
+  const curveRows = useMemo(
+    () =>
+      account.equity_curve?.length
+        ? account.equity_curve
+        : [{ time: account.updated_at || account.created_at, equity: account.equity, cash: account.cash }],
+    [account.cash, account.created_at, account.equity, account.equity_curve, account.updated_at],
+  );
   const orders = account.orders || [];
   const positions = account.positions || [];
   const events = account.events || [];

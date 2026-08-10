@@ -139,3 +139,76 @@ class ShortLineEvidenceFallbackTests(unittest.TestCase):
         self.assertEqual(7, result[0]["snapshot_id"])
         research.list_snapshots.assert_called_once_with(market_scope="all_a", limit=1)
         research.sentiment.assert_called_once_with(7)
+
+
+class LimitBoardEvidenceTests(unittest.TestCase):
+    def test_empty_sealed_pool_is_authoritative_and_never_replaced_by_estimates(self):
+        research = Mock()
+        research._latest_snapshot.return_value = {
+            "id": 8,
+            "trade_date": "2026-08-07",
+            "captured_at": "2026-08-07T15:30:00+08:00",
+        }
+        research.limit_ecosystem.return_value = {
+            "source_label": "tushare_limit_list_d",
+            "pools": {"up": [], "down": [], "broken": []},
+        }
+        research._is_stale.return_value = False
+
+        with (
+            patch("app.services.market_service.MarketResearchService", return_value=research),
+            patch.object(
+                MarketService,
+                "_limit_board_from_realtime_estimate",
+                side_effect=AssertionError("sealed zero must not fall back to estimates"),
+            ),
+        ):
+            result = MarketService.get_limit_board()
+
+        self.assertEqual("2026-08-07", result["trade_date"])
+        self.assertEqual({"up": 0, "down": 0}, result["counts"])
+        self.assertEqual("fresh", result["data_status"])
+        self.assertEqual("tushare_limit_list_d", result["source_label"])
+
+    def test_missing_sealed_pool_returns_unavailable_instead_of_a_threshold_guess(self):
+        research = Mock()
+        research._latest_snapshot.return_value = None
+
+        with (
+            patch("app.services.market_service.MarketResearchService", return_value=research),
+            patch.object(
+                MarketService,
+                "_limit_board_from_realtime_estimate",
+                side_effect=AssertionError("formal limit board must not use threshold estimates"),
+            ),
+        ):
+            result = MarketService.get_limit_board()
+
+        self.assertEqual({"up": 0, "down": 0}, result["counts"])
+        self.assertEqual("empty", result["data_status"])
+        self.assertIsNone(result["trade_date"])
+        self.assertIn("封存", result["methodology"])
+
+    def test_snapshot_without_formal_limit_metrics_is_not_reported_as_a_fresh_zero(self):
+        research = Mock()
+        research._latest_snapshot.return_value = {
+            "id": 9,
+            "trade_date": "2026-08-07",
+            "captured_at": "2026-08-07T15:30:00+08:00",
+        }
+        research.limit_ecosystem.return_value = {
+            "source_label": None,
+            "pools": {},
+        }
+        research.sentiment.return_value = {
+            "metrics": [
+                {"metric_code": "limit_up_count", "value": None, "source_label": None},
+                {"metric_code": "limit_down_count", "value": None, "source_label": None},
+            ]
+        }
+
+        with patch("app.services.market_service.MarketResearchService", return_value=research):
+            result = MarketService.get_limit_board()
+
+        self.assertEqual("empty", result["data_status"])
+        self.assertEqual("封存涨跌停名单未生成", result["source_label"])

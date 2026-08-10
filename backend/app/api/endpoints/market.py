@@ -9,6 +9,23 @@ router = APIRouter()
 research_service = MarketResearchService(db)
 
 
+def _get_hot_concept_leaders_cached(name: str, limit: int) -> List[Dict[str, Any]]:
+    cached = db.get_concept_leaders_cache(name, limit)
+    if not cached:
+        return []
+    updated_at = db.get_concept_leaders_cache_updated_at(name)
+    state = "stale" if MarketService._is_stale_timestamp(updated_at, max_age_hours=36) else "fresh"
+    return [
+        {
+            **row,
+            "source_label": row.get("source_label") or "PostgreSQL concept-leader cache",
+            "updated_at": row.get("updated_at") or updated_at,
+            "data_status": state,
+        }
+        for row in cached
+    ]
+
+
 @router.get("/research-context")
 async def get_research_context(
     snapshot_id: int | None = Query(None),
@@ -16,7 +33,12 @@ async def get_research_context(
     market_scope: str = Query("all_a"),
 ) -> Dict[str, Any]:
     try:
-        return research_service.research_context(snapshot_id, trade_date, market_scope)
+        return await asyncio.to_thread(
+            research_service.research_context,
+            snapshot_id,
+            trade_date,
+            market_scope,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -27,14 +49,19 @@ async def list_evidence_snapshots(
     market_scope: str | None = Query(None),
     limit: int = Query(100, ge=1, le=365),
 ) -> Dict[str, Any]:
-    items = research_service.list_snapshots(trade_date=trade_date, market_scope=market_scope, limit=limit)
+    items = await asyncio.to_thread(
+        research_service.list_snapshots,
+        trade_date=trade_date,
+        market_scope=market_scope,
+        limit=limit,
+    )
     return {"items": items, "total": len(items)}
 
 
 @router.get("/sentiment")
 async def get_research_sentiment(snapshot_id: int = Query(...)) -> Dict[str, Any]:
     try:
-        return research_service.sentiment(snapshot_id)
+        return await asyncio.to_thread(research_service.sentiment, snapshot_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -42,7 +69,7 @@ async def get_research_sentiment(snapshot_id: int = Query(...)) -> Dict[str, Any
 @router.get("/limit-ecosystem")
 async def get_limit_ecosystem(snapshot_id: int = Query(...)) -> Dict[str, Any]:
     try:
-        return research_service.limit_ecosystem(snapshot_id)
+        return await asyncio.to_thread(research_service.limit_ecosystem, snapshot_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -53,7 +80,11 @@ async def get_sector_evidence(
     classification: str = Query("tushare_limit_industry"),
 ) -> Dict[str, Any]:
     try:
-        return research_service.sector_evidence(snapshot_id, classification)
+        return await asyncio.to_thread(
+            research_service.sector_evidence,
+            snapshot_id,
+            classification,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -142,20 +173,7 @@ async def get_hot_concept_leaders(
     date: str | None = Query(None)
 ) -> List[Dict[str, Any]]:
     """Return the stored concept-leader cache without provider side effects."""
-    cached = db.get_concept_leaders_cache(name, limit)
-    if not cached:
-        return []
-    updated_at = db.get_concept_leaders_cache_updated_at(name)
-    state = "stale" if MarketService._is_stale_timestamp(updated_at, max_age_hours=36) else "fresh"
-    return [
-        {
-            **row,
-            "source_label": row.get("source_label") or "PostgreSQL concept-leader cache",
-            "updated_at": row.get("updated_at") or updated_at,
-            "data_status": state,
-        }
-        for row in cached
-    ]
+    return await asyncio.to_thread(_get_hot_concept_leaders_cached, name, limit)
 
 @router.get("/fundamentals/{symbol}")
 async def get_stock_fundamentals(symbol: str) -> Dict[str, Any]:
@@ -238,7 +256,12 @@ async def get_daily_stats(
 ) -> List[Dict[str, Any]]:
     """获取每日板块涨幅统计数据（从数据库读取）"""
     from app.db import db_instance
-    return db_instance.get_daily_concept_sectors_multi_days(days, min_change_pct, top_n)
+    return await asyncio.to_thread(
+        db_instance.get_daily_concept_sectors_multi_days,
+        days,
+        min_change_pct,
+        top_n,
+    )
 
 @router.post("/pulse/sync-today")
 async def sync_today_concept_sectors() -> Dict[str, Any]:

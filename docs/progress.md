@@ -1774,3 +1774,47 @@ Verification:
   endpoints. Real pages show amber lifecycle/heartbeat badges, an amber
   evidence-based Watch tracker and `正常` + `数据滞后` as separate Monitor
   columns. `./scripts/check.sh` passed with 291 backend tests.
+
+## Professionalization implementation batch (2026-08-10)
+
+- Implemented formal sealed-evidence handling for the limit board, same-date
+  market price conflict quarantine, test/acceptance purpose classification,
+  mobile active-navigation discovery, Data Center action wrapping, canonical
+  trading-date resolution, and reloadable Strategy detail links with explicit
+  business-count semantics.
+- Added backend regressions for TuShare full-market row binding, formal limit
+  evidence, purpose classification, trading-date rules, review-date filtering,
+  data-task date gates and isolated admin authentication. The repository check
+  now passes 315 backend tests.
+- Cleared all React Hook lint warnings, split React/chart/HTTP vendor chunks and
+  added a build-time bundle budget. The current production build reports a
+  327.8 KiB raw / 96.2 KiB gzip initial set and passes the configured limits.
+- Separated the safe mocked page suite from real-backend and full-menu suites,
+  updated its assertions to the current accessible UI contract, and completed
+  43/43 mocked Playwright checks across desktop, mobile and all primary
+  operator workflows.
+- After explicit approval, established the remote-development PostgreSQL tunnel,
+  cleanly restarted both local services with the scheduler disabled, and
+  verified application health plus all 29/29 PostgreSQL migrations. The
+  read-only real-browser audit now passes 12/12 primary pages and every covered
+  sub-tab without page, console or HTTP errors.
+- Hardened the real full-menu suite so it requires environment credentials,
+  logs in and verifies the session once, defaults to read-only behavior, avoids
+  `networkidle` on polling pages, and fails on page/console/network errors.
+- The live run exposed synchronous PostgreSQL calls inside asynchronous Market,
+  Pool, Factor, Strategy, Backtest, Data, Data Hub, Paper, Watch, Monitor and
+  Review routes. Under a full-page workload these calls blocked the main event
+  loop and delayed later login/health requests beyond 60 seconds. All surfaced
+  blocking service calls now run in worker threads, storage health has a
+  three-second connection timeout, and 13 focused thread-isolation regressions
+  protect the affected route families.
+- After a final clean restart, the real read-only full-menu suite passed 12/12
+  in 43.5 seconds. The immediately following application health request passed
+  in 0.002 seconds; storage health passed in 2.65 seconds with all 29/29
+  migrations applied. `./scripts/check.sh` passed the production build, zero-
+  warning lint, bundle budget, 315 backend tests and Python compilation.
+- One safety defect remains tracked as SP-020: the first locally inherited
+  `ENABLE_SCHEDULER=true` startup wrote 387 concept-flow rows to the remote
+  development database at the hour boundary. Every final validation restart
+  used `ENABLE_SCHEDULER=false`; no deployment, data repair or production
+  mutation was performed.

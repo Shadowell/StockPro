@@ -612,7 +612,10 @@ class TushareFirstDataProvider:
         result["涨跌幅"] = self._number_series(df, ["pct_chg", "涨跌幅"])
         result["涨跌额"] = self._number_series(df, ["change", "涨跌额"])
         result["换手率"] = self._number_series(df, ["turnover_rate", "换手率"])
-        return result.sort_values("日期").reset_index(drop=True)
+        # Keep rows with the same trade date in provider order. Full-market
+        # daily sync attaches ``ts_code`` after normalization, so an unstable
+        # sort would silently bind one stock's OHLC values to another symbol.
+        return result.sort_values("日期", kind="stable").reset_index(drop=True)
 
     def _normalize_index_daily(self, df: pd.DataFrame) -> pd.DataFrame:
         if not isinstance(df, pd.DataFrame) or df.empty:

@@ -25,6 +25,16 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       sourcemap: 'hidden',
+      chunkSizeWarningLimit: 1200,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-charts': ['echarts', 'echarts-for-react'],
+            'vendor-http': ['axios'],
+          },
+        },
+      },
     },
     plugins: [
       react({

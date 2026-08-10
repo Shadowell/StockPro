@@ -8,13 +8,16 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 import psycopg2.extras
 
 from app.services.dataset_snapshot_service import canonical_hash
+from app.services.trading_date_service import TradingDateService
 
 
 class DailyReviewService:
     def __init__(self, database):
         self.database = database
+        self.trading_dates = TradingDateService(database)
 
     def available_dates(self, limit: int = 120) -> List[str]:
+        requested_limit = max(1, min(int(limit), 500))
         rows = self._rows(
             """
             SELECT DISTINCT trade_date FROM (
@@ -26,9 +29,16 @@ class DailyReviewService:
                 UNION SELECT trade_date FROM daily_reviews
             ) dates WHERE trade_date IS NOT NULL ORDER BY trade_date DESC LIMIT %s
             """,
-            (max(1, min(int(limit), 500)),),
+            (500,),
         )
-        return [str(item["trade_date"])[:10] for item in rows]
+        result: List[str] = []
+        for item in rows:
+            trade_date = str(item["trade_date"])[:10]
+            if self.trading_dates.status(trade_date) == "open":
+                result.append(trade_date)
+            if len(result) >= requested_limit:
+                break
+        return result
 
     def context(self, trade_date: str, *, persist: bool = False) -> Dict[str, Any]:
         target = self._date(trade_date)

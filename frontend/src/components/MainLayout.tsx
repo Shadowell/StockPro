@@ -189,7 +189,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           <div className="flex items-center justify-between gap-3">
             <StockProMark size="sm" />
             <MarketSessionBadge className="shrink-0" />
-            <div className="min-w-0 flex-1 overflow-x-auto">
+            <div className="min-w-0 flex-1 overflow-x-auto" data-mobile-nav-viewport>
               <Navigation orientation="horizontal" />
             </div>
             <button

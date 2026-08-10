@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   BookOpenCheck,
@@ -133,12 +133,12 @@ export function DailyReview() {
   const [plan, setPlan] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const applyContext = (next: DailyReviewContext) => {
+  const applyContext = useCallback((next: DailyReviewContext) => {
     setContext(next);
     setSummary(next.review?.summary ?? "");
     setPlan(next.review?.next_day_plan ?? "");
-  };
-  const load = async (date = tradeDate) => {
+  }, []);
+  const load = useCallback(async (date = tradeDate) => {
     setBusy(true);
     setError("");
     try {
@@ -164,7 +164,7 @@ export function DailyReview() {
     } finally {
       setBusy(false);
     }
-  };
+  }, [applyContext, setParams, tab, tradeDate]);
   const rebuild = async () => {
     setBusy(true);
     setError("");
@@ -178,7 +178,7 @@ export function DailyReview() {
   };
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
   const changeDate = (date: string) => {
     setTradeDate(date);
     setParams({ tab, date });

@@ -1482,14 +1482,15 @@ class MarketService:
         """
         Homepage limit-up / limit-down member board for chart drill-down.
 
-        Prefer sealed market-evidence members (TuShare limit_list_d / AkShare zt|dt pools).
-        Fall back to realtime ±9.8% estimate when no sealed members exist.
+        Only sealed market-evidence members qualify for the formal board. A
+        sealed zero-member pool is authoritative and must not be replaced by a
+        percentage-threshold estimate.
         """
         research = MarketResearchService(db)
         snapshot = research._latest_snapshot(trade_date, "all_a")
         up: List[Dict[str, Any]] = []
         down: List[Dict[str, Any]] = []
-        source_label = "market_evidence limit_pool_members"
+        source_label = "封存涨跌停名单未生成"
         data_status = "empty"
         captured_at = None
         snapshot_id = None
@@ -1509,18 +1510,25 @@ class MarketService:
                 MarketService._limit_board_item_from_member(item, "down")
                 for item in (pools.get("down") or [])
             ]
-            source_label = ecology.get("source_label") or source_label
-            if up or down:
+            formal_source = ecology.get("source_label")
+            formal_available = bool(formal_source or up or down)
+            if not formal_available:
+                sentiment = research.sentiment(snapshot_id)
+                metrics = sentiment.get("metrics") if isinstance(sentiment, dict) else []
+                formal_metrics = [
+                    item
+                    for item in (metrics or [])
+                    if item.get("metric_code") in {"limit_up_count", "limit_down_count"}
+                    and item.get("value") is not None
+                ]
+                formal_available = bool(formal_metrics)
+                formal_source = next(
+                    (item.get("source_label") for item in formal_metrics if item.get("source_label")),
+                    None,
+                )
+            if formal_available:
+                source_label = formal_source or "封存涨跌停名单"
                 data_status = "stale" if research._is_stale(captured_at) else "fresh"
-
-        if not up and not down:
-            estimated = MarketService._limit_board_from_realtime_estimate()
-            up = estimated["up"]
-            down = estimated["down"]
-            if up or down:
-                source_label = "PostgreSQL all_stocks_realtime (±9.8% 估计)"
-                data_status = "stale"
-                resolved_trade_date = datetime.now().strftime("%Y-%m-%d")
 
         return {
             "trade_date": resolved_trade_date,
@@ -1532,8 +1540,8 @@ class MarketService:
             "up": up,
             "down": down,
             "methodology": (
-                "优先读取封存市场证据 limit_pool_members（TuShare limit_list_d / AkShare 涨跌停池）；"
-                "无成员时回退 all_stocks_realtime ±9.8% 估计，不能当作交易所正式封板名单。"
+                "仅展示封存市场证据 limit_pool_members（TuShare limit_list_d / AkShare 涨跌停池）；"
+                "封存 0 家是有效结果；未封存时保持不可用，不用涨跌幅阈值估计冒充正式名单。"
             ),
         }
 

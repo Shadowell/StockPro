@@ -9,6 +9,7 @@ class DailyReviewUnitTests(unittest.TestCase):
     def setUp(self):
         self.service = DailyReviewService.__new__(DailyReviewService)
         self.service.database = MagicMock()
+        self.service.trading_dates = MagicMock()
 
     def test_date_accepts_iso_day(self):
         self.assertEqual(self.service._date("2025-01-02T15:00:00"), "2025-01-02")
@@ -75,7 +76,21 @@ class DailyReviewUnitTests(unittest.TestCase):
 
     def test_available_dates_are_normalized(self):
         self.service._rows = MagicMock(return_value=[{"trade_date": "2025-01-02"}, {"trade_date": "2024-12-31"}])
+        self.service.trading_dates.status.return_value = "open"
         self.assertEqual(self.service.available_dates(), ["2025-01-02", "2024-12-31"])
+
+    def test_available_dates_exclude_closed_and_unknown_calendar_days(self):
+        self.service._rows = MagicMock(
+            return_value=[
+                {"trade_date": "2026-08-09"},
+                {"trade_date": "2026-08-08"},
+                {"trade_date": "2026-08-07"},
+                {"trade_date": "2026-08-06"},
+            ]
+        )
+        self.service.trading_dates.status.side_effect = ["closed", "closed", "open", "unknown"]
+
+        self.assertEqual(self.service.available_dates(), ["2026-08-07"])
 
     def test_sealed_context_reads_persisted_evidence(self):
         review = {"id": "review-1", "trade_date": "2025-01-02", "status": "sealed"}

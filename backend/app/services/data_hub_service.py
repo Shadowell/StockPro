@@ -10,6 +10,7 @@ from app.services.data_sync_service import data_sync_service
 from app.services.factor_sync_service import factor_sync_service
 from app.services.ma_convergence_service import ma_convergence_service
 from app.services.scheduler_service import scheduler_service
+from app.services.trading_date_service import TradingDateService
 
 logger = logging.getLogger(__name__)
 
@@ -121,9 +122,43 @@ class DataHubService:
         "sync_factor_all",
     }
 
-    def __init__(self) -> None:
+    MARKET_DATA_ACTIONS = {
+        "import_daily_data",
+        "backfill_concept_history",
+        "sync_today_concepts",
+        "sync_factor_spot",
+        "sync_factor_technical",
+        "sync_factor_all",
+    }
+
+    def __init__(self, trading_dates: Optional[TradingDateService] = None) -> None:
         self._active_tasks: Dict[str, asyncio.Task] = {}
         self._cancel_flags: Dict[str, bool] = {}
+        self.trading_dates = trading_dates or TradingDateService(db_instance)
+
+    def _job_kind(self, action: str) -> str:
+        return "market_data" if action in self.MARKET_DATA_ACTIONS else "maintenance"
+
+    def _job_payload(self, raw: Dict[str, Any], *, log_limit: int) -> Dict[str, Any]:
+        return {
+            "job_key": raw["job_key"],
+            "action": raw["action"],
+            "job_kind": self._job_kind(str(raw["action"])),
+            "scope": raw["scope"],
+            "params": self._deserialize(raw["params_json"], {}),
+            "status": raw["status"],
+            "progress": raw["progress"],
+            "current": raw["current"],
+            "total": raw["total"],
+            "message": raw["message"],
+            "error_message": raw["error_message"],
+            "result": self._deserialize(raw["result_json"], None),
+            "logs": self._deserialize_logs(raw.get("logs_json"), limit=log_limit),
+            "parent_job_key": raw["parent_job_key"],
+            "created_at": raw["created_at"],
+            "started_at": raw["started_at"],
+            "finished_at": raw["finished_at"],
+        }
 
     def _serialize(self, data: Any) -> str:
         return json.dumps(data, ensure_ascii=False, default=str)
@@ -352,24 +387,7 @@ class DataHubService:
         raw = self._fetch_job_raw(job_key)
         if not raw:
             return None
-        return {
-            "job_key": raw["job_key"],
-            "action": raw["action"],
-            "scope": raw["scope"],
-            "params": self._deserialize(raw["params_json"], {}),
-            "status": raw["status"],
-            "progress": raw["progress"],
-            "current": raw["current"],
-            "total": raw["total"],
-            "message": raw["message"],
-            "error_message": raw["error_message"],
-            "result": self._deserialize(raw["result_json"], None),
-            "logs": self._deserialize_logs(raw.get("logs_json"), limit=200),
-            "parent_job_key": raw["parent_job_key"],
-            "created_at": raw["created_at"],
-            "started_at": raw["started_at"],
-            "finished_at": raw["finished_at"],
-        }
+        return self._job_payload(raw, log_limit=200)
 
     def list_jobs(
         self,
@@ -388,32 +406,19 @@ class DataHubService:
         )
         jobs: List[Dict[str, Any]] = []
         for row in rows:
-            jobs.append(
-                {
-                    "job_key": row["job_key"],
-                    "action": row["action"],
-                    "scope": row["scope"],
-                    "params": self._deserialize(row["params_json"], {}),
-                    "status": row["status"],
-                    "progress": float(row["progress"] or 0),
-                    "current": int(row["current"] or 0),
-                    "total": int(row["total"] or 0),
-                    "message": row["message"],
-                    "error_message": row["error_message"],
-                    "result": self._deserialize(row["result_json"], None),
-                    "logs": self._deserialize_logs(row.get("logs_json"), limit=8),
-                    "parent_job_key": row["parent_job_key"],
-                    "created_at": row["created_at"],
-                    "started_at": row["started_at"],
-                    "finished_at": row["finished_at"],
-                }
-            )
+            raw = {
+                **row,
+                "progress": float(row["progress"] or 0),
+                "current": int(row["current"] or 0),
+                "total": int(row["total"] or 0),
+            }
+            jobs.append(self._job_payload(raw, log_limit=8))
         return jobs
 
     def create_job(self, action: str, params: Optional[Dict[str, Any]] = None, scope: Optional[str] = None, parent_job_key: Optional[str] = None) -> Dict[str, Any]:
         if action not in self.ALLOWED_JOB_ACTIONS:
             raise ValueError(f"Unsupported action: {action}")
-        job_params = params or {}
+        job_params = dict(params or {})
         if action == "run_data_dev_task":
             task_id = int(job_params.get("task_id", 0))
             if task_id <= 0:
@@ -426,13 +431,9 @@ class DataHubService:
             task_type = str(job_params.get("task_type") or "all").strip().lower()
             if task_type not in {"history", "fundamentals", "all"}:
                 raise ValueError("Invalid task_type. Supported values: history, fundamentals, all")
+            job_params["date"] = self.trading_dates.resolve_market_data_date(job_params.get("date"))
         if action in {"sync_factor_spot", "sync_factor_technical", "sync_factor_all"}:
-            date = job_params.get("date")
-            if date:
-                try:
-                    datetime.strptime(str(date), "%Y-%m-%d")
-                except ValueError as e:
-                    raise ValueError("Invalid date format. Use YYYY-MM-DD") from e
+            job_params["date"] = self.trading_dates.resolve_market_data_date(job_params.get("date"))
         job_scope = scope or str(job_params.get("scope") or "")
         job_key = self._insert_job(action=action, scope=job_scope, params=job_params, parent_job_key=parent_job_key)
         self._append_job_log(job_key, f"Job created: action={action}, scope={job_scope or '-'}")
@@ -541,7 +542,7 @@ class DataHubService:
             self._cancel_flags.pop(job_key, None)
 
     async def _run_import_daily_data(self, job_key: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        target_date = str(params.get("date") or datetime.now().strftime("%Y-%m-%d"))
+        target_date = self.trading_dates.resolve_market_data_date(params.get("date"))
         task_type = str(params.get("task_type") or "all").strip().lower()
         service = BatchImportService()
         self._append_job_log(
@@ -949,13 +950,13 @@ class DataHubService:
             max_price=max_price,
         )
         latest_ma_date = db_instance.get_ma_data_latest_date()
-        snapshot_as_of = latest_ma_date or datetime.now().strftime("%Y-%m-%d")
+        snapshot_as_of = latest_ma_date
         return {
             "status": "success",
             "snapshot": {
                 "dataset_id": "stock_ma_data",
                 "as_of": snapshot_as_of,
-                "version": f"stock_ma_data:{snapshot_as_of}",
+                "version": f"stock_ma_data:{snapshot_as_of}" if snapshot_as_of else "stock_ma_data:unavailable",
             },
             "data": all_items[:limit],
             "count": min(limit, len(all_items)),

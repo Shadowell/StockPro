@@ -11,6 +11,7 @@ import pandas as pd
 import psycopg2.extras
 from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.db import db_instance as db
@@ -784,8 +785,7 @@ def _stock_spot_frame_for_cache() -> pd.DataFrame:
     raise RuntimeError("; ".join(errors))
 
 
-@router.get("/status")
-async def data_status() -> Dict[str, Any]:
+def _data_status_payload() -> Dict[str, Any]:
     coverage = db.kline_coverage(limit=500) if hasattr(db, "kline_coverage") else []
     jobs = db.list_sync_jobs(limit=20) if hasattr(db, "list_sync_jobs") else []
     manager_status = build_data_manager_status(db, sync_status)
@@ -802,6 +802,11 @@ async def data_status() -> Dict[str, Any]:
     }
 
 
+@router.get("/status")
+async def data_status() -> Dict[str, Any]:
+    return await run_in_threadpool(_data_status_payload)
+
+
 @router.post("/tushare/catalog/install")
 async def install_tushare_catalog() -> Dict[str, Any]:
     return {"installed": tushare_catalog_service.install_catalog(), "credit_tier": tushare_catalog_service.credit_tier}
@@ -809,7 +814,8 @@ async def install_tushare_catalog() -> Dict[str, Any]:
 
 @router.get("/datasets")
 async def list_research_datasets() -> Dict[str, Any]:
-    return {"items": dataset_snapshot_service.list_datasets()}
+    items = await run_in_threadpool(dataset_snapshot_service.list_datasets)
+    return {"items": items}
 
 
 @router.get("/quality/issues")
@@ -828,7 +834,8 @@ async def list_research_source_entitlements() -> Dict[str, Any]:
 
 @router.get("/snapshots")
 async def list_research_dataset_snapshots(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
-    return {"items": dataset_snapshot_service.list_snapshots(limit=limit)}
+    items = await run_in_threadpool(dataset_snapshot_service.list_snapshots, limit=limit)
+    return {"items": items}
 
 
 @router.get("/universe-snapshots/{snapshot_id}")
@@ -918,7 +925,7 @@ async def publish_daily_bars_snapshot(request: DailyBarsPublicationRequest) -> D
 
 @router.get("/tushare/endpoints")
 async def list_tushare_endpoints(module: Optional[str] = Query(None)) -> Dict[str, Any]:
-    rows = tushare_catalog_service.catalogue(module=module)
+    rows = await run_in_threadpool(tushare_catalog_service.catalogue, module=module)
     return {"credit_tier": tushare_catalog_service.credit_tier, "items": rows, "total": len(rows)}
 
 
@@ -1063,12 +1070,12 @@ async def trigger_market_history_sync(request: Optional[MarketHistorySyncRequest
 
 @router.get("/config")
 async def data_config() -> Dict[str, Any]:
-    return _config_payload(db)
+    return await run_in_threadpool(_config_payload, db)
 
 
 @router.get("/table-stats")
 async def data_table_stats() -> Dict[str, Any]:
-    return build_data_manager_table_stats(db)
+    return await run_in_threadpool(build_data_manager_table_stats, db)
 
 
 @router.get("/jobs")
@@ -1076,7 +1083,12 @@ async def data_jobs(
     limit: int = Query(20, ge=1, le=100),
     include_items: bool = Query(True, alias="includeItems"),
 ) -> Dict[str, Any]:
-    return build_data_manager_jobs(db, limit=limit, include_items=include_items)
+    return await run_in_threadpool(
+        build_data_manager_jobs,
+        db,
+        limit=limit,
+        include_items=include_items,
+    )
 
 
 @router.get("/schedule")
@@ -1084,8 +1096,7 @@ async def data_schedule() -> Dict[str, Any]:
     return _schedule_payload()
 
 
-@router.get("/schedules/daily")
-async def daily_reference_schedule() -> Dict[str, Any]:
+def _daily_reference_schedule_payload() -> Dict[str, Any]:
     schedule = daily_reference_sync_service.get_schedule()
     try:
         from app.services.scheduler_service import scheduler_service
@@ -1113,6 +1124,11 @@ async def daily_reference_schedule() -> Dict[str, Any]:
             else "disabled"
         ),
     }
+
+
+@router.get("/schedules/daily")
+async def daily_reference_schedule() -> Dict[str, Any]:
+    return await run_in_threadpool(_daily_reference_schedule_payload)
 
 
 @router.put("/schedules/daily")
@@ -1717,4 +1733,3 @@ async def heal_missing_data(request: HealDataRequest = Body(...)):
         "refreshed_concepts": refreshed_concepts,
         "refreshed_indices": refreshed_indices,
     }
-

@@ -38,6 +38,8 @@ class AICapabilityTests(unittest.IsolatedAsyncioTestCase):
 class DataPurposeTests(unittest.TestCase):
     def test_acceptance_and_seed_markers_are_classified(self):
         self.assertEqual("acceptance", infer_data_purpose("Sprint QA 回测"))
+        self.assertEqual("acceptance", infer_data_purpose("TEST probe"))
+        self.assertEqual("user", infer_data_purpose("backtest momentum"))
         self.assertEqual("seed", infer_data_purpose("demo strategy"))
         self.assertEqual("user", infer_data_purpose("红利低波"))
 

@@ -730,7 +730,7 @@ export function DataCenter() {
             )}
           </div>
         </div>
-        <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 lg:w-auto lg:pb-0">
+        <div className="flex w-full flex-wrap items-center gap-2 pb-1 lg:min-w-0 lg:flex-1 lg:justify-end lg:pb-0">
           <div className="group/data-help relative shrink-0">
             <button
               type="button"

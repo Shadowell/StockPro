@@ -130,7 +130,7 @@ function Structure({ context }: { context: MarketResearchContext }) {
 }
 
 function Sectors({ context }: { context: MarketResearchContext }) {
-  const rows = context.sector_evidence?.items ?? [];
+  const rows = useMemo(() => context.sector_evidence?.items ?? [], [context.sector_evidence?.items]);
   const leaderSymbols = useMemo(
     () => rows.map((row) => String(row.leader_symbol ?? '')),
     [rows],

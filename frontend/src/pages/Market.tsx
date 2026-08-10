@@ -594,8 +594,27 @@ export function Market({ asOfDate }: MarketProps = {}) {
     marketScope === 'theme'
       ? selectedConceptMeta?.updated_at?.slice(0, 16) || asOfDate || '板块缓存'
       : latestDaily?.date || (!asOfDate ? fundamentals?.updated_at?.slice(0, 10) : null) || '待同步';
-  const currentPrice = selectedPrice ?? lastClose;
-  const priceChange = selectedChangePct ?? null;
+  const liveBookPrice = orderBook?.price ?? orderBook?.bid ?? null;
+  const priceEvidenceRatio =
+    latestDaily?.close && liveBookPrice && latestDaily.close > 0 && liveBookPrice > 0
+      ? Math.max(latestDaily.close, liveBookPrice) / Math.min(latestDaily.close, liveBookPrice)
+      : null;
+  const orderBookMatchesResearchDate = Boolean(
+    latestDaily?.date && orderBook?.trade_date && latestDaily.date === orderBook.trade_date,
+  );
+  const priceEvidenceConflict = Boolean(
+    marketScope === 'a-share' &&
+      orderBookMatchesResearchDate &&
+      orderBook?.data_status === 'fresh' &&
+      priceEvidenceRatio != null &&
+      priceEvidenceRatio > 1.35,
+  );
+  const priceEvidenceGapPct =
+    priceEvidenceConflict && latestDaily?.close && liveBookPrice
+      ? Math.abs(((liveBookPrice - latestDaily.close) / latestDaily.close) * 100)
+      : null;
+  const currentPrice = priceEvidenceConflict ? null : selectedPrice ?? lastClose;
+  const priceChange = priceEvidenceConflict ? null : selectedChangePct ?? null;
   const displayRows =
     marketScope === 'theme'
       ? filteredMarketRows.slice(0, 40)
@@ -658,6 +677,23 @@ export function Market({ asOfDate }: MarketProps = {}) {
           </span>
         </div>
       </div>
+
+      {priceEvidenceConflict ? (
+        <div
+          role="alert"
+          data-testid="market-price-evidence-conflict"
+          className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100"
+        >
+          <div className="font-semibold">价格证据冲突</div>
+          <p className="mt-1 text-xs leading-relaxed text-red-200/80">
+            日线收盘 {format(latestDaily?.close)}（{latestDaily?.date || '日期未知'} ·{' '}
+            {latestDaily?.source_label || '历史缓存'}）与盘口 {format(liveBookPrice)}（
+            {orderBook?.trade_date || orderBook?.trade_time || '时间未知'} ·{' '}
+            {orderBook?.source_label || '盘口快照'}）偏差 {format(priceEvidenceGapPct)}%。暂停合并价格与派生涨跌幅；
+            日线仅作为待修复缓存展示。
+          </p>
+        </div>
+      ) : null}
 
       {loading && !hasChart && marketRows.length === 0 ? (
         <div className="flex min-h-[560px] items-center justify-center text-gray-400">加载中...</div>
