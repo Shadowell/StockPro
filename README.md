@@ -50,7 +50,7 @@ StockPro 的重点不是“给出一只必涨股票”，而是让每个研究�
 
 | 工作区 | 路由 | 主要用途 |
 | --- | --- | --- |
-| 首页 | `/` | 市场总览、研究状态与关键任务 |
+| 首页 | `/` | 量化研究台、市场总览与下一步动作 |
 | 行情 | `/market` | 市场结构、情绪、事件、日历与个股研究 |
 | 股票池 | `/pools` | 规则、生成记录、快照与回测衔接 |
 | 因子 | `/factors` | 因子目录、计算、分析、相关性与因子值 |
@@ -93,7 +93,7 @@ Paper 模拟执行
 | --- | --- | --- |
 | 前端 | React 18、TypeScript、Vite、Tailwind CSS、ECharts | `http://localhost:4444` |
 | 后端 | FastAPI、Pydantic、SQLAlchemy、APScheduler、Backtrader | `http://localhost:4445` |
-| 数据库 | PostgreSQL 16 | `127.0.0.1:55432` |
+| 数据库 | 服务器 PostgreSQL（SSH 隧道） | 本机隧道 `127.0.0.1:55432` |
 | 数据源 | TuShare 优先，AKShare 显式补充 | 由数据中心管理 |
 | AI | 通义千问 / DashScope，可选 | 由 `QWEN_API_KEY` 启用 |
 | Agent | 本地 stdio MCP，协议 `stockpro-mcp-v1` | 不提供公网传输 |
@@ -107,7 +107,7 @@ Paper 模拟执行
 - macOS 或 Linux 开发环境
 - Python 3.11+
 - Node.js 18+ 与 npm 9+
-- Docker Desktop 或可用的 Docker Compose
+- 可访问数据库服务器的 SSH 主机别名
 - 可选：`tmux`，用于让一键启动的前后端服务稳定驻留
 
 ### 首次初始化
@@ -119,8 +119,6 @@ cd StockPro
 cp backend/.env.example backend/.env
 # 编辑 backend/.env，至少修改管理员密码和 Token 密钥；
 # 需要真实数据或 AI 时，再填写 TUSHARE_TOKEN / QWEN_API_KEY。
-
-docker compose up -d postgres
 
 python3 -m venv backend/venv
 backend/venv/bin/python -m pip install -r backend/requirements.txt
@@ -161,7 +159,8 @@ tail -f logs/frontend.log
 
 | 配置 | 作用 | 建议 |
 | --- | --- | --- |
-| `DATABASE_URL` | PostgreSQL 连接 | 本地默认端口 `55432` |
+| `DATABASE_URL` | 服务器 PostgreSQL 连接 | 默认经本机 `55432` SSH 隧道转发 |
+| `DATABASE_SSH_HOST` | 数据库服务器 SSH 主机别名 | 与 `~/.ssh/config` 一致 |
 | `TUSHARE_TOKEN` | TuShare 数据权限 | 按实际积分和接口权限配置 |
 | `QWEN_API_KEY` | 通义千问分析 | 不使用 AI 时可留空 |
 | `ENABLE_SCHEDULER` | 日终调度 | 仅在理解任务范围后启用 |

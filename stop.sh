@@ -82,10 +82,14 @@ pkill -f "uvicorn app.main:app" 2>/dev/null || true
 pkill -f "vite" 2>/dev/null || true
 echo -e "  ${GREEN}✓ 清理完成${NC}"
 
+# 4. 停止数据库 SSH 隧道
+echo -e "\n${YELLOW}🐘 停止 PostgreSQL SSH 隧道...${NC}"
+./scripts/database-tunnel.sh stop 2>/dev/null || true
+
 # 等待清理完成
 sleep 1
 
-# 4. 最终检查
+# 5. 最终检查
 echo -e "\n${YELLOW}✅ 最终检查...${NC}"
 if lsof -t -i :4445 > /dev/null 2>&1; then
     echo -e "  ${RED}⚠️  警告: 端口 4445 仍被占用${NC}"

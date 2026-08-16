@@ -79,27 +79,22 @@ echo -e "  ${GREEN}✓ 清理完成${NC}"
 # 等待清理完成
 sleep 1
 
-# 4. 创建日志目录（如果不存在）
+# 4. 创建日志目录和本地私有配置（如果不存在）
 echo -e "\n${YELLOW}📁 准备日志目录...${NC}"
 mkdir -p logs
+if [ ! -f "backend/.env" ] && [ -f "backend/.env.example" ]; then
+    cp backend/.env.example backend/.env
+fi
 echo -e "  ${GREEN}✓ 日志目录就绪${NC}"
 
-# 5. 启动 PostgreSQL
-echo -e "\n${YELLOW}🐘 启动 PostgreSQL...${NC}"
-if docker compose version >/dev/null 2>&1; then
-    docker compose up -d postgres
-else
-    docker-compose up -d postgres
-fi
-echo -e "  ${GREEN}✓ PostgreSQL 已就绪 (127.0.0.1:55432)${NC}"
+# 5. 建立远端 PostgreSQL 连接
+echo -e "\n${YELLOW}🐘 连接远端 PostgreSQL...${NC}"
+./scripts/database-tunnel.sh start
+echo -e "  ${GREEN}✓ 远端 PostgreSQL 连接已就绪${NC}"
 
 # 6. 启动后端服务
 echo -e "\n${YELLOW}🚀 启动后端服务...${NC}"
 cd backend
-if [ ! -f ".env" ] && [ -f ".env.example" ]; then
-    cp .env.example .env
-fi
-
 # 检查虚拟环境
 if [ ! -d "venv" ]; then
     echo "  创建虚拟环境..."
