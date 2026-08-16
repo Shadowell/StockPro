@@ -1,5 +1,43 @@
 # Progress Log
 
+## 20 Daily-Bar 打板 / 隔日T Strategies (2026-08-16)
+
+1. Added 20 Strategy API v1 presets: 8 打板隔日 T, 8 隔日 T, plus 3-day
+   reversal / 20-day momentum / MA breakout / low-vol defense. Engine is
+   A-share daily T+1. Limit-up is close-to-close ≥ 9.5%, not tick HFT or T+0.
+2. Registered and validated all 20 via `POST /api/strategy`. Quick jobs ran
+   on dataset 10 / universe 1 / factor 4 / pool 5 (研究20动量池).
+3. All 20 quick runs succeeded with real fills. Last-30-session results:
+
+   | 策略 | 成交 | 收益 | 胜率 | run |
+   | --- | ---: | ---: | ---: | --- |
+   | 窄幅突破 | 94 | +0.25% | 50% | `fa9f6317-…` |
+   | 大振幅回归 | 106 | -0.01% | 44% | `a67d8e98-…` |
+   | 三日超卖反转 | 102 | -0.10% | 44% | `c99601f0-…` |
+   | 二十日动量轮动 | 38 | -0.11% | 50% | `1f26e624-…` |
+   | 放量阳线 | 94 | -0.18% | 46% | `426559dc-…` |
+   | 均线多头突破 | 78 | -0.23% | 37% | `f4268b83-…` |
+   | 低波动防守 | 74 | -1.13% | 50% | `fd2aab00-…` |
+   | 跌停反抽 | 110 | -2.41% | 43% | `4e597f82-…` |
+   | 首板/连板/高度板/炸板 | 110 | -2.49% | 39% | 大票宇宙涨停稀少，信号退化 |
+   | 首板放量 | 110 | -3.08% | 37% | `fc00d0ee-…` |
+   | 隔夜高开跟随 | 110 | -3.33% | 35% | `6cb6e4b1-…` |
+   | 实体板 / 有空间板 | 110 | -3.53% | 33% | 收盘位置排序接近 |
+   | 尾盘强势 | 110 | -3.63% | 31% | `4727cf83-…` |
+   | 低开高走 | 110 | -3.88% | 43% | `3e85ea26-…` |
+   | 高开高走跟随 | 110 | -4.51% | 41% | `39e45528-…` |
+   | 下影线回踩 | 110 | -5.20% | 37% | `bbb85174-…` |
+
+4. Differentiated 首板 / 连板 / 高度板 fallbacks (acceleration / 3-day streak /
+   5-day height) and re-queued those three plus 60-day fulls for 窄幅突破、
+   大振幅回归、三日反转、二十日动量. Numbers above are sealed quick evidence,
+   not forecasts.
+
+Verification: `unittest tests.test_board_t_strategies` passed; `npx tsc -b
+--noEmit` passed. Local `:4444` / `:4445` healthy. Open
+`http://localhost:4444/backtest/fa9f6317-fcd7-4414-ae54-fee509a97324` or
+search 策略页 `打板` / `隔日T`.
+
 ## Tremor Operator System Alignment (2026-07-29)
 
 1. Replaced the reintroduced capsule-style workspace buttons with Tremor's

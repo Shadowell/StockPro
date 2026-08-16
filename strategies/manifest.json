@@ -40,5 +40,125 @@
     "name": "平底均线图突破",
     "description": "筛选最近15天M5/M10/M20/M30均线几乎平行的主板股票，寻找横盘整理后的突破机会",
     "interval_seconds": 600
+  },
+  {
+    "filename": "board_first_weak_to_strong.py",
+    "name": "[A股][日线][打板] 首板弱转强隔日T",
+    "description": "优先选当日首板（连板计数=1）；研究20池大票涨停稀少时按当日涨幅补齐。日线近似，不是逐笔打板。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "board_consecutive_relay.py",
+    "name": "[A股][日线][打板] 连板晋级隔日T",
+    "description": "优先选2板及以上；无连板时按连板计数与当日涨幅排序。日线收盘近似连板。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "board_broken_reclaim.py",
+    "name": "[A股][日线][打板] 炸板次日回封",
+    "description": "昨日大涨但未封死、今日继续走强则加分；否则按今日涨幅排序做隔日T。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "board_space_avoid_yizi.py",
+    "name": "[A股][日线][打板] 有空间板回避一字",
+    "description": "涨停且全日振幅大于0.2%视为有空间板；一字板降权。无涨停时按收盘位置补齐。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "board_first_volume.py",
+    "name": "[A股][日线][打板] 首板放量隔日T",
+    "description": "首板且相对5日均量放大加分；无首板时按量比乘涨幅排序。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "board_high_ladder.py",
+    "name": "[A股][日线][打板] 高度板隔日T",
+    "description": "优先3板及以上高度板；大票宇宙高度板稀少时按连板计数与涨幅近似。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "board_limit_down_bounce.py",
+    "name": "[A股][日线][打板] 跌停反抽隔日T",
+    "description": "昨日跌停或大跌、今日收阳加分；否则选昨日最弱且今日转强的标的。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "board_seal_quality.py",
+    "name": "[A股][日线][打板] 实体板封板质量",
+    "description": "涨停且收盘接近最高价视为实体板；无涨停时按收盘位置与涨幅排序。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "t_gap_down_recovery.py",
+    "name": "[A股][日线][隔日T] 低开高走",
+    "description": "低开且收阳加分，按实体与低开幅度排序，次日平仓。A股T+1隔日T，不是当日T+0。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "t_gap_up_hold.py",
+    "name": "[A股][日线][隔日T] 高开高走跟随",
+    "description": "高开且收阳跟随，不做高开低走空头。日线隔日T。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "t_lower_shadow.py",
+    "name": "[A股][日线][隔日T] 下影线回踩",
+    "description": "盘中回踩后收阳、下影足够长则加分，隔日平仓。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "t_close_strength.py",
+    "name": "[A股][日线][隔日T] 尾盘强势",
+    "description": "收盘接近当日最高且收阳，视为尾盘强势隔日T。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "t_amplitude_reversion.py",
+    "name": "[A股][日线][隔日T] 大振幅回归",
+    "description": "昨日振幅大且今日反向收复则加分，做隔日均值回归。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "t_volume_yang.py",
+    "name": "[A股][日线][隔日T] 放量阳线",
+    "description": "相对5日均量放大且收阳，按量比与实体排序隔日T。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "t_tight_breakout.py",
+    "name": "[A股][日线][隔日T] 窄幅突破",
+    "description": "近5日收盘窄幅整理后今日收阳突破上沿，隔日T。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "t_overnight_follow.py",
+    "name": "[A股][日线][隔日T] 隔夜高开跟随",
+    "description": "隔夜高开且收盘靠近最高价，跟随强势隔日T。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "daily_reversal_3d.py",
+    "name": "[A股][日线][反转] 三日超卖反转",
+    "description": "选3日收益最低的超卖标的做隔日反转；因子缺失时回退到价格收益。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "daily_momentum_20d.py",
+    "name": "[A股][日线][动量] 二十日动量轮动",
+    "description": "选20日动量最强的标的做日频轮动；因子缺失时用收盘价动量。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "daily_ma_breakout.py",
+    "name": "[A股][日线][趋势] 均线多头突破",
+    "description": "收盘站上5日且5日高于10日均线则加分，日频轮动最强多头。",
+    "interval_seconds": 60
+  },
+  {
+    "filename": "daily_low_vol_defense.py",
+    "name": "[A股][日线][低波] 低波动防守",
+    "description": "在正收益候选里选10日已实现波动最低的标的，偏防守隔日持有。",
+    "interval_seconds": 60
   }
 ]
