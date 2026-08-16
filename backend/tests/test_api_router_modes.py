@@ -17,6 +17,7 @@ class ApiRouterTests(unittest.TestCase):
         self.assertIn("/market/hot-concepts", paths)
         self.assertIn("/ai/capabilities", paths)
         self.assertIn("/workflow/capabilities", paths)
+        self.assertIn("/workflow/research-desk", paths)
         self.assertIn("/data-hub/datasets", paths)
         self.assertIn("/admin/task-status", paths)
         self.assertIn("/stocks/search", paths)

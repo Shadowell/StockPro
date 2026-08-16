@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from app.api.endpoints import (
     acceptance,
     admin,
+    agent,
     ai,
     analysis,
     auth,
@@ -16,6 +17,7 @@ from app.api.endpoints import (
     factors,
     factor_research,
     health,
+    live,
     market,
     monitor_runtime,
     paper,
@@ -40,6 +42,8 @@ def create_api_router() -> APIRouter:
     protected = APIRouter(dependencies=[Depends(require_authenticated)])
     protected.include_router(admin.router, prefix="/admin", tags=["admin"])
     protected.include_router(acceptance.router, prefix="/acceptance", tags=["local-acceptance"])
+    protected.include_router(agent.router, prefix="/agent", tags=["agent"])
+    protected.include_router(live.router, prefix="/live", tags=["live"])
     protected.include_router(market.router, prefix="/market", tags=["market"])
     protected.include_router(stocks.router, prefix="/stocks", tags=["stocks"])
     protected.include_router(sectors.router, prefix="/sectors", tags=["sectors"])

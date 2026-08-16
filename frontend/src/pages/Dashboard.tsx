@@ -8,6 +8,7 @@ import { OperatorMetricCard, OperatorPageHeader, MetricValue } from '../componen
 import { MarketSessionBadge } from '../components/MarketSessionBadge';
 import { SectorFundFlowPanel } from '../components/SectorFundFlowPanel';
 import { LimitBoardPanel } from '../components/LimitBoardPanel';
+import { ResearchDeskPanel } from '../components/ResearchDeskPanel';
 import type { MarketOverview, MarketPulse, ThsHotItem } from '../types';
 import { evaluateFreshness, formatFreshnessTime, latestTimestamp } from '../utils/dataFreshness';
 import { marketMetricColor, marketToneClass, type MetricTone } from '../utils/marketColors';
@@ -248,14 +249,16 @@ function RealtimeMarketModule({
         || pulse.advancing != null),
   );
   const pulseCards = hasPulseData ? buildPulseCards(pulse) : [];
-  const snapshotState = overview?.data_status?.stock_snapshot_state ?? 'unavailable';
-  const snapshotMessage = overview?.data_status?.message ?? '全市场实时快照未同步';
+  const snapshotState = overview?.data_status?.stock_snapshot_state ?? (loading ? 'loading' : 'unavailable');
+  const snapshotMessage = overview?.data_status?.message
+    ?? (loading ? '正在读取缓存' : '全市场实时快照未同步');
   const thsHotFreshness = evaluateFreshness(latestTimestamp(thsHot), CACHE_FRESHNESS_MS);
   const shortLineFreshness = evaluateFreshness(latestTimestamp(shortLine), CACHE_FRESHNESS_MS);
   const shortLineSnapshot = shortLine.find((item) => item.data_state === 'sealed_snapshot');
   const shortLineTradeDate = shortLineSnapshot?.trade_date ?? null;
   const ecologyShortLine = shortLine.filter((item) => SHORT_LINE_ECOLOGY.has(item.code) || item.name.includes('涨停') || item.name.includes('跌停') || item.name.includes('炸板') || item.name.includes('连板') || item.name.includes('封板'));
   const displayShortLine = ecologyShortLine.length > 0 ? ecologyShortLine.slice(0, 8) : shortLine.filter((item) => !['rise_count', 'fall_count', 'rise_fall_ratio'].includes(item.code)).slice(0, 8);
+  // 热榜缓存陈旧时不得把陈旧个股当作当前强势股信号展示。
   const topGainer = thsHotFreshness.state === 'fresh' ? thsHot[0] : undefined;
   const totalAmount = volume?.amount ?? null;
   const amountUnit = volume?.unit || '亿';
@@ -306,7 +309,7 @@ function RealtimeMarketModule({
 
           {indices.length === 0 && (
             <div className="rounded-lg border border-crypto-border bg-crypto-bg/45 p-4 text-sm text-gray-500 md:col-span-2 xl:col-span-4">
-              暂无指数缓存
+              {loading ? '正在读取指数缓存' : '暂无指数缓存'}
             </div>
           )}
 
@@ -323,7 +326,7 @@ function RealtimeMarketModule({
               </div>
             ) : (
               <div className="mt-3 text-sm font-semibold text-amber-300">
-                {errors.thsHot ? '热榜加载失败' : thsHotFreshness.state === 'stale' ? '热榜缓存已陈旧' : '暂无当前热榜'}
+                {errors.thsHot ? '热榜加载失败' : loading ? '正在读取热榜' : thsHotFreshness.state === 'stale' ? '热榜缓存已陈旧' : '暂无当前热榜'}
               </div>
             )}
             <div className="mt-3 text-[10px] text-gray-600">{topGainer?.source_label || '来源未记录'} · {formatFreshnessTime(thsHotFreshness.timestamp)}</div>
@@ -334,7 +337,7 @@ function RealtimeMarketModule({
               <span className="text-sm font-bold text-gray-400">市场情绪</span>
               <Activity className="h-4 w-4 text-amber-400" />
             </div>
-            <div className="text-2xl font-bold text-amber-300">{sentiment?.status || '未同步'}</div>
+            <div className="text-2xl font-bold text-amber-300">{sentiment?.status || (loading ? '读取中' : '未同步')}</div>
             <div className="mt-3 text-sm font-bold text-amber-300">情绪分 {metricText(sentiment?.score, 0)}</div>
             <div className="mt-4 text-xs text-gray-500">
               涨跌 {metricText(upCount)} / {metricText(downCount)}
@@ -418,7 +421,7 @@ function RealtimeMarketModule({
             ))
           ) : (
             <div className="flex min-h-[88px] items-center justify-center text-sm font-semibold text-gray-500 sm:col-span-2 lg:col-span-3 xl:col-span-5">
-              全市场实时快照未同步，暂无大盘诊断指标
+              {loading ? '正在读取全市场快照' : '全市场实时快照未同步，暂无大盘诊断指标'}
             </div>
           )}
         </div>
@@ -512,9 +515,23 @@ export function Dashboard() {
       <OperatorPageHeader
         icon={LayoutDashboard}
         title="市场大盘"
-        subtitle="聚合 A 股指数、全市场广度诊断、涨停生态、板块资金流向与龙头；进入行情页查看完整市场证据。"
-        actions={<MarketSessionBadge prominent overview={overview} />}
+        subtitle="量化研究台总览：先看同一条多因子链路走到哪一步，再读指数、广度、涨停生态与板块资金。首页读缓存，不是盘中推送。"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {overview?.data_status?.stock_snapshot_updated_at ? (
+              <StatusBadge tone={overview.data_status.stock_snapshot_state === 'fresh' ? 'green' : 'amber'}>
+                行情缓存 {String(overview.data_status.stock_snapshot_updated_at).slice(0, 10)}
+              </StatusBadge>
+            ) : (
+              <StatusBadge tone="amber">行情缓存未同步</StatusBadge>
+            )}
+            <MarketSessionBadge prominent overview={overview} />
+          </div>
+        }
       />
+      <div className="mb-4">
+        <ResearchDeskPanel />
+      </div>
       <section className="min-h-[720px]">
         <RealtimeMarketModule
           overview={overview}

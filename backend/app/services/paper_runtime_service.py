@@ -420,6 +420,22 @@ class PaperRuntimeService:
         self._execute("UPDATE notification_deliveries SET status='acknowledged',acknowledged_at=NOW() WHERE alert_id=%s AND status='delivered'", (alert_id,))
         return self._row("SELECT * FROM alerts WHERE id=%s", (alert_id,)) or {}
 
+    def list_instances_light(self) -> List[Dict[str, Any]]:
+        rows = self._rows(
+            """
+            SELECT i.id, i.name, i.status, i.strategy_version_id, i.data_purpose, i.created_at,
+                   p.cash_balance, p.initial_cash, p.status AS portfolio_status
+            FROM paper_instances i
+            JOIN portfolios p ON p.id=i.portfolio_id
+            ORDER BY i.created_at DESC
+            """
+        )
+        for row in rows:
+            row["data_purpose"] = resolve_data_purpose(row.get("data_purpose"), row.get("name"))
+            if row.get("equity") is None:
+                row["equity"] = row.get("cash_balance") if row.get("cash_balance") is not None else row.get("initial_cash")
+        return rows
+
     def watch_context(self, scope: str = "business") -> Dict[str, Any]:
         alerts = self.list_alerts(None)
         signals = self._rows("SELECT * FROM strategy_signals WHERE paper_instance_id IS NOT NULL ORDER BY signal_time DESC LIMIT 200")
@@ -471,7 +487,7 @@ class PaperRuntimeService:
                 WHERE s.status='sealed' ORDER BY s.trade_date DESC,s.id DESC LIMIT 100
                 """
             )
-        instances = self.list_instances()
+        instances = self.list_instances_light()
         instance_purpose = {
             str(item["id"]): item.get("data_purpose", "user")
             for item in instances

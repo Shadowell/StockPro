@@ -20,7 +20,6 @@ import {
   RotateCcw,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
   Square,
   Terminal,
   X,
@@ -52,15 +51,21 @@ import type {
   BacktestRunRequestV1,
 } from '../types';
 import { orderTypeLabel, sideLabel, statusLabel } from '../utils/presentation';
-import { marketAdverseToneClass, marketToneClass, thresholdToneClass } from '../utils/marketColors';
 import {
-  EvidenceStrip,
+  countToneClass,
+  marketAdverseToneClass,
+  marketToneClass,
+  thresholdToneClass,
+} from '../utils/marketColors';
+import {
   FilterChipGroup,
   OperatorFilterBar,
   OperatorMetricCard,
   OperatorPageHeader,
   OperatorStatePanel,
+  SegmentedControl,
 } from '../components/OperatorShell';
+import { WorkspacePipelineNote } from '../components/WorkspacePipelineNote';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
 import { SymbolCell } from '../components/SymbolCell';
 import { useSymbolNames } from '../hooks/useSymbolNames';
@@ -79,6 +84,7 @@ const metricLabels: Record<string, string> = {
   turnover: '换手率', total_cost: '总成本', total_commission: '佣金', total_tax: '印花税', total_transfer_fee: '过户费',
   total_slippage_cost: '滑点成本', average_holding_days: '平均持有天数', average_exposure: '平均敞口',
   peak_single_symbol_weight: '单票最高权重', capacity_warnings: '容量警告', data_quality_warnings: '数据质量警告',
+  completed_trades: '成交笔数', total_orders: '总订单数', total_trades: '总成交数', excess_maximum_drawdown: '超额最大回撤',
 };
 
 const promotionCheckLabels: Record<string, string> = {
@@ -112,6 +118,10 @@ const frequencyLabels: Record<string, string> = {
   intraday: '日内',
 };
 
+const sampleLabels: Record<string, string> = {
+  train: '训练', validation: '验证', out_of_sample: '样本外',
+};
+
 function formatValue(value: number | null | undefined, unit = 'number') {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '--';
   if (unit === 'ratio' || unit === 'ratio_per_year') return `${(Number(value) * 100).toFixed(2)}%`;
@@ -120,6 +130,20 @@ function formatValue(value: number | null | undefined, unit = 'number') {
   if (unit === 'days') return `${Number(value).toFixed(1)} 天`;
   return Number(value).toFixed(3);
 }
+
+/** Compact console formatting: ratio -> %, count -> int, number -> 2dp, null -> muted dash. */
+function formatConsoleValue(value: number | null | undefined, unit = 'number') {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  if (unit === 'ratio' || unit === 'ratio_per_year') return `${(Number(value) * 100).toFixed(2)}%`;
+  if (unit === 'CNY') return `¥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
+  if (unit === 'count') return Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
+  if (unit === 'days') return `${Number(value).toFixed(1)} 天`;
+  return Number(value).toFixed(2);
+}
+
+const NULL_TONE = 'text-slate-600';
+const isNil = (value: number | null | undefined) =>
+  value === null || value === undefined || !Number.isFinite(Number(value));
 
 function metricValueTone(code: string, value: number | null | undefined, unit?: string) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'text-slate-500';
@@ -142,14 +166,59 @@ function metricValueTone(code: string, value: number | null | undefined, unit?: 
   return 'text-slate-100';
 }
 
-function StatusBadge({ run }: { run: BacktestRun }) {
-  const success = run.status === 'success';
+const runStatusMeta: Record<string, { label: string; chip: string }> = {
+  running: { label: '进行中', chip: 'border-blue-500/30 bg-blue-500/10 text-blue-300' },
+  success: { label: '成功', chip: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
+  failed: { label: '失败', chip: 'border-red-500/30 bg-red-500/10 text-red-300' },
+  cancelled: { label: '已取消', chip: 'border-white/10 bg-white/[0.04] text-slate-400' },
+};
+
+function RunStatusChip({ status }: { status: string }) {
+  const meta = runStatusMeta[status] ?? { label: statusLabel(status), chip: runStatusMeta.cancelled.chip };
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${success ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : run.status === 'failed' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
-      {success ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
-      {run.run_mode === 'quick' ? '快速预检' : '完整回测'} · {statusLabel(run.status)}
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${meta.chip}`}>
+      {status === 'success' ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
+      {status === 'running' ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" /> : null}
+      {meta.label}
     </span>
   );
+}
+
+function RunModeChip({ mode }: { mode: BacktestRun['run_mode'] }) {
+  const quick = mode === 'quick';
+  return (
+    <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${quick ? 'border-amber-500/25 bg-amber-500/[0.08] text-amber-300' : 'border-blue-500/25 bg-blue-500/10 text-blue-300'}`}>
+      {quick ? '快速' : '完整'}
+    </span>
+  );
+}
+
+const promotionStatusMeta: Record<string, { label: string; chip: string }> = {
+  paper_eligible: { label: '晋级 Paper', chip: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
+  rejected: { label: '晋级驳回', chip: 'border-red-500/30 bg-red-500/10 text-red-300' },
+  not_evaluated: { label: '未评估晋级', chip: 'border-white/10 bg-white/[0.04] text-slate-400' },
+  not_eligible_quick: { label: '快速预检不可晋级', chip: 'border-white/10 bg-white/[0.04] text-slate-400' },
+};
+
+function PromotionStatusChip({ status }: { status: string }) {
+  const meta = promotionStatusMeta[status] ?? { label: status || '未评估晋级', chip: promotionStatusMeta.not_evaluated.chip };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${meta.chip}`}>{meta.label}</span>
+  );
+}
+
+/** Dashboard comparison KPIs: 收益 / 回撤 / 夏普 / 交易数, nulls render muted dash. */
+function runKpis(run: BacktestRun): Array<{ label: string; text: string; tone: string }> {
+  const ret = run.metrics?.strategy_return ?? null;
+  const drawdown = run.metrics?.maximum_drawdown ?? null;
+  const sharpe = run.metrics?.sharpe ?? null;
+  const trades = run.metrics?.completed_trades ?? run.metrics?.total_trades ?? null;
+  return [
+    { label: '收益', text: formatConsoleValue(ret, 'ratio'), tone: marketToneClass(ret, NULL_TONE) },
+    { label: '回撤', text: formatConsoleValue(drawdown, 'ratio'), tone: marketAdverseToneClass(drawdown, NULL_TONE) },
+    { label: '夏普', text: formatConsoleValue(sharpe), tone: isNil(sharpe) ? NULL_TONE : thresholdToneClass(sharpe, 1, 'text-slate-200') },
+    { label: '交易', text: formatConsoleValue(trades, 'count'), tone: isNil(trades) ? NULL_TONE : countToneClass(trades) },
+  ];
 }
 
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
@@ -359,12 +428,53 @@ type DetailData = {
   attribution: Array<Record<string, unknown>>;
 };
 
-const detailTabs = ['总览', '绩效指标', '持仓', '交易', '订单', '日志', '代码与参数', '归因'] as const;
+const detailTabs = ['持仓', '交易', '订单', '日志', '归因', '代码与参数'] as const;
+
+/** 绩效明细: 3 compact label:value columns over whatever metric codes the backend sealed. */
+const metricGroups: Array<{ title: string; codes: string[] }> = [
+  {
+    title: '收益类',
+    codes: ['annualized_return', 'benchmark_return', 'excess_return', 'alpha', 'beta', 'information_ratio', 'calmar'],
+  },
+  {
+    title: '风险类',
+    codes: ['sharpe', 'annualized_volatility', 'downside_volatility', 'benchmark_volatility', 'tracking_error', 'sortino', 'maximum_drawdown', 'excess_maximum_drawdown'],
+  },
+  {
+    title: '交易类',
+    codes: ['win_rate', 'daily_win_rate', 'profit_loss_ratio', 'completed_trades', 'total_orders', 'total_trades', 'fill_rate', 'rejection_rate', 'turnover', 'total_cost', 'total_commission', 'total_tax', 'total_transfer_fee', 'total_slippage_cost', 'average_holding_days', 'average_exposure', 'peak_single_symbol_weight'],
+  },
+];
+
+const verdictCodes = [
+  { code: 'strategy_return', label: '净收益' },
+  { code: 'excess_return', label: '超额收益' },
+  { code: 'maximum_drawdown', label: '最大回撤' },
+  { code: 'sharpe', label: '夏普' },
+] as const;
+
+function MetricRow({ code, item }: { code: string; item?: BacktestMetric }) {
+  const value = item?.metric_value;
+  const tone = isNil(value) ? NULL_TONE : metricValueTone(code, value, item?.unit);
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-white/[0.03] py-1.5">
+      <span className="min-w-0 truncate text-xs text-slate-500" title={code}>
+        {metricLabels[code] ?? code}
+      </span>
+      <span
+        className={`shrink-0 font-mono text-xs tabular-nums ${tone}`}
+        title={item?.metric_value == null ? (item?.null_reason ?? '未定义') : item?.calculation_version}
+      >
+        {formatConsoleValue(value, item?.unit ?? 'number')}
+      </span>
+    </div>
+  );
+}
 
 function BacktestDetail({ runId }: { runId: string }) {
   const navigate = useNavigate();
   const [data, setData] = useState<DetailData | null>(null);
-  const [tab, setTab] = useState<(typeof detailTabs)[number]>('总览');
+  const [tab, setTab] = useState<(typeof detailTabs)[number]>('持仓');
   const [error, setError] = useState('');
   const [evidenceStatus, setEvidenceStatus] = useState<Record<string, 'loading' | 'loaded' | 'failed'>>({});
   const [seriesStatus, setSeriesStatus] = useState<'loading' | 'loaded' | 'failed'>('loading');
@@ -433,141 +543,165 @@ function BacktestDetail({ runId }: { runId: string }) {
 
   if (error) return <div className="p-8 text-red-300">{error}</div>;
   if (!data) return <div className="flex min-h-[60vh] items-center justify-center text-gray-500"><RefreshCw className="mr-3 h-5 w-5 animate-spin" />正在读取封存结果…</div>;
-  const core = ['strategy_return', 'annualized_return', 'benchmark_return', 'excess_return', 'maximum_drawdown', 'sharpe'];
-  const evaluationMap = Object.fromEntries((data.run.protocol_evaluations ?? []).map((item) => [item.sample_label, item]));
   const gateChecks = data.run.promotion_checks ?? [];
-  const paperEligible = data.run.run_mode === 'full' && data.run.promotion_status === 'paper_eligible'
-    && Object.keys(promotionCheckLabels).every((code) => gateChecks.some((check) => check.check_code === code && check.status === 'passed'));
-  const protocolSegments = [
-    ['train', '训练区间'],
-    ['validation', '验证区间'],
-    ['out_of_sample', '样本外区间'],
-  ] as const;
+  const dataQualityCheck = gateChecks.find((check) => check.check_code === 'DATA_QUALITY_PASS');
+  const protocolEvaluations = data.run.protocol_evaluations ?? [];
 
   return (
-    <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-operator-page="backtest-detail">
+    <div className="min-h-full bg-crypto-bg p-6 2xl:px-8" data-operator-page="backtest-detail">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <button type="button" onClick={() => navigate('/backtest')} className="mb-4 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-blue-300"><ArrowLeft className="h-4 w-4" />返回回测工作台</button>
-          <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold text-white">{data.run.name}</h1><StatusBadge run={data.run} /></div>
-          <p className="mt-2 text-sm text-gray-500">{data.run.start_date} — {data.run.end_date} · {data.run.strategy_name} v{data.run.strategy_version}</p>
+        <div className="min-w-0">
+          <button type="button" onClick={() => navigate('/backtest')} className="mb-4 inline-flex items-center gap-2 text-sm text-gray-500 hover:text-blue-300"><ArrowLeft className="h-4 w-4" />返回回测台</button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-2xl font-bold text-white">{data.run.strategy_name ?? data.run.name}</h1>
+            <RunModeChip mode={data.run.run_mode} />
+            <RunStatusChip status={data.run.status} />
+            <PromotionStatusChip status={data.run.promotion_status} />
+            {dataQualityCheck ? (
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${dataQualityCheck.status === 'passed' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : dataQualityCheck.status === 'failed' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
+                {dataQualityCheck.status === 'passed' ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}
+                数据可信度 · {dataQualityCheck.status === 'passed' ? '通过' : dataQualityCheck.status === 'failed' ? '未通过' : '待定'}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 font-mono text-xs tabular-nums text-gray-500">回测区间 {data.run.start_date} — {data.run.end_date}</p>
+          <p className="mt-1 truncate text-xs text-gray-600">
+            {data.run.name} · v{data.run.strategy_version} · 基准 {data.run.benchmark_code} · 成本模型 {data.run.cost_model_name ?? '未绑定'} · 研究协议 {data.run.protocol_name ?? '未绑定'} · 数据快照 {data.run.dataset_snapshot_id ? '已封存' : '未绑定'}
+          </p>
         </div>
       </div>
 
-      <EvidenceStrip
-        items={[
-          { label: '模式', value: data.run.run_mode === 'quick' ? '快速预检' : '完整回测' },
-          { label: '状态', value: statusLabel(data.run.status), tone: data.run.status === 'success' ? 'green' : data.run.status === 'failed' ? 'red' : 'amber' },
-          { label: '区间', value: `${data.run.start_date} — ${data.run.end_date}` },
-          { label: '策略', value: `${data.run.strategy_name} v${data.run.strategy_version}` },
-        ]}
-      />
-
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {core.map((code) => {
+      {/* 判决带 verdict strip */}
+      <div data-testid="backtest-verdict-strip" className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {verdictCodes.map(({ code, label }) => {
           const item = metricMap[code];
-          const directional = ['strategy_return', 'annualized_return', 'benchmark_return', 'excess_return'].includes(code);
+          const value = item?.metric_value;
           const toneClass = code === 'maximum_drawdown'
-            ? marketAdverseToneClass(item?.metric_value)
+            ? marketAdverseToneClass(value)
             : code === 'sharpe'
-              ? thresholdToneClass(item?.metric_value, 1)
-              : directional
-                ? marketToneClass(item?.metric_value)
-                : 'text-blue-300';
-          const tone =
-            toneClass.includes('up') ? 'up'
-              : toneClass.includes('down') ? 'down'
-                : toneClass.includes('blue') ? 'blue'
-                  : 'neutral';
+              ? thresholdToneClass(value, 1)
+              : marketToneClass(value);
+          const tone = toneClass.includes('up') ? 'up' : toneClass.includes('down') ? 'down' : 'neutral';
           return (
-            <OperatorMetricCard
-              key={code}
-              label={metricLabels[code]}
-              tone={tone}
-              value={formatValue(item?.metric_value, item?.unit)}
-              detail={item?.metric_value == null ? (item?.null_reason ?? '未定义') : item.calculation_version}
-            />
+            <div key={code} title={value == null ? (item?.null_reason ?? '未定义') : undefined}>
+              <OperatorMetricCard
+                label={label}
+                tone={tone}
+                value={value == null ? '—' : formatConsoleValue(value, item?.unit ?? (code === 'sharpe' ? 'number' : 'ratio'))}
+                detail={value == null ? (item?.null_reason ?? '未定义') : item?.calculation_version}
+              />
+            </div>
           );
         })}
       </div>
 
+      {/* 绩效明细 */}
+      <section className={`${panel} mb-5 overflow-hidden`}>
+        <div className="flex items-center justify-between gap-3 border-b border-crypto-border px-5 py-3">
+          <h2 className="text-sm font-semibold text-white">绩效明细</h2>
+          <span className="font-mono text-[10px] tabular-nums text-gray-600">{data.metrics.length} 项封存指标 · 空值显示未定义原因</span>
+        </div>
+        <div className="grid gap-x-8 p-5 md:grid-cols-3">
+          {metricGroups.map((group) => (
+            <div key={group.title} className="min-w-0">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">{group.title}</h3>
+              {group.codes.filter((code) => metricMap[code]).map((code) => (
+                <MetricRow key={code} code={code} item={metricMap[code]} />
+              ))}
+              {group.codes.every((code) => !metricMap[code]) ? <p className="text-xs text-gray-600">暂无封存指标</p> : null}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 晋级检查：快速预检也要渲染，向操作者显式声明“不产生晋级证据”。 */}
+      {data.run.run_mode === 'quick' || gateChecks.length ? (
+        <section className={`${panel} mb-5 overflow-hidden`}>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-3">
+            <div>
+              <h2 className="text-sm font-semibold text-white">晋级检查</h2>
+              <p className="mt-0.5 text-[11px] text-gray-600">评估证据封存后只读；门禁必须全部通过才可进入 Paper 候选。</p>
+            </div>
+            {data.run.run_mode === 'full' ? (
+              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${data.run.promotion_gate_complete ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : data.run.promotion_status === 'rejected' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>
+                {data.run.promotion_gate_complete ? '门禁全部通过' : data.run.promotion_status === 'rejected' ? '未通过晋级' : '门禁未完成'}
+              </span>
+            ) : null}
+          </div>
+          {data.run.run_mode === 'quick' ? (
+            <div className="flex items-start gap-3 p-5">
+              <Zap className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+              <p className="text-sm leading-6 text-amber-200/70">快速预检不产生晋级证据：只用于检查策略能否运行及早期诊断，不会进入模拟盘候选。</p>
+            </div>
+          ) : (
+            <div className="grid gap-2 p-5 md:grid-cols-2">
+              {gateChecks.map((check) => (
+                <div key={check.check_code} className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 ${check.status === 'passed' ? 'border-emerald-500/20 bg-emerald-500/[0.05]' : check.status === 'failed' ? 'border-red-500/20 bg-red-500/[0.05]' : 'border-amber-500/20 bg-amber-500/[0.05]'}`}>
+                  {check.status === 'passed'
+                    ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                    : check.status === 'failed'
+                      ? <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                      : <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />}
+                  <div className="min-w-0">
+                    <div className={`text-xs font-medium ${check.status === 'passed' ? 'text-emerald-300' : check.status === 'failed' ? 'text-red-300' : 'text-amber-300'}`}>
+                      {promotionCheckLabels[check.check_code] ?? check.check_code}
+                    </div>
+                    {check.status !== 'passed' && check.reason ? (
+                      <div className="mt-0.5 text-[11px] leading-4 text-gray-500">{check.reason}</div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+              {!gateChecks.length ? <div className="text-xs text-gray-600 md:col-span-2">尚无封存的晋级检查证据。</div> : null}
+            </div>
+          )}
+          {protocolEvaluations.length ? (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-crypto-border px-5 py-3 text-[11px] text-gray-500">
+              {protocolEvaluations.map((evaluation) => (
+                <span key={evaluation.sample_label} className="inline-flex items-center gap-1.5 font-mono tabular-nums">
+                  {evaluation.status === 'passed' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <CircleAlert className="h-3.5 w-3.5 text-amber-400" />}
+                  {sampleLabels[evaluation.sample_label] ?? evaluation.sample_label} {evaluation.start_date}~{evaluation.end_date}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* 账户曲线 */}
+      <section className={`${panel} mb-5 p-5`}>
+        <div className="mb-3 flex items-center gap-2 text-base font-semibold text-white"><BarChart3 className="h-5 w-5 text-blue-400" />账户曲线</div>
+        {seriesStatus === 'loaded'
+          ? <ReactECharts option={chartOption} style={{ height: 380 }} />
+          : <EvidenceLedgerState status={seriesStatus === 'failed' ? 'failed' : 'loading'} />}
+        {seriesStatus === 'loaded' && data.monthly.length ? (
+          <div className="mt-4 border-t border-white/[0.04] pt-4">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">月度收益</div>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">
+              {data.monthly.map((item) => (
+                <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center">
+                  <div className="text-xs text-gray-500">{item.month}</div>
+                  <div className={`mt-1 font-mono text-sm font-bold tabular-nums ${marketToneClass(item.return)}`}>{formatValue(item.return, 'ratio')}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      {/* 交易流水：按需懒加载 */}
       <WorkspaceTabs<(typeof detailTabs)[number]>
-        ariaLabel="回测详情子页"
+        ariaLabel="回测交易流水"
         items={detailTabs.map((item) => ({ id: item, label: item, testId: `backtest-detail-tab-${item}` }))}
         value={tab}
         onChange={setTab}
       />
-
-      {tab === '总览' && <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-        <section className={`${panel} p-5`}><div className="mb-3 flex items-center gap-2 text-base font-semibold text-white"><BarChart3 className="h-5 w-5 text-blue-400" />净值与基准</div>{seriesStatus === 'loaded' ? <ReactECharts option={chartOption} style={{ height: 420 }} /> : <EvidenceLedgerState status={seriesStatus === 'failed' ? 'failed' : 'loading'} />}</section>
-        <section className={`${panel} p-5`}><h2 className="text-base font-semibold text-white">可复现实验凭证</h2><dl className="mt-5 space-y-4 text-sm">{[
-          ['研究数据', data.run.dataset_snapshot_id ? '已绑定封存快照' : '未绑定'], ['股票范围', data.run.universe_snapshot_id ? '已绑定固定范围' : '未绑定'], ['因子输入', data.run.factor_snapshot_id ? '已绑定封存因子' : '未绑定'], ['成本模型', data.run.cost_model_name ?? '未绑定'], ['研究协议', data.run.protocol_name ?? '未绑定'], ['基准', data.run.benchmark_code], ['频率', '日频 / A股收盘信号次日成交'],
-        ].map(([label, value]) => <div key={label} className="flex items-start justify-between gap-4 border-b border-white/[0.04] pb-3"><dt className="text-gray-500">{label}</dt><dd className="text-right font-medium text-gray-300">{value}</dd></div>)}</dl></section>
-        {data.run.run_mode === 'quick' ? (
-          <section className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] p-5 xl:col-span-2">
-            <div className="flex items-start gap-3">
-              <Zap className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
-              <div><h2 className="font-semibold text-amber-100">快速预检不可晋级 Paper</h2><p className="mt-2 text-sm leading-6 text-amber-200/70">该结果只用于检查策略能否运行及早期诊断；不产生训练、验证、样本外、成本和容量晋级证据，也不会进入模拟盘候选。</p></div>
-            </div>
-          </section>
-        ) : (
-          <section className={`${panel} p-5 xl:col-span-2`}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><h2 className="text-base font-semibold text-white">研究晋级门禁</h2><p className="mt-1 text-xs text-gray-500">评估证据封存后只读；门禁必须全部通过才可进入 Paper 候选。</p></div>
-              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${paperEligible ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300'}`}>{paperEligible ? 'Paper Eligible' : data.run.promotion_status === 'rejected' ? '未通过晋级' : data.run.promotion_status === 'paper_eligible' ? '门禁证据不完整' : '尚未评估'}</span>
-            </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              {protocolSegments.map(([code, label]) => {
-                const evaluation = evaluationMap[code];
-                const protocol = data.run.protocol;
-                const start = evaluation?.start_date ?? (code === 'train' ? protocol?.train_start : code === 'validation' ? protocol?.validation_start : protocol?.out_of_sample_start);
-                const end = evaluation?.end_date ?? (code === 'train' ? protocol?.train_end : code === 'validation' ? protocol?.validation_end : protocol?.out_of_sample_end);
-                const passed = evaluation?.status === 'passed';
-                return <div key={code} className="rounded-xl border border-white/[0.06] bg-black/10 p-4"><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold text-gray-200">{label}</h3>{evaluation ? passed ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <CircleAlert className="h-4 w-4 text-amber-400" /> : <Clock3 className="h-4 w-4 text-gray-600" />}</div><div className="mt-3 font-mono text-xs tabular-nums text-gray-400">{start ?? '--'} — {end ?? '--'}</div><p className={`mt-2 text-xs ${passed ? 'text-emerald-300' : evaluation ? 'text-amber-300' : 'text-gray-600'}`}>{passed ? '评估通过' : evaluation?.reason ?? '证据不可用'}</p></div>;
-              })}
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-white/[0.06] bg-black/10 p-4"><div className="text-xs text-gray-500">成本证据</div><div className="mt-2 text-sm font-medium text-gray-200">{data.run.cost_model_name ?? '未绑定成本模型'}</div><div className="mt-1 text-xs text-gray-500">总成本 {formatValue(metricMap.total_cost?.metric_value, 'CNY')}</div></div>
-              <div className="rounded-xl border border-white/[0.06] bg-black/10 p-4"><div className="text-xs text-gray-500">容量约束</div><div className="mt-2 text-sm font-medium text-gray-200">峰值参与率 {formatValue(data.run.capacity_evidence?.peak_capacity_ratio, 'ratio')}</div><div className="mt-1 text-xs text-gray-500">单票峰值 {formatValue(metricMap.peak_single_symbol_weight?.metric_value, 'ratio')}</div></div>
-              <div className="rounded-xl border border-white/[0.06] bg-black/10 p-4"><div className="text-xs text-gray-500">基准证据</div><div className="mt-2 text-sm font-medium text-gray-200">{data.run.benchmark_code}</div><div className="mt-1 text-xs text-gray-500">基准收益 {formatValue(metricMap.benchmark_return?.metric_value, 'ratio')}</div></div>
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              {gateChecks.map((check) => <div key={check.check_code} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${check.status === 'passed' ? 'border-emerald-500/20 bg-emerald-500/[0.05] text-emerald-300' : check.status === 'failed' ? 'border-red-500/20 bg-red-500/[0.05] text-red-300' : 'border-amber-500/20 bg-amber-500/[0.05] text-amber-300'}`}>{check.status === 'passed' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <CircleAlert className="h-3.5 w-3.5 shrink-0" />}<span>{promotionCheckLabels[check.check_code] ?? check.check_code}</span></div>)}
-              {!gateChecks.length ? <div className="text-xs text-gray-600 sm:col-span-2">尚无封存的晋级检查证据。</div> : null}
-            </div>
-          </section>
-        )}
-        <section className={`${panel} p-5 xl:col-span-2`}><h2 className="mb-4 text-base font-semibold text-white">月度收益</h2>{seriesStatus === 'loaded' ? <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:grid-cols-12">{data.monthly.map((item) => <div key={item.month} className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-center"><div className="text-xs text-gray-500">{item.month}</div><div className={`mt-1 font-mono text-sm font-bold tabular-nums ${marketToneClass(item.return)}`}>{formatValue(item.return, 'ratio')}</div></div>)}</div> : <div className="text-sm text-gray-600">净值序列正在按需读取，研究门禁与核心指标不受影响。</div>}</section>
-      </div>}
-
-      {tab === '绩效指标' && (
-        <section className={`${panel} overflow-hidden`}>
-          <div className="flex items-center justify-between gap-3 border-b border-crypto-border px-5 py-3">
-            <div>
-              <h2 className="text-sm font-semibold text-white">绩效指标明细</h2>
-              <p className="mt-0.5 text-[11px] text-gray-600">中文指标名 + 原始代码；数值按涨跌语义着色，单位与计算版本弱化展示</p>
-            </div>
-            <span className="font-mono text-[10px] tabular-nums text-gray-600">{data.metrics.length} 项</span>
-          </div>
-          <GenericTable
-            rows={data.metrics as unknown as Array<Record<string, unknown>>}
-            columns={[
-              ['metric_code', '指标'],
-              ['metric_value', '数值'],
-              ['unit', '单位'],
-              ['calculation_version', '计算版本'],
-              ['input_frequency', '频率'],
-              ['null_reason', '未定义原因'],
-            ]}
-          />
-        </section>
-      )}
       {tab === '持仓' && <section className={panel}>{evidenceStatus.positions === 'loaded' ? <GenericTable rows={data.positions} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["quantity", "数量"], ["available_quantity", "可卖"], ["avg_cost", "成本"], ["close_price", "收盘"], ["market_value", "市值"], ["weight", "权重"]]} /> : <EvidenceLedgerState status={evidenceStatus.positions} />}</section>}
       {tab === '交易' && <section className={panel}>{evidenceStatus.trades === 'loaded' ? <GenericTable rows={data.trades} symbolNames={symbolNames} columns={[["trade_date", "日期"], ["symbol", "证券"], ["side", "方向"], ["price", "价格"], ["quantity", "数量"], ["amount", "金额"], ["commission", "佣金"], ["tax", "税费"], ["realized_pnl", "已实现盈亏"]]} /> : <EvidenceLedgerState status={evidenceStatus.trades} />}</section>}
       {tab === '订单' && <section className={panel}>{evidenceStatus.orders === 'loaded' ? <GenericTable rows={data.orders} symbolNames={symbolNames} columns={[["signal_at", "信号时间"], ["earliest_fill_at", "最早成交"], ["filled_at", "成交时间"], ["symbol", "证券"], ["intent_type", "意图"], ["status", "状态"], ["filled_quantity", "成交数量"], ["rejection_code", "拒单代码"]]} /> : <EvidenceLedgerState status={evidenceStatus.orders} />}</section>}
       {tab === '日志' && <section className={panel}>{evidenceStatus.logs === 'loaded' ? <GenericTable rows={data.logs} columns={[["simulated_at", "模拟时间"], ["level", "级别"], ["source", "来源"], ["message", "消息"], ["payload", "上下文"]]} /> : <EvidenceLedgerState status={evidenceStatus.logs} />}</section>}
-      {tab === '代码与参数' && <div className="grid gap-5 xl:grid-cols-[2fr_1fr]"><section className={`${panel} overflow-hidden`}><div className="border-b border-crypto-border px-5 py-4 text-sm font-semibold text-white">策略代码 · v{data.run.strategy_version}</div><pre className="max-h-[620px] overflow-auto p-5 text-xs leading-6 text-blue-100"><code>{data.run.script_content}</code></pre></section><section className={`${panel} p-5`}><h2 className="text-sm font-semibold text-white">运行参数</h2><pre className="mt-4 overflow-auto rounded-lg bg-crypto-bg p-4 text-xs leading-6 text-gray-300">{JSON.stringify(data.run.parameters, null, 2)}</pre><h2 className="mt-6 text-sm font-semibold text-white">自定义指标</h2><pre className="mt-4 max-h-72 overflow-auto rounded-lg bg-crypto-bg p-4 text-xs leading-6 text-gray-300">{JSON.stringify(data.custom, null, 2)}</pre></section></div>}
       {tab === '归因' && <section className={panel}>{evidenceStatus.attribution === 'loaded' ? <GenericTable rows={data.attribution} columns={[["attribution_type", "类型"], ["attribution_key", "归因项"], ["contribution", "贡献"], ["amount", "金额"], ["payload", "证据"]]} /> : <EvidenceLedgerState status={evidenceStatus.attribution} />}</section>}
+      {tab === '代码与参数' && <div className="grid gap-5 xl:grid-cols-[2fr_1fr]"><section className={`${panel} overflow-hidden`}><div className="border-b border-crypto-border px-5 py-4 text-sm font-semibold text-white">策略代码 · v{data.run.strategy_version}</div><pre className="max-h-[620px] overflow-auto p-5 text-xs leading-6 text-blue-100"><code>{data.run.script_content}</code></pre></section><section className={`${panel} p-5`}><h2 className="text-sm font-semibold text-white">运行参数</h2><pre className="mt-4 overflow-auto rounded-lg bg-crypto-bg p-4 text-xs leading-6 text-gray-300">{JSON.stringify(data.run.parameters, null, 2)}</pre><h2 className="mt-6 text-sm font-semibold text-white">自定义指标</h2><pre className="mt-4 max-h-72 overflow-auto rounded-lg bg-crypto-bg p-4 text-xs leading-6 text-gray-300">{JSON.stringify(data.custom, null, 2)}</pre></section></div>}
     </div>
   );
 }
@@ -576,6 +710,9 @@ function EvidenceLedgerState({ status }: { status?: 'loading' | 'loaded' | 'fail
   if (status === 'failed') return <div className="flex min-h-48 items-center justify-center gap-2 p-6 text-sm text-red-300"><CircleAlert className="h-4 w-4" />证据账读取失败，请刷新页面后重试。</div>;
   return <div className="flex min-h-48 items-center justify-center gap-2 p-6 text-sm text-gray-500"><RefreshCw className="h-4 w-4 animate-spin" />正在按需读取证据账…</div>;
 }
+
+type StatusFilter = 'all' | 'running' | 'success' | 'failed' | 'cancelled';
+type SortKey = 'created' | 'return' | 'drawdown' | 'win_rate';
 
 export function Backtest() {
   const { runId } = useParams();
@@ -607,9 +744,8 @@ export function Backtest() {
   const [parameters, setParameters] = useState('{}');
   const [grid, setGrid] = useState('{"lookback":[5,10,20],"target":[0.3,0.6]}');
   const [historyQuery, setHistoryQuery] = useState('');
-  const [historyStatus, setHistoryStatus] = useState<'all' | BacktestRun['status']>('all');
-  const [historyMode, setHistoryMode] = useState<'all' | BacktestRun['run_mode']>('all');
-  const [historySort, setHistorySort] = useState<'created' | 'return' | 'drawdown' | 'sharpe'>('created');
+  const [historyStatus, setHistoryStatus] = useState<StatusFilter>('all');
+  const [historySort, setHistorySort] = useState<SortKey>('created');
 
   const load = useCallback(async () => {
     setError('');
@@ -637,11 +773,36 @@ export function Backtest() {
   }, [hasActiveJobs, runId]);
   useEffect(() => {
     if (!config) return;
-    if (!strategyVersionId) setStrategyVersionId(config.strategy_versions[0]?.id ?? '');
-    if (!datasetSnapshotId && config.dataset_snapshots[0]) setDatasetSnapshotId(config.dataset_snapshots[0].id);
-    if (!universeSnapshotId) setUniverseSnapshotId(config.universe_snapshots[0]?.id ?? 0);
+    const requestedVersion = searchParams.get('strategyVersionId');
+    const pipelineVersion = config.strategy_versions.find((item) => (item.name || '').includes('多因子'));
+    if (!strategyVersionId) {
+      setStrategyVersionId(requestedVersion || pipelineVersion?.id || config.strategy_versions[0]?.id || '');
+    }
+    const requestedPool = Number(searchParams.get('poolSnapshotId') || 0);
+    const pipelinePool = config.pool_snapshots.find((item) => item.id === requestedPool)
+      || config.pool_snapshots.find((item) => item.factor_snapshot_id && (item.pool_name || '').includes('动量'))
+      || config.pool_snapshots.find((item) => item.factor_snapshot_id);
+    if (pipelinePool && !poolSnapshotId) {
+      setPoolSnapshotId(pipelinePool.id);
+      setDatasetSnapshotId(pipelinePool.dataset_snapshot_id);
+      setUniverseSnapshotId(pipelinePool.universe_snapshot_id);
+      setFactorSnapshotId(pipelinePool.factor_snapshot_id ?? 0);
+      setSymbols('');
+    } else {
+      if (!datasetSnapshotId && config.dataset_snapshots[0]) setDatasetSnapshotId(config.dataset_snapshots[0].id);
+      if (!universeSnapshotId) setUniverseSnapshotId(config.universe_snapshots[0]?.id ?? 0);
+    }
     if (!costModelId) setCostModelId(config.cost_models[0]?.id ?? '');
-  }, [config, costModelId, datasetSnapshotId, strategyVersionId, universeSnapshotId]);
+    if (!protocolId) {
+      const pipelineProtocol = config.protocols.find((item) => (item.name || '').includes('多因子'))
+        || config.protocols[0];
+      if (pipelineProtocol) {
+        setProtocolId(pipelineProtocol.id);
+        setStartDate(pipelineProtocol.train_start);
+        setEndDate(pipelineProtocol.out_of_sample_end);
+      }
+    }
+  }, [config, costModelId, datasetSnapshotId, poolSnapshotId, protocolId, searchParams, strategyVersionId, universeSnapshotId]);
   useEffect(() => {
     if (!config) return;
     const match = config.factor_snapshots.find((item) => item.dataset_snapshot_id === datasetSnapshotId && item.universe_snapshot_id === universeSnapshotId);
@@ -675,28 +836,25 @@ export function Backtest() {
   );
   const visibleRuns = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
-    const metric = (run: BacktestRun, code: string) => run.metrics?.[code];
     return scopedRuns.filter((run) => {
       if (historyStatus !== 'all' && run.status !== historyStatus) return false;
-      if (historyMode !== 'all' && run.run_mode !== historyMode) return false;
-      return !query || `${run.name} ${run.strategy_name ?? ''} ${run.id}`.toLowerCase().includes(query);
+      if (!query) return true;
+      const haystack = `${run.name} ${run.strategy_name ?? ''} ${run.start_date} ${run.end_date} ${run.created_at} ${statusLabel(run.status)} ${run.run_mode === 'quick' ? '快速 快速预检' : '完整 完整回测'}`.toLowerCase();
+      return haystack.includes(query);
     }).sort((a, b) => {
       if (historySort === 'created') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      if (historySort === 'return') return Number(metric(b, 'strategy_return') ?? -Infinity) - Number(metric(a, 'strategy_return') ?? -Infinity);
-      if (historySort === 'drawdown') return Number(metric(b, 'maximum_drawdown') ?? -Infinity) - Number(metric(a, 'maximum_drawdown') ?? -Infinity);
-      return Number(metric(b, 'sharpe') ?? -Infinity) - Number(metric(a, 'sharpe') ?? -Infinity);
+      const metricOf = (run: BacktestRun, code: string) => Number(run.metrics?.[code] ?? -Infinity);
+      if (historySort === 'return') return metricOf(b, 'strategy_return') - metricOf(a, 'strategy_return');
+      if (historySort === 'drawdown') return metricOf(b, 'maximum_drawdown') - metricOf(a, 'maximum_drawdown');
+      return metricOf(b, 'win_rate') - metricOf(a, 'win_rate');
     });
-  }, [historyMode, historyQuery, historySort, historyStatus, scopedRuns]);
+  }, [historyQuery, historySort, historyStatus, scopedRuns]);
   const statusCounts = useMemo(() => ({
     all: scopedRuns.length,
-    success: scopedRuns.filter((run) => run.status === 'success').length,
     running: scopedRuns.filter((run) => run.status === 'running').length,
+    success: scopedRuns.filter((run) => run.status === 'success').length,
     failed: scopedRuns.filter((run) => run.status === 'failed').length,
-  }), [scopedRuns]);
-  const modeCounts = useMemo(() => ({
-    all: scopedRuns.length,
-    full: scopedRuns.filter((run) => run.run_mode === 'full').length,
-    quick: scopedRuns.filter((run) => run.run_mode === 'quick').length,
+    cancelled: scopedRuns.filter((run) => (run.status as string) === 'cancelled').length,
   }), [scopedRuns]);
   const strategyOptions = useMemo(() => {
     const query = strategyQuery.trim().toLowerCase();
@@ -706,7 +864,7 @@ export function Backtest() {
 
   if (runId) return <BacktestDetail runId={runId} />;
 
-  if (!config) return <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8"><header className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-3"><FlaskConical className="h-7 w-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">研究回测工作台</h1></div><p className="mt-2 text-sm text-gray-500">A股策略回测 · T+1 撮合 · 成本与风险证据</p></div></header>{error ? <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-5 text-sm text-red-200"><div className="flex items-start gap-3"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /><span><strong>配置加载失败：</strong>{error}</span></div><button type="button" onClick={() => void load()} className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-red-400/30 px-3 text-xs font-semibold"><RefreshCw className="h-3.5 w-3.5" />重试</button></div> : <div className={`${panel} flex min-h-[360px] items-center justify-center text-sm text-gray-500`}><RefreshCw className="mr-3 h-5 w-5 animate-spin" />正在读取策略版本、数据快照与回测记录…</div>}</div>;
+  if (!config) return <div className="min-h-full bg-crypto-bg p-6 2xl:px-8"><header className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-3"><FlaskConical className="h-7 w-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">回测</h1></div><p className="mt-2 text-sm text-gray-500">A股策略回测 · T+1 撮合 · 成本与风险证据</p></div></header>{error ? <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-5 text-sm text-red-200"><div className="flex items-start gap-3"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /><span><strong>配置加载失败：</strong>{error}</span></div><button type="button" onClick={() => void load()} className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-red-400/30 px-3 text-xs font-semibold"><RefreshCw className="h-3.5 w-3.5" />重试</button></div> : <div className={`${panel} flex min-h-[360px] items-center justify-center text-sm text-gray-500`}><RefreshCw className="mr-3 h-5 w-5 animate-spin" />正在读取策略版本、数据快照与回测记录…</div>}</div>;
 
   const request = (): BacktestRunRequestV1 => ({
     strategy_version_id: strategyVersionId, dataset_snapshot_id: datasetSnapshotId, universe_snapshot_id: universeSnapshotId,
@@ -777,14 +935,11 @@ export function Backtest() {
   };
 
   const selectedVersion = config?.strategy_versions.find((item) => item.id === strategyVersionId);
-  const runMetric = (run: BacktestRun, code: string) => run.metrics?.[code] ?? null;
   const selectedDataset = config?.dataset_snapshots.find((item) => item.id === datasetSnapshotId);
   const selectedUniverse = config?.universe_snapshots.find((item) => item.id === universeSnapshotId);
   const selectedCostModel = config?.cost_models.find((item) => item.id === costModelId);
   const selectedProtocol = config?.protocols.find((item) => item.id === protocolId);
   const selectedPool = config?.pool_snapshots.find((item) => item.id === poolSnapshotId);
-  const tradeCount = (run: BacktestRun) =>
-    runMetric(run, 'completed_trades') ?? runMetric(run, 'total_trades');
   const openCreate = () => {
     setCreateStep(1);
     setStrategyQuery('');
@@ -800,17 +955,18 @@ export function Backtest() {
   };
 
   return (
-    <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-operator-page="backtest">
+    <div className="min-h-full bg-crypto-bg p-6 2xl:px-8" data-operator-page="backtest">
       <OperatorPageHeader
         icon={FlaskConical}
-        title="回测实例控制台"
-        subtitle="管理多个 A 股回测实例；子面：任务队列、创建向导三步、详情八页签、对比。"
+        title="回测"
+        subtitle="绑定策略版本、数据快照与股票池后异步回测；任务队列、创建向导、结果详情与对比。"
         actions={
-          <button type="button" onClick={openCreate} className="inline-flex h-11 items-center gap-2 rounded-xl bg-purple-600 px-5 text-sm font-semibold text-white shadow-lg shadow-purple-950/30 transition hover:bg-purple-500">
+          <button type="button" onClick={openCreate} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500">
             <Plus className="h-4 w-4" />创建回测实例
           </button>
         }
       />
+      <WorkspacePipelineNote stageId="backtest" />
 
       {error ? (
         <OperatorStatePanel
@@ -826,35 +982,79 @@ export function Backtest() {
         />
       ) : null}
 
-      <OperatorFilterBar className="mb-5">
-        <FilterChipGroup<'all' | BacktestRun['run_mode']>
-          aria-label="回测模式"
-          value={historyMode}
-          onChange={setHistoryMode}
-          options={[
-            { value: 'all', label: '全部', count: modeCounts.all },
-            { value: 'full', label: '完整回测', count: modeCounts.full },
-            { value: 'quick', label: '快速预检', count: modeCounts.quick },
-          ]}
-        />
-        <FilterChipGroup<'all' | BacktestRun['status']>
-          aria-label="回测状态"
-          value={historyStatus}
-          onChange={setHistoryStatus}
-          options={[
-            { value: 'all', label: '全部状态', count: statusCounts.all },
-            { value: 'running', label: '运行中', count: statusCounts.running },
-            { value: 'success', label: '已完成', count: statusCounts.success },
-            { value: 'failed', label: '已失败', count: statusCounts.failed },
-          ]}
-        />
-        <label className="flex h-11 items-center gap-2 rounded-xl border border-crypto-border bg-crypto-card px-3 text-xs text-gray-500">
-          <SlidersHorizontal className="h-4 w-4" />
-          <select aria-label="回测排序" value={historySort} onChange={(event) => setHistorySort(event.target.value as typeof historySort)} className="bg-transparent text-gray-300 outline-none">
-            <option value="created">创建时间 ↓</option><option value="return">收益率 ↓</option><option value="drawdown">回撤 ↓</option><option value="sharpe">Sharpe ↓</option>
-          </select>
-        </label>
-      </OperatorFilterBar>
+      <section className={`${panel} mb-5 overflow-hidden`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-3.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-blue-400" /><h2 className="font-semibold text-white">回测实例</h2><span className="text-xs text-gray-600">{visibleRuns.length} / {scopedRuns.length} 个</span></div>
+            <label className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-600" />
+              <input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="搜索策略 / 运行名称 / 日期 / 状态" className="h-9 w-72 rounded-lg border border-crypto-border bg-crypto-bg pl-9 pr-3 text-xs text-gray-200 outline-none focus:border-blue-500/60" />
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => void load()} className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-400 hover:text-white"><RefreshCw className="h-3.5 w-3.5" />刷新记录</button>
+            <button type="button" disabled={selected.length < 2 || selected.length > 8 || Boolean(busy)} onClick={() => void compare()} className="inline-flex h-9 items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 text-xs font-semibold text-purple-300 disabled:opacity-40"><GitCompareArrows className="h-3.5 w-3.5" />对比 {selected.length} 项</button>
+          </div>
+        </div>
+        <OperatorFilterBar className="border-b border-crypto-border px-5 py-2.5">
+          <FilterChipGroup<StatusFilter>
+            aria-label="回测状态"
+            value={historyStatus}
+            onChange={setHistoryStatus}
+            options={[
+              { value: 'all', label: '全部', count: statusCounts.all },
+              { value: 'running', label: '进行中', count: statusCounts.running },
+              { value: 'success', label: '成功', count: statusCounts.success },
+              { value: 'failed', label: '失败', count: statusCounts.failed },
+              { value: 'cancelled', label: '已取消', count: statusCounts.cancelled },
+            ]}
+          />
+          <SegmentedControl<SortKey>
+            aria-label="回测排序"
+            size="sm"
+            value={historySort}
+            onChange={setHistorySort}
+            options={[
+              { value: 'created', label: '创建时间↓' },
+              { value: 'return', label: '收益率' },
+              { value: 'drawdown', label: '回撤' },
+              { value: 'win_rate', label: '胜率' },
+            ]}
+          />
+        </OperatorFilterBar>
+        <div data-testid="backtest-history-table">
+          {visibleRuns.map((run) => {
+            const selectable = run.run_mode === 'full' && run.status === 'success';
+            const kpis = runKpis(run);
+            return (
+              <div key={run.id} className="grid items-center gap-3 px-5 py-2.5 transition hover:bg-white/[0.02] xl:grid-cols-[minmax(240px,2.2fr)_auto_minmax(190px,1fr)_minmax(320px,1.5fr)_auto]">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-slate-100">{run.strategy_name ?? run.name}</div>
+                  <div className="mt-0.5 truncate text-[10px] text-gray-600">{run.name}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RunModeChip mode={run.run_mode} />
+                  <RunStatusChip status={run.status} />
+                </div>
+                <div className="font-mono text-[11px] tabular-nums text-slate-500">{run.start_date} ~ {run.end_date}</div>
+                <div className="grid grid-cols-4 gap-3 text-right">
+                  {kpis.map((kpi) => (
+                    <div key={kpi.label} className="min-w-0">
+                      <div className={`truncate font-mono text-sm font-semibold tabular-nums ${kpi.tone}`}>{kpi.text}</div>
+                      <div className="mt-0.5 text-[10px] text-gray-600">{kpi.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  {selectable ? <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-400"><input aria-label={`选择 ${run.name}`} type="checkbox" checked={selected.includes(run.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, run.id] : current.filter((id) => id !== run.id))} className="h-3.5 w-3.5 accent-purple-500" />对比</label> : null}
+                  <button type="button" onClick={() => navigate(`/backtest/${run.id}`)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 text-xs font-semibold text-blue-300 transition hover:bg-blue-500/20"><Eye className="h-3.5 w-3.5" />详情</button>
+                </div>
+              </div>
+            );
+          })}
+          {visibleRuns.length === 0 ? <div className="flex min-h-60 flex-col items-center justify-center px-4 py-10 text-center"><FlaskConical className="h-8 w-8 text-gray-700" /><p className="mt-3 text-sm text-gray-500">当前筛选下没有回测实例</p><p className="mt-1 text-xs text-gray-700">创建首个实例，或调整上方筛选条件。</p></div> : null}
+        </div>
+      </section>
 
       <section className={`${panel} mb-5 overflow-hidden`} data-testid="backtest-job-console">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">
@@ -914,57 +1114,6 @@ export function Backtest() {
             );
           })}
           {visibleJobs.length === 0 ? <div className="flex min-h-28 items-center justify-center text-sm text-gray-600">当前分区暂无持久化回测任务；创建后会在这里显示状态与日志。</div> : null}
-        </div>
-      </section>
-
-      <section className={`${panel} overflow-hidden`}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-5 py-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-purple-400" /><h2 className="font-semibold text-white">回测实例</h2><span className="text-xs text-gray-600">{visibleRuns.length} / {scopedRuns.length} 个</span></div>
-            <label className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-600" />
-              <input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="搜索策略或运行名称" className="h-9 w-64 rounded-lg border border-crypto-border bg-crypto-bg pl-9 pr-3 text-xs text-gray-200 outline-none focus:border-blue-500/60" />
-            </label>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => void load()} className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-400 hover:text-white"><RefreshCw className="h-3.5 w-3.5" />刷新记录</button>
-            <button type="button" disabled={selected.length < 2 || selected.length > 8 || Boolean(busy)} onClick={() => void compare()} className="inline-flex h-9 items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 text-xs font-semibold text-purple-300 disabled:opacity-40"><GitCompareArrows className="h-3.5 w-3.5" />对比 {selected.length} 项</button>
-          </div>
-        </div>
-        <div data-testid="backtest-history-table" className="space-y-3 p-4">
-          {visibleRuns.map((run) => {
-            const selectable = run.run_mode === 'full' && run.status === 'success';
-            return (
-              <article key={run.id} className="rounded-xl border border-crypto-border bg-[#0c1119] p-4 transition hover:border-slate-600/70">
-                <div className="grid items-center gap-4 xl:grid-cols-[minmax(260px,3fr)_minmax(360px,2fr)_auto]">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="truncate text-sm font-semibold text-amber-300">{run.strategy_name ?? run.name}</h3>
-                      <span className="rounded border border-blue-500/25 bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-300">A股</span>
-                      <StatusBadge run={run} />
-                    </div>
-                    <p className="mt-2 text-xs text-gray-500">{run.start_date} 至 {run.end_date} · 封存数据 · 固定股票范围</p>
-                    <p className="mt-1 truncate text-[10px] text-gray-600">{run.name}</p>
-                  </div>
-                  <div className="grid grid-cols-5 gap-2">
-                    {[
-                      ['收益', formatValue(runMetric(run, 'strategy_return'), 'ratio'), marketToneClass(runMetric(run, 'strategy_return'))],
-                      ['夏普', formatValue(runMetric(run, 'sharpe')), 'text-gray-200'],
-                      ['回撤', formatValue(runMetric(run, 'maximum_drawdown'), 'ratio'), marketAdverseToneClass(runMetric(run, 'maximum_drawdown'))],
-                      ['胜率', formatValue(runMetric(run, 'win_rate'), 'ratio'), 'text-gray-200'],
-                      ['交易', formatValue(tradeCount(run), 'count'), 'text-blue-300'],
-                    ].map(([label, value, tone]) => <div key={label} className="min-w-0 text-center"><div className={`truncate font-mono text-sm font-semibold ${tone}`}>{value}</div><div className="mt-1 text-[10px] text-gray-600">{label}</div></div>)}
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    {selectable ? <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-400"><input aria-label={`选择 ${run.name}`} type="checkbox" checked={selected.includes(run.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, run.id] : current.filter((id) => id !== run.id))} className="h-3.5 w-3.5 accent-purple-500" />对比</label> : null}
-                    <button type="button" onClick={() => navigate(`/backtest/${run.id}`)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-500/35 bg-blue-500/10 px-3 text-xs font-semibold text-blue-300"><Eye className="h-3.5 w-3.5" />详情</button>
-                    <button type="button" onClick={() => navigate(`/backtest/${run.id}`)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-300"><FileText className="h-3.5 w-3.5" />日志</button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-          {visibleRuns.length === 0 ? <div className="flex min-h-60 flex-col items-center justify-center text-center"><FlaskConical className="h-8 w-8 text-gray-700" /><p className="mt-3 text-sm text-gray-500">当前筛选下没有回测实例</p><p className="mt-1 text-xs text-gray-700">创建首个实例，或调整上方筛选条件。</p></div> : null}
         </div>
       </section>
 

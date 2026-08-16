@@ -239,6 +239,16 @@ class BacktestJobService:
                             """,
                             (row["guest_usage_id"],),
                         )
+                cursor.execute(
+                    """
+                    UPDATE backtest_runs
+                    SET status = 'failed',
+                        progress = 100,
+                        error_message = COALESCE(NULLIF(error_message, ''), '后端进程重启，回测未完成写入'),
+                        finished_at = COALESCE(finished_at, NOW())
+                    WHERE status = 'running'
+                    """
+                )
             conn.commit()
         return len(rows)
 

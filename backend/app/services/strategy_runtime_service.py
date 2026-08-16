@@ -33,6 +33,16 @@ DEFAULT_RUNTIME_LIMITS = {
     "max_intents": 10_000,
     "max_records": 10_000,
 }
+BACKTEST_RUNTIME_LIMITS = {
+    "wall_seconds": 180,
+    "cpu_seconds": 120,
+    "memory_mb": 512,
+    "open_files": 32,
+    "output_bytes": 8_388_608,
+    "log_bytes": 262_144,
+    "max_intents": 50_000,
+    "max_records": 50_000,
+}
 RUNTIME_LIMIT_MINIMUMS = {
     "wall_seconds": 0.05,
     "cpu_seconds": 1,
@@ -77,6 +87,13 @@ def normalize_runtime_limits(overrides: Optional[Mapping[str, Any]] = None) -> D
             raise ValueError(f"运行限额 {key} 必须在 {minimum} 到 {maximum} 之间")
         normalized[key] = value
     return normalized
+
+
+def resolve_replay_limits(mode: str, version_limits: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    """Quick preview stays sandboxed; full/paper replay may use the backtest envelope."""
+    if mode in {"backtest", "paper_replay"}:
+        return dict(BACKTEST_RUNTIME_LIMITS)
+    return normalize_runtime_limits(version_limits)
 
 
 def validate_strategy_python(code: str) -> Dict[str, Any]:
@@ -300,7 +317,7 @@ class StrategyRuntimeService:
         built = self._build_market_payload(dataset_snapshot_id, payload)
         if not built["events"]:
             raise ValueError("指定日期/证券范围没有封存日线事件")
-        limits = normalize_runtime_limits(version.get("runtime_limits"))
+        limits = resolve_replay_limits(mode, version.get("runtime_limits"))
         factor_snapshot_id = payload.get("factor_snapshot_id")
         factor_snapshot_info = None
         if factor_snapshot_id:

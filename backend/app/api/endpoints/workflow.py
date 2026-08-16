@@ -4,9 +4,12 @@ from typing import Any, Dict
 from fastapi import APIRouter
 
 from app.core.config import settings
+from app.db import db_instance
+from app.services.research_desk_service import ResearchDeskService
 
 
 router = APIRouter()
+desk_service = ResearchDeskService(db_instance)
 
 
 @router.get("/capabilities")
@@ -129,3 +132,9 @@ async def workflow_capabilities() -> Dict[str, Any]:
             },
         ],
     }
+
+
+@router.get("/research-desk")
+async def research_desk() -> Dict[str, Any]:
+    """Read-only counts for the operator research desk. Page loads must not write."""
+    return desk_service.build()

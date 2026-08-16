@@ -36,6 +36,8 @@ import {
 } from '@/api/client';
 import { WorkspaceTabs } from '@/components/WorkspaceTabs';
 import { MetricValue, OperatorPageHeader } from '@/components/OperatorShell';
+import { WorkspacePipelineNote } from '@/components/WorkspacePipelineNote';
+import { PIPELINE_FACTOR_CODES } from '@/lib/pipeline';
 import { SymbolCell } from '@/components/SymbolCell';
 import { statusLabel } from '@/utils/presentation';
 import type { MetricTone } from '@/utils/marketColors';
@@ -153,6 +155,7 @@ export const FactorLibrary = () => {
   const [selectedId, setSelectedId] = useState<number | null>(factorId ? Number(factorId) : null);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
+  const [pipelineOnly, setPipelineOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -241,11 +244,17 @@ export const FactorLibrary = () => {
 
   const filteredFactors = useMemo(() => factors.filter((item) => {
     const text = `${item.factor_code} ${item.factor_name} ${item.description ?? ''}`.toLowerCase();
-    return (category === 'all' || item.category === category) && text.includes(query.trim().toLowerCase());
+    const inPipeline = PIPELINE_FACTOR_CODES.includes(item.factor_code as (typeof PIPELINE_FACTOR_CODES)[number]);
+    return (category === 'all' || item.category === category)
+      && (!pipelineOnly || inPipeline)
+      && text.includes(query.trim().toLowerCase());
   }).sort((left, right) => {
+    const leftPipeline = PIPELINE_FACTOR_CODES.includes(left.factor_code as (typeof PIPELINE_FACTOR_CODES)[number]) ? 0 : 1;
+    const rightPipeline = PIPELINE_FACTOR_CODES.includes(right.factor_code as (typeof PIPELINE_FACTOR_CODES)[number]) ? 0 : 1;
+    if (leftPipeline !== rightPipeline) return leftPipeline - rightPipeline;
     const categoryDifference = categoryOrder.indexOf(left.category) - categoryOrder.indexOf(right.category);
     return categoryDifference || left.factor_name.localeCompare(right.factor_name, 'zh-CN', { numeric: true });
-  }), [category, factors, query]);
+  }), [category, factors, pipelineOnly, query]);
 
   const categories = useMemo(() => Array.from(new Set(factors.map((item) => item.category))).sort((left, right) => {
     const leftOrder = categoryOrder.indexOf(left);
@@ -355,7 +364,7 @@ export const FactorLibrary = () => {
             </StatusBadge>
           </span>
         }
-        subtitle="专业流程：定义 → 封存计算 → IC/分层成熟 → 相关与暴露 → 因子快照 → 股票池/策略/回测。"
+        subtitle="多因子链路的因子台：默认先看 momentum_20d / reversal_3d / volatility_20d / amihud_5d。"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => setAuthorOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-300 hover:border-blue-500/50 hover:text-white">
@@ -370,6 +379,29 @@ export const FactorLibrary = () => {
           </div>
         }
       />
+      <WorkspacePipelineNote stageId="factors" />
+      {factors.some((item) => PIPELINE_FACTOR_CODES.includes(item.factor_code as (typeof PIPELINE_FACTOR_CODES)[number])) ? (
+        <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {PIPELINE_FACTOR_CODES.map((code) => {
+            const item = factors.find((factor) => factor.factor_code === code);
+            return (
+              <button
+                key={code}
+                type="button"
+                onClick={() => item && selectFactor(item)}
+                className="rounded-lg border border-crypto-border bg-crypto-card px-3 py-2 text-left hover:border-cyan-500/40"
+              >
+                <div className="text-[10px] font-semibold text-cyan-200">{code}</div>
+                <div className="mt-1 truncate text-xs text-slate-200">{item?.factor_name || '未入库'}</div>
+                <div className="mt-1 font-mono text-[11px] text-slate-500">
+                  Rank IC {item?.rank_ic == null ? '待成熟' : Number(item.rank_ic).toFixed(3)}
+                  {item?.coverage == null ? '' : ` · 覆盖 ${Math.round(Number(item.coverage) * 100)}%`}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       <WorkspaceTabs<Workspace>
         ariaLabel="因子研究二级导航"
@@ -486,8 +518,9 @@ export const FactorLibrary = () => {
               </div>
             </div>
             <div className="mt-3 flex gap-1.5 overflow-x-auto pb-0.5">
-              <button type="button" onClick={() => setCategory('all')} className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[11px] ${category === 'all' ? 'border-blue-500/50 bg-blue-500/15 text-blue-200' : 'border-crypto-border bg-crypto-bg text-slate-500 hover:text-slate-300'}`}>全部 {factors.length}</button>
-              {categories.map((item) => <button type="button" key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[11px] ${category === item ? 'border-blue-500/50 bg-blue-500/15 text-blue-200' : 'border-crypto-border bg-crypto-bg text-slate-500 hover:text-slate-300'}`}>{categoryNames[item] ?? item} {categoryCounts[item]}</button>)}
+              <button type="button" onClick={() => { setPipelineOnly(true); setCategory('all'); }} className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[11px] ${pipelineOnly ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-200' : 'border-crypto-border bg-crypto-bg text-slate-500 hover:text-slate-300'}`}>链路因子 {factors.filter((item) => PIPELINE_FACTOR_CODES.includes(item.factor_code as (typeof PIPELINE_FACTOR_CODES)[number])).length}</button>
+              <button type="button" onClick={() => { setPipelineOnly(false); setCategory('all'); }} className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[11px] ${!pipelineOnly && category === 'all' ? 'border-blue-500/50 bg-blue-500/15 text-blue-200' : 'border-crypto-border bg-crypto-bg text-slate-500 hover:text-slate-300'}`}>全部 {factors.length}</button>
+              {categories.map((item) => <button type="button" key={item} onClick={() => { setPipelineOnly(false); setCategory(item); }} className={`shrink-0 rounded-md border px-2.5 py-1.5 text-[11px] ${!pipelineOnly && category === item ? 'border-blue-500/50 bg-blue-500/15 text-blue-200' : 'border-crypto-border bg-crypto-bg text-slate-500 hover:text-slate-300'}`}>{categoryNames[item] ?? item} {categoryCounts[item]}</button>)}
             </div>
           </div>
           <div className="overflow-auto">
@@ -502,7 +535,7 @@ export const FactorLibrary = () => {
               <tbody>
                 {filteredFactors.map((item) => (
                   <tr key={item.id} onClick={() => selectFactor(item)} className="cursor-pointer border-b border-crypto-border/70 text-gray-300 hover:bg-white/[0.025]">
-                    <td className="px-4 py-2.5"><div className="flex min-w-0 items-center gap-2"><span className="font-semibold text-white">{item.factor_name}</span><span className="text-[10px] text-blue-400">{item.factor_code} · 版本 {item.version_no}</span></div><div className="mt-1 max-w-[330px] truncate text-[11px] text-slate-500" title={factorDescriptionText(item.description)}>{factorDescriptionText(item.description)}</div></td>
+                    <td className="px-4 py-2.5"><div className="flex min-w-0 items-center gap-2"><span className="font-semibold text-white">{item.factor_name}</span><span className="text-[10px] text-blue-400">{item.factor_code} · 版本 {item.version_no}</span>{PIPELINE_FACTOR_CODES.includes(item.factor_code as (typeof PIPELINE_FACTOR_CODES)[number]) ? <span className="rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] text-cyan-200">链路</span> : null}</div><div className="mt-1 max-w-[330px] truncate text-[11px] text-slate-500" title={factorDescriptionText(item.description)}>{factorDescriptionText(item.description)}</div></td>
                     <td className="px-3 py-2.5"><span className="rounded bg-slate-800 px-2 py-1 text-[10px] text-slate-300">{categoryNames[item.category] ?? item.category}</span></td>
                     <td className="px-3 py-2.5 text-[11px] text-slate-400">{directionNames[item.direction] ?? '中性'}</td>
                     <td className="px-3 py-2.5 text-right font-mono">{percentageText(item.coverage)}</td><td className="px-3 py-2.5 text-right font-mono">{numberText(item.rank_ic)}</td><td className="px-3 py-2.5 text-right font-mono">{numberText(item.icir)}</td>

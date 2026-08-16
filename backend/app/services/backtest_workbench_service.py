@@ -35,6 +35,15 @@ PAPER_PROMOTION_CHECK_CODES = (
     "DATA_QUALITY_PASS",
 )
 
+# Keep SSH-tunneled inserts small. A single 485-day × 20-name page can stall the tunnel.
+_PERSIST_PAGE_SIZE = 50
+
+
+def _insert_values(cursor, sql: str, rows: Sequence[Sequence[Any]], *, page_size: int = _PERSIST_PAGE_SIZE) -> None:
+    if not rows:
+        return
+    psycopg2.extras.execute_values(cursor, sql, rows, page_size=page_size)
+
 
 class BacktestWorkbenchService:
     calculation_version = "backtest.v1"
@@ -823,97 +832,91 @@ class BacktestWorkbenchService:
         result_manifest["manifest_hash"] = canonical_hash(result_manifest)
         with self.database.get_connection() as connection:
             with connection.cursor() as cursor:
-                if metrics:
-                    psycopg2.extras.execute_values(cursor, """
-                        INSERT INTO backtest_metrics
-                        (backtest_run_id,metric_code,metric_value,unit,calculation_version,input_frequency,null_reason,metric_payload)
-                        VALUES %s
-                    """, [
-                        (run_id, item["metric_code"], item["metric_value"], item["unit"], item["calculation_version"],
-                         item["input_frequency"], item.get("null_reason"), psycopg2.extras.Json(item.get("metric_payload") or {}))
-                        for item in metrics
-                    ])
-                if result["daily_equity"]:
-                    psycopg2.extras.execute_values(cursor, """
-                        INSERT INTO backtest_daily_equity
-                        (backtest_run_id,trade_date,strategy_nav,strategy_return,benchmark_nav,benchmark_return,
-                         excess_nav,excess_return,equity,cash,market_value,gross_exposure,net_exposure,
-                         position_count,drawdown,excess_drawdown) VALUES %s
-                    """, [
-                        (run_id, item["trade_date"], item["strategy_nav"], item.get("strategy_return"), item.get("benchmark_nav"),
-                         item.get("benchmark_return"), item.get("excess_nav"), item.get("excess_return"), item["equity"],
-                         item["cash"], item["market_value"], item["gross_exposure"], item["net_exposure"],
-                         item["position_count"], item["drawdown"], item.get("excess_drawdown"))
-                        for item in result["daily_equity"]
-                    ])
-                if result["orders"]:
-                    psycopg2.extras.execute_values(cursor, """
-                        INSERT INTO backtest_orders
-                        (id,backtest_run_id,replay_intent_id,event_ordinal,symbol,intent_type,side,requested_value,
-                         requested_quantity,filled_quantity,status,signal_at,data_available_at,submitted_at,
-                         earliest_fill_at,filled_at,execution_price,execution_price_source,rejection_code,
-                         rejection_reason,capacity_ratio,intent_payload) VALUES %s
-                    """, [
-                        (item["id"], run_id, item.get("replay_intent_id"), item["event_ordinal"], item["symbol"],
-                         item["intent_type"], item.get("side"), item.get("requested_value"), item.get("requested_quantity"),
-                         item["filled_quantity"], item["status"], item["signal_at"], item["data_available_at"],
-                         item.get("submitted_at"), item["earliest_fill_at"], item.get("filled_at"), item.get("execution_price"),
-                         item.get("execution_price_source"), item.get("rejection_code"), item.get("rejection_reason"),
-                         item.get("capacity_ratio"), psycopg2.extras.Json(item["intent_payload"]))
-                        for item in result["orders"]
-                    ])
-                for item in result["trades"]:
-                    cursor.execute(
-                        """
-                        INSERT INTO backtest_trades
-                        (id,backtest_run_id,backtest_order_id,trade_date,symbol,name,side,price,quantity,amount,
-                         commission,reason,signal_at,data_available_at,submitted_at,earliest_fill_at,filled_at,
-                         tax,transfer_fee,slippage_cost,realized_pnl,holding_days,execution_price_source)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                        """,
-                        (item["id"], run_id, item["backtest_order_id"], item["trade_date"], item["symbol"], item.get("name"),
-                         item["side"], item["price"], item["quantity"], item["amount"], item["commission"], item.get("reason"),
-                         item["signal_at"], item["data_available_at"], item["submitted_at"], item["earliest_fill_at"],
-                         item["filled_at"], item["tax"], item["transfer_fee"], item["slippage_cost"], item.get("realized_pnl"),
-                         item.get("holding_days"), item["execution_price_source"]),
-                    )
-                if result["daily_positions"]:
-                    psycopg2.extras.execute_values(cursor, """
-                        INSERT INTO backtest_daily_positions
-                        (backtest_run_id,trade_date,symbol,quantity,available_quantity,avg_cost,close_price,
-                         market_value,weight,unrealized_pnl,industry_code) VALUES %s
-                    """, [
-                        (run_id, item["trade_date"], item["symbol"], item["quantity"], item["available_quantity"],
-                         item["avg_cost"], item["close_price"], item["market_value"], item["weight"],
-                         item["unrealized_pnl"], item.get("industry_code"))
-                        for item in result["daily_positions"]
-                    ])
-                for item in [*list(replay.get("logs") or []), *list(result["logs"])]:
-                    cursor.execute(
-                        "INSERT INTO backtest_logs(backtest_run_id,simulated_at,level,source,message,payload) VALUES (%s,%s,%s,%s,%s,%s)",
-                        (run_id, item.get("simulated_at"), item.get("level") or "info", item.get("source") or "strategy",
-                         item.get("message") or "", psycopg2.extras.Json(item.get("payload") or {})),
-                    )
-                for item in records:
-                    cursor.execute(
-                        """
-                        INSERT INTO backtest_custom_records
-                        (backtest_run_id,event_ordinal,simulated_at,available_at,payload,payload_hash)
-                        VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING
-                        """,
-                        (run_id, item["event_ordinal"], item["simulated_at"], item["available_at"],
-                         psycopg2.extras.Json(item["payload"]), item["payload_hash"]),
-                    )
-                for item in result["attribution"]:
-                    cursor.execute(
-                        """
-                        INSERT INTO backtest_attribution
-                        (backtest_run_id,attribution_type,attribution_key,contribution,amount,payload)
-                        VALUES (%s,%s,%s,%s,%s,%s)
-                        """,
-                        (run_id, item["attribution_type"], item["attribution_key"], item.get("contribution"),
-                         item.get("amount"), psycopg2.extras.Json(item.get("payload") or {})),
-                    )
+                _insert_values(cursor, """
+                    INSERT INTO backtest_metrics
+                    (backtest_run_id,metric_code,metric_value,unit,calculation_version,input_frequency,null_reason,metric_payload)
+                    VALUES %s
+                """, [
+                    (run_id, item["metric_code"], item["metric_value"], item["unit"], item["calculation_version"],
+                     item["input_frequency"], item.get("null_reason"), psycopg2.extras.Json(item.get("metric_payload") or {}))
+                    for item in metrics
+                ])
+                _insert_values(cursor, """
+                    INSERT INTO backtest_daily_equity
+                    (backtest_run_id,trade_date,strategy_nav,strategy_return,benchmark_nav,benchmark_return,
+                     excess_nav,excess_return,equity,cash,market_value,gross_exposure,net_exposure,
+                     position_count,drawdown,excess_drawdown) VALUES %s
+                """, [
+                    (run_id, item["trade_date"], item["strategy_nav"], item.get("strategy_return"), item.get("benchmark_nav"),
+                     item.get("benchmark_return"), item.get("excess_nav"), item.get("excess_return"), item["equity"],
+                     item["cash"], item["market_value"], item["gross_exposure"], item["net_exposure"],
+                     item["position_count"], item["drawdown"], item.get("excess_drawdown"))
+                    for item in result["daily_equity"]
+                ])
+                _insert_values(cursor, """
+                    INSERT INTO backtest_orders
+                    (id,backtest_run_id,replay_intent_id,event_ordinal,symbol,intent_type,side,requested_value,
+                     requested_quantity,filled_quantity,status,signal_at,data_available_at,submitted_at,
+                     earliest_fill_at,filled_at,execution_price,execution_price_source,rejection_code,
+                     rejection_reason,capacity_ratio,intent_payload) VALUES %s
+                """, [
+                    (item["id"], run_id, item.get("replay_intent_id"), item["event_ordinal"], item["symbol"],
+                     item["intent_type"], item.get("side"), item.get("requested_value"), item.get("requested_quantity"),
+                     item["filled_quantity"], item["status"], item["signal_at"], item["data_available_at"],
+                     item.get("submitted_at"), item["earliest_fill_at"], item.get("filled_at"), item.get("execution_price"),
+                     item.get("execution_price_source"), item.get("rejection_code"), item.get("rejection_reason"),
+                     item.get("capacity_ratio"), psycopg2.extras.Json(item["intent_payload"]))
+                    for item in result["orders"]
+                ])
+                _insert_values(cursor, """
+                    INSERT INTO backtest_trades
+                    (id,backtest_run_id,backtest_order_id,trade_date,symbol,name,side,price,quantity,amount,
+                     commission,reason,signal_at,data_available_at,submitted_at,earliest_fill_at,filled_at,
+                     tax,transfer_fee,slippage_cost,realized_pnl,holding_days,execution_price_source)
+                    VALUES %s
+                """, [
+                    (item["id"], run_id, item["backtest_order_id"], item["trade_date"], item["symbol"], item.get("name"),
+                     item["side"], item["price"], item["quantity"], item["amount"], item["commission"], item.get("reason"),
+                     item["signal_at"], item["data_available_at"], item["submitted_at"], item["earliest_fill_at"],
+                     item["filled_at"], item["tax"], item["transfer_fee"], item["slippage_cost"], item.get("realized_pnl"),
+                     item.get("holding_days"), item["execution_price_source"])
+                    for item in result["trades"]
+                ])
+                _insert_values(cursor, """
+                    INSERT INTO backtest_daily_positions
+                    (backtest_run_id,trade_date,symbol,quantity,available_quantity,avg_cost,close_price,
+                     market_value,weight,unrealized_pnl,industry_code) VALUES %s
+                """, [
+                    (run_id, item["trade_date"], item["symbol"], item["quantity"], item["available_quantity"],
+                     item["avg_cost"], item["close_price"], item["market_value"], item["weight"],
+                     item["unrealized_pnl"], item.get("industry_code"))
+                    for item in result["daily_positions"]
+                ])
+                _insert_values(cursor, """
+                    INSERT INTO backtest_logs(backtest_run_id,simulated_at,level,source,message,payload) VALUES %s
+                """, [
+                    (run_id, item.get("simulated_at"), item.get("level") or "info", item.get("source") or "strategy",
+                     item.get("message") or "", psycopg2.extras.Json(item.get("payload") or {}))
+                    for item in [*list(replay.get("logs") or []), *list(result["logs"])]
+                ])
+                _insert_values(cursor, """
+                    INSERT INTO backtest_custom_records
+                    (backtest_run_id,event_ordinal,simulated_at,available_at,payload,payload_hash)
+                    VALUES %s ON CONFLICT DO NOTHING
+                """, [
+                    (run_id, item["event_ordinal"], item["simulated_at"], item["available_at"],
+                     psycopg2.extras.Json(item["payload"]), item["payload_hash"])
+                    for item in records
+                ])
+                _insert_values(cursor, """
+                    INSERT INTO backtest_attribution
+                    (backtest_run_id,attribution_type,attribution_key,contribution,amount,payload)
+                    VALUES %s
+                """, [
+                    (run_id, item["attribution_type"], item["attribution_key"], item.get("contribution"),
+                     item.get("amount"), psycopg2.extras.Json(item.get("payload") or {}))
+                    for item in result["attribution"]
+                ])
                 cursor.execute(
                     """
                     UPDATE backtest_runs SET status='success',progress=100,metrics=%s,result_manifest=%s,

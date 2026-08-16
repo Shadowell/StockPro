@@ -16,6 +16,7 @@ import { GuestCodeManager } from './GuestCodeManager';
 import { McpAgentManager } from './McpAgentManager';
 import { MarketSessionBadge } from './MarketSessionBadge';
 import { StockProMark } from './StockProMark';
+import { ResearchDeskProvider } from './ResearchDeskContext';
 
 interface MainLayoutProps {
   children?: ReactNode;
@@ -128,6 +129,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
   };
 
   return (
+    <ResearchDeskProvider>
     <div
       ref={shellRef}
       className="flex h-screen overflow-hidden bg-crypto-bg text-slate-100"
@@ -268,6 +270,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         </div>
       )}
     </div>
+    </ResearchDeskProvider>
   );
 };
 

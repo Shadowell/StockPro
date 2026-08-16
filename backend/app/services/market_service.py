@@ -671,7 +671,7 @@ class MarketService:
         
         # 优先从数据库读取缓存数据
         indices_data = db.get_market_indices_realtime()
-        stocks = db.get_all_stocks_realtime()
+        stocks = db.get_all_stocks_realtime(include_listing_status=False)
         
         # Overview must stay fast for page rendering. Full-market stock fetches are heavy
         # and unreliable on some networks, so this endpoint only uses realtime cache.

@@ -89,6 +89,14 @@ async def startup_event():
     except Exception as exc:
         logger.warning("Backtest job recovery skipped: %s", exc)
 
+    try:
+        from app.services.agent.orchestrator import AgentOrchestrator
+
+        resumed = AgentOrchestrator(db_instance).recover_interrupted()
+        logger.info("Agent research recovery completed: %s task(s) resumed", resumed)
+    except Exception as exc:
+        logger.warning("Agent research recovery skipped: %s", exc)
+
     if settings.RUN_PAPER_RECOVERY_ON_STARTUP:
         from app.services.paper_runtime_service import PaperRuntimeService
 

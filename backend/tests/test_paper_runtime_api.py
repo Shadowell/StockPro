@@ -18,6 +18,7 @@ class PaperRuntimeApiContractTests(unittest.TestCase):
         self.paper_patch = patch.object(paper, "runtime_service")
         self.watch_patch = patch.object(watch, "service")
         self.monitor_patch = patch.object(monitor_runtime, "service")
+        watch.reset_watch_cache()
         self.paper = self.paper_patch.start()
         self.watch = self.watch_patch.start()
         self.monitor = self.monitor_patch.start()

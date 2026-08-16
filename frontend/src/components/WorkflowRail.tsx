@@ -1,16 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, CircleDashed, ShieldCheck } from 'lucide-react';
+import { useMemo } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, ShieldCheck } from 'lucide-react';
 import { StatusBadge } from '@bitpro/ui';
 import clsx from 'clsx';
 
-import { getWorkflowCapabilities } from '../api/client';
-import type { WorkflowCapabilities, WorkflowStageCapability } from '../types';
+import { PIPELINE_STRATEGY_NAME } from '../lib/pipeline';
+import type { ResearchDeskStage } from '../types';
+import { useResearchDesk } from './ResearchDeskContext';
 
-
-const WORKFLOW_ROUTES = ['/strategy', '/backtest', '/ai-lab', '/paper', '/watch', '/monitor', '/review'];
-
-const statusIcon = (status: WorkflowStageCapability['status']) => {
+const statusIcon = (status: ResearchDeskStage['status']) => {
   if (status === 'available') return CheckCircle2;
   if (status === 'partial') return CircleDashed;
   return AlertTriangle;
@@ -18,59 +16,41 @@ const statusIcon = (status: WorkflowStageCapability['status']) => {
 
 export function WorkflowRail() {
   const location = useLocation();
-  const [capabilities, setCapabilities] = useState<WorkflowCapabilities | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const visible = WORKFLOW_ROUTES.some((route) => location.pathname.startsWith(route));
-
-  useEffect(() => {
-    if (!visible) return;
-    let cancelled = false;
-    setState('loading');
-    getWorkflowCapabilities()
-      .then((result) => {
-        if (cancelled) return;
-        setCapabilities(result);
-        setState('ready');
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCapabilities(null);
-          setState('error');
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [visible]);
+  const navigate = useNavigate();
+  const { desk, state } = useResearchDesk();
 
   const activeStage = useMemo(() => {
-    if (location.pathname.startsWith('/ai-lab')) return 'strategy';
-    return capabilities?.stages.find((stage) => location.pathname.startsWith(stage.route))?.id;
-  }, [capabilities?.stages, location.pathname]);
-
-  if (!visible) return null;
+    const pipeline = Array.isArray(desk?.pipeline) ? desk.pipeline : [];
+    return pipeline.find((stage) =>
+      stage.route === '/'
+        ? location.pathname === '/'
+        : location.pathname === stage.route || location.pathname.startsWith(`${stage.route}/`),
+    )?.id;
+  }, [desk, location.pathname]);
 
   return (
     <section
       className="border-b border-crypto-border bg-crypto-panel/95 px-3 py-2 lg:px-4"
-      aria-label="BitPro 同构策略生命周期"
+      aria-label="量化研究链路"
       data-testid="workflow-rail"
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="hidden shrink-0 items-center gap-2 xl:flex">
           <ShieldCheck className="h-4 w-4 text-blue-300" />
           <div>
-            <div className="text-[11px] font-black text-slate-200">策略生命周期</div>
-            <div className="font-mono text-[9px] text-slate-600">
-              {capabilities?.contract_version || 'stockpro-workflow-v1'}
+            <div className="text-[11px] font-black text-slate-200">量化研究链路</div>
+            <div className="max-w-[220px] truncate font-mono text-[9px] text-slate-600">
+              {desk?.active_strategy?.name || PIPELINE_STRATEGY_NAME}
+              {desk?.trade_date ? ` · 证据日 ${desk.trade_date}` : ''}
+              {desk?.bindings?.pool_trade_date ? ` · 池 ${String(desk.bindings.pool_trade_date).slice(0, 10)}` : ''}
             </div>
           </div>
         </div>
 
         <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="flex min-w-max items-center gap-1">
-            {state === 'ready' && capabilities
-              ? capabilities.stages.map((stage, index) => {
+            {state === 'ready' && desk
+              ? desk.pipeline.map((stage, index) => {
                   const Icon = statusIcon(stage.status);
                   const active = activeStage === stage.id;
                   return (
@@ -78,7 +58,7 @@ export function WorkflowRail() {
                       {index > 0 ? <span className="h-px w-3 bg-slate-700" aria-hidden="true" /> : null}
                       <NavLink
                         to={stage.route}
-                        title={stage.reason || `${stage.label}阶段可用`}
+                        title={stage.detail || stage.label}
                         className={clsx(
                           'inline-flex h-7 items-center gap-1.5 rounded-[6px] border px-2.5 text-[11px] font-bold transition-colors',
                           active
@@ -86,7 +66,16 @@ export function WorkflowRail() {
                             : 'border-transparent text-slate-500 hover:border-crypto-border hover:bg-slate-800/70 hover:text-slate-200',
                         )}
                       >
-                        <Icon className={clsx('h-3.5 w-3.5', stage.status === 'available' ? 'text-emerald-400' : 'text-amber-400')} />
+                        <Icon
+                          className={clsx(
+                            'h-3.5 w-3.5',
+                            stage.status === 'available'
+                              ? 'text-emerald-400'
+                              : stage.status === 'partial'
+                                ? 'text-amber-400'
+                                : 'text-slate-500',
+                          )}
+                        />
                         {stage.label}
                       </NavLink>
                     </div>
@@ -94,13 +83,24 @@ export function WorkflowRail() {
                 })
               : (
                 <div className={clsx('px-2 text-[11px]', state === 'error' ? 'text-amber-300' : 'text-slate-500')}>
-                  {state === 'error' ? '流程能力契约不可用，不能确认阶段状态' : '正在读取流程能力…'}
+                  {state === 'error' ? '研究链路不可用' : '正在读取研究链路…'}
                 </div>
               )}
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
+          {desk?.next_action ? (
+            <button
+              type="button"
+              onClick={() => navigate(desk.next_action.route)}
+              title={desk.next_action.reason}
+              className="hidden h-7 items-center gap-1 rounded-[6px] border border-blue-500/40 bg-blue-500/10 px-2.5 text-[11px] font-bold text-blue-200 hover:bg-blue-500/20 lg:inline-flex"
+            >
+              {desk.next_action.label}
+              <ArrowRight className="h-3 w-3" />
+            </button>
+          ) : null}
           <StatusBadge tone="blue">仅模拟盘</StatusBadge>
           <StatusBadge tone="amber">实盘未接入</StatusBadge>
         </div>

@@ -682,12 +682,16 @@ test('single api shell keeps overview, research, strategy and admin navigation t
   await expect(page.getByRole('tab', { name: /数据资产|Data Assets/ })).toBeVisible();
 });
 
-test('sidebar exposes exactly twelve ordered first-level workspaces', async ({ page }) => {
+test('sidebar exposes exactly thirteen ordered first-level workspaces in groups', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/');
 
-  const links = page.getByRole('complementary').locator('nav a');
-  await expect(links).toHaveCount(12);
+  const sidebar = page.getByRole('complementary');
+  for (const group of ['研究', '研发', '验证', '系统']) {
+    await expect(sidebar.getByRole('group', { name: group })).toBeVisible();
+  }
+  const links = sidebar.locator('nav a');
+  await expect(links).toHaveCount(13);
   await expect(links).toHaveText([
     /首页/,
     /行情/,
@@ -698,6 +702,7 @@ test('sidebar exposes exactly twelve ordered first-level workspaces', async ({ p
     /模拟/,
     /盯盘/,
     /监控/,
+    /实盘/,
     /复盘/,
     /数据/,
     /AI研发/,
@@ -713,6 +718,7 @@ test('desktop shell matches the BitPro single-column operator navigation', async
   const sidebarBox = await sidebar.boundingBox();
   expect(sidebarBox?.width ?? 999).toBeLessThanOrEqual(65);
   await expect(sidebar.getByRole('link', { name: '首页', exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: '实盘', exact: true })).toBeVisible();
   await expect(sidebar.getByRole('link', { name: '数据', exact: true })).toBeVisible();
   const firstBox = await sidebar.getByRole('link', { name: '首页', exact: true }).boundingBox();
   const lastBox = await sidebar.getByRole('link', { name: '数据', exact: true }).boundingBox();
@@ -742,7 +748,7 @@ test('BitPro-style navigation stays mounted across first-level page changes', as
   const initialRequestCount = overviewRequestCount;
 
   await page.getByRole('link', { name: '回测', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '回测实例控制台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '回测', exact: true })).toBeVisible();
   await expect(navigation).toHaveAttribute('data-lifecycle-probe', 'persistent');
 
   await page.getByRole('link', { name: '模拟', exact: true }).click();
@@ -764,6 +770,7 @@ test('all routed pages share the financial operator contract', async ({ page }) 
     '/paper',
     '/watch',
     '/monitor',
+    '/live',
     '/review',
     '/data',
     '/data/processing',
@@ -805,6 +812,7 @@ test('mobile navigation scrolls every current workspace link into view', async (
     ['/paper', '模拟'],
     ['/watch', '盯盘'],
     ['/monitor', '监控'],
+    ['/live', '实盘'],
     ['/review', '复盘'],
     ['/data', '数据'],
     ['/ai-lab', 'AI研发'],
@@ -841,14 +849,14 @@ test('data-trust pages keep their state evidence usable at 390px', async ({ page
   const pages = [
     { path: '/', evidence: '快照可用' },
     { path: '/paper', evidence: '模拟盘' },
-    { path: '/review', evidence: '复盘中心' },
+    { path: '/review', evidence: '复盘' },
     { path: '/data', evidence: '缓存同步质量诊断' },
   ];
 
   for (const item of pages) {
     await page.goto(item.path);
     const evidence = item.path === '/review'
-      ? page.getByRole('heading', { name: /复盘中心/ })
+      ? page.getByRole('heading', { name: '复盘', exact: true })
       : page.getByText(item.evidence, { exact: true }).first();
     await expect(evidence).toBeVisible();
     const bodyOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -860,7 +868,7 @@ test('backtest center is separated from daily market review center', async ({ pa
   await loginAsAdmin(page);
 
   await page.goto('/backtest');
-  await expect(page.getByRole('heading', { name: '回测实例控制台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '回测', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '创建回测实例' })).toBeVisible();
   await expect(page.getByTestId('backtest-job-console')).toContainText('任务队列');
   await expect(page.getByRole('button', { name: '结果证据' })).toBeVisible();
@@ -869,25 +877,31 @@ test('backtest center is separated from daily market review center', async ({ pa
   await expect(page.getByText('StockPro Strategy API v1')).toHaveCount(0);
 
   await page.goto('/review');
-  await expect(page.getByRole('heading', { name: /复盘中心/ })).toBeVisible();
-  await expect(page.getByText('涨停数')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '板块轮动' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '连板梯队' })).toBeVisible();
-  await page.getByRole('tab', { name: '日志', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '复盘', exact: true })).toBeVisible();
+  await expect(page.getByText('涨停家数').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: '板块资金', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '连板天梯' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '复盘结论' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '交易日时间线' })).toBeVisible();
 });
 
-test('backtest result exposes six core cards and eight evidence tabs', async ({ page }) => {
+test('backtest result exposes a verdict strip, performance detail and six evidence tabs', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/backtest/66666666-6666-6666-6666-666666666666');
 
-  await expect(page.getByRole('heading', { name: 'MA5 完整回测' })).toBeVisible();
-  for (const label of ['策略收益', '年化收益', '基准收益', '超额收益', '最大回撤', '夏普比率']) {
-    await expect(page.getByText(label, { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'MA5 趋势策略' })).toBeVisible();
+  await expect(page.getByText('MA5 完整回测').first()).toBeVisible();
+  const verdictStrip = page.getByTestId('backtest-verdict-strip');
+  await expect(verdictStrip).toBeVisible();
+  for (const label of ['净收益', '超额收益', '最大回撤', '夏普']) {
+    await expect(verdictStrip.getByText(label, { exact: true })).toBeVisible();
   }
-  for (const tab of ['总览', '绩效指标', '持仓', '交易', '订单', '日志', '代码与参数', '归因']) {
-    await expect(page.getByRole('tab', { name: tab })).toBeVisible();
+  const performanceDetail = page.getByRole('heading', { name: '绩效明细' }).locator('xpath=ancestor::section[1]');
+  for (const label of ['年化收益', '基准收益', '夏普比率']) {
+    await expect(performanceDetail.getByText(label, { exact: true })).toBeVisible();
+  }
+  for (const tab of ['持仓', '交易', '订单', '日志', '归因', '代码与参数']) {
+    await expect(page.getByRole('tab', { name: tab, exact: true })).toBeVisible();
   }
   await page.getByRole('tab', { name: '代码与参数' }).click();
   await expect(page.getByText('策略代码 · v1')).toBeVisible();
@@ -899,19 +913,26 @@ test('full backtest exposes protocol segments and immutable Paper promotion gate
   await loginAsAdmin(page);
   await page.goto('/backtest/66666666-6666-6666-6666-666666666666');
 
-  await expect(page.getByRole('heading', { name: '研究晋级门禁' })).toBeVisible();
-  for (const label of ['训练区间', '验证区间', '样本外区间', '成本证据', '容量约束', '基准证据']) {
-    await expect(page.getByText(label, { exact: true })).toBeVisible();
+  const gatePanel = page.getByRole('heading', { name: '晋级检查' }).locator('xpath=ancestor::section[1]');
+  await expect(gatePanel).toBeVisible();
+  for (const label of ['完整回测已封存', '研究协议已封存', '训练区间通过', '验证区间通过', '样本外区间通过', '成本模型证据完整', '容量规则已定义', '容量实测通过', '晋级阈值已定义', '基准证据完整', '数据质量通过']) {
+    await expect(gatePanel.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.getByText('Paper Eligible', { exact: true })).toBeVisible();
+  await expect(gatePanel.getByText('门禁全部通过')).toBeVisible();
+  await expect(gatePanel.getByText(/训练 2023-01-03~2023-12-29/)).toBeVisible();
+  await expect(gatePanel.getByText(/样本外 2024-07-08~2025-01-02/)).toBeVisible();
+  await expect(page.getByText('晋级 Paper', { exact: true })).toBeVisible();
 });
 
 test('quick backtest is visibly isolated from Paper promotion', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/backtest/99999999-9999-9999-9999-999999999999');
 
-  await expect(page.getByText('快速预检不可晋级 Paper', { exact: true })).toBeVisible();
-  await expect(page.getByText('Paper Eligible', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('快速预检不可晋级', { exact: true })).toBeVisible();
+  await expect(page.getByText('快速预检不产生晋级证据')).toBeVisible();
+  await expect(page.getByText('不会进入模拟盘候选')).toBeVisible();
+  await expect(page.getByText('晋级 Paper', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('门禁全部通过')).toHaveCount(0);
 });
 
 test('configured market colors apply to gains, losses and neutral values', async ({ page }) => {
@@ -923,7 +944,7 @@ test('configured market colors apply to gains, losses and neutral values', async
   });
   await page.goto('/backtest/66666666-6666-6666-6666-666666666666');
 
-  const monthlyReturns = page.getByRole('heading', { name: '月度收益' }).locator('xpath=parent::*');
+  const monthlyReturns = page.getByText('月度收益', { exact: true }).locator('xpath=..');
   const gain = monthlyReturns.getByText('12.00%', { exact: true });
   const loss = monthlyReturns.getByText('-4.00%', { exact: true });
   const neutral = monthlyReturns.getByText('0.00%', { exact: true });
@@ -1176,12 +1197,13 @@ test('primary pages expose usable A-share research workflow anchors', async ({ p
     { path: '/pools', anchors: ['股票池工作台', '股票池规则目录', '当前入选成员明细与存根理由'] },
     { path: '/factors', anchors: ['因子研究', '因子库', '20日动量'] },
     { path: '/strategy', anchors: ['策略中心', 'A股策略约束', '100股整数手'] },
-    { path: '/backtest', anchors: ['回测实例控制台', '创建回测实例', '回测实例'] },
+    { path: '/backtest', anchors: ['回测', '创建回测实例', '回测实例'] },
     { path: '/ai-lab', anchors: ['AI研发', 'AI自主交易', 'AI自主交易控制台', '硬风控边界'] },
-    { path: '/review', anchors: ['复盘中心', '板块轮动', '连板梯队'] },
-    { path: '/paper', anchors: ['模拟盘', '策略实例控制台', '优选策略', '全部策略'] },
-    { path: '/watch', anchors: ['盯盘', '集中查看策略信号', '最新策略信号'] },
-    { path: '/monitor', anchors: ['监控中心', '运行风控检查', '涨跌停风险'] },
+    { path: '/live', anchors: ['实盘工作台', '券商通道', '晋级候选'] },
+    { path: '/review', anchors: ['复盘', '板块资金', '连板天梯'] },
+    { path: '/paper', anchors: ['模拟盘', '创建 Paper 实例', 'A股模拟策略'] },
+    { path: '/watch', anchors: ['盯盘', '观察同一策略版本的信号', '最新策略信号'] },
+    { path: '/monitor', anchors: ['监控中心', '运行风控', '涨跌停风险'] },
     { path: '/data', anchors: ['数据管理中心', '当前数据结论', '缓存同步质量诊断'] },
     { path: '/data/processing', anchors: ['数据资产', '生产任务', '质量治理'] },
   ];
@@ -1287,7 +1309,7 @@ test('market terminal quarantines a consolidated price when daily and live evide
 test('paper watch and monitor keep separate operator ownership', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/paper');
-  await expect(page.getByRole('heading', { name: '策略实例控制台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '模拟盘', exact: true })).toBeVisible();
   await page.getByTestId('paper-instance-card').first().getByRole('button', { name: '详情' }).click();
   await expect(page.getByTestId('paper-instance-monitor')).toBeVisible();
   for (const label of ['核心选股与交易逻辑', '当前持仓', '成交与事件', '账户曲线', '风控状态']) {
@@ -1325,8 +1347,8 @@ test('strategy backtest and paper expose the A-share operator workflow without i
 
   await page.goto('/backtest');
   await expect(page.getByText('PG 封存研究输入 / Provider-free Read')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: '回测实例控制台', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /完整回测/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '回测', exact: true })).toBeVisible();
+  await expect(page.getByTestId('backtest-history-table')).toBeVisible();
   await expect(page.getByLabel('回测排序')).toBeVisible();
 
   await page.getByRole('button', { name: '创建回测实例' }).click();
@@ -1340,8 +1362,8 @@ test('strategy backtest and paper expose the A-share operator workflow without i
   await expect(page.getByText('参数矩阵', { exact: true })).toBeVisible();
 
   await page.goto('/paper');
-  await expect(page.getByRole('heading', { name: '模拟盘' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '策略实例控制台' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '模拟盘', exact: true })).toBeVisible();
+  await expect(page.getByTestId('paper-instance-grid')).toBeVisible();
   await page.getByTestId('paper-instance-card').first().getByRole('button', { name: '详情' }).click();
   await expect(page.getByTestId('paper-instance-monitor')).toBeVisible();
   await expect(page.getByText('600519.SH', { exact: true }).first()).toBeVisible();
@@ -1381,7 +1403,7 @@ test('strategy catalogue labels the user-strategy count separately from referenc
   await page.goto('/strategy');
 
   await expect(page.getByRole('tab', { name: /我的策略 1/ })).toBeVisible();
-  await expect(page.getByRole('tab', { name: /策略广场 3/ })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /策略广场 4/ })).toBeVisible();
   await expect(page.getByRole('tab', { name: /审计证据 1/ })).toBeVisible();
   await expect(page.getByText('Sprint07 acceptance probe')).toHaveCount(0);
   await page.getByRole('tab', { name: /审计证据 1/ }).click();
@@ -1427,9 +1449,9 @@ test('paper running state is downgraded when the recorded replay heartbeat is mi
 
   const instanceCard = page.getByTestId('paper-instance-card').first();
   await expect(instanceCard.getByText('心跳陈旧', { exact: true })).toBeVisible();
-  await expect(instanceCard.getByText('最后心跳 未记录')).toBeVisible();
-  await expect(instanceCard.getByLabel('生命周期运行中，心跳陈旧')).toBeVisible();
-  await expect(instanceCard.getByLabel('健康运行')).toHaveCount(0);
+  await expect(instanceCard.getByText('运行中', { exact: true })).toHaveCount(0);
+  // 生命周期仍是 running：暂停等生命周期操作保持可用，但健康口径已降级。
+  await expect(instanceCard.getByRole('button', { name: '暂停' })).toBeVisible();
 });
 
 test('watch never presents a stale snapshot as one hundred percent realtime', async ({ page }) => {
@@ -1556,24 +1578,30 @@ test('ai lab exposes research state and a real load error', async ({ page }) => 
   await expect(page.getByText(/证据加载失败/)).toBeVisible();
 });
 
-test('daily review exposes five evidence workspaces and a sealed audit timeline', async ({ page }) => {
+test('daily review exposes the market snapshot blocks and a sealed audit timeline', async ({ page }) => {
   const assembleRequests: string[] = [];
   page.on('request', (request) => {
     if (request.method() === 'POST' && request.url().includes('/api/review/2025-01-02/assemble')) assembleRequests.push(request.url());
   });
   await loginAsAdmin(page);
-  await page.goto('/review?date=2025-01-02&tab=logs');
+  await page.goto('/review?date=2025-01-02');
 
   await expect(page.getByTestId('daily-review-workbench')).toBeVisible();
-  for (const label of ['市场复盘', '股票池复盘', '策略复盘', '交易复盘', '日志']) {
-    await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '复盘', exact: true })).toBeVisible();
+  for (const title of ['指数快照', '市场宽度', '情绪指标', '涨停生态', '人气榜', '板块资金']) {
+    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
   }
+  const filters = page.getByRole('group', { name: '复盘证据类别筛选' });
+  for (const label of ['全部', '市场', '股票池', '策略', '交易执行']) {
+    await expect(filters.getByRole('button', { name: label, exact: false })).toContainText(/\d/);
+  }
+  await expect(filters.getByRole('button', { name: '全部' })).toContainText('4');
   await expect(page.getByRole('heading', { name: '交易日时间线' })).toBeVisible();
   await expect(page.getByText('复盘已封存，不可修改')).toBeVisible();
   await expect(page.getByText('review-manifest')).toHaveCount(0);
   await expect(page.getByText('查看关联记录 →').first()).toBeVisible();
   expect(assembleRequests).toHaveLength(0);
-  await page.getByRole('button', { name: '重建时间线' }).click();
+  await page.getByRole('button', { name: '生成复盘' }).click();
   await expect.poll(() => assembleRequests.length).toBe(1);
 });
 
@@ -1582,12 +1610,15 @@ test('daily review keeps metrics unavailable when evidence assembly fails', asyn
   await loginAsAdmin(page);
   await page.goto('/review?date=2025-01-02');
 
-  await expect(page.getByText('加载失败', { exact: true })).toBeVisible();
-  for (const label of ['涨停数', '跌停数', '最高连板', '股票池快照', '策略信号', '风险 / 成交']) {
-    await expect(page.getByTestId(`review-metric-${label}`).getByText('--')).toBeVisible();
+  await expect(page.getByText('加载失败', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/Request failed with status code 503/)).toBeVisible();
+  const filters = page.getByRole('group', { name: '复盘证据类别筛选' });
+  for (const label of ['全部', '市场', '股票池', '策略', '交易执行']) {
+    await expect(filters.getByRole('button', { name: label, exact: false })).toContainText('--');
   }
   await expect(page.getByRole('button', { name: '保存草稿' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '封存复盘' })).toHaveCount(0);
+  await expect(page.getByText('复盘证据加载后才可保存或封存')).toBeVisible();
 });
 
 test('daily review renders absent category counters as zero instead of undefined', async ({ page }) => {
@@ -1603,9 +1634,11 @@ test('daily review renders absent category counters as zero instead of undefined
   await loginAsAdmin(page);
   await page.goto('/review?date=2025-01-02');
 
-  await expect(page.getByTestId('review-metric-股票池快照').getByText('0', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('review-metric-策略信号').getByText('0', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('review-metric-风险 / 成交').getByText('0 / 0', { exact: true })).toBeVisible();
+  const filters = page.getByRole('group', { name: '复盘证据类别筛选' });
+  await expect(filters.getByRole('button', { name: '市场' })).toContainText('1');
+  await expect(filters.getByRole('button', { name: '股票池' })).toContainText('0');
+  await expect(filters.getByRole('button', { name: '策略' })).toContainText('0');
+  await expect(filters.getByRole('button', { name: '交易执行' })).toContainText('0');
   await expect(page.getByText(/undefined/)).toHaveCount(0);
 });
 
@@ -1639,6 +1672,60 @@ test('data center separates cache coverage from sealed research readiness', asyn
   await expect(page.getByText('可回测', { exact: true })).toHaveCount(0);
   await expect(page.getByText('配置已启用 · 运行器未启动')).toBeVisible();
   await expect(page.getByText(/配置时间不会自动执行/)).toBeVisible();
+});
+
+test('data center automatically shows the latest quality report, failed rules and repair entry', async ({ page }) => {
+  let qualityRunRequests = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/data-hub/quality/run') qualityRunRequests += 1;
+  });
+  await page.route('**/api/data-hub/quality/report', (route) => route.fulfill(json({
+    status: 'success',
+    data: {
+      report_key: 'dq_20260810',
+      scope: ['stock_history'],
+      status: 'red',
+      summary: { total_checks: 1, green: 0, yellow: 0, red: 1, status: 'red' },
+      checks: [{
+        dataset_id: 'stock_history',
+        status: 'red',
+        title: 'A股日线行情质量',
+        detail: '最新日期 2026-07-01，日期最大间隔 12 天',
+        metrics: { rows: 1000, freshness_days: 40, max_gap_days: 12 },
+        findings: [{
+          rule_id: 'freshness',
+          status: 'red',
+          title: '数据最新性失败',
+          detail: '最近数据距今 40.00 天',
+          observed_value: 40,
+          threshold: '数据延迟 <= 3 天',
+          remediation: { kind: 'heal_missing_data', label: '回补最近日线', supported: true },
+        }],
+      }],
+      created_at: '2026-08-10T09:00:00+08:00',
+    },
+  })));
+  await loginAsAdmin(page);
+  await page.goto('/data');
+
+  await expect(page.getByRole('heading', { name: '最近一次质量报告' })).toBeVisible();
+  await expect(page.getByText('2026-08-10 09:00:00')).toBeVisible();
+  await expect(page.getByText('数据最新性失败')).toBeVisible();
+  await expect(page.getByText('最近数据距今 40.00 天')).toBeVisible();
+  await expect(page.getByRole('button', { name: '回补最近日线' })).toBeVisible();
+  expect(qualityRunRequests).toBe(0);
+});
+
+test('data center labels a missing quality report honestly without zero-value claims', async ({ page }) => {
+  await page.route('**/api/data-hub/quality/report', (route) => route.fulfill(json({ status: 'success', data: null })));
+  await loginAsAdmin(page);
+  await page.goto('/data');
+
+  await expect(page.getByRole('heading', { name: '最近一次质量报告' })).toBeVisible();
+  await expect(page.getByText('尚无质量报告')).toBeVisible();
+  await expect(page.getByText('尚未执行过质量检查，当前质量状态不可用。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '运行质量检查' })).toBeVisible();
+  await expect(page.getByText('通过 0')).toHaveCount(0);
 });
 
 test('data center keeps every primary action visible without a hidden horizontal exit', async ({ page }) => {

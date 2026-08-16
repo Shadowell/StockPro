@@ -20,6 +20,7 @@ import {
   MetricValue,
   OperatorPageHeader,
 } from "../components/OperatorShell";
+import { WorkspacePipelineNote } from "../components/WorkspacePipelineNote";
 import { TremorDeltaBadge, TremorTracker } from "../components/TremorUI";
 import type { DataScope, RuntimeAlert, WatchContext } from "../types";
 import {
@@ -155,7 +156,7 @@ export function Watch() {
       <OperatorPageHeader
         icon={Eye}
         title="盯盘"
-        subtitle="集中查看策略信号、订单成交、股票池变化和待确认风险。五个子页签均需对齐密度。"
+        subtitle="观察同一策略版本的信号、委托、成交、股票池变动和待确认风险。五个子页签对齐密度。"
         actions={
           <button
             type="button"
@@ -167,6 +168,7 @@ export function Watch() {
           </button>
         }
       />
+      <WorkspacePipelineNote stageId="watch" />
       <EvidenceStrip
         items={[
           { label: "数据", value: "模拟交易 / 告警 / 股票池" },

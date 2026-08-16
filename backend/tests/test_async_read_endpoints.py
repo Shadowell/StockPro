@@ -34,6 +34,8 @@ class AsyncReadEndpointSafetyTests(unittest.TestCase):
         self.assertNotEqual(worker_thread, event_loop_thread)
 
     def test_watch_context_runs_blocking_service_off_event_loop(self):
+        watch.reset_watch_cache()
+
         async def exercise():
             event_loop_thread = threading.get_ident()
 

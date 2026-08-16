@@ -1,33 +1,27 @@
 import { useMemo, useState } from "react";
+import clsx from "clsx";
 import {
-  Activity,
-  ArrowDownUp,
   Eye,
+  FlaskConical,
   PauseCircle,
   PlayCircle,
   Plus,
   Search,
   Square,
-  Star,
 } from "lucide-react";
-import clsx from "clsx";
 import type { PaperRuntimeInstance } from "../types";
 import { marketToneClass } from "../utils/marketColors";
-import { formatSymbolLabel } from "../utils/symbolDisplay";
-import { useSymbolNames } from "../hooks/useSymbolNames";
 import {
   OperatorPageHeader,
+  OperatorSearchField,
   SegmentedControl,
 } from "./OperatorShell";
+import { ConfirmDialog } from "./ConfirmDialog";
 
-type ListView = "preferred" | "all";
-type StatusFilter = "all" | PaperRuntimeInstance["status"] | "stale";
-type MarketFilter = "all" | "main" | "chinext" | "star" | "beijing";
-type StrategyFilter = "all" | "factor" | "event" | "trend" | "portfolio";
-type CapitalFilter = "all" | "small" | "medium" | "large";
-type SortMode = "return" | "equity" | "trades" | "heartbeat";
+type StatusFilter = "all" | "running" | "paused" | "stopped";
+type SortMode = "created" | "return";
+type LifecycleAction = "start" | "pause" | "resume" | "stop";
 
-const FAVORITES_KEY = "stockpro_paper_instance_favorites_v1";
 const HEARTBEAT_SLA_MS = 15 * 60 * 1000;
 
 const numberValue = (value: unknown) => {
@@ -37,11 +31,15 @@ const numberValue = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const money = (value: unknown) => {
+const compactMoney = (value: unknown) => {
   const parsed = numberValue(value);
-  return parsed === null
-    ? "--"
-    : `¥${parsed.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
+  if (parsed === null) return "--";
+  const abs = Math.abs(parsed);
+  const trim = (input: number) =>
+    Number.isInteger(input) ? String(input) : input.toFixed(1);
+  if (abs >= 1e8) return `¥${trim(parsed / 1e8)}亿`;
+  if (abs >= 1e4) return `¥${trim(parsed / 1e4)}万`;
+  return `¥${parsed.toLocaleString("zh-CN", { maximumFractionDigits: 0 })}`;
 };
 
 const signedMoney = (value: number | null) => {
@@ -53,16 +51,8 @@ const signedMoney = (value: number | null) => {
 const signedPercent = (value: number | null) =>
   value === null ? "--" : `${value > 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
 
-const timestamp = (value: string | null | undefined) =>
-  value
-    ? new Date(value).toLocaleString("zh-CN", {
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      })
-    : "未记录";
+const createdDate = (value: string | null | undefined) =>
+  value ? String(value).slice(0, 10) : "未记录";
 
 const heartbeatState = (instance: PaperRuntimeInstance) => {
   if (instance.status !== "running") return instance.status;
@@ -72,42 +62,6 @@ const heartbeatState = (instance: PaperRuntimeInstance) => {
   return !Number.isFinite(heartbeat) || Date.now() - heartbeat > HEARTBEAT_SLA_MS
     ? "stale"
     : "running";
-};
-
-const symbolsFor = (instance: PaperRuntimeInstance) => {
-  const fromPositions = (instance.positions ?? [])
-    .map((item) => String(item.symbol ?? "").trim())
-    .filter(Boolean);
-  const configured = instance.feed_config?.symbols;
-  const fromConfig = Array.isArray(configured)
-    ? configured.map(String).filter(Boolean)
-    : [];
-  return [...new Set([...fromPositions, ...fromConfig])];
-};
-
-const marketForSymbol = (symbol: string): Exclude<MarketFilter, "all"> | null => {
-  const code = symbol.replace(/\D/g, "").slice(-6);
-  if (/^(8|4)/.test(code)) return "beijing";
-  if (/^68/.test(code)) return "star";
-  if (/^30/.test(code)) return "chinext";
-  if (/^(60|00)/.test(code)) return "main";
-  return null;
-};
-
-const strategyType = (name: string): Exclude<StrategyFilter, "all"> | "other" => {
-  const normalized = name.toLowerCase();
-  if (/因子|factor/.test(normalized)) return "factor";
-  if (/事件|涨停|event/.test(normalized)) return "event";
-  if (/趋势|突破|动量|均线|trend|momentum/.test(normalized)) return "trend";
-  if (/组合|轮动|portfolio|rotation/.test(normalized)) return "portfolio";
-  return "other";
-};
-
-const capitalType = (instance: PaperRuntimeInstance): Exclude<CapitalFilter, "all"> => {
-  const initial = numberValue(instance.initial_cash) ?? 0;
-  if (initial <= 200_000) return "small";
-  if (initial <= 1_000_000) return "medium";
-  return "large";
 };
 
 const timeframe = (instance: PaperRuntimeInstance) =>
@@ -129,14 +83,6 @@ const resolveEquity = (instance: PaperRuntimeInstance) => {
     numberValue(instance.initial_cash)
   );
 };
-const loadFavorites = () => {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]");
-    return new Set<string>(Array.isArray(parsed) ? parsed.map(String) : []);
-  } catch {
-    return new Set<string>();
-  }
-};
 
 const statusLabel: Record<string, string> = {
   running: "运行中",
@@ -149,6 +95,54 @@ const statusLabel: Record<string, string> = {
   stopping: "停止中",
 };
 
+const metricsOf = (instance: PaperRuntimeInstance) => {
+  const equity = resolveEquity(instance);
+  const initial = numberValue(instance.initial_cash);
+  const pnl = equity !== null && initial !== null ? equity - initial : null;
+  const returnRate =
+    pnl !== null && initial !== null && initial > 0 ? pnl / initial : null;
+  return { pnl, returnRate };
+};
+
+function InstanceStatusPill({ instance }: { instance: PaperRuntimeInstance }) {
+  const runtime = heartbeatState(instance);
+  if (runtime === "running") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
+        运行中
+      </span>
+    );
+  }
+  if (runtime === "stale") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+        <span className="h-2 w-2 rounded-full bg-amber-400" />
+        心跳陈旧
+      </span>
+    );
+  }
+  const dot =
+    runtime === "failed" || runtime === "stopped"
+      ? "bg-red-400"
+      : "bg-slate-500";
+  const tone =
+    runtime === "failed" || runtime === "stopped"
+      ? "border-red-500/25 bg-red-500/10 text-red-300"
+      : "border-crypto-border bg-crypto-bg text-slate-400";
+  return (
+    <span
+      className={clsx(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+        tone,
+      )}
+    >
+      <span className={clsx("h-2 w-2 rounded-full", dot)} />
+      {statusLabel[runtime] ?? runtime}
+    </span>
+  );
+}
+
 interface PaperInstanceDashboardProps {
   instances: PaperRuntimeInstance[];
   loaded: boolean;
@@ -157,7 +151,7 @@ interface PaperInstanceDashboardProps {
   onOpenDetail: (instance: PaperRuntimeInstance) => void;
   onAction: (
     instance: PaperRuntimeInstance,
-    action: "start" | "pause" | "resume" | "stop",
+    action: LifecycleAction,
   ) => void;
 }
 
@@ -169,118 +163,92 @@ export function PaperInstanceDashboard({
   onOpenDetail,
   onAction,
 }: PaperInstanceDashboardProps) {
-  const [listView, setListView] = useState<ListView>("all");
-  const [favorites, setFavorites] = useState(loadFavorites);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
-  const [market, setMarket] = useState<MarketFilter>("all");
-  const [strategy, setStrategy] = useState<StrategyFilter>("all");
-  const [capital, setCapital] = useState<CapitalFilter>("all");
-  const [sort, setSort] = useState<SortMode>("return");
+  const [sort, setSort] = useState<SortMode>("created");
+  const [pending, setPending] = useState<{
+    instance: PaperRuntimeInstance;
+    action: LifecycleAction;
+  } | null>(null);
 
-  const allSymbols = useMemo(
-    () => instances.flatMap((instance) => symbolsFor(instance)),
+  const counts = useMemo(
+    () => ({
+      all: instances.length,
+      running: instances.filter((item) => item.status === "running").length,
+      paused: instances.filter((item) => item.status === "paused").length,
+      stopped: instances.filter((item) => item.status === "stopped").length,
+    }),
     [instances],
   );
-  const symbolNames = useSymbolNames(allSymbols);
-
-  const labelSymbols = (codes: string[], limit = 2) => {
-    if (!codes.length) return "证券范围未记录";
-    const labels = codes.map((code) => formatSymbolLabel(code, symbolNames[code]));
-    const shown = labels.slice(0, limit).join(" / ");
-    return labels.length > limit ? `${shown} +${labels.length - limit}` : shown;
-  };
-
-  const metrics = (instance: PaperRuntimeInstance) => {
-    const equity = resolveEquity(instance);
-    const initial = numberValue(instance.initial_cash);
-    const pnl = equity !== null && initial !== null ? equity - initial : null;
-    const returnRate = pnl !== null && initial !== null && initial > 0 ? pnl / initial : null;
-    return { equity, pnl, returnRate };
-  };
-
-  const preferredIds = useMemo(() => {
-    const next = new Set(favorites);
-    instances.forEach((instance) => {
-      const { returnRate } = metrics(instance);
-      if (
-        ["running", "paused"].includes(instance.status) &&
-        returnRate !== null &&
-        returnRate > 0.05
-      ) {
-        next.add(instance.id);
-      }
-    });
-    return next;
-  }, [favorites, instances]);
 
   const visible = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return [...instances]
-      .filter((instance) => listView === "all" || preferredIds.has(instance.id))
-      .filter((instance) => {
-        const runtime = heartbeatState(instance);
-        return status === "all" || status === runtime || status === instance.status;
-      })
-      .filter((instance) => {
-        if (market === "all") return true;
-        return symbolsFor(instance).some((symbol) => marketForSymbol(symbol) === market);
-      })
-      .filter(
-        (instance) =>
-          strategy === "all" || strategyType(instance.name) === strategy,
+      .filter((instance) => status === "all" || instance.status === status)
+      .filter((instance) =>
+        normalized
+          ? instance.name.toLowerCase().includes(normalized)
+          : true,
       )
-      .filter(
-        (instance) => capital === "all" || capitalType(instance) === capital,
-      )
-      .filter((instance) => {
-        if (!normalized) return true;
-        return [
-          instance.name,
-          statusLabel[heartbeatState(instance)],
-          symbolsFor(instance).join(" "),
-          timeframe(instance),
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalized);
-      })
       .sort((left, right) => {
-        const leftMetrics = metrics(left);
-        const rightMetrics = metrics(right);
-        if (sort === "equity")
-          return (rightMetrics.equity ?? -Infinity) - (leftMetrics.equity ?? -Infinity);
-        if (sort === "trades")
-          return Number(right.trade_count ?? 0) - Number(left.trade_count ?? 0);
-        if (sort === "heartbeat")
+        if (sort === "return") {
+          const leftReturn = metricsOf(left).returnRate;
+          const rightReturn = metricsOf(right).returnRate;
           return (
-            new Date(right.heartbeat_at ?? 0).getTime() -
-            new Date(left.heartbeat_at ?? 0).getTime()
+            (rightReturn ?? -Infinity) - (leftReturn ?? -Infinity)
           );
+        }
         return (
-          (rightMetrics.returnRate ?? -Infinity) -
-          (leftMetrics.returnRate ?? -Infinity)
+          new Date(right.created_at ?? 0).getTime() -
+          new Date(left.created_at ?? 0).getTime()
         );
       });
-  }, [capital, instances, listView, market, preferredIds, query, sort, status, strategy]);
+  }, [instances, query, sort, status]);
 
-  const toggleFavorite = (instance: PaperRuntimeInstance) => {
-    const next = new Set(favorites);
-    if (next.has(instance.id)) next.delete(instance.id);
-    else next.add(instance.id);
-    setFavorites(next);
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify([...next]));
+  const confirmCopy = (
+    instance: PaperRuntimeInstance,
+    action: LifecycleAction,
+  ): { title: string; message: string; confirmLabel: string; tone: "blue" | "danger" } => {
+    if (action === "pause")
+      return {
+        title: "暂停实例",
+        message: `确认暂停「${instance.name}」？暂停后实例不再处理收盘周期，指标停留在最后快照；可随时继续。`,
+        confirmLabel: "暂停",
+        tone: "blue",
+      };
+    if (action === "resume")
+      return {
+        title: "继续实例",
+        message: `确认继续「${instance.name}」？实例将恢复处理收盘周期并更新权益快照。`,
+        confirmLabel: "继续",
+        tone: "blue",
+      };
+    if (action === "start")
+      return {
+        title: "启动实例",
+        message: `确认启动「${instance.name}」？实例进入运行状态，按封存数据回放处理交易周期。`,
+        confirmLabel: "启动",
+        tone: "blue",
+      };
+    return {
+      title: "关闭实例",
+      message: `确认关闭「${instance.name}」？关闭后实例停止产生新信号与成交，已持久化的信号、订单、成交与权益记录会保留，之后可重新启动。`,
+      confirmLabel: "关闭",
+      tone: "danger",
+    };
   };
 
-  const control =
-    "h-9 rounded-lg border border-crypto-border bg-crypto-card px-3 text-xs text-slate-300 outline-none focus:border-blue-500/60";
+  const requestAction = (instance: PaperRuntimeInstance, action: LifecycleAction) => {
+    setPending({ instance, action });
+  };
+  const pendingCopy = pending ? confirmCopy(pending.instance, pending.action) : null;
 
   return (
-    <div className="space-y-5" data-testid="paper-instance-dashboard" data-operator-page="paper-dashboard">
+    <div className="space-y-4" data-testid="paper-instance-dashboard" data-operator-page="paper-dashboard">
       <OperatorPageHeader
-        icon={Activity}
-        title="策略实例控制台"
-        subtitle="管理多路 A 股模拟实例；子面：优选/全部、创建向导、实例监控全模块。"
+        icon={FlaskConical}
+        title="模拟盘"
+        subtitle="已晋级策略版本的模拟实例监控；信号、订单、成交与权益全部来自 PostgreSQL 持久化记录，不触碰真实资金。"
         actions={
           <button
             type="button"
@@ -288,96 +256,39 @@ export function PaperInstanceDashboard({
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-500"
           >
             <Plus className="h-4 w-4" />
-            创建新模拟实例
+            创建 Paper 实例
           </button>
         }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <SegmentedControl<ListView>
-          aria-label="模拟策略视图"
-          value={listView}
-          onChange={setListView}
+      <div className="flex flex-wrap items-center gap-2">
+        <SegmentedControl<StatusFilter>
+          aria-label="实例状态筛选"
+          value={status}
+          onChange={setStatus}
           options={[
-            { value: "preferred", label: "优选策略", icon: Star, tone: "amber", count: preferredIds.size },
-            { value: "all", label: "全部策略", count: instances.length },
+            { value: "all", label: "全部", count: counts.all },
+            { value: "running", label: "运行中", count: counts.running, tone: "emerald" },
+            { value: "paused", label: "暂停", count: counts.paused, tone: "amber" },
+            { value: "stopped", label: "已停止", count: counts.stopped },
           ]}
         />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-crypto-border bg-crypto-card p-3">
-        <select
-          aria-label="市场范围"
-          value={market}
-          onChange={(event) => setMarket(event.target.value as MarketFilter)}
-          className={control}
-        >
-          <option value="all">全部市场</option>
-          <option value="main">主板</option>
-          <option value="chinext">创业板</option>
-          <option value="star">科创板</option>
-          <option value="beijing">北交所</option>
-        </select>
-        <select
-          aria-label="策略类型"
-          value={strategy}
-          onChange={(event) => setStrategy(event.target.value as StrategyFilter)}
-          className={control}
-        >
-          <option value="all">全部策略</option>
-          <option value="factor">因子</option>
-          <option value="event">事件</option>
-          <option value="trend">趋势</option>
-          <option value="portfolio">组合</option>
-        </select>
-        <select
-          aria-label="资金版本"
-          value={capital}
-          onChange={(event) => setCapital(event.target.value as CapitalFilter)}
-          className={control}
-        >
-          <option value="all">全部资金</option>
-          <option value="small">≤ 20万</option>
-          <option value="medium">20万–100万</option>
-          <option value="large">&gt; 100万</option>
-        </select>
-        <select
-          aria-label="实例状态"
-          value={status}
-          onChange={(event) => setStatus(event.target.value as StatusFilter)}
-          className={control}
-        >
-          <option value="all">全部状态</option>
-          <option value="running">运行中</option>
-          <option value="stale">心跳陈旧</option>
-          <option value="paused">暂停</option>
-          <option value="stopped">停止</option>
-          <option value="draft">草稿</option>
-          <option value="failed">失败</option>
-        </select>
-        <label className="relative min-w-[210px] flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-600" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索策略、证券或周期"
-            className={`${control} w-full pl-9`}
-          />
-        </label>
-        <label className="relative">
-          <ArrowDownUp className="absolute left-3 top-2.5 h-4 w-4 text-slate-600" />
-          <select
-            aria-label="实例排序"
-            value={sort}
-            onChange={(event) => setSort(event.target.value as SortMode)}
-            className={`${control} pl-9`}
-          >
-            <option value="return">收益率 ↓</option>
-            <option value="equity">账户权益 ↓</option>
-            <option value="trades">成交数 ↓</option>
-            <option value="heartbeat">最近心跳 ↓</option>
-          </select>
-        </label>
+        <OperatorSearchField
+          value={query}
+          onChange={setQuery}
+          placeholder="搜索实例名称"
+          icon={<Search className="h-4 w-4" />}
+        />
+        <SegmentedControl<SortMode>
+          aria-label="实例排序"
+          size="sm"
+          value={sort}
+          onChange={setSort}
+          options={[
+            { value: "created", label: "创建时间↓" },
+            { value: "return", label: "收益率↓" },
+          ]}
+        />
       </div>
 
       {!loaded ? (
@@ -387,16 +298,11 @@ export function PaperInstanceDashboard({
       ) : visible.length ? (
         <div
           data-testid="paper-instance-grid"
-          className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+          className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
         >
           {visible.map((instance) => {
-            const runtime = heartbeatState(instance);
-            const running = instance.status === "running";
-            const heartbeatStale = runtime === "stale";
-            const { pnl, returnRate } = metrics(instance);
-            const symbols = symbolsFor(instance);
-            const autoPreferred = returnRate !== null && returnRate > 0.05;
-            const favorite = favorites.has(instance.id);
+            const { pnl, returnRate } = metricsOf(instance);
+            const cycle = timeframe(instance);
             return (
               <article
                 key={instance.id}
@@ -407,135 +313,75 @@ export function PaperInstanceDashboard({
                   <button
                     type="button"
                     onClick={() => onOpenDetail(instance)}
+                    title={instance.name}
                     className="min-w-0 text-left"
                   >
-                    <h2 className="line-clamp-2 text-xs font-semibold leading-4 text-yellow-200">
+                    <h3 className="truncate text-sm font-semibold text-slate-100">
                       {instance.name}
-                    </h2>
-                    <div className="mt-0.5 text-[10px] text-slate-500">A股模拟策略</div>
+                    </h3>
+                    <div className="mt-0.5 truncate text-[10px] text-slate-500">
+                      A股模拟策略
+                    </div>
                   </button>
-                  <div className="flex shrink-0 items-start gap-1.5">
-                    <button
-                      type="button"
-                      aria-label={favorite ? "取消优选" : "加入优选"}
-                      title={
-                        autoPreferred
-                          ? "收益率 > 5%，已自动进入优选"
-                          : favorite
-                            ? "取消手动优选"
-                            : "加入优选"
-                      }
-                      disabled={autoPreferred}
-                      onClick={() => toggleFavorite(instance)}
+                  <InstanceStatusPill instance={instance} />
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px] text-slate-500">
+                  <span className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 tabular-nums text-slate-400">
+                    {compactMoney(instance.initial_cash)}
+                  </span>
+                  <span className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 text-slate-400">
+                    {cycle || "周期未记录"}
+                  </span>
+                  <span className="tabular-nums">
+                    创建 {createdDate(instance.created_at)}
+                  </span>
+                </div>
+
+                <div className="mt-3 flex items-end justify-between gap-3 border-y border-white/[0.05] py-2.5">
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-slate-600">收益率</div>
+                    <div
                       className={clsx(
-                        "rounded-md p-1",
-                        autoPreferred || favorite
-                          ? "text-yellow-300"
-                          : "text-slate-600 hover:bg-white/5 hover:text-yellow-200",
+                        "font-mono text-2xl font-bold leading-7 tabular-nums",
+                        marketToneClass(returnRate, "text-slate-500"),
                       )}
                     >
-                      <Star
-                        className={clsx(
-                          "h-3.5 w-3.5",
-                          (autoPreferred || favorite) && "fill-current",
-                        )}
-                      />
-                    </button>
-                    {running && !heartbeatStale ? (
-                      <span
-                        className="relative mt-0.5 flex h-3.5 w-3.5 items-center justify-center"
-                        title="心跳满足 SLA"
-                        aria-label="健康运行"
-                      >
-                        <span className="absolute h-3.5 w-3.5 animate-ping rounded-full bg-emerald-400/40" />
-                        <span className="relative h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.85)]" />
-                      </span>
-                    ) : running ? (
-                      <span
-                        className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-300"
-                        title="数据库生命周期仍为运行中，但当前心跳不满足 SLA"
-                        aria-label="生命周期运行中，心跳陈旧"
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                        生命周期运行中
-                      </span>
-                    ) : (
-                      <span className={clsx(
-                        "inline-flex min-w-10 justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold",
-                        instance.status === "paused"
-                          ? "bg-yellow-500/20 text-yellow-300"
-                          : instance.status === "failed"
-                            ? "bg-red-500/20 text-red-300"
-                            : "bg-gray-700/50 text-gray-400",
-                      )}>
-                        {statusLabel[instance.status] ?? instance.status}
-                      </span>
-                    )}
+                      {signedPercent(returnRate)}
+                    </div>
                   </div>
-                </div>
-
-                <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px]">
-                  <span className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 text-slate-400">
-                    {timeframe(instance) || "周期未记录"}
-                  </span>
-                  <span className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 text-slate-400">
-                    {money(instance.initial_cash)}
-                  </span>
-                  {heartbeatStale ? (
-                    <span className="rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-amber-300">
-                      心跳陈旧
-                    </span>
-                  ) : null}
-                  <span
-                    className="min-w-0 truncate text-slate-600"
-                    title={
-                      symbols.length
-                        ? symbols
-                            .map((code) => formatSymbolLabel(code, symbolNames[code]))
-                            .join("、")
-                        : "证券范围未记录"
-                    }
-                  >
-                    · {labelSymbols(symbols)}
-                  </span>
-                  <span className="text-slate-600">· 最后心跳 {timestamp(instance.heartbeat_at)}</span>
-                </div>
-
-                <div className="mt-2 grid grid-cols-2 gap-x-3 border-y border-white/[0.05] py-2">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-[10px] text-slate-600">总盈亏</span>
-                    <span
+                  <div className="shrink-0 text-right">
+                    <div className="text-[10px] text-slate-600">总盈亏</div>
+                    <div
                       className={clsx(
                         "font-mono text-sm font-bold tabular-nums",
                         marketToneClass(pnl, "text-slate-500"),
                       )}
                     >
                       {signedMoney(pnl)}
-                    </span>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-[10px] text-slate-600">收益率</span>
-                    <span
-                      className={clsx(
-                        "font-mono text-sm font-bold tabular-nums",
-                        marketToneClass(returnRate, "text-slate-500"),
-                      )}
-                    >
-                      {signedPercent(returnRate)}
-                    </span>
+                    </div>
                   </div>
                 </div>
 
                 <div className="mt-2 grid grid-cols-4 gap-1 text-center">
-                  {[
-                    ["夏普", "未计算", "当前 Paper API 未返回夏普指标"],
-                    ["胜率", "未计算", "当前 Paper API 未返回已实现胜率"],
-                    ["盈亏比", "未计算", "当前 Paper API 未返回盈亏比"],
-                    ["成交", String(instance.trade_count ?? 0), "PostgreSQL 模拟成交计数"],
-                  ].map(([label, metric, title]) => (
+                  {(
+                    [
+                      ["夏普", null, "当前 Paper 实例列表未返回夏普指标"],
+                      ["胜率", null, "当前 Paper 实例列表未返回已实现胜率"],
+                      ["盈亏比", null, "当前 Paper 实例列表未返回盈亏比"],
+                      [
+                        "交易次数",
+                        instance.trade_count === null ||
+                          instance.trade_count === undefined
+                          ? null
+                          : String(instance.trade_count),
+                        "PostgreSQL 模拟成交计数",
+                      ],
+                    ] as Array<[string, string | null, string]>
+                  ).map(([label, metric, title]) => (
                     <div key={label} title={title} className="rounded-md bg-crypto-bg/50 px-1 py-1">
                       <div className="truncate font-mono text-[11px] font-semibold tabular-nums text-slate-300">
-                        {metric}
+                        {metric ?? "—"}
                       </div>
                       <div className="mt-0.5 text-[9px] text-slate-600">{label}</div>
                     </div>
@@ -547,7 +393,7 @@ export function PaperInstanceDashboard({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => onAction(instance, "pause")}
+                      onClick={() => requestAction(instance, "pause")}
                       className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-amber-500/25 text-[11px] text-amber-200 disabled:opacity-40"
                     >
                       <PauseCircle className="h-3.5 w-3.5" />
@@ -557,7 +403,7 @@ export function PaperInstanceDashboard({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => onAction(instance, "resume")}
+                      onClick={() => requestAction(instance, "resume")}
                       className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-emerald-500/25 text-[11px] text-emerald-200 disabled:opacity-40"
                     >
                       <PlayCircle className="h-3.5 w-3.5" />
@@ -567,7 +413,7 @@ export function PaperInstanceDashboard({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => onAction(instance, "start")}
+                      onClick={() => requestAction(instance, "start")}
                       className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-emerald-500/25 text-[11px] text-emerald-200 disabled:opacity-40"
                     >
                       <PlayCircle className="h-3.5 w-3.5" />
@@ -577,9 +423,10 @@ export function PaperInstanceDashboard({
                   <button
                     type="button"
                     disabled={
-                      busy || !["running", "paused", "failed"].includes(instance.status)
+                      busy ||
+                      !["running", "paused", "failed"].includes(instance.status)
                     }
-                    onClick={() => onAction(instance, "stop")}
+                    onClick={() => requestAction(instance, "stop")}
                     className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-red-500/25 text-[11px] text-red-200 disabled:opacity-35"
                   >
                     <Square className="h-3.5 w-3.5" />
@@ -600,17 +447,32 @@ export function PaperInstanceDashboard({
         </div>
       ) : (
         <div className="min-h-64 rounded-xl border border-dashed border-crypto-border bg-crypto-card p-12 text-center text-sm text-slate-500">
-          {listView === "preferred"
-            ? "还没有优选策略。收益率超过 5% 的实例会自动进入，也可使用卡片星标手动加入。"
-            : instances.length
-              ? "未找到匹配的模拟实例。"
-              : "暂无运行实例。点击“创建新模拟实例”进入创建向导。"}
+          {instances.length
+            ? "未找到匹配的模拟实例。"
+            : "暂无运行实例。点击“创建 Paper 实例”进入创建向导。"}
         </div>
       )}
 
       <div className="text-[10px] text-slate-600">
-        当前卡片仅展示已持久化权益和成交证据；夏普、胜率和盈亏比在 API 未提供时明确显示“未计算”，不会伪装为 0。
+        卡片指标随实例列表每 10 秒批量刷新、每 60 秒全量刷新；夏普、胜率和盈亏比在
+        API 未提供时显示“—”，不会伪装为 0。
       </div>
+
+      <ConfirmDialog
+        open={pending !== null && pendingCopy !== null}
+        title={pendingCopy?.title ?? ""}
+        message={pendingCopy?.message ?? ""}
+        confirmLabel={pendingCopy?.confirmLabel ?? "确认"}
+        tone={pendingCopy?.tone ?? "blue"}
+        busy={busy}
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          if (!pending) return;
+          const { instance, action } = pending;
+          setPending(null);
+          onAction(instance, action);
+        }}
+      />
     </div>
   );
 }

@@ -1222,3 +1222,253 @@ export interface DailyReviewContext {
   source_manifest_hash: string;
   counts: Record<string, number>;
 }
+
+export type ResearchDeskStageStatus = 'available' | 'partial' | 'empty';
+
+export interface ResearchDeskStage {
+  id: string;
+  label: string;
+  route: string;
+  status: ResearchDeskStageStatus;
+  count?: number | null;
+  detail: string;
+}
+
+export interface ResearchDeskStrategy {
+  id: number;
+  name: string;
+  description: string;
+  updated_at?: string | null;
+}
+
+export interface ResearchDeskBacktest {
+  id: string;
+  name?: string | null;
+  status: string;
+  run_mode?: string | null;
+  promotion_status?: string | null;
+  strategy_name?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+}
+
+export interface ResearchDeskPaper {
+  id: string;
+  name?: string | null;
+  status: string;
+}
+
+export interface ResearchDeskNextAction {
+  label: string;
+  route: string;
+  reason: string;
+}
+
+export interface ResearchDeskBindings {
+  factor_codes: string[];
+  factor_ready: number;
+  dataset_snapshot_id?: number | null;
+  pool_snapshot_id?: number | null;
+  pool_trade_date?: string | null;
+  strategy_version_id?: string | null;
+  strategy_version_status?: string | null;
+}
+
+export interface ResearchDesk {
+  contract_version: string;
+  checked_at: string;
+  trade_date?: string | null;
+  pipeline: ResearchDeskStage[];
+  active_strategy: ResearchDeskStrategy | null;
+  latest_backtest: ResearchDeskBacktest | null;
+  latest_paper: ResearchDeskPaper | null;
+  next_action: ResearchDeskNextAction;
+  bindings?: ResearchDeskBindings;
+}
+
+// ---------------------------------------------------------------------------
+// AI 策略研发（多智能体闭环）
+// ---------------------------------------------------------------------------
+
+export interface AgentGoalCriteria {
+  min_sharpe: number;
+  max_drawdown: number;
+  min_win_rate: number;
+  min_return: number;
+  min_trades: number;
+  min_profit_loss_ratio: number;
+}
+
+export interface AgentResearchDefaults {
+  dataset_snapshot_id: number | null;
+  dataset_snapshot_name: string;
+  universe_snapshot_id: number | null;
+  universe_code: string;
+  cost_model_id: string | null;
+  benchmark_code: string;
+  symbols: string[];
+  start_date: string;
+  end_date: string;
+  event_limit: number;
+  initial_cash: number;
+}
+
+export interface AgentResearchConfig {
+  llm_available: boolean;
+  default_model: string;
+  defaults: AgentResearchDefaults;
+}
+
+export interface AgentTaskSummary {
+  id: string;
+  name: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
+  stage: string;
+  stage_label: string;
+  goal: AgentGoalCriteria;
+  user_prompt: string;
+  iteration_count: number;
+  max_iterations: number;
+  best_iteration: number | null;
+  best_score: number | null;
+  best_metrics: Record<string, number | null> | null;
+  llm_model: string;
+  promoted_strategy_version_id: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentStrategySpec {
+  market_analysis: string;
+  strategy_candidates: { name: string; description: string; fit_reason: string }[];
+  recommended_approach: string;
+  risk_considerations: string;
+  iteration_plan: string;
+}
+
+export interface AgentTaskDetail extends AgentTaskSummary {
+  research_config: AgentResearchDefaults & Record<string, unknown>;
+  strategy_spec: AgentStrategySpec | null;
+}
+
+export interface AgentEvalScores {
+  risk_control: number;
+  profitability: number;
+  robustness: number;
+  strategy_logic: number;
+  originality: number;
+  total_score: number;
+}
+
+export interface AgentIteration {
+  id: string;
+  task_id: string;
+  iteration: number;
+  action: 'new' | 'refine' | 'pivot';
+  contract: {
+    strategy_direction: string;
+    key_indicators: string[];
+    entry_logic_desc: string;
+    exit_logic_desc: string;
+    risk_management_desc: string;
+    acceptance_criteria: string[];
+    action: string;
+  } | null;
+  strategy_name: string;
+  strategy_version_id: string | null;
+  strategy_code: string;
+  reasoning: string;
+  sandbox_report: { valid: boolean; issues?: { code: string; message: string; line: number | null }[] } | null;
+  backtest_run_id: string | null;
+  backtest_metrics: Record<string, number | null>;
+  eval_scores: AgentEvalScores | null;
+  score: number;
+  meets_goal: boolean;
+  analysis: string;
+  suggestions: string[];
+  error: string;
+  next_action: string;
+  created_at: string;
+}
+
+export interface AgentTaskCreateRequest {
+  name: string;
+  user_prompt?: string;
+  goal?: Partial<AgentGoalCriteria>;
+  research_config?: Partial<AgentResearchDefaults>;
+  max_iterations?: number;
+  llm_model?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// A 股实盘工作台
+// ---------------------------------------------------------------------------
+
+export interface LiveBrokerAdapter {
+  key: string;
+  name: string;
+  available: boolean;
+  configured: boolean;
+  note: string;
+}
+
+export interface LiveTradingStatus {
+  trading_enabled: boolean;
+  boundary_note: string;
+  adapters: LiveBrokerAdapter[];
+  risk_limits: Record<string, number | null>;
+}
+
+export interface LivePromotionCandidate {
+  kind: 'backtest_run' | 'paper_instance';
+  id: string;
+  name: string;
+  strategy_version_id: string | null;
+  promotion_status: string | null;
+  metrics: Record<string, number | null>;
+  detail: Record<string, unknown>;
+}
+
+export interface LivePreflightRequest {
+  candidate_kind: 'backtest_run' | 'paper_instance';
+  candidate_id: string;
+}
+
+export interface LivePreflightCheck {
+  check_code: string;
+  title: string;
+  status: 'passed' | 'failed' | 'warning';
+  reason: string | null;
+}
+
+export interface LivePreflightResult {
+  candidate: LivePromotionCandidate | null;
+  checks: LivePreflightCheck[];
+  deployable: boolean;
+  confirm_token: string | null;
+}
+
+export interface LiveDeploymentRequest {
+  candidate_kind: 'backtest_run' | 'paper_instance';
+  candidate_id: string;
+  confirm_token: string;
+  confirmed: boolean;
+}
+
+export interface LiveDeploymentResult {
+  accepted: boolean;
+  status: 'deployed' | 'rejected' | 'blocked';
+  reason: string;
+  event_id: string | null;
+}
+
+export interface LiveAuditEvent {
+  id: string;
+  event_type: string;
+  candidate_kind: string;
+  candidate_id: string;
+  status: string;
+  detail: Record<string, unknown>;
+  created_at: string;
+}

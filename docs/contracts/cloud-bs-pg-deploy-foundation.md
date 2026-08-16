@@ -17,6 +17,7 @@ Move StockPro's active direction to a cloud-hosted B/S strategy workstation depl
 - Add production environment shape for `DATABASE_URL`.
 - Upgrade BitPro-style deployment scripts and GitHub Actions to run migrations before service start.
 - Keep runtime routes and background services on Postgres repositories.
+- Keep local development off local PostgreSQL by using an isolated server database through an SSH tunnel.
 - Keep Electron as optional shell only.
 
 ## Out of Scope
@@ -41,6 +42,7 @@ Move StockPro's active direction to a cloud-hosted B/S strategy workstation depl
 - Postgres migrations are idempotent and runnable through a Python module.
 - Deployment script validates `.env`, installs dependencies, applies migrations, restarts systemd, reloads Nginx, and checks health.
 - Production config requires `DATABASE_URL` and documents Postgres-only runtime expectations.
+- Local restart establishes the configured database SSH tunnel instead of starting a PostgreSQL Docker container.
 
 ## Verification
 

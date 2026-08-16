@@ -42,6 +42,12 @@
     "interval_seconds": 600
   },
   {
+    "filename": "multi_factor_risk_budget.py",
+    "name": "多因子风险预算",
+    "description": "动量、短反转、低波、非流动性截面加权，周度再平衡，日度中位收益熔断。Strategy API v1。",
+    "interval_seconds": 60
+  },
+  {
     "filename": "board_first_weak_to_strong.py",
     "name": "[A股][日线][打板] 首板弱转强隔日T",
     "description": "优先选当日首板（连板计数=1）；研究20池大票涨停稀少时按当日涨幅补齐。日线近似，不是逐笔打板。",

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Activity, AlertCircle, BarChart3, BookOpen, CalendarDays, CheckCircle2, Code2, Layers, Play, Plus, RefreshCw, Save, Search, ShieldCheck, TrendingUp, Zap, X } from 'lucide-react';
+import { Activity, AlertCircle, BarChart3, BookOpen, CalendarDays, CheckCircle2, Code2, FlaskConical, Layers, Play, Plus, RefreshCw, Save, Search, ShieldCheck, Sparkles, TrendingUp, Zap, X } from 'lucide-react';
 import clsx from 'clsx';
 import { autoDevelopStrategy, getAICapabilities, getFactorSnapshots, getLatestStrategyVersion, getStrategies, quickRunStrategyVersion, saveStrategy, updateStrategy } from '../api/client';
 import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
+import { StrategyAIPanel } from '../components/StrategyAIPanel';
 import { StrategyDetailPanel } from '../components/BitProDetailPanels';
 import {
   CatalogueCard,
@@ -15,8 +16,12 @@ import {
   SegmentedControl,
 } from '../components/OperatorShell';
 import type { AICapabilities, Strategy as StrategyType, StrategyReplayResult, StrategyValidationReport, StrategyVersion } from '../types';
+import { MULTI_FACTOR_RISK_BUDGET_CODE } from '../lib/strategyTemplates';
+import { PIPELINE_STRATEGY_NAME } from '../lib/pipeline';
+import { WorkspacePipelineNote } from '../components/WorkspacePipelineNote';
+import { useResearchDesk } from '../components/ResearchDeskContext';
 
-type ListTab = 'my' | 'plaza' | 'audit';
+type ListTab = 'my' | 'plaza' | 'audit' | 'ai';
 type StatusFilter = 'all' | 'running' | 'not_started';
 type AssetFilter = 'all' | 'ashare' | 'strategy_v1';
 
@@ -32,7 +37,28 @@ const assetFilters: { value: AssetFilter; label: string }[] = [
   { value: 'strategy_v1', label: '标准策略' },
 ];
 
-const plazaTemplates = [
+const plazaTemplates: Array<{
+  key: string;
+  name: string;
+  category: string;
+  difficulty: string;
+  description: string;
+  tags: string[];
+  icon: typeof TrendingUp;
+  tone: string;
+  code?: string;
+}> = [
+  {
+    key: 'multifactor',
+    name: '多因子风险预算',
+    category: '多因子选股',
+    difficulty: '资深',
+    description: '动量 + 短反转 + 低波 + 非流动性截面加权，周度再平衡，日度中位收益熔断，单票上限 12%。',
+    tags: ['A股', '多因子', '风控'],
+    icon: Layers,
+    tone: 'bg-cyan-500/15 text-cyan-300',
+    code: MULTI_FACTOR_RISK_BUDGET_CODE,
+  },
   {
     key: 'breakout',
     name: '首板突破模板',
@@ -105,14 +131,18 @@ const productStrategyCopy = (strategy: StrategyType): StrategyType => {
 const inferTags = (strategy: StrategyType) => {
   const text = `${strategy.name} ${strategy.description} ${strategy.script_content}`;
   const tags = ['A股', '1D'];
+  if (/打板|涨停|连板|封板/.test(text)) tags.push('打板');
+  if (/隔日T|做T|低开|高开/.test(text)) tags.push('隔日T');
   if (/break|突破|首板/.test(text)) tags.push('突破');
   if (/ema|ma|均线/i.test(text)) tags.push('均线');
   if (/momentum|动量|趋势/i.test(text)) tags.push('动量');
+  if (/多因子|风险预算|zscore|因子/.test(text)) tags.push('多因子');
   return [...new Set(tags)].slice(0, 6);
 };
 
 export function Strategy() {
   const navigate = useNavigate();
+  const { desk } = useResearchDesk();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedStrategyId = Number(searchParams.get('strategy')) || null;
   const detailRequested = searchParams.get('view') === 'detail';
@@ -190,7 +220,9 @@ export function Strategy() {
       ]);
       setStrategies(data);
       setAiCapabilities(capabilities);
-      const firstBusiness = data.find(
+      const firstBusiness = data.find((item) =>
+        item.name.includes(PIPELINE_STRATEGY_NAME) && (!item.data_purpose || item.data_purpose === 'user'),
+      ) || data.find(
         (item) => !item.data_purpose || item.data_purpose === 'user',
       );
       setSelectedId((current) =>
@@ -237,6 +269,7 @@ export function Strategy() {
       .then((version) => {
         setActiveVersion(version);
         setValidation(version.validation_report);
+        if (version.script_content) setScript(version.script_content);
       })
       .catch(() => {
         setActiveVersion(null);
@@ -326,6 +359,7 @@ export function Strategy() {
   if (view === 'detail' && selected) {
     return (
       <div className="min-h-full bg-crypto-bg p-6" data-operator-page="strategy-detail">
+        <WorkspacePipelineNote stageId="strategy" />
         <StrategyDetailPanel
           strategy={productStrategyCopy(selected)}
           version={activeVersion}
@@ -335,7 +369,12 @@ export function Strategy() {
             setView('editor');
           }}
           onEdit={() => setShowEditor(true)}
-          onBacktest={() => navigate('/backtest')}
+          onBacktest={() => {
+            const params = new URLSearchParams();
+            if (activeVersion?.id) params.set('strategyVersionId', String(activeVersion.id));
+            if (desk?.bindings?.pool_snapshot_id) params.set('poolSnapshotId', String(desk.bindings.pool_snapshot_id));
+            navigate(`/backtest?${params.toString()}`);
+          }}
           onPaper={() => navigate('/paper')}
         />
       </div>
@@ -347,9 +386,17 @@ export function Strategy() {
       <OperatorPageHeader
         icon={Code2}
         title="策略中心"
-        subtitle="目录 → 校验/版本 → 回测 → 模拟。子视图：我的策略、策略广场、编辑器、详情。"
+        subtitle="同一条量化链路的策略台：默认打开「多因子风险预算」，再走校验 / 版本 / 回测 / 模拟。"
         actions={
           <>
+            <button
+              type="button"
+              onClick={() => setListTab('ai')}
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-4 text-sm font-semibold text-purple-100 transition-colors hover:border-purple-500/55 hover:bg-purple-500/20"
+            >
+              <Sparkles className="h-4 w-4" />
+              AI 写策略
+            </button>
             <button
               type="button"
               onClick={handleGenerate}
@@ -362,7 +409,21 @@ export function Strategy() {
               className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/[0.12] px-4 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-500/45 hover:bg-purple-500/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Zap className="h-4 w-4" />
-              {aiCapabilities?.configured ? 'AI 写策略' : 'AI 未配置'}
+              {aiCapabilities?.configured ? '规则生成' : 'AI 未配置'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (activeVersion?.id) params.set('strategyVersionId', String(activeVersion.id));
+                else if (desk?.bindings?.strategy_version_id) params.set('strategyVersionId', desk.bindings.strategy_version_id);
+                if (desk?.bindings?.pool_snapshot_id) params.set('poolSnapshotId', String(desk.bindings.pool_snapshot_id));
+                navigate(`/backtest?${params.toString()}`);
+              }}
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-4 text-sm font-semibold text-purple-100 hover:bg-purple-500/20"
+            >
+              <FlaskConical className="h-4 w-4" />
+              提交完整回测
             </button>
             <button
               type="button"
@@ -384,6 +445,7 @@ export function Strategy() {
           </>
         }
       />
+      <WorkspacePipelineNote stageId="strategy" />
 
       <div className="mb-6 space-y-3">
         <AshareGuardrailStrip
@@ -403,6 +465,7 @@ export function Strategy() {
             { value: 'my', label: '我的策略', icon: Layers, tone: 'blue', count: businessStrategies.length },
             { value: 'plaza', label: '策略广场', icon: BookOpen, tone: 'purple', count: plazaTemplates.length + referenceStrategies.length },
             { value: 'audit', label: '审计证据', icon: ShieldCheck, tone: 'amber', count: auditStrategies.length },
+            { value: 'ai', label: 'AI 研发', icon: Zap, tone: 'purple' },
           ]}
         />
         {listTab === 'my' && (
@@ -612,7 +675,7 @@ export function Strategy() {
                   setSelectedId(null);
                   setName(template.name.replace('模板', '策略'));
                   setDescription(template.description);
-                  setScript(emptyCode);
+                  setScript(template.code || emptyCode);
                   setActiveVersion(null);
                   setValidation(null);
                   setReplayResult(null);
@@ -676,6 +739,10 @@ export function Strategy() {
             ) : null}
           </div>
         </section>
+      )}
+
+      {listTab === 'ai' && (
+        <StrategyAIPanel />
       )}
 
       {showEditor && (

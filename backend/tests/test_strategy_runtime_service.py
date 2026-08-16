@@ -2,9 +2,11 @@ import unittest
 from pathlib import Path
 
 from app.services.strategy_runtime_service import (
+    BACKTEST_RUNTIME_LIMITS,
     DEFAULT_RUNTIME_LIMITS,
     StrategyRuntimeService,
     normalize_runtime_limits,
+    resolve_replay_limits,
     validate_strategy_python,
 )
 
@@ -94,6 +96,11 @@ def handle_data(context, data):
         self.assertEqual(limits["wall_seconds"], 1.0)
         self.assertEqual(limits["max_records"], 50)
         self.assertEqual(limits["memory_mb"], DEFAULT_RUNTIME_LIMITS["memory_mb"])
+
+    def test_full_replay_uses_backtest_envelope(self):
+        limits = resolve_replay_limits("backtest", {"wall_seconds": 1.0})
+        self.assertEqual(limits["wall_seconds"], BACKTEST_RUNTIME_LIMITS["wall_seconds"])
+        self.assertEqual(resolve_replay_limits("quick")["wall_seconds"], DEFAULT_RUNTIME_LIMITS["wall_seconds"])
 
     def test_runtime_limit_expansion_and_unknown_keys_are_rejected(self):
         with self.assertRaises(ValueError):

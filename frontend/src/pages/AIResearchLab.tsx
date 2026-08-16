@@ -19,6 +19,7 @@ import {
 import { getAICapabilities, getStrategies, listBacktestRuns } from "../api/client";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { MetricValue, OperatorPageHeader } from "../components/OperatorShell";
+import { WorkspacePipelineNote } from "../components/WorkspacePipelineNote";
 import type { AICapabilities, BacktestRun, Strategy } from "../types";
 
 const TABS = [
@@ -122,7 +123,7 @@ export function AIResearchLab() {
             </span>
           </span>
         }
-        subtitle="三个子工作区：AI自主交易 / 新策略研发 / 现有策略优化。结果先经回测与模拟准入。"
+        subtitle="辅助同一条多因子链路：AI自主交易 / 新策略研发 / 现有策略优化。结果先经回测与模拟准入。"
         actions={
           <button
             type="button"
@@ -134,6 +135,7 @@ export function AIResearchLab() {
           </button>
         }
       />
+      <WorkspacePipelineNote stageId="ai-lab" />
 
       <section className="mb-5 grid gap-px overflow-hidden rounded-xl border border-crypto-border bg-crypto-border md:grid-cols-4">
         {[

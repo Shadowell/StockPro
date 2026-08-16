@@ -11,13 +11,13 @@
 | 健康检查 | `http://localhost:4445/api/health/health` | 后端进程状态 |
 | 存储检查 | `http://localhost:4445/api/health/storage` | PostgreSQL 状态 |
 | OpenAPI | `http://localhost:4445/docs` | 运行时接口文档 |
-| PostgreSQL | `127.0.0.1:55432` | Docker 映射端口 |
+| PostgreSQL | `127.0.0.1:55432` | 到服务器 PostgreSQL 的 SSH 隧道端口 |
 
 ## 2. 环境准备
 
 - Python 3.11+
 - Node.js 18+、npm 9+
-- Docker Desktop / Docker Compose
+- 已配置数据库服务器的 SSH 主机别名
 - 可选 `tmux`
 
 ## 3. 首次安装
@@ -31,15 +31,13 @@ cp backend/.env.example backend/.env
 编辑 `backend/.env`：
 
 - 修改 `ADMIN_PASSWORD` 和 `ADMIN_TOKEN_SECRET`；
-- 保持 `DATABASE_URL` 指向本地 PG；
+- 将 `DATABASE_URL` 指向本机 SSH 隧道端口，并配置 `DATABASE_SSH_HOST`；
 - 按需填写 `TUSHARE_TOKEN` 和 `QWEN_API_KEY`；
 - 首次运行建议保持实时同步、策略执行和启动期写操作关闭。
 
 然后初始化：
 
 ```bash
-docker compose up -d postgres
-
 python3 -m venv backend/venv
 backend/venv/bin/python -m pip install -r backend/requirements.txt
 
@@ -47,7 +45,7 @@ backend/venv/bin/python -m pip install -r backend/requirements.txt
 npm --prefix frontend install
 ```
 
-`bootstrap_runtime.py` 显式执行迁移、数据目录安装、数据集注册和预置策略初始化。它会写入本地 PostgreSQL，但不会自动执行外部市场同步。
+`bootstrap_runtime.py` 显式执行迁移、数据目录安装、数据集注册和预置策略初始化。它会写入配置的服务器 PostgreSQL，但不会自动执行外部市场同步。
 
 ## 4. 启动、停止和重启
 
@@ -59,7 +57,7 @@ npm --prefix frontend install
 `restart.sh` 会：
 
 1. 停止占用 4444/4445 的旧本地进程；
-2. 启动 Docker PostgreSQL；
+2. 建立到服务器 PostgreSQL 的 SSH 隧道；
 3. 确保 Python/Node 依赖已安装；
 4. 启动 FastAPI 和 Vite；
 5. 轮询后端健康接口和前端首页。
@@ -70,7 +68,7 @@ npm --prefix frontend install
 
 - 自动运行数据库迁移或 bootstrap；
 - 自动同步全市场数据；
-- SSH、rsync、scp 或连接远程服务器；
+- 部署代码、rsync 或 scp 文件到远程服务器；
 - 自动部署 GitHub 上的新提交。
 
 ## 5. 日志与状态
@@ -125,7 +123,7 @@ tmux attach -t stockpro-frontend
 (cd backend && venv/bin/python bootstrap_runtime.py --recover-paper)
 ```
 
-此命令会改变本地数据库状态，执行前先确认目标数据库连接。
+此命令会改变服务器开发数据库状态，执行前先确认目标数据库连接。
 
 ## 8. 验证
 
@@ -148,12 +146,12 @@ npm --prefix frontend run test:e2e:real
 ### PostgreSQL 无法连接
 
 ```bash
-docker compose ps
-docker compose logs postgres
+./scripts/database-tunnel.sh status
+ssh your-db-ssh-host true
 curl -fsS http://127.0.0.1:4445/api/health/storage
 ```
 
-确认 `backend/.env` 的 `DATABASE_URL` 与 `docker-compose.yml` 一致。
+确认 `backend/.env` 的 `DATABASE_URL`、`DATABASE_SSH_HOST` 和远端端口一致。本机端口被旧 PostgreSQL 容器占用时，应先停止该容器，再重建隧道。
 
 ### 登录失败
 

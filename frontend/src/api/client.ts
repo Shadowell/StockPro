@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities } from '../types';
+import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePreflightResult, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -110,6 +110,11 @@ export const hasAdminToken = (): boolean => Boolean(getAdminToken());
 
 export const getWorkflowCapabilities = async (): Promise<WorkflowCapabilities> => {
   const response = await apiClient.get<WorkflowCapabilities>('/workflow/capabilities');
+  return response.data;
+};
+
+export const getResearchDesk = async (): Promise<ResearchDesk> => {
+  const response = await apiClient.get<ResearchDesk>('/workflow/research-desk');
   return response.data;
 };
 
@@ -1595,5 +1600,83 @@ export const createResearchFactor = async (request: {
   python_code: string;
 }): Promise<Record<string, unknown>> => {
   const response = await apiClient.post<Record<string, unknown>>('/factors', request);
+  return response.data;
+};
+
+// ---------------------------------------------------------------------------
+// AI 策略研发（BitPro 式多智能体闭环）
+// ---------------------------------------------------------------------------
+
+export const getAgentResearchConfig = async (): Promise<AgentResearchConfig> => {
+  const response = await apiClient.get<AgentResearchConfig>('/agent/config');
+  return response.data;
+};
+
+export const listAgentTasks = async (limit = 50): Promise<{ tasks: AgentTaskSummary[] }> => {
+  const response = await apiClient.get<{ tasks: AgentTaskSummary[] }>('/agent/tasks', { params: { limit } });
+  return response.data;
+};
+
+export const createAgentTask = async (request: AgentTaskCreateRequest): Promise<{ task: AgentTaskSummary }> => {
+  const response = await apiClient.post<{ task: AgentTaskSummary }>('/agent/tasks', request);
+  return response.data;
+};
+
+export const getAgentTask = async (taskId: string): Promise<AgentTaskDetail> => {
+  const response = await apiClient.get<AgentTaskDetail>(`/agent/tasks/${taskId}`);
+  return response.data;
+};
+
+export const listAgentIterations = async (taskId: string): Promise<{ iterations: AgentIteration[] }> => {
+  const response = await apiClient.get<{ iterations: AgentIteration[] }>(`/agent/tasks/${taskId}/iterations`);
+  return response.data;
+};
+
+export const startAgentTask = async (taskId: string): Promise<{ task: AgentTaskSummary }> => {
+  const response = await apiClient.post<{ task: AgentTaskSummary }>(`/agent/tasks/${taskId}/start`);
+  return response.data;
+};
+
+export const stopAgentTask = async (taskId: string): Promise<{ task: AgentTaskSummary }> => {
+  const response = await apiClient.post<{ task: AgentTaskSummary }>(`/agent/tasks/${taskId}/stop`);
+  return response.data;
+};
+
+export const deleteAgentTask = async (taskId: string): Promise<{ deleted: boolean }> => {
+  const response = await apiClient.delete<{ deleted: boolean }>(`/agent/tasks/${taskId}`);
+  return response.data;
+};
+
+export const promoteAgentIteration = async (taskId: string, iteration: number): Promise<{ strategy_version: { id: string; name: string; version: number }; iteration: number }> => {
+  const response = await apiClient.post<{ strategy_version: { id: string; name: string; version: number }; iteration: number }>(`/agent/tasks/${taskId}/promote`, { iteration });
+  return response.data;
+};
+
+// ---------------------------------------------------------------------------
+// A 股实盘工作台（预检 + 晋级管线 + 审计，真实委托需券商通道配置）
+// ---------------------------------------------------------------------------
+
+export const getLiveTradingStatus = async (): Promise<LiveTradingStatus> => {
+  const response = await apiClient.get<LiveTradingStatus>('/live/status');
+  return response.data;
+};
+
+export const getLivePromotionCandidates = async (): Promise<{ candidates: LivePromotionCandidate[] }> => {
+  const response = await apiClient.get<{ candidates: LivePromotionCandidate[] }>('/live/promotion-candidates');
+  return response.data;
+};
+
+export const runLivePreflight = async (request: LivePreflightRequest): Promise<LivePreflightResult> => {
+  const response = await apiClient.post<LivePreflightResult>('/live/preflight', request);
+  return response.data;
+};
+
+export const requestLiveDeployment = async (request: LiveDeploymentRequest): Promise<LiveDeploymentResult> => {
+  const response = await apiClient.post<LiveDeploymentResult>('/live/enable', request);
+  return response.data;
+};
+
+export const listLiveEvents = async (limit = 50): Promise<{ events: LiveAuditEvent[] }> => {
+  const response = await apiClient.get<{ events: LiveAuditEvent[] }>('/live/events', { params: { limit } });
   return response.data;
 };

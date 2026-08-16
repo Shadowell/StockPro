@@ -132,6 +132,21 @@ class MarketOverviewFastPathTests(unittest.TestCase):
         self.assertEqual(1, pulse["price_limit_rule_excluded"])
         self.assertEqual(0, pulse["price_limit_rule_unknown"])
 
+    def test_market_overview_reads_quotes_without_listing_status_join(self):
+        stocks = [
+            {"code": "SH_600000", "name": "浦发银行", "change_percent": 1.0, "amount": 100_000_000},
+        ]
+
+        with (
+            patch("app.services.market_service.db.get_market_indices_realtime", return_value=[]),
+            patch("app.services.market_service.db.get_all_stocks_realtime", return_value=stocks) as fetch_stocks,
+        ):
+            overview = MarketService.get_market_overview()
+
+        fetch_stocks.assert_called_once_with(include_listing_status=False)
+        self.assertEqual(1, overview["data_status"]["stock_snapshot_count"])
+        self.assertEqual(1, overview["sentiment"]["advancing"])
+
     def test_market_overview_does_not_fetch_providers_when_realtime_cache_is_empty(self):
         indices = [
             {

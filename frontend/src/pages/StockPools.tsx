@@ -34,6 +34,7 @@ import {
   OperatorFilterBar,
   OperatorPageHeader,
 } from "../components/OperatorShell";
+import { WorkspacePipelineNote } from "../components/WorkspacePipelineNote";
 import { SymbolCell } from "../components/SymbolCell";
 import {
   TremorBarList,
@@ -610,7 +611,7 @@ export function StockPools() {
       <OperatorPageHeader
         icon={Layers3}
         title="股票池工作台"
-        subtitle="将行情、板块轮动、事件催化与因子规则转化为可复现、带审计理由的候选标的池，并封存为不可变快照供量化策略回测使用。"
+        subtitle="多因子链路的宇宙台：把因子截面收成可复现股票池，并封存快照给回测/模拟锁定。"
         actions={
           <button
             type="button"
@@ -622,6 +623,7 @@ export function StockPools() {
           </button>
         }
       />
+      <WorkspacePipelineNote stageId="pools" />
 
       {/* Top Standard Workflow Stepper */}
       <div className="mb-4 flex flex-wrap items-center gap-2">

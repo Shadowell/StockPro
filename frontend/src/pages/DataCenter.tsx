@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { DataPanel, StatusBadge } from '@bitpro/ui';
 import { OperatorMetricCard } from '../components/OperatorShell';
+import { WorkspacePipelineNote } from '../components/WorkspacePipelineNote';
 import { TremorBarList } from '../components/TremorUI';
 import type { MetricTone } from '../utils/marketColors';
 import {
@@ -31,6 +32,7 @@ import {
   deleteDataKlines,
   getDataConfig,
   getDailyReferenceSchedule,
+  getDataHubQualityReport,
   getDataSchedule,
   getDataStatus,
   getDataTableStats,
@@ -41,12 +43,15 @@ import {
   probeTushareEndpoint,
   removeDataSymbol,
   runDailyReferenceSchedule,
+  runDataHubQuality,
   searchStocks,
   startDataSync,
   syncAllMarketHistory,
   triggerDataSync,
   updateDailyReferenceSchedule,
   updateDataSchedule,
+  type DataHubQualityCheck,
+  type DataHubQualityReport,
   type DataTableStatsResponse,
   type DataSyncConfigResponse,
   type DataSyncScheduleConfig,
@@ -209,6 +214,169 @@ const compactDate = (value?: string | null) => {
   if (!value) return '--';
   return String(value).replace('T', ' ').slice(0, 19);
 };
+
+type QualityFinding = {
+  rule_id?: string;
+  status?: string;
+  title?: string;
+  detail?: string;
+  observed_value?: number | string | null;
+  threshold?: string | null;
+  remediation?: { kind?: string; label?: string; supported?: boolean } | null;
+};
+
+type QualityCheckWithFindings = DataHubQualityCheck & { findings?: QualityFinding[] };
+
+type LatestQualityReport = Omit<DataHubQualityReport, 'checks'> & {
+  checks?: QualityCheckWithFindings[];
+};
+
+/** 兜底路由可能返回数组或空壳对象；只有带 report_key 的对象才是一份可读报告。 */
+const asQualityReport = (value: unknown): LatestQualityReport | null =>
+  value && typeof value === 'object' && !Array.isArray(value) && 'report_key' in value
+    ? (value as LatestQualityReport)
+    : null;
+
+/**
+ * 总览上的「最近一次质量报告」卡片：自动读取最近一份报告（只 GET，不自动执行检查），
+ * 报告缺失时如实标注“尚无质量报告”，绝不把未知状态渲染成 0 通过。
+ */
+function LatestQualityReportPanel({ onMessage, onChanged }: { onMessage: (text: string) => void; onChanged: () => void }) {
+  const [report, setReport] = useState<LatestQualityReport | null>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [running, setRunning] = useState(false);
+  const [repairing, setRepairing] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    getDataHubQualityReport()
+      .then((latest) => {
+        if (!live) return;
+        setReport(asQualityReport(latest));
+        setState('ready');
+      })
+      .catch(() => {
+        if (live) setState('error');
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const runChecks = async () => {
+    setRunning(true);
+    try {
+      const next = await runDataHubQuality(['stock_history', 'stock_fundamentals', 'daily_concept_sectors']);
+      setReport(asQualityReport(next));
+      setState('ready');
+      onMessage('质量检查已完成，报告已更新。');
+    } catch (e: unknown) {
+      onMessage(`质量检查执行失败：${e instanceof Error ? e.message : '未知错误'}`);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const repair = async (finding: QualityFinding) => {
+    const label = finding.remediation?.label || '回补数据';
+    setRepairing(String(finding.rule_id || label));
+    try {
+      const res = await healMissingData({ days: 30, heal_kline: true, heal_market_evidence: true });
+      onMessage(String((res as { message?: string }).message || `${label}已发起`));
+      onChanged();
+    } catch (e: unknown) {
+      onMessage(`${label}触发失败：${e instanceof Error ? e.message : '未知错误'}`);
+    } finally {
+      setRepairing('');
+    }
+  };
+
+  const findings = (report?.checks ?? []).flatMap((check) =>
+    (check.findings ?? []).map((finding) => ({ check, finding })),
+  );
+  const summary = report?.summary;
+  const tone = report?.status === 'green' ? 'green' : report?.status === 'red' ? 'red' : 'amber';
+
+  return (
+    <section className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card" data-testid="latest-quality-report">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-crypto-border px-4 py-3">
+        <div>
+          <h2 className="text-base font-semibold text-white">最近一次质量报告</h2>
+          <p className="mt-1 text-xs text-gray-500">进入页面自动读取最近一次检查结果；不会替你悄悄执行新检查。</p>
+        </div>
+        {report ? (
+          <span className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone={tone as 'green' | 'red' | 'amber'}>{report.status === 'green' ? '质量正常' : report.status === 'red' ? '质量异常' : '质量警告'}</StatusBadge>
+            <span className="text-xs text-gray-500">{compactDate(report.created_at)}</span>
+          </span>
+        ) : null}
+      </div>
+
+      {state === 'error' ? (
+        <div className="px-4 py-6 text-sm text-red-300">质量报告读取失败；无法确认当前数据质量状态。</div>
+      ) : state === 'loading' ? (
+        <div className="px-4 py-6 text-sm text-gray-500">正在读取最近一次质量报告…</div>
+      ) : !report ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-5">
+          <div>
+            <div className="text-sm font-semibold text-gray-200">尚无质量报告</div>
+            <p className="mt-1 text-xs text-gray-500">尚未执行过质量检查，当前质量状态不可用。</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void runChecks()}
+            disabled={running}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Play className={clsx('h-3.5 w-3.5', running && 'animate-pulse')} />
+            {running ? '检查执行中…' : '运行质量检查'}
+          </button>
+        </div>
+      ) : (
+        <div className="divide-y divide-crypto-border">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-xs text-gray-500">
+            <span>检查 {format(summary?.total_checks ?? findings.length)} 项</span>
+            <span className="text-emerald-300">通过 {format(summary?.green ?? 0)}</span>
+            <span className="text-amber-300">警告 {format(summary?.yellow ?? 0)}</span>
+            <span className="text-red-300">失败 {format(summary?.red ?? 0)}</span>
+          </div>
+          {findings.length === 0 ? (
+            <div className="px-4 py-4 text-xs text-gray-500">最近一次报告没有记录失败规则。</div>
+          ) : (
+            findings.map(({ check, finding }) => (
+              <div key={`${check.dataset_id}-${finding.rule_id}`} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <AlertCircle className={clsx('h-3.5 w-3.5 shrink-0', finding.status === 'red' ? 'text-red-400' : 'text-amber-400')} />
+                    <span className="text-sm font-semibold text-gray-100">{finding.title || check.title}</span>
+                    <span className={clsx('rounded border px-1.5 py-0.5 text-[10px] font-semibold', finding.status === 'red' ? 'border-red-500/25 bg-red-500/10 text-red-300' : 'border-amber-500/25 bg-amber-500/10 text-amber-300')}>
+                      {check.dataset_id}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">{finding.detail || check.detail}</p>
+                  <p className="mt-1 text-[11px] text-gray-600">
+                    阈值 {finding.threshold || '--'} · 实测 {finding.observed_value ?? '--'}
+                  </p>
+                </div>
+                {finding.remediation?.supported && finding.remediation?.label ? (
+                  <button
+                    type="button"
+                    onClick={() => void repair(finding)}
+                    disabled={Boolean(repairing)}
+                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/15 px-3 text-xs font-bold text-cyan-200 transition hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Zap className="h-3.5 w-3.5" />
+                    {repairing ? '修复已发起…' : finding.remediation.label}
+                  </button>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function DataCenter() {
   const [activeSection, setActiveSection] = useState<DataSection>('overview');
@@ -721,7 +889,7 @@ export function DataCenter() {
           </div>
           <div className="min-w-0">
             <h1 className="whitespace-nowrap text-xl font-bold text-white">数据管理中心</h1>
-            <p className="mt-0.5 text-xs text-gray-500">五个子区：总览 / 研究数据 / 行情覆盖 / 同步任务 / 数据源 · A股 · {format(coverageSymbolCount)} 个覆盖统计样本</p>
+            <p className="mt-0.5 text-xs text-gray-500">多因子链路的数据入口：总览 / 研究数据 / 行情覆盖 / 同步任务 / 数据源 · {format(coverageSymbolCount)} 个覆盖样本</p>
             {loading && (
               <div className="mt-1 flex items-center gap-1.5 text-xs text-blue-300">
                 <RefreshCw className="h-3 w-3 animate-spin" />
@@ -804,6 +972,7 @@ export function DataCenter() {
           </button>
         </div>
       </div>
+      <WorkspacePipelineNote stageId="data" />
 
       {message && <div className="shrink-0 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300">{message}</div>}
       {loadIssues.length > 0 && <div className="shrink-0 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200" role="alert">部分数据模块加载失败：{loadIssues.join('、')}</div>}
@@ -937,6 +1106,8 @@ export function DataCenter() {
           </div>
         </div>
       </section>
+
+      <LatestQualityReportPanel onMessage={setMessage} onChanged={load} />
         </>
       )}
 

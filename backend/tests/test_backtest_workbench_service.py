@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch, patch
 
 from app.services.backtest_workbench_service import BacktestWorkbenchService
 
@@ -183,6 +183,21 @@ class BacktestPromotionGateTests(unittest.TestCase):
         result = self.service.evaluate_promotion("run-1")
         self.assertEqual(result["promotion_status"], "paper_eligible")
         self.assertTrue(all(item["status"] == "passed" for item in result["checks"]))
+
+
+class BacktestPersistBatchTests(unittest.TestCase):
+    @patch("app.services.backtest_workbench_service.psycopg2.extras.execute_values")
+    def test_insert_values_pages_rows_for_tunnel_writes(self, execute_values):
+        from app.services.backtest_workbench_service import _insert_values
+
+        cursor = MagicMock()
+        rows = [(index,) for index in range(120)]
+        _insert_values(cursor, "INSERT INTO t (id) VALUES %s", rows, page_size=50)
+        execute_values.assert_called_once_with(
+            cursor, "INSERT INTO t (id) VALUES %s", rows, page_size=50
+        )
+        _insert_values(cursor, "INSERT INTO t (id) VALUES %s", [])
+        execute_values.assert_called_once()
 
 
 if __name__ == "__main__":

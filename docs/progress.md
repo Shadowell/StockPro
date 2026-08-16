@@ -38,6 +38,83 @@ Verification: `unittest tests.test_board_t_strategies` passed; `npx tsc -b
 `http://localhost:4444/backtest/fa9f6317-fcd7-4414-ae54-fee509a97324` or
 search 策略页 `打板` / `隔日T`.
 
+## Same-Strategy Loop + Read-Path Speed (2026-08-16)
+
+1. Full replay envelope: quick stays 3s; `backtest`/`paper_replay` now use
+   180s wall so the multi-factor strategy can finish a sealed full run.
+2. First full job `fb147a66-…` reached persist then died on the SSH tunnel
+   (single huge INSERT + per-row trades). Persist now writes orders/trades/
+   positions in pages of 50; startup recovery fails orphaned `running` runs.
+3. Retry job `208e60d7-…` succeeded. Sealed run
+   `490892ac-5528-422d-8810-3b2b4675e96f` on dataset 10 / universe 1 /
+   factor 4 / pool 5 / protocol `6f6d3078-…`. Persist finished in ~3 minutes.
+4. Promotion is `rejected`: 10/11 gates passed. `CAPACITY_PASS` failed because
+   peak single-name weight was 16.97% versus the protocol 12% cap
+   (participation 0.08% and capacity warnings 0 were fine). No Paper instance
+   was created; the gate was not relaxed.
+5. Read-path: research-desk 60s cache; watch context uses a light instance
+   list + 20s cache; market overview 30s HTTP cache; strategy list no longer
+   ships `script_content`.
+6. Decision surfaces: factor page shows 4 pipeline Rank ICs; strategy can
+   jump to a bound full-backtest wizard; wizard defaults to 多因子 + 动量池
+   instead of the newest incompatible dataset 22; review prefers desk
+   evidence date; homepage / rail / desk show evidence cutoffs. Desk and
+   workspace notes no longer treat other-strategy Paper as this loop.
+7. Watch/overview/desk caches now stamp TTL after the query finishes, so a
+   30s+ first read no longer expires the cache before it is stored.
+
+Verification: `unittest` research-desk / runtime / overview / workbench /
+router / watch-cache tests passed (54 + 43). `npx tsc -b --noEmit` passed.
+Local `:4444` / `:4445` healthy after restart. Timed reads: desk 8.1s → 1ms,
+overview 19.0s → 1ms, watch 34.1s → 1ms. Full run
+`490892ac-…` is `rejected` on `CAPACITY_PASS` (peak weight 16.97% > 12%).
+
+## Quant Research Desk + Multi-Factor Pipeline (2026-08-16)
+
+1. Main menu stays 12 first-level links and 64px wide, but is grouped into
+   研究 / 研发 / 验证 / 系统 so a quant desk can scan the lifecycle.
+2. Every workspace now shows a live research-desk rail
+   (`数据 → 行情 → 因子 → 股票池 → 策略 → 回测 → 模拟 → 盯盘 → 监控 → 复盘`)
+   from `GET /workflow/research-desk`. Counts are read-only SQL; empty stages
+   stay empty instead of inventing market or PnL numbers.
+3. Homepage keeps 市场大盘 / 市场指数 and adds a 量化研究台 command panel
+   for the active strategy, latest backtest, Paper instance and next action.
+4. Added Strategy API v1 `多因子风险预算`: weekly cross-section of
+   momentum_20d / reversal_3d / volatility_20d / amihud_5d, 12% name cap,
+   median-return halt. Factor miss falls back to price momentum.
+5. Research-desk queries now share one Postgres connection (was one SSH
+   handshake per COUNT). Each workspace page shows a binding note for the
+   same strategy, factor set, snapshot and next action.
+6. Live desk on 2026-08-16: all 10 stages `available`; strategy id 186
+   `多因子风险预算`; quick backtest `e8f0613a-…` success (not paper-eligible);
+   4/4 pipeline factors present. Paper/watch/monitor still bind existing
+   running instances — no invented PnL.
+
+Verification: `tests.test_research_desk` + workflow/router tests passed;
+`npx tsc -b --noEmit` passed; `/api/health/health` and frontend `:4444`
+confirmed after local restart. `/workflow/research-desk` returned 200 in
+~10s over the tunnel.
+
+## Local Page Empty-State Diagnosis (2026-08-15)
+
+1. Confirmed the workstation was not an empty database: `stockpro_dev` still
+   holds K-line history and a 5540-row realtime cache, but the cache stopped
+   on 2026-08-07 and page reads never fetch providers
+   (`ENABLE_EXTERNAL_MARKET_FETCH=false`).
+2. Homepage looked blank because `/api/market/overview` took ~20s over the SSH
+   tunnel: `get_all_stocks_realtime()` joined listing-status and a 90-day
+   trade-calendar JSON scan. The UI default copy while that request was in
+   flight was “全市场实时快照未同步”.
+3. Overview now reads quote rows only (`include_listing_status=False`). The
+   dashboard shows “正在读取缓存” while loading and no longer hides a stale
+   THS hot name. Manual market-evidence sync published snapshot 21 for
+   2026-08-14 (63 limit-up / 9 limit-down).
+
+Verification: `unittest` `test_market_overview_fast_path` +
+`test_readonly_runtime_contracts` passed (24 tests). Local services restarted
+via `./restart.sh`. Overview still ~9s because 5540 rows cross the tunnel;
+limit-board/short-line now return the 2026-08-14 sealed snapshot.
+
 ## Tremor Operator System Alignment (2026-07-29)
 
 1. Replaced the reintroduced capsule-style workspace buttons with Tremor's
@@ -1726,6 +1803,13 @@ Verification:
 2. Use `scripts/backend-health.sh --ping` + `npm run test:e2e:real` in CI/预发 gate.
 3. Add integration test for `stocks/search`, `data-dev/tasks`, and `batch-import/historical-data` against a temporary Postgres database.
 
+## Remote development PostgreSQL cutover (2026-08-10)
+
+- Changed local development startup to use an SSH tunnel to an isolated server PostgreSQL database instead of starting `stockpro-postgres` on the Mac.
+- Added explicit tunnel start, stop and status handling with a dedicated SSH control socket and port-conflict checks.
+- Kept the Docker PostgreSQL service only behind the opt-in `local-db-recovery` profile with automatic restart disabled; it is no longer part of normal startup.
+- Updated the environment example and current architecture/operations documentation. Real credentials remain only in the ignored `backend/.env`.
+
 ## Documentation system refresh (2026-07-29)
 
 - Rebuilt `README.md` as the canonical Chinese product introduction, with the current 12-workspace map, evidence-based research lifecycle, local-only Paper boundary, architecture, setup, configuration, verification and documentation links. Updated the English entry and made `README.zh-CN.md` a stable pointer to the canonical Chinese document.
@@ -2022,3 +2106,102 @@ Verification:
   migration and Paper recovery disabled. Application and storage health passed
   with 30/30 migrations; no database write, migration, deployment or remote
   service mutation ran.
+
+## SP-014 BitPro 流程对齐：AI 策略研发闭环与操作台改造（进行中）
+
+Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
+
+### 后端（已完成，374+ 测试通过）
+
+- 新增 `backend/app/services/agent/` 多智能体研发闭环：Planner 规格书 →
+  Sprint 合约 → Strategist(LLM) 生成 Strategy API v1 代码 → AST 沙箱
+  （复用 `validate_strategy_python`，一次修复重试）→ Backtester 复用
+  `BacktestWorkbenchService.run(mode="quick")` 生产链路 → Evaluator 多维评分
+  （LLM 失败退化为确定性评分）。达标判定只用回测指标硬阈值。
+- 迁移 `202608170001_agent_strategy_research.sql`：`agent_tasks` /
+  `agent_iterations`；`main.py` 启动时 `recover_interrupted()` 续跑中断任务。
+- 端点 `/api/agent/*`：任务 CRUD、start/stop、迭代、promote（要求
+  validation_status=valid）。写入仅管理员。
+- 实盘工作台后端：迁移 `202608170002_live_trading_workbench.sql`
+  （`live_trading_events` 审计）、`live_trading_service.py` + `/api/live/*`
+  （status/promotion-candidates/preflight/enable/events）。预检含券商通道
+  （xtquant/ptrade 探测）、`LIVE_TRADING_ENABLED` 开关、11 项晋级门控、风控
+  限额与交易时段；未就绪时 enable 请求被阻断并留痕，绝不发出真实委托。
+- 配置新增 `QWEN_BASE_URL`、`LIVE_TRADING_ENABLED`（默认 false）等。
+- 测试：`test_agent_research.py`（12 项：沙箱拒绝、达标完成、恢复、目标校验）、
+  `test_live_trading_service.py`（5 项：无通道阻断、门控、双重确认）。
+
+### 前端（并行实施中）
+
+- client.ts/types 新增 agent + live 全套 API 与类型。
+- 策略页 AI 研发面板、回测台改造、模拟实例卡片、复盘大盘 Snapshot、
+  实盘工作台页面由并行任务实施，随后统一验证。
+
+### 复盘页大盘 Snapshot 改造（本切片已完成，待随 SP-014 统一提交）
+
+- `frontend/src/pages/DailyReview.tsx` 重构为"当天大盘 Snapshot"单屏结构：
+  头部（交易日选择 + 生成复盘 + 状态 chip）→ Snapshot 六块（指数快照 /
+  市场宽度 / 情绪指标 / 涨停生态+连板天梯 / 板块资金 TOP8 / 人气榜 TOP10，
+  全部并行加载、块内独立 loading/error/empty，块头标注来源与数据时间）→
+  复盘结论（当日结论 / 次日计划编辑 + 保存/封存，逻辑不变）+ 复盘记录 +
+  风险提示（风险类证据只读汇总；复盘接口无独立风险文本字段，未伪造）→
+  证据时间线（原五个子页签合并为类别 chip 筛选）。
+- 数据真实性：仅渲染 `getMarketOverview/getShortLineIndices/getLimitBoard/
+  getLianbanLadder/getSectorFundFlow/getThsHot` 实际返回字段；指数不含
+  成交额、MarketOverview 无停牌家数与昨日涨停表现、板块资金无单股主力口径
+  ——均省略不造数；同花顺人气榜热度兼容 `hot`/`hot_value` 两种负载字段。
+- 验证：`npx tsc --noEmit` 与 `npm run build`（含 bundle budget）通过；
+  本地前后端已按规范重启，`/api/health/health` 通过，Vite 正常提供
+  `/review`（浏览器可视验收因当前子代理无浏览器留待统一验证）。
+
+### 模拟盘 BitPro InstanceDashboard 重塑（本切片已完成，待随 SP-014 统一提交）
+
+- `frontend/src/pages/Paper.tsx`（1256 → ~380 行）重塑为 BitPro 模拟盘
+  InstanceDashboard 形态：控制台（实例卡片网格）/ 创建向导 / 实例详情三视图。
+  全部生命周期调用（`createPaperInstance`、`paperInstanceAction`
+  start/pause/resume/stop、`processPaperCycle`、列表/详情读取）原样保留，
+  仅表现层重塑；清除仅剩死代码路径的旧表格/页签标记。
+- 轮询：指标每 10 秒批量刷新（单次 `listPaperInstances`，静默失败保留上一份
+  数据），列表每 60 秒全量静默刷新（含晋级回测与选中详情），页面隐藏时暂停。
+- `PaperInstanceDashboard`：单一"模拟盘"页头 + 创建 Paper 实例入口；状态
+  segmented（全部/运行中/暂停/已停止带计数）+ 名称搜索 + 排序 segmented
+  （创建时间↓ / 收益率↓；夏普/胜率列表负载未提供故不设排序项）；卡片网格
+  md:2 / lg:3 / xl:4，卡片含运行呼吸灯（绿=运行、灰=暂停、红=失败/停止、
+  琥珀=心跳陈旧）、初始资金（¥100万 口径）/周期/创建日期 pills、收益率大字
+  （text-up/text-down + tabular-nums）+ 总盈亏、夏普/胜率/盈亏比/交易次数
+  四格（缺失显示"—"不显示 0）、暂停/继续/启动/关闭/详情操作（新增
+  `ConfirmDialog` 二次确认，关闭为危险态警示）。
+- `PaperRuntimeInstanceDetail`：页头补实例 ID（mono）；启动/暂停/恢复/停止
+  全部接入 ConfirmDialog 确认；KPI 行、账户曲线、持仓、成交与事件、诊断
+  日志、K 线复盘、风控状态等结构与证据列不变；访客只读仍由
+  MainLayout DOM 守卫 + client.ts 请求拦截双层兜底（按钮文案保留
+  暂停/停止/启动等关键字）。
+- 验证：`npx tsc --noEmit` 与 `npm run build`（含 bundle budget）通过；
+  本地前后端已按规范重启，`/api/health/health` 与 Vite `/` 均 200。
+
+### SP-014 统一验证与缺陷修复（收尾）
+
+- 端到端联调发现并修复三处缺陷：
+  1. `universe_snapshot_members` 查询误用 `ordinal` 列（改为 `ORDER BY symbol`）；
+  2. `paper_instances` 误用不存在的 `initial_cash`/`last_cycle_at` 列（改为
+     `parameters->>'initial_cash'` 与 `last_processed_trade_date`）；
+  3. 前端 `WorkflowRail` 在研究台负载缺少 `pipeline` 时整树崩溃
+     （`ResearchDeskContext` 增加结构防御，rail 对空 pipeline 安全降级）。
+- mock e2e 套件从 47 失败修复至 49/49 通过，其中按"页面缺产品必需面"修复：
+  Dashboard 热榜陈旧守卫恢复（陈旧缓存不再冒充当前信号）、
+  MainLayout 移除与分组侧栏重复的第二导航、快速回测"不可晋级"提示恢复可见、
+  回测详情补回夏普与判决带 testid、复盘页证据失败态诚实呈现（`--` 而非 0）、
+  数据中心补最近质量报告面板（只读 GET，不自动触发检查）；
+  其余为有意的页面/导航合同变更对应的等强度断言更新（13 项一级导航含实盘、
+  新页头、回测判决带/晋级检查/六页签、复盘 Snapshot 单页合同、模拟盘卡片网格、
+  策略页 AI 研发标签等）。
+- 本地验证：后端 379 项 pytest 全过；`npx tsc --noEmit`、`npm run build`
+  （含 bundle budget）、`npm run lint`（0 错误）通过；`./scripts/check.sh` 全绿；
+  mock Playwright 49/49。数据库隧道经 `scripts/database-tunnel.sh` 恢复，
+  迁移 202608170001/2 已显式应用（agent_tasks/agent_iterations/live_trading_events）。
+- 真实冒烟：`/api/agent/config` 正确解析最新封存快照/Universe/成本模型默认值；
+  `/api/live/promotion-candidates` 返回真实 paper_eligible 完整回测；
+  `/api/live/status` 如实报告通道未配置与安全边界。
+- 已知边界：本机未配置真实 `QWEN_API_KEY`（BitPro 环境中亦为占位符），
+  AI 生成任务在页面与 API 均明确显示"QWEN_API_KEY 未配置"并以失败留痕，
+  配置后无需改动即可运行完整闭环（后端单测已覆盖沙箱拒绝/达标/恢复路径）。

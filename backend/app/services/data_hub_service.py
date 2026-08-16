@@ -19,6 +19,7 @@ class DataHubService:
     """数据中台统一服务层（数据资产、任务编排、质量治理、特征服务）"""
 
     QUALITY_RULE_TEMPLATES: List[Dict[str, Any]] = [
+        {"id": "dataset_availability", "name": "数据集可用性", "severity": "high"},
         {"id": "pk_uniqueness", "name": "主键唯一性", "severity": "high"},
         {"id": "null_ratio", "name": "关键字段空值率", "severity": "medium"},
         {"id": "price_validity", "name": "价格有效性", "severity": "high"},
@@ -711,6 +712,8 @@ class DataHubService:
         if "daily_concept_sectors" in selected:
             checks.append(self._check_concept_quality())
 
+        checks = [self._enrich_quality_check(item) for item in checks]
+
         severity_rank = {"green": 0, "yellow": 1, "red": 2}
         overall = "green"
         for item in checks:
@@ -747,15 +750,144 @@ class DataHubService:
         row = db_instance.get_latest_quality_report()
         if not row:
             return None
+        checks = self._deserialize(row["checks_json"], [])
         return {
             "report_key": row["report_key"],
             "scope": self._deserialize(row["scope"], []),
             "status": row["status"],
             "summary": self._deserialize(row["summary_json"], {}),
-            "checks": self._deserialize(row["checks_json"], []),
+            "checks": [self._enrich_quality_check(item) for item in checks],
             "created_at": row["created_at"],
             "rule_templates": self.QUALITY_RULE_TEMPLATES,
         }
+
+    @staticmethod
+    def _remediation(kind: str, label: str, supported: bool) -> Dict[str, Any]:
+        return {"kind": kind, "label": label, "supported": supported}
+
+    def _enrich_quality_check(self, check: Dict[str, Any]) -> Dict[str, Any]:
+        """Attach actionable rule-level findings while preserving stored report compatibility."""
+        enriched = dict(check)
+        if isinstance(enriched.get("findings"), list):
+            return enriched
+
+        dataset_id = str(enriched.get("dataset_id") or "")
+        metrics = enriched.get("metrics") if isinstance(enriched.get("metrics"), dict) else {}
+        findings: List[Dict[str, Any]] = []
+
+        def add(
+            rule_id: str,
+            status: str,
+            title: str,
+            detail: str,
+            observed_value: Any,
+            threshold: str,
+            remediation: Dict[str, Any],
+        ) -> None:
+            findings.append(
+                {
+                    "rule_id": rule_id,
+                    "status": status,
+                    "title": title,
+                    "detail": detail,
+                    "observed_value": observed_value,
+                    "threshold": threshold,
+                    "remediation": remediation,
+                }
+            )
+
+        rows = metrics.get("rows")
+        if enriched.get("status") == "red" and (not metrics or rows == 0):
+            add(
+                "dataset_availability",
+                "red",
+                "数据集不可用",
+                str(enriched.get("detail") or "数据表不存在或没有可检查的数据"),
+                rows,
+                "数据表存在且至少包含 1 行",
+                self._remediation("dataset_sync", "重新同步该数据集", False),
+            )
+
+        duplicates = int(metrics.get("duplicates") or 0)
+        if duplicates > 0:
+            add(
+                "pk_uniqueness",
+                "red",
+                "主键唯一性失败",
+                f"发现 {duplicates} 条重复主键记录",
+                duplicates,
+                "重复主键 = 0",
+                self._remediation("manual_review", "检查并去重主键", False),
+            )
+
+        null_ratio = float(metrics.get("null_ratio_pct") or 0)
+        null_limit = 5.0 if dataset_id == "stock_history" else 10.0
+        if null_ratio > null_limit:
+            add(
+                "null_ratio",
+                "yellow",
+                "关键字段空值率超限",
+                f"空值率 {null_ratio:.2f}% 超过 {null_limit:.0f}% 阈值",
+                null_ratio,
+                f"空值率 <= {null_limit:.0f}%",
+                self._remediation("manual_review", "核验来源并回补空值", False),
+            )
+
+        invalid_ratio = float(metrics.get("invalid_ratio_pct") or 0)
+        invalid_limit = 2.0 if dataset_id == "stock_history" else 5.0
+        if invalid_ratio > invalid_limit:
+            add(
+                "price_validity",
+                "yellow",
+                "价格有效性失败",
+                f"无效价格占比 {invalid_ratio:.2f}% 超过 {invalid_limit:.0f}% 阈值",
+                invalid_ratio,
+                f"无效价格占比 <= {invalid_limit:.0f}%",
+                self._remediation("manual_review", "核验异常价格记录", False),
+            )
+
+        max_gap_days = int(metrics.get("max_gap_days") or 0)
+        gap_limit = 10 if dataset_id == "daily_concept_sectors" else 7
+        if max_gap_days > gap_limit:
+            supported = dataset_id == "stock_history"
+            add(
+                "date_continuity",
+                "yellow",
+                "日期连续性失败",
+                f"日期最大间隔 {max_gap_days} 天，超过 {gap_limit} 天阈值",
+                max_gap_days,
+                f"最大间隔 <= {gap_limit} 天",
+                self._remediation(
+                    "heal_missing_data" if supported else "dataset_sync",
+                    "回补缺失日线" if supported else "重新同步该数据集",
+                    supported,
+                ),
+            )
+
+        freshness_days = metrics.get("freshness_days")
+        if freshness_days is not None:
+            freshness = float(freshness_days)
+            yellow_limit = 5.0 if dataset_id == "daily_concept_sectors" else 3.0
+            red_limit = 10.0 if dataset_id == "daily_concept_sectors" else 7.0
+            if freshness > yellow_limit:
+                supported = dataset_id == "stock_history"
+                severity = "red" if freshness > red_limit else "yellow"
+                add(
+                    "freshness",
+                    severity,
+                    "数据最新性失败",
+                    f"最近数据距今 {freshness:.2f} 天",
+                    freshness,
+                    f"数据延迟 <= {yellow_limit:.0f} 天",
+                    self._remediation(
+                        "heal_missing_data" if supported else "dataset_sync",
+                        "回补最近日线" if supported else "重新同步该数据集",
+                        supported,
+                    ),
+                )
+
+        enriched["findings"] = findings
+        return enriched
 
     def _check_stock_history_quality(self) -> Dict[str, Any]:
         qc = db_instance.check_stock_history_quality()

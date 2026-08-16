@@ -5,6 +5,7 @@ import { MetricCard } from '@bitpro/ui';
 import { getMarketResearchContext, getMessageStream } from '../api/client';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
 import { MetricValue, OperatorPageHeader } from '../components/OperatorShell';
+import { WorkspacePipelineNote } from '../components/WorkspacePipelineNote';
 import { MarketTradingCalendar } from '../components/MarketTradingCalendar';
 import type { MarketResearchContext, MessageStreamResponse } from '../types';
 import { snapshotTypeLabel, sourceKindLabel, sourceLabel, statusLabel } from '../utils/presentation';
@@ -424,7 +425,7 @@ export function MarketResearch() {
           ) : null}
         </span>
       }
-      subtitle="六个子页：市场结构 / 板块轮动 / 情绪涨停 / 事件 / 交易日历 / 个股研究。情绪页读取封存盘后快照，不是盘中实时。"
+      subtitle="多因子链路的市场输入：结构 / 板块 / 情绪涨停 / 事件 / 日历 / 个股。情绪页读封存盘后快照，不是盘中实时。"
       actions={
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-[11px] text-slate-500">
@@ -459,6 +460,7 @@ export function MarketResearch() {
         </div>
       }
     />
+    <WorkspacePipelineNote stageId="market" />
     {evidenceStale && evidenceDate ? (
       <div className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100" data-testid="market-evidence-stale-banner">
         当前展示的是 <span className="font-semibold tabular-nums">{evidenceDate}</span> 盘后封存证据

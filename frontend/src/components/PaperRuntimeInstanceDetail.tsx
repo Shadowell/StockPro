@@ -42,6 +42,7 @@ import { useSymbolNames } from "../hooks/useSymbolNames";
 import { formatSymbolLabel } from "../utils/symbolDisplay";
 import { marketAdverseToneClass, marketToneClass, type MetricTone } from "../utils/marketColors";
 import { MetricValue } from "./OperatorShell";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { COLOR_SCHEMES, useSettingsStore } from "../stores/useSettingsStore";
 
 type Row = Record<string, unknown>;
@@ -290,6 +291,7 @@ export function PaperRuntimeInstanceDetail({
   const [kline, setKline] = useState<PaperKlineSnapshot | null>(null);
   const [klineError, setKlineError] = useState("");
   const [cycleDate, setCycleDate] = useState(instance.last_processed_trade_date ?? "");
+  const [pendingAction, setPendingAction] = useState<Action | null>(null);
   const heartbeatStale = heartbeatIsStale(instance);
 
   const positions = instance.positions ?? [];
@@ -343,6 +345,17 @@ export function PaperRuntimeInstanceDetail({
   const isReplay = ["recorded_replay", "historical_replay", "paper_replay"].includes(
     text(feed.mode, "").toLowerCase(),
   );
+
+  const actionCopy =
+    pendingAction === "pause"
+      ? { title: "暂停实例", message: "确认暂停该实例？暂停后不再处理收盘周期，指标停留在最后快照；可随时恢复。", confirmLabel: "暂停", tone: "blue" as const }
+      : pendingAction === "resume"
+        ? { title: "恢复实例", message: "确认恢复该实例？实例将继续处理收盘周期并更新权益快照。", confirmLabel: "恢复", tone: "blue" as const }
+        : pendingAction === "start"
+          ? { title: "启动实例", message: "确认启动该实例？实例进入运行状态，按封存数据回放处理交易周期。", confirmLabel: "启动", tone: "blue" as const }
+          : pendingAction === "stop"
+            ? { title: "停止实例", message: "确认停止该实例？停止后不再产生新信号与成交，已持久化的信号、订单、成交与权益记录保留，之后可重新启动。", confirmLabel: "停止", tone: "danger" as const }
+            : null;
 
   useEffect(() => {
     if (!symbols.length) {
@@ -541,6 +554,7 @@ export function PaperRuntimeInstanceDetail({
               </StatusBadge>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+              <span className="font-mono text-[11px] text-slate-600">{instance.id}</span>
               <span className="inline-flex items-center gap-1.5 font-semibold text-slate-200">
                 <span
                   className={clsx(
@@ -577,16 +591,16 @@ export function PaperRuntimeInstanceDetail({
               刷新
             </button>
             {instance.status === "draft" || instance.status === "stopped" ? (
-              <button type="button" onClick={() => void onAction("start")} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-4 text-xs font-semibold text-emerald-200 disabled:opacity-50"><Play className="h-4 w-4" />启动</button>
+              <button type="button" onClick={() => setPendingAction("start")} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-4 text-xs font-semibold text-emerald-200 disabled:opacity-50"><Play className="h-4 w-4" />启动</button>
             ) : null}
             {instance.status === "running" ? (
-              <button type="button" onClick={() => void onAction("pause")} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 text-xs font-semibold text-amber-200 disabled:opacity-50"><Pause className="h-4 w-4" />暂停</button>
+              <button type="button" onClick={() => setPendingAction("pause")} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 text-xs font-semibold text-amber-200 disabled:opacity-50"><Pause className="h-4 w-4" />暂停</button>
             ) : null}
             {instance.status === "paused" ? (
-              <button type="button" onClick={() => void onAction("resume")} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-4 text-xs font-semibold text-emerald-200 disabled:opacity-50"><Play className="h-4 w-4" />恢复</button>
+              <button type="button" onClick={() => setPendingAction("resume")} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-4 text-xs font-semibold text-emerald-200 disabled:opacity-50"><Play className="h-4 w-4" />恢复</button>
             ) : null}
             {["running", "paused"].includes(instance.status) ? (
-              <button type="button" onClick={() => void onAction("stop")} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-4 text-xs font-semibold text-red-200 disabled:opacity-50"><Square className="h-4 w-4" />停止</button>
+              <button type="button" onClick={() => setPendingAction("stop")} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-4 text-xs font-semibold text-red-200 disabled:opacity-50"><Square className="h-4 w-4" />停止</button>
             ) : null}
           </div>
         </div>
@@ -698,6 +712,21 @@ export function PaperRuntimeInstanceDetail({
           <span className="text-[10px] text-slate-600">仅处理本实例固定快照，不触发外部 provider 或真实券商。</span>
         </div>
       </Section>
+
+      <ConfirmDialog
+        open={actionCopy !== null}
+        title={actionCopy?.title ?? ""}
+        message={actionCopy?.message ?? ""}
+        confirmLabel={actionCopy?.confirmLabel ?? "确认"}
+        tone={actionCopy?.tone ?? "blue"}
+        busy={busy}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => {
+          const action = pendingAction;
+          setPendingAction(null);
+          if (action) void onAction(action);
+        }}
+      />
     </div>
   );
 }

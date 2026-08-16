@@ -167,9 +167,24 @@ class PostgresDatabase:
                 )
         return len(values)
 
-    def get_all_stocks_realtime(self) -> List[Dict]:
+    def get_all_stocks_realtime(self, include_listing_status: bool = True) -> List[Dict]:
+        quote_select = """
+            SELECT stocks.code, stocks.name, stocks.price, stocks.change_percent,
+                   stocks.volume, stocks.amount, stocks.turnover,
+                   stocks.volume_ratio, stocks.pe_dynamic, stocks.pb,
+                   stocks.total_market_cap, stocks.float_market_cap,
+                   stocks.amplitude, stocks.updated_at
+        """
+        if not include_listing_status:
+            return self._fetch_all(
+                f"""
+                {quote_select}
+                FROM all_stocks_realtime stocks
+                ORDER BY stocks.amount DESC NULLS LAST, stocks.code ASC
+                """
+            )
         return self._fetch_all(
-            """
+            f"""
             WITH latest_status AS (
                 SELECT DISTINCT ON (symbol)
                        symbol, effective_from, listing_status, is_st
@@ -190,11 +205,7 @@ class PostgresDatabase:
                   AND (records.payload->>'trade_date')::DATE
                       BETWEEN CURRENT_DATE - INTERVAL '90 days' AND CURRENT_DATE
             )
-            SELECT stocks.code, stocks.name, stocks.price, stocks.change_percent,
-                   stocks.volume, stocks.amount, stocks.turnover,
-                   stocks.volume_ratio, stocks.pe_dynamic, stocks.pb,
-                   stocks.total_market_cap, stocks.float_market_cap,
-                   stocks.amplitude, stocks.updated_at,
+            {quote_select},
                    status.effective_from AS list_date,
                    status.listing_status,
                    status.is_st,
@@ -1934,7 +1945,7 @@ class PostgresDatabase:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
-                    SELECT id, name, description, script_content, interval_seconds,
+                    SELECT id, name, description, NULL::text AS script_content, interval_seconds,
                            enabled, is_running, data_purpose, created_at, updated_at
                     FROM strategy_scripts
                     ORDER BY updated_at DESC, id DESC
@@ -4458,7 +4469,7 @@ class PostgresDatabase:
             "id": row["id"],
             "name": row["name"],
             "description": row["description"] or "",
-            "script_content": row["script_content"],
+            "script_content": row["script_content"] or "",
             "interval_seconds": row["interval_seconds"],
             "enabled": bool(row["enabled"]),
             "is_running": bool(row["is_running"]),

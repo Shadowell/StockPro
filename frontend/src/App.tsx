@@ -18,6 +18,7 @@ const DailyReview = lazy(() => import("./pages/DailyReview").then((module) => ({
 const Paper = lazy(() => import("./pages/Paper").then((module) => ({ default: module.Paper })));
 const Watch = lazy(() => import("./pages/Watch").then((module) => ({ default: module.Watch })));
 const Monitor = lazy(() => import("./pages/Monitor").then((module) => ({ default: module.Monitor })));
+const LiveTrading = lazy(() => import("./pages/LiveTrading").then((m) => ({ default: m.LiveTrading })));
 const DataCenter = lazy(() => import("./pages/DataCenter").then((module) => ({ default: module.DataCenter })));
 
 const FactorLibrary = lazy(() => import("./pages/FactorLibrary").then((m) => ({ default: m.FactorLibrary })));
@@ -74,6 +75,7 @@ export default function App() {
                 <Route path="/paper" element={<Paper />} />
                 <Route path="/watch" element={<Watch />} />
                 <Route path="/monitor" element={<Monitor />} />
+                <Route path="/live" element={<LiveTrading />} />
                 <Route path="/data" element={<DataCenter />} />
 
                 <Route path="/research/overview" element={<Navigate to="/market?tab=structure" replace />} />

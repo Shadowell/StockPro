@@ -6,6 +6,7 @@ import { WorkspaceTabs } from '../components/WorkspaceTabs';
 import { DiagnosticDetails } from '../components/DiagnosticDetails';
 import { DataScopeControl } from '../components/DataScopeControl';
 import { EvidenceStrip, MetricValue, OperatorPageHeader } from '../components/OperatorShell';
+import { WorkspacePipelineNote } from '../components/WorkspacePipelineNote';
 import type { DataScope, MonitorHealth } from '../types';
 import { categoryLabel, sourceLabel, statusLabel } from '../utils/presentation';
 import { countMetricColor, type MetricTone } from '../utils/marketColors';
@@ -79,13 +80,14 @@ export function Monitor() {
     <OperatorPageHeader
       icon={HeartPulse}
       title="监控中心"
-      subtitle="运行风控检查 · 五个子页：总览 / 策略健康 / 数据健康 / 风险 / 通知。"
+      subtitle="同一策略实例的运行风控：总览 / 策略健康 / 数据健康 / 风险 / 通知。"
       actions={
         <button type="button" onClick={() => void load()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400">
           <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />刷新健康快照
         </button>
       }
     />
+    <WorkspacePipelineNote stageId="monitor" />
     <EvidenceStrip
       items={[
         { label: '状态', value: statusLabel(health?.status), tone: health?.status === 'healthy' ? 'green' : health?.status === 'critical' ? 'red' : 'amber' },

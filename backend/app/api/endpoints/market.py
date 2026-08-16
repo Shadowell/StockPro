@@ -1,12 +1,14 @@
 import asyncio
+import time
 from fastapi import APIRouter, Query, Body, HTTPException
 from app.services.market_service import MarketService
 from app.services.market_research_service import MarketResearchService
 from app.db import db_instance as db
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 router = APIRouter()
 research_service = MarketResearchService(db)
+_OVERVIEW_CACHE: Dict[str, Any] = {"at": 0.0, "payload": None}
 
 
 def _get_hot_concept_leaders_cached(name: str, limit: int) -> List[Dict[str, Any]]:
@@ -91,8 +93,15 @@ async def get_sector_evidence(
 @router.get("/overview")
 async def get_market_overview() -> Dict[str, Any]:
     """获取市场概览数据 - 优先从数据库获取，没有则实时获取"""
+    now = time.monotonic()
+    cached = _OVERVIEW_CACHE.get("payload")
+    if cached and now - float(_OVERVIEW_CACHE.get("at") or 0) < 30:
+        return cached
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, MarketService.get_market_overview)
+    payload = await loop.run_in_executor(None, MarketService.get_market_overview)
+    _OVERVIEW_CACHE["at"] = time.monotonic()
+    _OVERVIEW_CACHE["payload"] = payload
+    return payload
 
 @router.get("/short-line-indices")
 async def get_short_line_indices() -> List[Dict[str, Any]]:

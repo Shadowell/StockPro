@@ -23,6 +23,14 @@ class Settings(BaseSettings):
 
     QWEN_API_KEY: str = ""
     QWEN_STOCK_MODEL: str = "qwen-plus"
+    QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    LIVE_TRADING_ENABLED: bool = False
+    LIVE_MINIQMT_ENABLED: bool = False
+    LIVE_PTRADE_ENABLED: bool = False
+    LIVE_MAX_SINGLE_ORDER_VALUE: float = 200_000.0
+    LIVE_MAX_POSITION_WEIGHT: float = 0.3
+    LIVE_MAX_DAILY_LOSS_RATIO: float = 0.05
 
     TUSHARE_TOKEN: str = ""
     TUSHARE_CREDIT_TIER: int = 5000
