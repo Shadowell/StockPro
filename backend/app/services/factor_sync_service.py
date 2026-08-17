@@ -86,15 +86,16 @@ class FactorSyncService:
             
             total_records = 0
             synced_factors = []
+            synced_counts = {}
             failed_factors = []
-            
+
             for factor_code, (col_name, transform) in factor_mappings.items():
                 try:
                     if col_name not in df.columns:
                         logger.warning(f"[FactorSync] Column '{col_name}' not found for factor {factor_code}")
                         failed_factors.append(f"{factor_code}(列不存在)")
                         continue
-                    
+
                     records = []
                     for _, row in df.iterrows():
                         value = row.get(col_name)
@@ -102,34 +103,41 @@ class FactorSyncService:
                             # 应用转换函数（如果有）
                             if transform:
                                 value = transform(value)
-                            
+
                             records.append({
                                 'symbol': str(row['代码']),
                                 'date': date,
                                 'value': float(value) if value is not None else None
                             })
-                    
+
                     if records:
                         self.db.insert_factor_data_batch(factor_code, records)
                         total_records += len(records)
                         synced_factors.append(factor_code)
+                        synced_counts[factor_code] = len(records)
                         logger.info(f"[FactorSync] Synced {len(records)} records for factor {factor_code}")
                     else:
                         failed_factors.append(f"{factor_code}(无数据)")
-                
+
                 except Exception as e:
                     logger.error(f"[FactorSync] Error syncing factor {factor_code}: {str(e)}")
                     failed_factors.append(f"{factor_code}({str(e)[:20]})")
-                    self.db.save_factor_sync_log(factor_code, date, 'failed', 
+                    self.db.save_factor_sync_log(factor_code, date, 'failed',
                                                   error_message=str(e))
-            
+
             duration_ms = int((time.time() - start_time) * 1000)
-            
-            # 记录同步日志
-            for factor_code in synced_factors:
-                self.db.save_factor_sync_log(factor_code, date, 'success', 
-                                              records_count=len(df),
-                                              sync_duration_ms=duration_ms // max(1, len(synced_factors)))
+
+            # 记录同步日志（单批写入，避免逐因子建连）
+            self.db.save_factor_sync_logs([
+                {
+                    'factor_code': factor_code,
+                    'date': date,
+                    'status': 'success',
+                    'records_count': synced_counts.get(factor_code, 0),
+                    'sync_duration_ms': duration_ms // max(1, len(synced_factors)),
+                }
+                for factor_code in synced_factors
+            ])
             
             result_msg = f"同步完成 {len(synced_factors)} 个因子，共 {total_records} 条记录，耗时 {duration_ms}ms"
             if failed_factors:
@@ -262,11 +270,17 @@ class FactorSyncService:
             
             duration_ms = int((time.time() - start_time) * 1000)
             
-            # 记录同步日志
-            for factor_code in synced_factors:
-                self.db.save_factor_sync_log(factor_code, date, 'success',
-                                              records_count=len(factor_data[factor_code]),
-                                              sync_duration_ms=duration_ms // len(synced_factors))
+            # 记录同步日志（单批写入，避免逐因子建连）
+            self.db.save_factor_sync_logs([
+                {
+                    'factor_code': factor_code,
+                    'date': date,
+                    'status': 'success',
+                    'records_count': len(factor_data[factor_code]),
+                    'sync_duration_ms': duration_ms // len(synced_factors),
+                }
+                for factor_code in synced_factors
+            ])
             
             return {
                 "status": "success",
@@ -444,11 +458,17 @@ class FactorSyncService:
             
             duration_ms = int((time.time() - start_time) * 1000)
             
-            # 记录同步日志
-            for factor_code in synced_factors:
-                self.db.save_factor_sync_log(factor_code, date, 'success',
-                                              records_count=len(factor_data[factor_code]),
-                                              sync_duration_ms=duration_ms // max(1, len(synced_factors)))
+            # 记录同步日志（单批写入，避免逐因子建连）
+            self.db.save_factor_sync_logs([
+                {
+                    'factor_code': factor_code,
+                    'date': date,
+                    'status': 'success',
+                    'records_count': len(factor_data[factor_code]),
+                    'sync_duration_ms': duration_ms // max(1, len(synced_factors)),
+                }
+                for factor_code in synced_factors
+            ])
             
             result_msg = f"同步完成 {len(synced_factors)} 个技术因子，处理 {success_count} 只股票，共 {total_records} 条记录，耗时 {duration_ms}ms"
             if error_count > 0:

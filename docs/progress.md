@@ -1,5 +1,43 @@
 # Progress Log
 
+## Backend performance fixes: PG pool + event-loop unblocking (2026-08-17)
+
+Review-driven fixes, all verified against local `:4445` with real PG.
+
+1. **P0-1 connection pool** (`postgres_db.py`): every query used to open a
+   fresh `psycopg2.connect()` through the SSH tunnel. Added a
+   `ThreadedConnectionPool` (1–16 conns) behind a `_PooledConnection` proxy
+   that keeps both existing styles working: `with db.get_connection() as conn`
+   (commit on success / rollback on error / return to pool) and bare
+   `conn.close()` (returns to pool). Checkout runs a rollback liveness probe
+   and discards tunnel-stale connections (up to 3 attempts). Pool closed on
+   app shutdown (`main.py`). Unit tests in
+   `backend/tests/test_postgres_connection_pool.py` (7 cases, no real DB).
+2. **P0-2 event-loop blocking** (`api/endpoints/data.py`): ~25 async
+   endpoints called sync DB/service code inline (quality issues, snapshots,
+   daily-bars up to 1M rows, tushare probe/sync, job reads, symbol config,
+   heal-missing, schedule runs). All wrapped in `run_in_threadpool` /
+   `asyncio.to_thread`. `GET /data/kline/coverage` also stopped issuing the
+   heavy coverage query twice per request. `market.py` already wrapped.
+3. **P1-1 batch factor sync logs** (`factor_sync_service.py` +
+   `postgres_db.save_factor_sync_logs`): success logs for synced factors are
+   now one `execute_values` batch instead of one connection per factor ×3
+   code paths; `records_count` now uses each factor's own count (was last
+   factor's `len(df)` in path 1).
+4. **check.sh venv** (`scripts/check.sh`): backend tests/compile now use
+   `backend/venv/bin/python` when present, matching README's documented env.
+
+Verification: full backend suite `398 passed, 8 failed` — the 8 failures
+reproduce on clean `HEAD` (need real PG credentials / scheduler config), no
+new failures. Live checks after restart: `/api/health/health` healthy;
+authed `market/overview` 200 (5.3s cold → ~1ms cached), `data/status`,
+`data/kline/coverage`, `data/datasets`, `data/sync/jobs` all 200.
+
+Deferred (documented, not fixed): market-overview SQL-side aggregation
+(per-exchange price-limit rules would be duplicated in SQL; 30s cache already
+bounds cost) and ECharts `echarts/core` on-demand import (6 surfaces, needs
+visual QA pass; bundle budget gate already enforces size).
+
 ## Operator sidebar visual pass (2026-08-17)
 
 1. Desktop rail is 72px, near-black (`bg-crypto-bg`), hairline `crypto-border`. Group titles no longer render as 8px squeezed labels; groups stay as `role="group"` with `aria-label` and a 1px divider.

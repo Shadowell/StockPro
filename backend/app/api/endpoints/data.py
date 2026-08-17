@@ -450,7 +450,8 @@ async def run_scheduled_all_ashare_sync(
     save_data_runtime_config()
 
     try:
-        job_payload = create_all_ashare_daily_sync_job(
+        job_payload = await asyncio.to_thread(
+            create_all_ashare_daily_sync_job,
             database=database,
             service=service,
             now=now,
@@ -507,9 +508,14 @@ async def run_daily_reference_sync(
 ) -> Dict[str, Any]:
     """Run the PG-backed post-close pipeline; used by both API and scheduler."""
     target_date = trade_date or datetime.now().date().isoformat()
-    resolved_symbols = _dedupe_symbols(symbols) if symbols else resolve_all_ashare_symbols(database)
     runner = service or daily_reference_sync_service
-    result = await asyncio.to_thread(runner.run, target_date, resolved_symbols, force)
+    if symbols:
+        resolved_symbols = _dedupe_symbols(symbols)
+        result = await asyncio.to_thread(runner.run, target_date, resolved_symbols, force)
+    else:
+        result = await asyncio.to_thread(
+            lambda: runner.run(target_date, resolve_all_ashare_symbols(database), force)
+        )
     now = datetime.now().isoformat(timespec="seconds")
     if result.get("status") in {"sealed", "failed", "blocked", "not_trading_day", "skipped"}:
         sync_status.update(
@@ -809,7 +815,8 @@ async def data_status() -> Dict[str, Any]:
 
 @router.post("/tushare/catalog/install")
 async def install_tushare_catalog() -> Dict[str, Any]:
-    return {"installed": tushare_catalog_service.install_catalog(), "credit_tier": tushare_catalog_service.credit_tier}
+    installed = await run_in_threadpool(tushare_catalog_service.install_catalog)
+    return {"installed": installed, "credit_tier": tushare_catalog_service.credit_tier}
 
 
 @router.get("/datasets")
@@ -824,12 +831,18 @@ async def list_research_quality_issues(
     severity: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
 ) -> Dict[str, Any]:
-    return {"items": dataset_snapshot_service.list_quality_issues(dataset_code=dataset_code, severity=severity, limit=limit)}
+    items = await run_in_threadpool(
+        dataset_snapshot_service.list_quality_issues,
+        dataset_code=dataset_code,
+        severity=severity,
+        limit=limit,
+    )
+    return {"items": items}
 
 
 @router.get("/source-entitlements")
 async def list_research_source_entitlements() -> Dict[str, Any]:
-    return {"items": dataset_snapshot_service.list_source_entitlements()}
+    return {"items": await run_in_threadpool(dataset_snapshot_service.list_source_entitlements)}
 
 
 @router.get("/snapshots")
@@ -840,7 +853,7 @@ async def list_research_dataset_snapshots(limit: int = Query(50, ge=1, le=200)) 
 
 @router.get("/universe-snapshots/{snapshot_id}")
 async def get_research_universe_snapshot(snapshot_id: int) -> Dict[str, Any]:
-    snapshot = reference_dataset_sync_service.get_universe_snapshot(snapshot_id)
+    snapshot = await run_in_threadpool(reference_dataset_sync_service.get_universe_snapshot, snapshot_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail="Universe 快照不存在")
     return snapshot
@@ -849,7 +862,8 @@ async def get_research_universe_snapshot(snapshot_id: int) -> Dict[str, Any]:
 @router.post("/snapshots")
 async def create_research_dataset_snapshot(request: DatasetSnapshotRequest) -> Dict[str, Any]:
     try:
-        return dataset_snapshot_service.create_snapshot(
+        return await run_in_threadpool(
+            dataset_snapshot_service.create_snapshot,
             name=request.name,
             partition_ids=request.partition_ids,
             knowledge_cutoff_at=request.knowledge_cutoff_at,
@@ -860,7 +874,7 @@ async def create_research_dataset_snapshot(request: DatasetSnapshotRequest) -> D
 
 @router.get("/snapshots/{snapshot_id}")
 async def get_research_dataset_snapshot(snapshot_id: int) -> Dict[str, Any]:
-    snapshot = dataset_snapshot_service.get_snapshot(snapshot_id)
+    snapshot = await run_in_threadpool(dataset_snapshot_service.get_snapshot, snapshot_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail="数据快照不存在")
     return snapshot
@@ -874,7 +888,12 @@ async def get_snapshot_daily_bars(
 ) -> Dict[str, Any]:
     try:
         symbol_list = [item.strip() for item in (symbols or "").split(",") if item.strip()]
-        rows = dataset_snapshot_service.load_daily_bars(snapshot_id, symbols=symbol_list, limit=limit)
+        rows = await run_in_threadpool(
+            dataset_snapshot_service.load_daily_bars,
+            snapshot_id,
+            symbols=symbol_list,
+            limit=limit,
+        )
         return {"snapshot_id": snapshot_id, "items": rows, "total": len(rows)}
     except ValueError as exc:
         status_code = 404 if "不存在" in str(exc) else 409
@@ -890,7 +909,8 @@ async def get_snapshot_dataset_records(
 ) -> Dict[str, Any]:
     try:
         symbol_list = [item.strip() for item in (symbols or "").split(",") if item.strip()]
-        rows = dataset_snapshot_service.load_snapshot_dataset(
+        rows = await run_in_threadpool(
+            dataset_snapshot_service.load_snapshot_dataset,
             snapshot_id,
             dataset_code,
             symbols=symbol_list,
@@ -905,7 +925,7 @@ async def get_snapshot_dataset_records(
 @router.post("/snapshots/{snapshot_id}/seal")
 async def seal_research_dataset_snapshot(snapshot_id: int) -> Dict[str, Any]:
     try:
-        return dataset_snapshot_service.seal_snapshot(snapshot_id)
+        return await run_in_threadpool(dataset_snapshot_service.seal_snapshot, snapshot_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -913,7 +933,8 @@ async def seal_research_dataset_snapshot(snapshot_id: int) -> Dict[str, Any]:
 @router.post("/datasets/daily-bars/publish")
 async def publish_daily_bars_snapshot(request: DailyBarsPublicationRequest) -> Dict[str, Any]:
     try:
-        return dataset_snapshot_service.publish_daily_bars(
+        return await run_in_threadpool(
+            dataset_snapshot_service.publish_daily_bars,
             trade_date=request.trade_date,
             knowledge_cutoff_at=request.knowledge_cutoff_at,
         )
@@ -931,16 +952,21 @@ async def list_tushare_endpoints(module: Optional[str] = Query(None)) -> Dict[st
 
 @router.post("/tushare/endpoints/{endpoint_code}/probe")
 async def probe_tushare_endpoint(endpoint_code: str, request: TushareEndpointRequest) -> Dict[str, Any]:
-    tushare_catalog_service.install_catalog()
+    await run_in_threadpool(tushare_catalog_service.install_catalog)
     try:
-        return tushare_catalog_service.probe(endpoint_code, params=request.params, fields=request.fields)
+        return await run_in_threadpool(
+            tushare_catalog_service.probe,
+            endpoint_code,
+            params=request.params,
+            fields=request.fields,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/tushare/endpoints/{endpoint_code}/sync")
 async def sync_tushare_endpoint(endpoint_code: str, request: TushareEndpointRequest) -> Dict[str, Any]:
-    tushare_catalog_service.install_catalog()
+    await run_in_threadpool(tushare_catalog_service.install_catalog)
     try:
         return await asyncio.to_thread(
             tushare_catalog_service.sync_endpoint,
@@ -971,7 +997,11 @@ async def latest_market_evidence(
     trade_date: Optional[str] = Query(None),
     market_scope: str = Query("all_a"),
 ) -> Dict[str, Any]:
-    snapshot = tushare_catalog_service.latest_market_evidence(trade_date=trade_date, market_scope=market_scope)
+    snapshot = await run_in_threadpool(
+        tushare_catalog_service.latest_market_evidence,
+        trade_date=trade_date,
+        market_scope=market_scope,
+    )
     if snapshot is None:
         raise HTTPException(status_code=404, detail="未找到市场证据快照")
     return snapshot
@@ -985,7 +1015,8 @@ async def trigger_sync(request: Optional[HistorySyncRequest] = Body(default=None
 @router.post("/history/sync")
 async def trigger_history_sync(request: HistorySyncRequest) -> Dict[str, Any]:
     start_date, end_date = _resolve_history_range(request.start_date, request.end_date)
-    job_id = kline_sync_service.create_history_sync_job(
+    job_id = await run_in_threadpool(
+        kline_sync_service.create_history_sync_job,
         symbols=request.symbols,
         timeframes=request.timeframes,
         start_date=start_date,
@@ -997,7 +1028,7 @@ async def trigger_history_sync(request: HistorySyncRequest) -> Dict[str, Any]:
         "success": True,
         "message": "K线历史同步任务已提交",
         "job_id": job_id,
-        "job": db.get_sync_job(job_id),
+        "job": await run_in_threadpool(db.get_sync_job, job_id),
     }
 
 
@@ -1019,13 +1050,14 @@ async def trigger_market_history_sync(request: Optional[MarketHistorySyncRequest
     universe_refresh: Dict[str, Any] = {"skipped": True}
     if payload.refresh_universe:
         try:
-            universe_refresh = {"rows": int(_sync_all_stocks()), "skipped": False}
+            universe_refresh = {"rows": int(await run_in_threadpool(_sync_all_stocks)), "skipped": False}
         except Exception as exc:
             logger.warning("Universe refresh before market sync failed", exc_info=True)
             universe_refresh = {"skipped": False, "error": str(exc), "rows": 0}
 
     try:
-        job_payload = kline_sync_service.create_market_daily_sync_job(
+        job_payload = await run_in_threadpool(
+            kline_sync_service.create_market_daily_sync_job,
             start_date=start_date,
             end_date=end_date,
             job_name=payload.job_name or f"market-1y-{datetime.now().strftime('%Y%m%d%H%M%S')}",
@@ -1056,7 +1088,7 @@ async def trigger_market_history_sync(request: Optional[MarketHistorySyncRequest
         "message": "全市场近一年日线同步任务已提交（按交易日批量拉取）",
         "jobId": str(job_id),
         "job_id": job_id,
-        "job": db.get_sync_job(job_id),
+        "job": await run_in_threadpool(db.get_sync_job, job_id),
         "mode": "market_by_trade_date",
         "historyDays": history_days,
         "startDate": start_date,
@@ -1134,7 +1166,7 @@ async def daily_reference_schedule() -> Dict[str, Any]:
 @router.put("/schedules/daily")
 async def update_daily_reference_schedule(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
     try:
-        schedule = daily_reference_sync_service.update_schedule(payload)
+        schedule = await run_in_threadpool(daily_reference_sync_service.update_schedule, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # The scheduler may be disabled locally.  When it is running, refresh only
@@ -1169,9 +1201,10 @@ async def update_data_schedule(payload: Dict[str, Any] = Body(default_factory=di
 @router.post("/symbols")
 async def add_data_symbol(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     symbol = _normalize_symbol_input(payload.get("symbol"))
-    added = symbol not in _configured_symbols(db)
+    known = await run_in_threadpool(_configured_symbols, db)
+    added = symbol not in known
     persist_data_symbol(symbol, remove=False)
-    return {"symbol": symbol, "added": added, "defaultSymbols": _configured_symbols(db)}
+    return {"symbol": symbol, "added": added, "defaultSymbols": await run_in_threadpool(_configured_symbols, db)}
 
 
 @router.post("/symbol-names")
@@ -1186,16 +1219,20 @@ async def lookup_data_symbol_names(payload: Dict[str, Any] = Body(default_factor
         except ValueError:
             continue
     symbols = sorted(set(symbols))
-    names = db.lookup_symbol_names(symbols) if hasattr(db, "lookup_symbol_names") else {}
+    if hasattr(db, "lookup_symbol_names"):
+        names = await run_in_threadpool(db.lookup_symbol_names, symbols)
+    else:
+        names = {}
     return {"names": names, "total": len(names)}
 
 
 @router.delete("/symbols")
 async def remove_data_symbol(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     symbol = _normalize_symbol_input(payload.get("symbol"))
-    removed = symbol in _configured_symbols(db)
+    known = await run_in_threadpool(_configured_symbols, db)
+    removed = symbol in known
     persist_data_symbol(symbol, remove=True)
-    return {"symbol": symbol, "removed": removed, "defaultSymbols": _configured_symbols(db)}
+    return {"symbol": symbol, "removed": removed, "defaultSymbols": await run_in_threadpool(_configured_symbols, db)}
 
 
 @router.post("/start")
@@ -1238,7 +1275,7 @@ async def delete_data(payload: Dict[str, Any] = Body(default_factory=dict)) -> D
     timeframe = _normalize_timeframes([payload.get("timeframe") or "1d"])[0]
     if not hasattr(db, "delete_klines"):
         raise HTTPException(status_code=501, detail="当前数据库不支持删除 K 线数据")
-    deleted = db.delete_klines(symbol=normalized, timeframe=timeframe, exchange="cn")
+    deleted = await run_in_threadpool(db.delete_klines, symbol=normalized, timeframe=timeframe, exchange="cn")
     return {"message": f"已删除 {normalized} {timeframe} 数据", "deleted": deleted}
 
 
@@ -1252,20 +1289,21 @@ async def trigger_realtime_sync() -> Dict[str, Any]:
 
 @router.get("/kline/coverage")
 async def kline_coverage(limit: int = 100) -> Dict[str, Any]:
-    return {"items": db.kline_coverage(limit=limit), "total": len(db.kline_coverage(limit=limit))}
+    items = await run_in_threadpool(db.kline_coverage, limit=limit)
+    return {"items": items, "total": len(items)}
 
 
 @router.get("/sync/jobs")
 async def sync_jobs(limit: int = 20) -> Dict[str, Any]:
-    jobs = db.list_sync_jobs(limit=limit)
+    jobs = await run_in_threadpool(db.list_sync_jobs, limit=limit)
     return {"jobs": jobs, "total": len(jobs)}
 
 
 @router.get("/sync/jobs/{job_id}")
 async def sync_job_detail(job_id: int) -> Dict[str, Any]:
     return {
-        "job": db.get_sync_job(job_id),
-        "items": db.get_sync_job_items(job_id),
+        "job": await run_in_threadpool(db.get_sync_job, job_id),
+        "items": await run_in_threadpool(db.get_sync_job_items, job_id),
     }
 
 
@@ -1323,7 +1361,7 @@ async def _run_market_history_job(
         if include_signals and str(result.get("status") or "").lower() in {"success", "partial"}:
             dates = trade_dates or []
             if not dates:
-                job = db.get_sync_job(job_id) or {}
+                job = await run_in_threadpool(db.get_sync_job, job_id) or {}
                 start = str(job.get("start_date") or "")[:10]
                 end = str(job.get("end_date") or "")[:10]
                 if start and end and hasattr(ak, "trade_cal_open_dates"):
@@ -1422,10 +1460,11 @@ async def _create_history_job_response(payload: Dict[str, Any], default_days: in
     start_date = _payload_date(payload, "start_date")
     if not start_date:
         start_date = (datetime.now().date() - timedelta(days=int(payload.get("historyDays") or payload.get("history_days") or default_days))).isoformat()
-    symbols = [_normalize_symbol_input(symbol) for symbol in (payload.get("symbols") or _configured_symbols(db))]
+    symbols = [_normalize_symbol_input(symbol) for symbol in (payload.get("symbols") or await run_in_threadpool(_configured_symbols, db))]
     timeframes = _normalize_timeframes(payload.get("timeframes") or DEFAULT_DATA_TIMEFRAMES)
     try:
-        job_id = kline_sync_service.create_history_sync_job(
+        job_id = await run_in_threadpool(
+            kline_sync_service.create_history_sync_job,
             symbols=symbols,
             timeframes=timeframes,
             start_date=start_date,
@@ -1449,7 +1488,7 @@ async def _create_history_job_response(payload: Dict[str, Any], default_days: in
         "endDate": end_date,
         "start_date": start_date,
         "end_date": end_date,
-        "job": db.get_sync_job(job_id) if hasattr(db, "get_sync_job") else None,
+        "job": await run_in_threadpool(db.get_sync_job, job_id) if hasattr(db, "get_sync_job") else None,
     }
 
 
@@ -1710,7 +1749,8 @@ async def heal_missing_data(request: HealDataRequest = Body(...)):
     job_name = f"heal-missing-data-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
     try:
-        created_job = kline_sync_service.create_market_daily_sync_job(
+        created_job = await run_in_threadpool(
+            kline_sync_service.create_market_daily_sync_job,
             start_date=start_date,
             end_date=end_date,
             job_name=job_name,
@@ -1723,8 +1763,8 @@ async def heal_missing_data(request: HealDataRequest = Body(...)):
         job_msg = f"K 线同步跳过（{exc}），仅刷新概念与短线指标。"
 
     # 触发实时刷新兜底
-    refreshed_concepts = _refresh_hot_concepts()
-    refreshed_indices = _refresh_short_line_indices()
+    refreshed_concepts = await run_in_threadpool(_refresh_hot_concepts)
+    refreshed_indices = await run_in_threadpool(_refresh_short_line_indices)
 
     return {
         "status": "success",

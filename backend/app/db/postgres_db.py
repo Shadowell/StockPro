@@ -1,11 +1,61 @@
 import json
+import threading
 from datetime import date, datetime, time
 from typing import Any, Dict, List, Optional, Sequence
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
 from app.core.config import settings
+
+
+class _PooledConnection:
+    """Proxy around a pooled psycopg2 connection.
+
+    The codebase uses two styles around ``db.get_connection()``:
+
+    - ``with db.get_connection() as conn:`` — transaction semantics: commit on
+      success, rollback on exception, then return the connection to the pool.
+    - bare ``conn = db.get_connection()`` followed by ``conn.close()`` —
+      ``close()`` returns the connection to the pool instead of destroying it.
+
+    Any other attribute access is delegated to the underlying connection.
+    """
+
+    __slots__ = ("_database", "_connection", "_released")
+
+    def __init__(self, database: "PostgresDatabase", connection):
+        self._database = database
+        self._connection = connection
+        self._released = False
+
+    def __getattr__(self, name: str):
+        return getattr(self._connection, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self._release(commit=exc_type is None)
+        return False
+
+    def close(self):
+        self._release(commit=True)
+
+    def __del__(self):
+        try:
+            self._release(commit=False)
+        except Exception:
+            pass
+
+    def _release(self, commit: bool) -> None:
+        if self._released:
+            return
+        self._released = True
+        database = self._database
+        self._database = None
+        database._return_connection(self._connection, commit=commit)
 
 
 class PostgresDatabase:
@@ -19,11 +69,80 @@ class PostgresDatabase:
         "1d": "kline_1d",
     }
 
+    _POOL_MIN_CONN = 1
+    _POOL_MAX_CONN = 16
+    _CHECKOUT_RETRY_LIMIT = 3
+
     def __init__(self, database_url: Optional[str] = None):
         self.database_url = database_url or settings.DATABASE_URL
+        self._pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+        self._pool_lock = threading.Lock()
+        self._pool_slots = threading.BoundedSemaphore(self._POOL_MAX_CONN)
 
-    def get_connection(self):
-        return psycopg2.connect(self.database_url)
+    def _ensure_pool(self) -> psycopg2.pool.ThreadedConnectionPool:
+        if self._pool is None:
+            with self._pool_lock:
+                if self._pool is None:
+                    self._pool = psycopg2.pool.ThreadedConnectionPool(
+                        self._POOL_MIN_CONN,
+                        self._POOL_MAX_CONN,
+                        dsn=self.database_url,
+                    )
+        return self._pool
+
+    def get_connection(self) -> _PooledConnection:
+        """Check out a pooled connection.
+
+        Connections are validated on checkout (rollback as a liveness probe)
+        so connections dropped by an idle SSH tunnel never reach callers.
+        """
+        pool = self._ensure_pool()
+        self._pool_slots.acquire()
+        try:
+            attempts = 0
+            while True:
+                connection = pool.getconn()
+                try:
+                    connection.rollback()
+                except psycopg2.Error:
+                    pool.putconn(connection, close=True)
+                    attempts += 1
+                    if attempts >= self._CHECKOUT_RETRY_LIMIT:
+                        raise
+                    continue
+                except BaseException:
+                    pool.putconn(connection, close=True)
+                    raise
+                return _PooledConnection(self, connection)
+        except BaseException:
+            self._pool_slots.release()
+            raise
+
+    def _return_connection(self, connection, commit: bool) -> None:
+        try:
+            try:
+                if commit:
+                    connection.commit()
+                else:
+                    connection.rollback()
+            except psycopg2.Error:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                self._pool.putconn(connection, close=True)
+                return
+            self._pool.putconn(connection)
+        finally:
+            self._pool_slots.release()
+
+    def close_pool(self) -> None:
+        """Close every pooled connection; the pool is recreated lazily."""
+        with self._pool_lock:
+            pool = self._pool
+            self._pool = None
+        if pool is not None:
+            pool.closeall()
 
     def init_db(self):
         with self.get_connection() as conn:
@@ -1854,6 +1973,37 @@ class PostgresDatabase:
                     ),
                 )
                 return cursor.fetchone()[0]
+
+    def save_factor_sync_logs(self, entries: List[Dict]) -> None:
+        """Insert multiple factor sync logs in one batch.
+
+        Each entry supports the same fields as ``save_factor_sync_log``:
+        factor_code, date, status, records_count, error_message, sync_duration_ms.
+        """
+        rows = [
+            (
+                str(entry.get("factor_code") or ""),
+                self._normalize_date_text(entry.get("date")),
+                str(entry.get("status") or "success"),
+                int(entry.get("records_count") or 0),
+                entry.get("error_message"),
+                entry.get("sync_duration_ms"),
+            )
+            for entry in entries
+        ]
+        if not rows:
+            return
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                psycopg2.extras.execute_values(
+                    cursor,
+                    """
+                    INSERT INTO factor_sync_logs
+                    (factor_code, date, status, records_count, error_message, sync_duration_ms)
+                    VALUES %s
+                    """,
+                    rows,
+                )
 
     def get_factor_sync_logs(self, factor_code: str = None, limit: int = 50) -> List[Dict]:
         query = """

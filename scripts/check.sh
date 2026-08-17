@@ -6,6 +6,13 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "[check] repository root: $ROOT_DIR"
 
+# Prefer the backend virtualenv so tests run against installed dependencies.
+if [ -x "$ROOT_DIR/backend/venv/bin/python" ]; then
+  PYTHON="$ROOT_DIR/backend/venv/bin/python"
+else
+  PYTHON="python3"
+fi
+
 run_if_present() {
   local description="$1"
   local path="$2"
@@ -39,15 +46,15 @@ elif [ -d "$ROOT_DIR/backend" ]; then
     echo "[check] backend unit tests"
     (
       cd "$ROOT_DIR/backend"
-      python3 -m unittest discover -s tests
+      "$PYTHON" -m unittest discover -s tests
     )
   fi
 
   echo "[check] compiling backend python sources"
-  python3 -m compileall "$ROOT_DIR/backend/app" "$ROOT_DIR/backend/postgres" "$ROOT_DIR/backend/tests"
+  "$PYTHON" -m compileall "$ROOT_DIR/backend/app" "$ROOT_DIR/backend/postgres" "$ROOT_DIR/backend/tests"
   for entrypoint in "$ROOT_DIR"/backend/*.py; do
     if [ -f "$entrypoint" ]; then
-      python3 -m py_compile "$entrypoint"
+      "$PYTHON" -m py_compile "$entrypoint"
     fi
   done
 fi

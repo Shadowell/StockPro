@@ -150,6 +150,9 @@ async def shutdown_event():
         strategy_execution_service.stop()
         logger.info("Strategy execution service stopped")
 
+    db_instance.close_pool()
+    logger.info("Database connection pool closed")
+
 
 @app.get("/")
 def root():
