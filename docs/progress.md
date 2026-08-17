@@ -1,5 +1,19 @@
 # Progress Log
 
+## Deployment merge follow-up: bound frontend dependency install (2026-08-18)
+
+The merge itself reached `main`, but its production workflow stalled in
+`Build Frontend`. The self-hosted runner log shows `npm ci` stopped while
+issuing npm audit registry requests and never reached `npm run build`; the
+server reboot later interrupted the job, leaving production on the previous
+recorded SHA.
+
+The deployment workflow now disables npm's non-build audit/fund requests for
+the clean install and limits the complete frontend build step to 15 minutes.
+Dependency resolution and the locked install remain enforced, while a future
+network stall now terminates with a visible failure instead of occupying the
+runner indefinitely.
+
 ## Concept leaders: visible sync path + em-delayed fallback (2026-08-17)
 
 Problem: 板块龙头 panel always showed「该板块暂无龙头缓存」.
