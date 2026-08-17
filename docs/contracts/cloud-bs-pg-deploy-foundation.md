@@ -1,6 +1,6 @@
 # Sprint Contract: Cloud B/S Postgres Deployment Foundation
 
-> Status: Active production foundation. On 2026-08-01 the frontend UI package was moved inside the StockPro repository so self-hosted Actions builds no longer depend on a sibling checkout.
+> Status: Active production foundation. On 2026-08-17 the production entry moved to `https://stockpro.notenap.com`; the IP-and-port endpoint remains a compatibility path.
 
 ## Sprint Name
 
@@ -19,13 +19,13 @@ Move StockPro's active direction to a cloud-hosted B/S strategy workstation depl
 - Keep runtime routes and background services on Postgres repositories.
 - Keep local development off local PostgreSQL by using an isolated server database through an SSH tunnel.
 - Keep Electron as optional shell only.
+- Provide a canonical HTTPS domain, `www` redirect, certificate renewal path, and deployment smoke check.
 
 ## Out of Scope
 
 - SaaS-grade multi-tenant permissions beyond admin login.
 - Team accounts, SaaS tenancy, billing, or permissions.
 - Real broker API integration or live order submission.
-- HTTPS/domain provisioning.
 
 ## Deliverables
 
@@ -38,7 +38,7 @@ Move StockPro's active direction to a cloud-hosted B/S strategy workstation depl
 
 ## Done Means
 
-- Repository documents `47.79.36.92:4444` as the production entry.
+- Repository documents `https://stockpro.notenap.com` as the production entry and `47.79.36.92:4444` only as a compatibility path.
 - Postgres migrations are idempotent and runnable through a Python module.
 - Deployment script validates `.env`, installs dependencies, applies migrations, restarts systemd, reloads Nginx, and checks health.
 - Production config requires `DATABASE_URL` and documents Postgres-only runtime expectations.
@@ -54,12 +54,12 @@ Manual or QA checks:
 
 - Review deployment docs for no committed secrets.
 - Production server has PostgreSQL installed, `stockpro_prod` created, and `/opt/stockpro/backend/.env` configured with server-local secrets.
-- Verify `curl http://47.79.36.92:4444/api/health/health` and `/api/health/storage` after deployment.
+- Verify `curl https://stockpro.notenap.com/api/health/health` and `/api/health/storage` after deployment.
 
 ## Risks / Notes
 
 - Runtime pages should call Postgres-backed API routes only.
-- IP-only HTTP is acceptable for this sprint but should move to HTTPS before real trading.
+- HTTPS terminates on the shared Nginx SNI layer; changes to its host map must preserve every existing site.
 
 ## Handoff
 

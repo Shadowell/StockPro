@@ -2,6 +2,10 @@
 
 本地开发使用 `restart.sh`。配置好的生产环境由 GitHub Actions 从 `main` 构建和部署；真实交易能力不随 Web 部署启用。
 
+生产 Web 正式入口为 `https://stockpro.notenap.com`，
+`www.stockpro.notenap.com` 与 HTTP 请求会永久跳转到该地址。服务器仍保留
+`http://47.79.36.92:4444` 作为兼容与故障排查入口，不应作为对外链接。
+
 ## 1. 本地服务
 
 | 服务 | 地址 | 说明 |
@@ -185,7 +189,14 @@ curl -fsS http://127.0.0.1:4445/api/health/storage
 1. Actions run 结论为成功；
 2. `Record deployed SHA` 已执行；
 3. 后端健康与存储检查通过；
-4. 前端入口返回 200；
-5. 服务日志没有启动循环、迁移失败或持续 5xx。
+4. `https://stockpro.notenap.com/` 返回 200；
+5. `https://www.stockpro.notenap.com/` 永久跳转到主域名；
+6. HTTPS 证书覆盖主域名与 `www`，且 Certbot timer 正常；
+7. 服务日志没有启动循环、迁移失败或持续 5xx。
+
+生产 443 端口由服务器级 Nginx SNI 分流器共享。StockPro 的两个主机名必须
+指向 `127.0.0.1:8451`，站点配置再从该端口终止 TLS。证书使用 Certbot webroot
+方式签发，挑战目录为 `/var/www/letsencrypt`。修改共享 SNI 表前必须备份并运行
+`nginx -t`，不能覆盖其他产品已有的域名映射。
 
 真实券商、资金、订单和临时生产数据修改仍需要独立授权和安全审查。
