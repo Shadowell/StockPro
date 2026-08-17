@@ -663,7 +663,7 @@ test('single api shell keeps overview, research, strategy and admin navigation t
   await expect(page.getByRole('navigation', { name: '主菜单' })).toBeVisible();
   await expect(page.getByRole('link', { name: '首页', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: '行情', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: '股票池', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '股票池', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: '策略', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: '数据', exact: true })).toBeVisible();
 
@@ -682,7 +682,7 @@ test('single api shell keeps overview, research, strategy and admin navigation t
   await expect(page.getByRole('tab', { name: /数据资产|Data Assets/ })).toBeVisible();
 });
 
-test('sidebar exposes exactly thirteen ordered first-level workspaces in groups', async ({ page }) => {
+test('sidebar exposes the operator-trunk workspaces in groups', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/');
 
@@ -691,22 +691,19 @@ test('sidebar exposes exactly thirteen ordered first-level workspaces in groups'
     await expect(sidebar.getByRole('group', { name: group })).toBeVisible();
   }
   const links = sidebar.locator('nav a');
-  await expect(links).toHaveCount(13);
+  await expect(links).toHaveCount(7);
   await expect(links).toHaveText([
     /首页/,
     /行情/,
-    /股票池/,
-    /因子/,
     /策略/,
     /回测/,
     /模拟/,
     /盯盘/,
-    /监控/,
-    /实盘/,
-    /复盘/,
     /数据/,
-    /AI研发/,
   ]);
+  for (const hidden of ['股票池', '因子', '监控', '实盘', '复盘', 'AI研发']) {
+    await expect(sidebar.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
+  }
 });
 
 test('desktop shell matches the BitPro single-column operator navigation', async ({ page }) => {
@@ -716,9 +713,10 @@ test('desktop shell matches the BitPro single-column operator navigation', async
 
   const sidebar = page.getByRole('complementary');
   const sidebarBox = await sidebar.boundingBox();
-  expect(sidebarBox?.width ?? 999).toBeLessThanOrEqual(65);
+  expect(sidebarBox?.width ?? 999).toBeGreaterThanOrEqual(70);
+  expect(sidebarBox?.width ?? 0).toBeLessThanOrEqual(80);
   await expect(sidebar.getByRole('link', { name: '首页', exact: true })).toBeVisible();
-  await expect(sidebar.getByRole('link', { name: '实盘', exact: true })).toBeVisible();
+  await expect(sidebar.getByRole('link', { name: '实盘', exact: true })).toHaveCount(0);
   await expect(sidebar.getByRole('link', { name: '数据', exact: true })).toBeVisible();
   const firstBox = await sidebar.getByRole('link', { name: '首页', exact: true }).boundingBox();
   const lastBox = await sidebar.getByRole('link', { name: '数据', exact: true }).boundingBox();
@@ -805,17 +803,11 @@ test('mobile navigation scrolls every current workspace link into view', async (
   const workspaces = [
     ['/', '首页'],
     ['/market', '行情'],
-    ['/pools', '股票池'],
-    ['/factors', '因子'],
     ['/strategy', '策略'],
     ['/backtest', '回测'],
     ['/paper', '模拟'],
     ['/watch', '盯盘'],
-    ['/monitor', '监控'],
-    ['/live', '实盘'],
-    ['/review', '复盘'],
     ['/data', '数据'],
-    ['/ai-lab', 'AI研发'],
   ] as const;
 
   for (const [path, label] of workspaces) {
@@ -1429,13 +1421,16 @@ test('strategy details have a reloadable deep link and visible return path', asy
 test('strategy lifecycle uses one BitPro-style first-level menu and does not imply live trading', async ({ page }) => {
   await loginAsAdmin(page);
 
-  for (const path of ['/strategy', '/backtest', '/paper', '/watch', '/monitor', '/review']) {
+  for (const path of ['/strategy', '/backtest', '/paper', '/watch']) {
     await page.goto(path);
     const menu = page.getByRole('navigation', { name: '主菜单' });
     await expect(menu).toBeVisible();
     await expect(page.getByTestId('workflow-rail')).toHaveCount(0);
-    for (const label of ['策略', '回测', '模拟', '盯盘', '监控', '复盘']) {
+    for (const label of ['策略', '回测', '模拟', '盯盘']) {
       await expect(menu.getByRole('link', { name: label, exact: true })).toBeVisible();
+    }
+    for (const hidden of ['监控', '复盘', '因子', '股票池', 'AI研发']) {
+      await expect(menu.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
     }
   }
 

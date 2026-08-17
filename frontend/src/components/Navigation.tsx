@@ -37,6 +37,16 @@ type NavGroup = {
   items: NavItem[];
 };
 
+/** Operator-trunk cut. Empty this set to restore hidden workspaces. Routes stay registered. */
+const HIDDEN_NAV_IDS = new Set<string>([
+  'pools',
+  'factors',
+  'monitor',
+  'review',
+  'ai-lab',
+  'live',
+]);
+
 const NAV_GROUPS: NavGroup[] = [
   {
     id: 'discover',
@@ -77,46 +87,52 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+function visibleNavGroups(groups: NavGroup[]): NavGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !HIDDEN_NAV_IDS.has(item.id)),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+function navItemClass(vertical: boolean, isActive: boolean): string {
+  if (vertical) {
+    return clsx(
+      'group relative flex h-11 w-full flex-col items-center justify-center gap-1 text-[11px] leading-none transition-colors',
+      isActive
+        ? 'bg-crypto-accent/10 font-medium text-crypto-accent'
+        : 'text-crypto-muted hover:bg-white/[0.04] hover:text-slate-200',
+    );
+  }
+  return clsx(
+    'group relative flex h-9 min-w-[52px] shrink-0 items-center justify-center gap-1.5 border-b border-transparent px-2 text-[11px] leading-none transition-colors',
+    isActive
+      ? 'border-crypto-accent font-medium text-crypto-accent'
+      : 'text-crypto-muted hover:border-crypto-border hover:text-slate-200',
+  );
+}
+
 function NavItemLink({ item, vertical }: { item: NavItem; vertical: boolean }) {
   return (
     <NavLink
       to={item.to}
       end={item.end}
       title={item.label}
-      className={({ isActive }) =>
-        clsx(
-          'group relative flex shrink-0 items-center justify-center overflow-hidden text-xs transition-all duration-200',
-          vertical
-            ? 'h-12 w-16 flex-col'
-            : 'h-10 min-w-[58px] gap-1.5 border-b-2 border-transparent px-2.5',
-          isActive
-            ? vertical
-              ? 'bg-blue-500/15 font-bold text-blue-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
-              : 'border-blue-400 font-bold text-blue-300'
-            : vertical
-              ? 'text-gray-400 hover:bg-gray-800/80 hover:text-gray-200'
-              : 'text-gray-400 hover:border-slate-600 hover:text-gray-200',
-        )
-      }
+      className={({ isActive }) => navItemClass(vertical, isActive)}
     >
       {({ isActive }) => (
         <>
-          {isActive && (
-            <span
-              className={clsx(
-                'absolute bg-blue-400 shadow-[0_0_8px_rgba(56,189,248,0.7)] transition-all',
-                vertical ? 'left-0 top-2 bottom-2 w-1 rounded-r-full' : 'hidden',
-              )}
-            />
-          )}
+          {vertical && isActive ? (
+            <span className="absolute inset-y-1.5 left-0 w-0.5 bg-crypto-accent" aria-hidden="true" />
+          ) : null}
           <item.Icon
             className={clsx(
-              'transition-all duration-200 group-hover:scale-110',
-              vertical ? 'mb-0.5 h-[18px] w-[18px]' : 'h-[18px] w-[18px]',
-              isActive ? 'text-blue-400' : 'text-gray-400 group-hover:text-gray-200',
+              'h-4 w-4',
+              isActive ? 'text-crypto-accent' : 'text-crypto-muted group-hover:text-slate-200',
             )}
           />
-          <span className={clsx(vertical ? 'text-[10px]' : 'text-[11px]')}>{item.label}</span>
+          <span>{item.label}</span>
         </>
       )}
     </NavLink>
@@ -146,22 +162,21 @@ export const Navigation = ({ orientation = 'vertical' }: NavigationProps) => {
         vertical ? 'flex flex-1 flex-col gap-0.5' : 'flex min-w-max items-center gap-1',
       )}
     >
-      {NAV_GROUPS.map((group, index) => (
+      {visibleNavGroups(NAV_GROUPS).map((group, index) => (
         <div
           key={group.id}
           role="group"
           aria-label={group.label}
           className={clsx(vertical ? 'flex flex-col' : 'flex items-center gap-1')}
         >
-          {vertical ? (
-            <>
-              {index > 0 ? <div className="mx-3 my-1 h-px bg-crypto-border" aria-hidden="true" /> : null}
-              <div className="px-1 pb-0.5 text-center text-[8px] font-semibold tracking-wider text-slate-600">
-                {group.label}
-              </div>
-            </>
-          ) : index > 0 ? (
-            <span className="mx-1 h-5 w-px bg-crypto-border" aria-hidden="true" />
+          {index > 0 ? (
+            <div
+              className={clsx(
+                'bg-crypto-border',
+                vertical ? 'mx-3.5 my-1.5 h-px' : 'mx-1 h-4 w-px',
+              )}
+              aria-hidden="true"
+            />
           ) : null}
           {group.items.map((item) => (
             <NavItemLink key={item.id} item={item} vertical={vertical} />

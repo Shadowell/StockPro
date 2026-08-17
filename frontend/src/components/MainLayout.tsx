@@ -136,25 +136,16 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
       data-testid="financial-operator-shell"
       data-auth-role={authProfile?.role || 'unknown'}
     >
-      <aside className="hidden w-16 shrink-0 flex-col overflow-hidden border-r border-crypto-border bg-crypto-card md:flex">
-        <div className="flex h-16 flex-col items-center justify-center gap-1 border-b border-crypto-border py-1">
-          <StockProMark size="md" />
-        </div>
-        <div className="border-b border-crypto-border py-1.5">
+      <aside className="hidden w-[72px] shrink-0 flex-col overflow-hidden border-r border-crypto-border bg-crypto-bg md:flex">
+        <div className="flex flex-col items-center gap-1.5 border-b border-crypto-border px-1 py-2.5">
+          <StockProMark size="sm" showGlow={false} quiet />
           <MarketSessionBadge compact />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto py-1.5">
           <Navigation />
         </div>
-        <div className="space-y-1 border-t border-crypto-border p-1">
-          <div
-            className={clsx(
-              'w-full rounded px-1 py-1 text-center text-[9px] font-semibold',
-              authProfile?.role === 'guest'
-                ? 'bg-cyan-500/10 text-cyan-300'
-                : 'bg-emerald-500/10 text-emerald-300',
-            )}
-          >
+        <div className="border-t border-crypto-border py-1.5">
+          <div className="px-1 pb-1 text-center text-[10px] leading-none text-crypto-muted">
             {authProfile?.role === 'guest' ? '访客' : '管理员'}
           </div>
           {authProfile?.role === 'admin' && (
@@ -162,10 +153,10 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
               type="button"
               onClick={() => setShowSettings(true)}
               className={clsx(
-                'flex h-10 w-full flex-col items-center justify-center rounded text-xs transition-colors',
+                'flex h-9 w-full items-center justify-center transition-colors',
                 showSettings
-                  ? 'bg-blue-500/10 text-blue-400'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
+                  ? 'bg-crypto-accent/10 text-crypto-accent'
+                  : 'text-crypto-muted hover:bg-white/[0.04] hover:text-slate-200',
               )}
               aria-label="设置"
             >
@@ -175,7 +166,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           <button
             type="button"
             onClick={logout}
-            className="flex h-10 w-full flex-col items-center justify-center rounded text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-200"
+            className="flex h-9 w-full items-center justify-center text-crypto-muted transition-colors hover:bg-white/[0.04] hover:text-slate-200"
             aria-label="退出登录"
           >
             <LogOut className="h-4 w-4" />

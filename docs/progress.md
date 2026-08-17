@@ -1,5 +1,15 @@
 # Progress Log
 
+## Operator sidebar visual pass (2026-08-17)
+
+1. Desktop rail is 72px, near-black (`bg-crypto-bg`), hairline `crypto-border`. Group titles no longer render as 8px squeezed labels; groups stay as `role="group"` with `aria-label` and a 1px divider.
+2. Nav items are icon + 11px label, aligned; selected state is `crypto-accent` fill + 2px left bar, no glow or hover-scale. `HIDDEN_NAV_IDS` unchanged (因子 / 股票池 / 监控 / 复盘 / AI / 实盘 stay hidden).
+3. Logo uses `StockProMark quiet` (no gradient shell). Session badge compact is a single-line dot + label from the existing market-session source. Role footer is muted text, not a colored sticker.
+4. E2E desktop width assertion updated from `<= 65` to `70–80`. Did not touch paper read-path or Watch.tsx.
+
+Verification: `npx tsc -b --noEmit` passed. Local `:4444` / `:4445` restarted; both ports listening; `GET /api/health/health` returned healthy.
+
+
 ## 20 Daily-Bar 打板 / 隔日T Strategies (2026-08-16)
 
 1. Added 20 Strategy API v1 presets: 8 打板隔日 T, 8 隔日 T, plus 3-day

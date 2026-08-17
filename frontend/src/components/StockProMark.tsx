@@ -5,6 +5,8 @@ type StockProMarkProps = {
   className?: string;
   title?: string;
   showGlow?: boolean;
+  /** Flat mark for the operator rail; no gradient shell or hover glow. */
+  quiet?: boolean;
 };
 
 const SIZE = {
@@ -24,8 +26,10 @@ export function StockProMark({
   className,
   title = 'StockPro 智能投研与量化交易终端',
   showGlow = true,
+  quiet = false,
 }: StockProMarkProps) {
   const dim = SIZE[size];
+  const glow = showGlow && !quiet;
 
   return (
     <div
@@ -34,16 +38,19 @@ export function StockProMark({
       title={title}
       className={clsx(
         'relative inline-flex shrink-0 items-center justify-center overflow-hidden',
-        'border border-sky-400/35 bg-gradient-to-b from-[#182335] via-[#0f172a] to-[#080d1a]',
-        'shadow-[inset_0_1px_1px_rgba(255,255,255,0.18),0_4px_16px_rgba(0,0,0,0.6)]',
-        'transition-all duration-300 hover:border-sky-400/70 hover:shadow-[inset_0_1px_2px_rgba(255,255,255,0.25),0_0_24px_rgba(14,165,233,0.35)]',
-        'group',
-        dim.shell,
+        quiet
+          ? 'bg-transparent'
+          : [
+              'border border-sky-400/35 bg-gradient-to-b from-[#182335] via-[#0f172a] to-[#080d1a]',
+              'shadow-[inset_0_1px_1px_rgba(255,255,255,0.18),0_4px_16px_rgba(0,0,0,0.6)]',
+              'transition-all duration-300 hover:border-sky-400/70 hover:shadow-[inset_0_1px_2px_rgba(255,255,255,0.25),0_0_24px_rgba(14,165,233,0.35)]',
+              'group',
+            ],
+        quiet ? 'h-7 w-7' : dim.shell,
         className,
       )}
     >
-      {/* Background ambient glow effect */}
-      {showGlow && (
+      {glow && (
         <div className="absolute -top-1/2 -right-1/2 h-full w-full rounded-full bg-gradient-to-br from-sky-400/20 via-blue-600/10 to-transparent blur-md pointer-events-none transition-opacity duration-300 group-hover:opacity-100" />
       )}
 

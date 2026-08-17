@@ -89,15 +89,15 @@ export function MarketSessionBadge({
   if (compact) {
     return (
       <div
-        className={clsx('flex flex-col items-center gap-1 px-1 py-1', className)}
+        className={clsx('flex items-center justify-center gap-1', className)}
         title={title}
         role="status"
         aria-live="polite"
         data-testid="market-session-badge"
         data-session-phase={session.phase}
       >
-        <span className={clsx('h-2 w-2 rounded-full shrink-0', style.dot)} />
-        <span className={clsx('text-[10px] font-semibold leading-none', style.text)}>
+        <span className={clsx('h-1.5 w-1.5 shrink-0 rounded-full', style.dot)} />
+        <span className={clsx('text-[10px] font-medium leading-none', style.text)}>
           {session.label}
         </span>
       </div>
