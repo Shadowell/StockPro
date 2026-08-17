@@ -69,7 +69,7 @@ A sprint is done only when:
 
 ## Local Service Restart Rule
 
-After every source-code change, restart both the frontend and backend services before verification. Do this even when Vite hot reload or Uvicorn reload appears to have applied the change; hot reload does not replace the required clean restart.
+After every code, configuration, script, or test change, restart both the frontend and backend services before verification. This restart is mandatory after each completed modification, even when Vite hot reload or Uvicorn reload appears to have applied the change; hot reload does not replace the required clean restart.
 
 Documentation-only changes do not require a service restart.
 
