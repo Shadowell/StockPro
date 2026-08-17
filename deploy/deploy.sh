@@ -4,6 +4,7 @@ set -euo pipefail
 APP_DIR="/opt/stockpro"
 BACKEND_PORT=4445
 PUBLIC_PORT=4444
+PUBLIC_DOMAIN="stockpro.notenap.com"
 
 echo "🚀 开始部署 StockPro..."
 
@@ -146,7 +147,26 @@ for i in $(seq 1 10); do
     fi
 done
 
+echo -n ">>> 验证 HTTPS 域名"
+for i in $(seq 1 10); do
+    sleep 1
+    echo -n "."
+    if curl -sf --resolve "${PUBLIC_DOMAIN}:443:127.0.0.1" \
+        "https://${PUBLIC_DOMAIN}/api/health/health" > /dev/null 2>&1; then
+        echo ""
+        echo "✅ HTTPS 域名就绪"
+        break
+    fi
+    if [ "$i" -eq 10 ]; then
+        echo ""
+        echo "❌ HTTPS 域名不可达"
+        journalctl -u nginx --no-pager -n 20 || true
+        exit 1
+    fi
+done
+
 PUBLIC_IP=$(curl -sf --max-time 3 http://ifconfig.me || hostname -I | awk '{print $1}')
 echo ""
 echo "✅ 部署完成！"
-echo "   访问地址: http://${PUBLIC_IP}:${PUBLIC_PORT}"
+echo "   正式地址: https://${PUBLIC_DOMAIN}"
+echo "   兼容地址: http://${PUBLIC_IP}:${PUBLIC_PORT}"
