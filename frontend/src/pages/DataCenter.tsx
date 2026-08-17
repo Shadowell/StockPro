@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { DataPanel, StatusBadge } from '@bitpro/ui';
 import { OperatorMetricCard } from '../components/OperatorShell';
@@ -426,54 +426,73 @@ export function DataCenter() {
   const [deleteDataTarget, setDeleteDataTarget] = useState<{ symbol: string; name?: string | null } | null>(null);
   const [deletingData, setDeletingData] = useState(false);
   const [loadIssues, setLoadIssues] = useState<string[]>([]);
+  const loadInFlightRef = useRef<Promise<void> | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setLoadIssues([]);
-    try {
-      const issues: string[] = [];
-      const safe = async <T,>(label: string, request: Promise<T>): Promise<T | null> => {
-        try {
-          return await request;
-        } catch {
-          issues.push(label);
-          return null;
+  const load = () => {
+    if (loadInFlightRef.current) return loadInFlightRef.current;
+
+    const request = (async () => {
+      setLoading(true);
+      setLoadIssues([]);
+      try {
+        const issues: string[] = [];
+        const safe = async <T,>(label: string, request: Promise<T>): Promise<T | null> => {
+          try {
+            return await request;
+          } catch {
+            issues.push(label);
+            return null;
+          }
+        };
+        // Establish the cold PostgreSQL connection before the remaining data
+        // modules fan out. A cold tunnel makes several first reads contend and
+        // otherwise turns a healthy warehouse into a false empty state.
+        const nextStatus = await safe('数据状态', getDataStatus<DataStatus>());
+        setStatus(nextStatus);
+        const [nextConfig, nextSchedule, nextTableStats, nextTushareCatalog, nextResearchDatasets, nextResearchSnapshots, nextDailyReferenceSchedule] = await Promise.all([
+          safe('同步配置', getDataConfig()),
+          safe('调度配置', getDataSchedule()),
+          safe('表统计', getDataTableStats()),
+          safe('TuShare 目录', getTushareEndpoints()),
+          safe('研究数据集', getResearchDatasets()),
+          safe('研究快照', getResearchDatasetSnapshots()),
+          safe('日终编排', getDailyReferenceSchedule()),
+        ]);
+        setTableStats(nextTableStats);
+        setTushareCatalog(nextTushareCatalog);
+        setResearchDatasets(nextResearchDatasets?.items || []);
+        setResearchSnapshots(nextResearchSnapshots?.items || []);
+        setDailyReferenceSchedule(nextDailyReferenceSchedule);
+        if (nextConfig) {
+          setDataConfig(nextConfig);
+          if (nextConfig.defaultSymbols?.length) {
+            setSymbols(nextConfig.defaultSymbols.join(','));
+          }
         }
-      };
-      const [nextStatus, nextConfig, nextSchedule, nextTableStats, nextTushareCatalog, nextResearchDatasets, nextResearchSnapshots, nextDailyReferenceSchedule] = await Promise.all([
-        safe('数据状态', getDataStatus<DataStatus>()),
-        safe('同步配置', getDataConfig()),
-        safe('调度配置', getDataSchedule()),
-        safe('表统计', getDataTableStats()),
-        safe('TuShare 目录', getTushareEndpoints()),
-        safe('研究数据集', getResearchDatasets()),
-        safe('研究快照', getResearchDatasetSnapshots()),
-        safe('日终编排', getDailyReferenceSchedule()),
-      ]);
-      setStatus(nextStatus);
-      setTableStats(nextTableStats);
-      setTushareCatalog(nextTushareCatalog);
-      setResearchDatasets(nextResearchDatasets?.items || []);
-      setResearchSnapshots(nextResearchSnapshots?.items || []);
-      setDailyReferenceSchedule(nextDailyReferenceSchedule);
-      if (nextConfig) {
-        setDataConfig(nextConfig);
-        if (nextConfig.defaultSymbols?.length) {
-          setSymbols(nextConfig.defaultSymbols.join(','));
+        if (nextSchedule) {
+          setScheduleConfig(nextSchedule);
+          setScheduleEnabled(Boolean(nextSchedule.enabled));
+          setScheduleIntervalMinutes(Number(nextSchedule.intervalMinutes || 1440));
+          setScheduleRunHour(Number(nextSchedule.runHour ?? 18));
+          setScheduleRunMinute(Number(nextSchedule.runMinute ?? 10));
+          setScheduleHistoryDays(Number(nextSchedule.historyDays || nextConfig?.defaultHistoryDays || 365));
         }
+        setLoadIssues(issues);
+      } finally {
+        setLoading(false);
       }
-      if (nextSchedule) {
-        setScheduleConfig(nextSchedule);
-        setScheduleEnabled(Boolean(nextSchedule.enabled));
-        setScheduleIntervalMinutes(Number(nextSchedule.intervalMinutes || 1440));
-        setScheduleRunHour(Number(nextSchedule.runHour ?? 18));
-        setScheduleRunMinute(Number(nextSchedule.runMinute ?? 10));
-        setScheduleHistoryDays(Number(nextSchedule.historyDays || nextConfig?.defaultHistoryDays || 365));
-      }
-      setLoadIssues(issues);
-    } finally {
-      setLoading(false);
-    }
+    })();
+
+    loadInFlightRef.current = request;
+    request.then(
+      () => {
+        if (loadInFlightRef.current === request) loadInFlightRef.current = null;
+      },
+      () => {
+        if (loadInFlightRef.current === request) loadInFlightRef.current = null;
+      },
+    );
+    return request;
   };
 
   useEffect(() => {

@@ -441,9 +441,16 @@ export interface FactorCorrelationRow {
   universe_snapshot_id: number;
 }
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    skipRetry?: boolean;
+  }
+}
+
 // Extend axios config type to include retry count
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   __retryCount?: number;
+  skipRetry?: boolean;
 }
 
 export const apiClient = axios.create({
@@ -490,7 +497,7 @@ apiClient.interceptors.response.use(
     }
 
     const config = error.config as RetryableRequestConfig | undefined;
-    if (!config) {
+    if (!config || config.skipRetry) {
       return Promise.reject(error);
     }
 
@@ -1276,9 +1283,25 @@ export const saveDailyReview = async (tradeDate: string, request: { author_name?
 export const sealDailyReview = async (tradeDate: string): Promise<DailyReviewContext> =>
   (await apiClient.post<DailyReviewContext>(`/review/${tradeDate}/seal`)).data;
 
+const rejectPageTimeout = (label: string, error: unknown): never => {
+  if (axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || /timeout/i.test(String(error.message)))) {
+    throw new Error(`${label}读取超时，已停止等待。请稍后重试。`);
+  }
+  throw error;
+};
+
+export const DATA_STATUS_READ_TIMEOUT_MS = 20_000;
+
 export const getDataStatus = async <T = unknown>(): Promise<T> => {
-  const response = await apiClient.get<T>('/data/status');
-  return response.data;
+  try {
+    const response = await apiClient.get<T>('/data/status', {
+      timeout: DATA_STATUS_READ_TIMEOUT_MS,
+      skipRetry: true,
+    });
+    return response.data;
+  } catch (error) {
+    return rejectPageTimeout('数据状态', error);
+  }
 };
 
 export const triggerDataSync = async (request?: {
