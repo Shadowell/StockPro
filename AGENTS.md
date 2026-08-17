@@ -34,29 +34,32 @@ Use this delivery loop for non-trivial tasks:
 
 ## GitHub Delivery Rule
 
-After each completed user-requested change set that modifies repository files:
+After each completed user-requested change set that modifies code, configuration,
+scripts, tests, or deployment files:
 
 1. Run the relevant verification. Documentation-only changes require at least `git diff --check`.
 2. Review `git status` and the scoped diff before staging.
 3. Stage only files and hunks changed for the current task. Never sweep in unrelated pre-existing worktree changes.
-4. Create one clear, conventional commit for the completed change set.
-5. Push the checked-out branch to `origin`. If it has no upstream, use `git push -u origin <current-branch>`.
-6. Report the commit hash and pushed branch in the final response.
+4. Create one clear, conventional commit for the completed change set on a temporary `codex/*` branch.
+5. Push that branch to `origin`, merge it into `main` only after the checks pass, and push `main` to `origin`.
+6. Treat the `main` push as the deployment trigger. Wait for the corresponding GitHub Actions deployment run and verify its result, the deployed SHA, service health, and the key smoke test before reporting completion.
+7. Report the feature-branch commit, merge commit, `main` SHA, GitHub Actions run, and deployment verification in the final response.
 
 Safety rules:
 
 - Do not commit or push when required checks fail unless the user explicitly asks to preserve a failing checkpoint.
+- Do not merge or deploy when the worktree contains unrelated or unreviewed changes; isolate the current change set first.
 - Never commit secrets, `.env` files, credentials, private keys, local runtime configuration, browser artifacts, generated output, or database files.
-- Never amend an existing commit, force-push, rewrite history, or switch branches solely to make an automatic push succeed.
+- Never amend an existing commit, force-push, rewrite history, or bypass branch protection solely to make an automatic merge or deployment succeed.
 - If authentication, branch protection, a non-fast-forward update, or another remote error blocks the push, stop and report it; do not bypass the protection.
-- Pushing source code to GitHub is delivery, not deployment.
+- Do not deploy directly with ad-hoc SSH, `scp`, `rsync`, or remote shell commands when the GitHub Actions deployment path is available; use the workflow triggered by the `main` push.
 
-## Local-only Deployment Boundary
+## GitHub Actions Deployment Boundary
 
-- Do not automatically deploy, SSH, `scp`, `rsync`, run production deployment scripts, restart remote services, or mutate server data.
-- After source-code changes, start or restart only the local frontend, backend, and required local dependencies.
+- Production deployment is performed only by the existing GitHub Actions workflow after a verified `main` push. The workflow owns remote synchronization, dependency installation, migrations, service restart, health checks, and deployment-SHA recording.
+- After source-code changes, still start or restart the local frontend, backend, and required local dependencies before verification; local verification does not replace the GitHub Actions deployment verification.
 - Keep the local development URLs at `http://localhost:4444` and `http://localhost:4445`.
-- Server deployment requires a new explicit instruction from the user in the current conversation.
+- If the GitHub Actions run fails, is blocked, or cannot prove the deployed SHA and health checks, stop and report the failure; do not manually patch the server as a fallback.
 
 ## Done Criteria
 
