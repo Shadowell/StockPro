@@ -26,6 +26,7 @@ class AsyncReadEndpointSafetyTests(unittest.TestCase):
             def blocking_read():
                 return [{"worker_thread": threading.get_ident()}]
 
+            paper.reset_paper_list_cache()
             with patch.object(paper.runtime_service, "list_instances", side_effect=blocking_read):
                 payload = await paper.list_instances()
             return event_loop_thread, payload["items"][0]["worker_thread"]

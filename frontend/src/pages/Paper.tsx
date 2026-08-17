@@ -33,7 +33,7 @@ type PageView = "dashboard" | "create" | "detail";
 
 /** 指标轮询：每 10 秒批量刷新一次实例列表（卡片权益 / 计数）。 */
 const METRICS_POLL_MS = 10_000;
-/** 列表全量刷新：每 60 秒（含晋级回测与选中实例详情）。 */
+/** 当前视图静默刷新：控制台刷列表，创建页刷晋级回测，详情刷实例。 */
 const LIST_REFRESH_MS = 60_000;
 
 const panel = "rounded-xl border border-crypto-border bg-crypto-card";
@@ -85,49 +85,71 @@ export function Paper() {
   );
 
   const requestedInstanceId = params.get("instance");
-  const load = useCallback(
-    async (keepId?: string, opts?: { silent?: boolean }) => {
+  const loadInstances = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) {
+      setBusy(true);
+      setError("");
+    }
+    try {
+      const paper = await listPaperInstances();
+      setInstances(paper.items);
+    } catch (reason) {
+      if (!silent) {
+        setError(
+          reason instanceof Error ? reason.message : "Paper 工作台加载失败",
+        );
+      }
+    } finally {
+      if (!silent) setBusy(false);
+      setLoaded(true);
+    }
+  }, []);
+  const loadEligibleRuns = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) {
+      setBusy(true);
+      setError("");
+    }
+    try {
+      const backtests = await listBacktestRuns(200);
+      setRuns(backtests.items);
+      setRunId(
+        (current) =>
+          current ||
+          backtests.items.find(
+            (item) =>
+              isBusinessPurpose(item) &&
+              item.promotion_status === "paper_eligible" &&
+              item.factor_snapshot_id &&
+              item.pool_snapshot_id,
+          )?.id ||
+          "",
+      );
+    } catch (reason) {
+      if (!silent) {
+        setError(
+          reason instanceof Error ? reason.message : "晋级回测列表加载失败",
+        );
+      }
+    } finally {
+      if (!silent) setBusy(false);
+      setLoaded(true);
+    }
+  }, []);
+  const loadDetail = useCallback(
+    async (id: string, opts?: { silent?: boolean }) => {
       const silent = opts?.silent === true;
       if (!silent) {
         setBusy(true);
         setError("");
       }
       try {
-        const [paper, backtests] = await Promise.all([
-          listPaperInstances(),
-          listBacktestRuns(200),
-        ]);
-        setInstances(paper.items);
-        setRuns(backtests.items);
-        const scopeInstances = paper.items.filter((item) =>
-          isBusinessPurpose(item),
-        );
-        const id = [
-          keepId,
-          requestedInstanceId,
-          scopeInstances[0]?.id,
-        ].find(
-          (candidate) =>
-            Boolean(candidate) &&
-            scopeInstances.some((item) => item.id === candidate),
-        ) ?? undefined;
-        setSelected(id ? await getPaperInstance(id) : null);
-        setRunId((current) =>
-          current ||
-            backtests.items.find(
-              (item) =>
-                isBusinessPurpose(item) &&
-                item.promotion_status === "paper_eligible" &&
-                item.factor_snapshot_id &&
-                item.pool_snapshot_id,
-            )?.id ||
-            "",
-        );
+        setSelected(await getPaperInstance(id));
       } catch (reason) {
-        // 静默轮询失败时保留上一份列表数据，等待下一轮或手动刷新。
         if (!silent) {
           setError(
-            reason instanceof Error ? reason.message : "Paper 工作台加载失败",
+            reason instanceof Error ? reason.message : "实例详情加载失败",
           );
         }
       } finally {
@@ -135,11 +157,21 @@ export function Paper() {
         setLoaded(true);
       }
     },
-    [requestedInstanceId],
+    [],
   );
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (pageView === "detail") {
+      if (requestedInstanceId) void loadDetail(requestedInstanceId);
+      else setLoaded(true);
+      return;
+    }
+    if (pageView === "create") {
+      void loadEligibleRuns();
+      return;
+    }
+    void loadInstances();
+  }, [pageView, requestedInstanceId, loadDetail, loadEligibleRuns, loadInstances]);
 
   const selectedIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -147,6 +179,7 @@ export function Paper() {
   }, [selected?.id]);
 
   useEffect(() => {
+    if (pageView !== "dashboard") return;
     let active = true;
     const timer = window.setInterval(async () => {
       if (document.hidden) return;
@@ -162,27 +195,27 @@ export function Paper() {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [pageView]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.hidden) return;
-      void load(selectedIdRef.current, { silent: true });
+      if (pageView === "detail" && selectedIdRef.current) {
+        void loadDetail(selectedIdRef.current, { silent: true });
+        return;
+      }
+      if (pageView === "create") {
+        void loadEligibleRuns({ silent: true });
+        return;
+      }
+      void loadInstances({ silent: true });
     }, LIST_REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [load]);
+  }, [pageView, loadDetail, loadEligibleRuns, loadInstances]);
 
-  const chooseInstance = async (id: string) => {
-    setBusy(true);
-    setError("");
-    try {
-      setSelected(await getPaperInstance(id));
-      setParams({ view: "detail", tab: tab === "instances" ? "account" : tab, instance: id });
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "实例详情加载失败");
-    } finally {
-      setBusy(false);
-    }
+  const chooseInstance = (id: string) => {
+    if (selected?.id !== id) setSelected(null);
+    setParams({ view: "detail", tab: tab === "instances" ? "account" : tab, instance: id });
   };
   const openCreate = () => {
     setParams({ view: "create" });
@@ -214,10 +247,11 @@ export function Paper() {
         initial_cash: initialCash,
       });
       setName("");
-      await load(created.id);
+      setSelected(created);
       setParams({ view: "detail", tab: "account", instance: created.id });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "创建失败");
+    } finally {
       setBusy(false);
     }
   };
@@ -227,7 +261,7 @@ export function Paper() {
     setError("");
     try {
       await paperInstanceAction(selected.id, next);
-      await load(selected.id);
+      await loadDetail(selected.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "状态操作失败");
       setBusy(false);
@@ -237,14 +271,14 @@ export function Paper() {
     instance: PaperRuntimeInstance,
     next: "start" | "pause" | "resume" | "stop",
   ) => {
-    setSelected(instance);
     setBusy(true);
     setError("");
     try {
       await paperInstanceAction(instance.id, next);
-      await load(instance.id);
+      await loadInstances({ silent: true });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "状态操作失败");
+    } finally {
       setBusy(false);
     }
   };
@@ -258,7 +292,7 @@ export function Paper() {
         data_available_at: `${requestedDate}T15:00:00+08:00`,
         observed_at: `${requestedDate}T15:01:00+08:00`,
       });
-      await load(selected.id);
+      await loadDetail(selected.id);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "周期处理失败");
       setBusy(false);
@@ -284,7 +318,7 @@ export function Paper() {
           qualifyingRun={qualifyingRun}
           busy={busy}
           onBack={backToDashboard}
-          onRefresh={() => load(selected.id)}
+          onRefresh={() => loadDetail(selected.id)}
           onAction={action}
           onRunCycle={replay}
         />
@@ -337,7 +371,7 @@ export function Paper() {
               </button>
               <button
                 type="button"
-                onClick={() => void load(selected?.id)}
+                onClick={() => void loadEligibleRuns()}
                 className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400"
               >
                 <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />

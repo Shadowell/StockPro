@@ -1,6 +1,7 @@
 """Pinned, replayable Paper runtime with append-only risk and operator evidence."""
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -13,6 +14,7 @@ from app.services.backtest_workbench_service import PAPER_PROMOTION_CHECK_CODES
 
 
 PAPER_RUNTIME_VERSION = "paper-runtime.v1"
+PAPER_KLINE_BAR_LIMIT = 800
 
 
 class PaperRuntimeService:
@@ -304,40 +306,140 @@ class PaperRuntimeService:
         return rows
 
     def get_instance(self, instance_id: str) -> Dict[str, Any]:
-        instance = self._instance(instance_id)
-        instance["data_purpose"] = resolve_data_purpose(instance.get("data_purpose"), instance.get("name"))
-        instance["signals"] = self._rows("SELECT * FROM strategy_signals WHERE paper_instance_id=%s ORDER BY signal_time DESC,id DESC", (instance_id,))
-        instance["orders"] = self._rows("SELECT * FROM orders WHERE paper_instance_id=%s ORDER BY created_at DESC", (instance_id,))
-        instance["trades"] = self._rows("SELECT * FROM trades WHERE paper_instance_id=%s ORDER BY traded_at DESC", (instance_id,))
-        instance["positions"] = self._rows("SELECT * FROM positions WHERE portfolio_id=%s ORDER BY market_value DESC", (instance["portfolio_id"],))
-        instance["cash_ledger"] = self._rows("SELECT * FROM cash_ledger WHERE paper_instance_id=%s ORDER BY created_at DESC", (instance_id,))
-        instance["equity_snapshots"] = self._rows("SELECT * FROM paper_equity_snapshots WHERE paper_instance_id=%s ORDER BY trade_date", (instance_id,))
-        instance["events"] = self.events(instance_id)
-        instance["cycles"] = self._rows("SELECT * FROM paper_runtime_cycles WHERE paper_instance_id=%s ORDER BY created_at,id", (instance_id,))
-        instance["risk_events"] = self._rows("SELECT * FROM risk_events WHERE paper_instance_id=%s ORDER BY created_at DESC,id DESC", (instance_id,))
-        instance["alerts"] = self._rows("SELECT * FROM alerts WHERE paper_instance_id=%s ORDER BY triggered_at DESC,id DESC", (instance_id,))
-        instance["strategy_version"] = self._row("SELECT * FROM strategy_versions WHERE id=%s", (instance["strategy_version_id"],))
-        instance["qualifying_backtest"] = self._row("SELECT * FROM backtest_runs WHERE id=%s", (instance["qualifying_backtest_run_id"],))
-        instance["signal_count"] = len(instance["signals"])
-        instance["order_count"] = len(instance["orders"])
-        instance["trade_count"] = len(instance["trades"])
-        latest_equity = instance["equity_snapshots"][-1] if instance["equity_snapshots"] else None
-        if latest_equity:
-            instance["equity"] = latest_equity.get("equity")
-        else:
-            instance["equity"] = instance.get("cash_balance") if instance.get("cash_balance") is not None else instance.get("initial_cash")
-        latest_cycle = instance["cycles"][-1] if instance["cycles"] else None
-        if latest_cycle:
-            for source, target in (
-                ("id", "latest_cycle_id"),
-                ("status", "latest_cycle_status"),
-                ("trade_date", "latest_cycle_trade_date"),
-                ("finished_at", "latest_cycle_finished_at"),
-                ("error_message", "latest_cycle_error"),
-                ("ledger_difference", "latest_cycle_ledger_difference"),
-            ):
-                instance[target] = latest_cycle.get(source)
-        return instance
+        with self.database.get_connection() as connection:
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                instance = self._fetch_one(
+                    cursor,
+                    """
+                    SELECT i.*, p.cash_balance, p.initial_cash, p.status AS portfolio_status,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(s)) FROM (
+                                   SELECT * FROM strategy_signals
+                                   WHERE paper_instance_id = i.id
+                                   ORDER BY signal_time DESC, id DESC
+                               ) s
+                           ), '[]'::json) AS signals,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(o)) FROM (
+                                   SELECT * FROM orders
+                                   WHERE paper_instance_id = i.id
+                                   ORDER BY created_at DESC
+                               ) o
+                           ), '[]'::json) AS orders,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(t)) FROM (
+                                   SELECT * FROM trades
+                                   WHERE paper_instance_id = i.id
+                                   ORDER BY traded_at DESC
+                               ) t
+                           ), '[]'::json) AS trades,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(pos)) FROM (
+                                   SELECT * FROM positions
+                                   WHERE portfolio_id = i.portfolio_id
+                                   ORDER BY market_value DESC
+                               ) pos
+                           ), '[]'::json) AS positions,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(cl)) FROM (
+                                   SELECT * FROM cash_ledger
+                                   WHERE paper_instance_id = i.id
+                                   ORDER BY created_at DESC
+                               ) cl
+                           ), '[]'::json) AS cash_ledger,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(eq)) FROM (
+                                   SELECT * FROM paper_equity_snapshots
+                                   WHERE paper_instance_id = i.id
+                                   ORDER BY trade_date
+                               ) eq
+                           ), '[]'::json) AS equity_snapshots,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(ev)) FROM (
+                                   SELECT * FROM paper_instance_events
+                                   WHERE paper_instance_id = i.id
+                                   ORDER BY occurred_at DESC, id DESC
+                               ) ev
+                           ), '[]'::json) AS events,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(cy)) FROM (
+                                   SELECT * FROM paper_runtime_cycles
+                                   WHERE paper_instance_id = i.id
+                                   ORDER BY created_at, id
+                               ) cy
+                           ), '[]'::json) AS cycles,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(re)) FROM (
+                                   SELECT * FROM risk_events
+                                   WHERE paper_instance_id = i.id
+                                   ORDER BY created_at DESC, id DESC
+                               ) re
+                           ), '[]'::json) AS risk_events,
+                           COALESCE((
+                               SELECT json_agg(row_to_json(al)) FROM (
+                                   SELECT * FROM alerts
+                                   WHERE paper_instance_id = i.id
+                                   ORDER BY triggered_at DESC, id DESC
+                               ) al
+                           ), '[]'::json) AS alerts,
+                           (
+                               SELECT row_to_json(v) FROM (
+                                   SELECT id, name, version, description, content_hash, strategy_api_version,
+                                          validation_status, dependency_manifest, parameter_schema, created_at
+                                   FROM strategy_versions
+                                   WHERE id = i.strategy_version_id
+                               ) v
+                           ) AS strategy_version,
+                           (
+                               SELECT row_to_json(r) FROM (
+                                   SELECT id, name, status, run_mode, promotion_status, start_date, end_date,
+                                          strategy_version_id, dataset_snapshot_id, factor_snapshot_id,
+                                          universe_snapshot_id, pool_snapshot_id, research_protocol_id, cost_model_id
+                                   FROM backtest_runs
+                                   WHERE id = i.qualifying_backtest_run_id
+                               ) r
+                           ) AS qualifying_backtest
+                    FROM paper_instances i
+                    JOIN portfolios p ON p.id = i.portfolio_id
+                    WHERE i.id = %s
+                    """,
+                    (str(instance_id),),
+                )
+                if not instance:
+                    raise ValueError("Paper 实例不存在")
+                instance["data_purpose"] = resolve_data_purpose(instance.get("data_purpose"), instance.get("name"))
+                instance["signals"] = self._json_rows(instance.get("signals"))
+                instance["orders"] = self._json_rows(instance.get("orders"))
+                instance["trades"] = self._json_rows(instance.get("trades"))
+                instance["positions"] = self._json_rows(instance.get("positions"))
+                instance["cash_ledger"] = self._json_rows(instance.get("cash_ledger"))
+                instance["equity_snapshots"] = self._json_rows(instance.get("equity_snapshots"))
+                instance["events"] = self._json_rows(instance.get("events"))
+                instance["cycles"] = self._json_rows(instance.get("cycles"))
+                instance["risk_events"] = self._json_rows(instance.get("risk_events"))
+                instance["alerts"] = self._json_rows(instance.get("alerts"))
+                instance["strategy_version"] = self._json_object(instance.get("strategy_version"))
+                instance["qualifying_backtest"] = self._json_object(instance.get("qualifying_backtest"))
+                instance["signal_count"] = len(instance["signals"])
+                instance["order_count"] = len(instance["orders"])
+                instance["trade_count"] = len(instance["trades"])
+                latest_equity = instance["equity_snapshots"][-1] if instance["equity_snapshots"] else None
+                if latest_equity:
+                    instance["equity"] = latest_equity.get("equity")
+                else:
+                    instance["equity"] = instance.get("cash_balance") if instance.get("cash_balance") is not None else instance.get("initial_cash")
+                latest_cycle = instance["cycles"][-1] if instance["cycles"] else None
+                if latest_cycle:
+                    for source, target in (
+                        ("id", "latest_cycle_id"),
+                        ("status", "latest_cycle_status"),
+                        ("trade_date", "latest_cycle_trade_date"),
+                        ("finished_at", "latest_cycle_finished_at"),
+                        ("error_message", "latest_cycle_error"),
+                        ("ledger_difference", "latest_cycle_ledger_difference"),
+                    ):
+                        instance[target] = latest_cycle.get(source)
+                return instance
 
     def get_instance_klines(self, instance_id: str, symbol: str) -> Dict[str, Any]:
         instance = self._instance(instance_id)
@@ -345,7 +447,7 @@ class PaperRuntimeService:
         rows = self.datasets.load_daily_bars(
             int(instance["dataset_snapshot_id"]),
             symbols=[normalized],
-            limit=1_000_000,
+            limit=PAPER_KLINE_BAR_LIMIT,
         )
         items = [
             {
@@ -1157,18 +1259,42 @@ class PaperRuntimeService:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
+    @staticmethod
+    def _json_rows(value: Any) -> List[Dict[str, Any]]:
+        if value in (None, "", []):
+            return []
+        if isinstance(value, str):
+            value = json.loads(value)
+        return [dict(item) for item in value]
+
+    @staticmethod
+    def _json_object(value: Any) -> Optional[Dict[str, Any]]:
+        if value in (None, ""):
+            return None
+        if isinstance(value, str):
+            value = json.loads(value)
+        return dict(value)
+
+    @staticmethod
+    def _fetch_one(cursor, query: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
+        cursor.execute(query, params)
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    @staticmethod
+    def _fetch_all(cursor, query: str, params: Sequence[Any] = ()) -> List[Dict[str, Any]]:
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
     def _row(self, query: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
         with self.database.get_connection() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute(query, params)
-                row = cursor.fetchone()
-                return dict(row) if row else None
+                return self._fetch_one(cursor, query, params)
 
     def _rows(self, query: str, params: Sequence[Any] = ()) -> List[Dict[str, Any]]:
         with self.database.get_connection() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute(query, params)
-                return [dict(row) for row in cursor.fetchall()]
+                return self._fetch_all(cursor, query, params)
 
     def _execute(self, query: str, params: Sequence[Any] = ()) -> None:
         with self.database.get_connection() as connection:

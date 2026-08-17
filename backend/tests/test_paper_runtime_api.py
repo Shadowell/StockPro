@@ -1,3 +1,4 @@
+import time
 import unittest
 from unittest.mock import patch
 
@@ -19,12 +20,14 @@ class PaperRuntimeApiContractTests(unittest.TestCase):
         self.watch_patch = patch.object(watch, "service")
         self.monitor_patch = patch.object(monitor_runtime, "service")
         watch.reset_watch_cache()
+        paper.reset_paper_list_cache()
         self.paper = self.paper_patch.start()
         self.watch = self.watch_patch.start()
         self.monitor = self.monitor_patch.start()
         self.addCleanup(self.paper_patch.stop)
         self.addCleanup(self.watch_patch.stop)
         self.addCleanup(self.monitor_patch.stop)
+        self.addCleanup(paper.reset_paper_list_cache)
 
     def test_list_instances_returns_total(self):
         self.paper.list_instances.return_value = [{"id": "paper-1"}]
@@ -120,6 +123,35 @@ class PaperRuntimeApiContractTests(unittest.TestCase):
 
     def test_health_endpoint_rejects_unknown_scope(self):
         self.assertEqual(self.client.get("/monitor/health?scope=everything").status_code, 422)
+
+    def test_list_instances_reuses_cache_within_ttl(self):
+        paper.reset_paper_list_cache()
+        self.paper.list_instances.return_value = [{"id": "paper-1"}]
+        self.assertEqual(self.client.get("/paper/instances").json()["total"], 1)
+        self.assertEqual(self.client.get("/paper/instances").json()["total"], 1)
+        self.assertEqual(self.paper.list_instances.call_count, 1)
+
+    def test_list_cache_stamps_after_query(self):
+        paper.reset_paper_list_cache()
+
+        def slow_list():
+            time.sleep(0.05)
+            return [{"id": "paper-1"}]
+
+        self.paper.list_instances.side_effect = slow_list
+        with patch.object(paper, "_PAPER_LIST_TTL_SECONDS", 0.04):
+            self.assertEqual(self.client.get("/paper/instances").json()["total"], 1)
+            self.assertEqual(self.client.get("/paper/instances").json()["total"], 1)
+        self.assertEqual(self.paper.list_instances.call_count, 1)
+
+    def test_start_invalidates_instance_list_cache(self):
+        paper.reset_paper_list_cache()
+        self.paper.list_instances.return_value = [{"id": "paper-1"}]
+        self.paper.start.return_value = {"id": "paper-1", "status": "running"}
+        self.client.get("/paper/instances")
+        self.client.post("/paper/instances/paper-1/start")
+        self.client.get("/paper/instances")
+        self.assertEqual(self.paper.list_instances.call_count, 2)
 
 
 if __name__ == "__main__":

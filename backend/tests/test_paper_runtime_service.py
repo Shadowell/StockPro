@@ -198,5 +198,94 @@ class PaperPromotionGateTests(unittest.TestCase):
             self.service.create_instance(self.request())
         self.service.database.get_connection.assert_not_called()
 
+
+class PaperInstanceReadPathTests(unittest.TestCase):
+    def setUp(self):
+        self.service = PaperRuntimeService.__new__(PaperRuntimeService)
+        self.service.database = MagicMock()
+        self.service.datasets = MagicMock()
+        self.connection = MagicMock()
+        self.cursor = MagicMock()
+        self.service.database.get_connection.return_value.__enter__.return_value = self.connection
+        self.connection.cursor.return_value.__enter__.return_value = self.cursor
+        self.instance = {
+            "id": "paper-1",
+            "name": "演示实例",
+            "portfolio_id": "port-1",
+            "strategy_version_id": "sv-1",
+            "qualifying_backtest_run_id": "run-1",
+            "cash_balance": 1_000_000,
+            "initial_cash": 1_000_000,
+            "data_purpose": "user",
+        }
+        self.last_query = ""
+
+        def execute(query, _params=None):
+            self.last_query = str(query)
+            return None
+
+        def fetchone():
+            query = self.last_query
+            if "paper_instances" in query:
+                return dict(self.instance)
+            if "strategy_versions" in query:
+                return {"id": "sv-1", "name": "策略", "version": 1, "description": "说明"}
+            if "backtest_runs" in query:
+                return {"id": "run-1", "name": "晋级回测", "promotion_status": "paper_eligible"}
+            return None
+
+        self.cursor.execute.side_effect = execute
+        self.cursor.fetchone.side_effect = fetchone
+        self.cursor.fetchall.return_value = []
+
+    def test_get_instance_uses_single_connection(self):
+        payload = self.service.get_instance("paper-1")
+        self.assertEqual(self.service.database.get_connection.call_count, 1)
+        self.assertEqual(self.cursor.execute.call_count, 1)
+        self.assertEqual(payload["id"], "paper-1")
+        self.assertEqual(payload["signal_count"], 0)
+        self.assertEqual(payload["trade_count"], 0)
+
+    def test_get_instance_does_not_select_strategy_script_content(self):
+        self.service.get_instance("paper-1")
+        version_queries = [
+            str(call.args[0])
+            for call in self.cursor.execute.call_args_list
+            if "strategy_versions" in str(call.args[0])
+        ]
+        self.assertTrue(version_queries)
+        for query in version_queries:
+            marker = query.lower().find("from strategy_versions")
+            select_list = query[query.lower().rfind("select", 0, marker):marker]
+            self.assertNotIn("*", select_list)
+            self.assertNotIn("script_content", select_list)
+            self.assertIn("name", select_list)
+            self.assertIn("description", select_list)
+
+    def test_get_instance_does_not_select_star_from_qualifying_backtest(self):
+        self.service.get_instance("paper-1")
+        run_queries = [
+            str(call.args[0])
+            for call in self.cursor.execute.call_args_list
+            if "backtest_runs" in str(call.args[0])
+        ]
+        self.assertTrue(run_queries)
+        for query in run_queries:
+            marker = query.lower().find("from backtest_runs")
+            select_list = query[query.lower().rfind("select", 0, marker):marker]
+            self.assertNotIn("*", select_list)
+            self.assertIn("promotion_status", select_list)
+
+    def test_instance_klines_request_bounded_history(self):
+        self.service._instance = MagicMock(return_value={"dataset_snapshot_id": 10})
+        self.service.datasets.load_daily_bars.return_value = []
+        self.service.datasets.get_snapshot.return_value = {}
+        self.service.get_instance_klines("paper-1", "SZ_002415")
+        limit = self.service.datasets.load_daily_bars.call_args.kwargs.get("limit")
+        if limit is None:
+            limit = self.service.datasets.load_daily_bars.call_args.args[2]
+        self.assertLessEqual(int(limit), 1200)
+
+
 if __name__ == "__main__":
     unittest.main()

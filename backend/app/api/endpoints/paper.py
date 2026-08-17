@@ -1,3 +1,4 @@
+import time
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -10,6 +11,12 @@ from app.services.strategy_lab_service import strategy_lab_service
 
 router = APIRouter()
 runtime_service = PaperRuntimeService(db_instance)
+_PAPER_LIST_CACHE: Dict[str, Any] = {}
+_PAPER_LIST_TTL_SECONDS = 20.0
+
+
+def reset_paper_list_cache() -> None:
+    _PAPER_LIST_CACHE.clear()
 
 
 class RunPaperRequest(BaseModel):
@@ -48,16 +55,24 @@ def _runtime_error(exc: ValueError, status_code: int = 400) -> HTTPException:
 
 @router.get("/instances")
 async def list_instances() -> Dict[str, Any]:
+    cached = _PAPER_LIST_CACHE.get("payload")
+    if cached and time.monotonic() - float(_PAPER_LIST_CACHE.get("at") or 0) < _PAPER_LIST_TTL_SECONDS:
+        return cached
     items = await run_in_threadpool(runtime_service.list_instances)
-    return {"items": items, "total": len(items)}
+    payload = {"items": items, "total": len(items)}
+    _PAPER_LIST_CACHE["at"] = time.monotonic()
+    _PAPER_LIST_CACHE["payload"] = payload
+    return payload
 
 
 @router.post("/instances")
 async def create_instance(request: PaperInstanceRequest) -> Dict[str, Any]:
     try:
-        return await run_in_threadpool(runtime_service.create_instance, request.model_dump())
+        created = await run_in_threadpool(runtime_service.create_instance, request.model_dump())
     except ValueError as exc:
         raise _runtime_error(exc) from exc
+    reset_paper_list_cache()
+    return created
 
 
 @router.get("/instances/{instance_id}")
@@ -71,45 +86,55 @@ async def get_instance(instance_id: str) -> Dict[str, Any]:
 @router.post("/instances/{instance_id}/start")
 async def start_instance(instance_id: str) -> Dict[str, Any]:
     try:
-        return await run_in_threadpool(runtime_service.start, instance_id)
+        started = await run_in_threadpool(runtime_service.start, instance_id)
     except ValueError as exc:
         raise _runtime_error(exc) from exc
+    reset_paper_list_cache()
+    return started
 
 
 @router.post("/instances/{instance_id}/pause")
 async def pause_instance(instance_id: str) -> Dict[str, Any]:
     try:
-        return await run_in_threadpool(runtime_service.pause, instance_id)
+        paused = await run_in_threadpool(runtime_service.pause, instance_id)
     except ValueError as exc:
         raise _runtime_error(exc) from exc
+    reset_paper_list_cache()
+    return paused
 
 
 @router.post("/instances/{instance_id}/resume")
 async def resume_instance(instance_id: str) -> Dict[str, Any]:
     try:
-        return await run_in_threadpool(runtime_service.resume, instance_id)
+        resumed = await run_in_threadpool(runtime_service.resume, instance_id)
     except ValueError as exc:
         raise _runtime_error(exc) from exc
+    reset_paper_list_cache()
+    return resumed
 
 
 @router.post("/instances/{instance_id}/stop")
 async def stop_instance(instance_id: str) -> Dict[str, Any]:
     try:
-        return await run_in_threadpool(runtime_service.stop, instance_id)
+        stopped = await run_in_threadpool(runtime_service.stop, instance_id)
     except ValueError as exc:
         raise _runtime_error(exc) from exc
+    reset_paper_list_cache()
+    return stopped
 
 
 @router.post("/instances/{instance_id}/cycles")
 async def process_cycle(instance_id: str, request: PaperCycleRequest) -> Dict[str, Any]:
     try:
-        return await run_in_threadpool(
+        cycle = await run_in_threadpool(
             runtime_service.process_cycle,
             instance_id,
             request.model_dump(exclude_none=True),
         )
     except ValueError as exc:
         raise _runtime_error(exc) from exc
+    reset_paper_list_cache()
+    return cycle
 
 
 @router.get("/instances/{instance_id}/events")
