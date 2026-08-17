@@ -1,11 +1,16 @@
 """Source-aware, PostgreSQL-only market research context for Sprint 05."""
 from __future__ import annotations
 
-from collections import Counter, defaultdict
-from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+import threading
+import time
+from collections import defaultdict
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence
 
 import psycopg2.extras
+
+_THREAD_STATE = threading.local()
 
 
 SENTIMENT_KPIS = (
@@ -13,6 +18,13 @@ SENTIMENT_KPIS = (
     "broken_board_count", "seal_rate", "highest_board", "red_market_ratio", "rise_fall_ratio",
     "new_high_count", "new_low_count",
 )
+
+_CONTEXT_CACHE: Dict[str, Any] = {}
+_CONTEXT_TTL_SECONDS = 30.0
+
+
+def reset_research_context_cache() -> None:
+    _CONTEXT_CACHE.clear()
 
 
 class MarketResearchService:
@@ -117,7 +129,7 @@ class MarketResearchService:
         members = self._rows(
             """
             SELECT pool_kind,symbol,name,limit_times,first_limit_at,last_limit_at,open_times,seal_amount,
-                   turnover,industry,source_label,raw_payload
+                   turnover,industry,source_label
             FROM limit_pool_members WHERE snapshot_id=%s
             ORDER BY pool_kind,limit_times DESC NULLS LAST,symbol
             """,
@@ -198,34 +210,57 @@ class MarketResearchService:
         return {"snapshot": snapshot, "classification_system": classification, "items": items}
 
     def research_context(self, snapshot_id: Optional[int] = None, trade_date: Optional[str] = None, market_scope: str = "all_a") -> Dict[str, Any]:
-        snapshot = self._snapshot(snapshot_id) if snapshot_id else self._latest_snapshot(trade_date, market_scope)
-        if not snapshot:
-            return {"publication_state": "unavailable", "reason": "没有匹配的封存市场证据快照", "snapshot": None}
-        snapshot["session_label"] = "盘后" if snapshot["snapshot_type"] == "post_close" else "盘中"
-        snapshot["freshness"] = "stale" if self._is_stale(snapshot.get("captured_at")) else "fresh"
-        snapshot_id = int(snapshot["id"])
-        sentiment = self.sentiment(snapshot_id)
-        limit_ecosystem = self.limit_ecosystem(snapshot_id)
-        return {
-            "publication_state": "published" if snapshot["status"] == "published" else "partial",
-            "snapshot": snapshot,
-            "sentiment": sentiment,
-            "limit_ecosystem": limit_ecosystem,
-            "sector_evidence": self.sector_evidence(snapshot_id),
-            "comparisons": self._comparisons(snapshot, sentiment),
-            "evidence_summary": self._evidence_summary(snapshot, sentiment, limit_ecosystem),
-            "heat_rankings": self._rows(
-                """
-                SELECT ranking_provider,ranking_kind,rank,symbol,name,score,source_label
-                FROM heat_ranking_rows WHERE snapshot_id=%s
-                ORDER BY ranking_provider,ranking_kind,rank
-                """,
-                (snapshot_id,),
-            ),
-        }
+        cache_key = f"{snapshot_id}|{trade_date or ''}|{market_scope}"
+        cached = _CONTEXT_CACHE.get(cache_key)
+        if cached and time.monotonic() - float(cached.get("at") or 0) < _CONTEXT_TTL_SECONDS:
+            return cached["payload"]
+        with self._session():
+            snapshot = self._snapshot(snapshot_id) if snapshot_id else self._latest_snapshot(trade_date, market_scope)
+            if not snapshot:
+                payload = {"publication_state": "unavailable", "reason": "没有匹配的封存市场证据快照", "snapshot": None}
+            else:
+                snapshot["session_label"] = "盘后" if snapshot["snapshot_type"] == "post_close" else "盘中"
+                snapshot["freshness"] = "stale" if self._is_stale(snapshot.get("captured_at")) else "fresh"
+                snapshot_id = int(snapshot["id"])
+                sentiment = self.sentiment(snapshot_id)
+                limit_ecosystem = self.limit_ecosystem(snapshot_id)
+                payload = {
+                    "publication_state": "published" if snapshot["status"] == "published" else "partial",
+                    "snapshot": snapshot,
+                    "sentiment": sentiment,
+                    "limit_ecosystem": limit_ecosystem,
+                    "sector_evidence": self.sector_evidence(snapshot_id),
+                    "comparisons": self._comparisons(snapshot, sentiment),
+                    "evidence_summary": self._evidence_summary(snapshot, sentiment, limit_ecosystem),
+                    "heat_rankings": self._rows(
+                        """
+                        SELECT ranking_provider,ranking_kind,rank,symbol,name,score,source_label
+                        FROM heat_ranking_rows WHERE snapshot_id=%s
+                        ORDER BY ranking_provider,ranking_kind,rank
+                        """,
+                        (snapshot_id,),
+                    ),
+                }
+        _CONTEXT_CACHE[cache_key] = {"at": time.monotonic(), "payload": payload}
+        return payload
 
     def _comparisons(self, snapshot: Mapping[str, Any], current: Mapping[str, Any]) -> List[Dict[str, Any]]:
-        history = self._rows(
+        history = self._comparison_history(snapshot)
+        metrics_by_id = self._metrics_for_snapshots([int(item["id"]) for item in history])
+        current_metrics = {item["metric_code"]: item.get("value") for item in current["metrics"]}
+        output = [
+            self._offset_comparison(code, label, offset, history, current_metrics, metrics_by_id)
+            for code, label, offset in (
+                ("day_over_day", "较前一交易日", 1),
+                ("five_day", "较5个交易日前", 5),
+                ("twenty_day", "较20个交易日前", 20),
+            )
+        ]
+        output.append(self._highest_board_percentile(current_metrics, history, metrics_by_id))
+        return output
+
+    def _comparison_history(self, snapshot: Mapping[str, Any]) -> List[Dict[str, Any]]:
+        return self._rows(
             """
             SELECT id,trade_date FROM (
                 SELECT DISTINCT ON (trade_date) id,trade_date
@@ -237,38 +272,66 @@ class MarketResearchService:
             """,
             (snapshot["market_scope"], snapshot["snapshot_type"], snapshot["trade_date"]),
         )
-        current_metrics = {item["metric_code"]: item.get("value") for item in current["metrics"]}
-        output = []
-        for code, label, offset in (("day_over_day", "较前一交易日", 1), ("five_day", "较5个交易日前", 5), ("twenty_day", "较20个交易日前", 20)):
-            if len(history) <= offset:
-                output.append({"comparison_code": code, "label": label, "publication_state": "unavailable", "reason": "封存历史不足", "reference_snapshot": None, "deltas": {}})
-                continue
-            reference = history[offset]
-            reference_metrics = {item["metric_code"]: item.get("value") for item in self.sentiment(int(reference["id"]))["metrics"]}
-            deltas = {
-                metric: float(value) - float(reference_metrics[metric])
-                for metric, value in current_metrics.items()
-                if value is not None and reference_metrics.get(metric) is not None
+
+    def _metrics_for_snapshots(self, snapshot_ids: Sequence[int]) -> Dict[int, Dict[str, Any]]:
+        if not snapshot_ids:
+            return {}
+        grouped: Dict[int, Dict[str, Any]] = defaultdict(dict)
+        for item in self._rows(
+            "SELECT snapshot_id,metric_code,value FROM market_evidence_metrics WHERE snapshot_id = ANY(%s)",
+            (list(snapshot_ids),),
+        ):
+            grouped[int(item["snapshot_id"])][str(item["metric_code"])] = item.get("value")
+        return grouped
+
+    @staticmethod
+    def _offset_comparison(
+        code: str,
+        label: str,
+        offset: int,
+        history: Sequence[Mapping[str, Any]],
+        current_metrics: Mapping[str, Any],
+        metrics_by_id: Mapping[int, Mapping[str, Any]],
+    ) -> Dict[str, Any]:
+        if len(history) <= offset:
+            return {
+                "comparison_code": code, "label": label, "publication_state": "unavailable",
+                "reason": "封存历史不足", "reference_snapshot": None, "deltas": {},
             }
-            output.append({"comparison_code": code, "label": label, "publication_state": "published", "reference_snapshot": reference, "deltas": deltas})
-        highest_values = []
-        for item in history:
-            fact = self._row(
-                "SELECT value FROM market_evidence_metrics WHERE snapshot_id=%s AND metric_code='highest_board'",
-                (int(item["id"]),),
-            )
-            if fact and fact.get("value") is not None:
-                highest_values.append(float(fact["value"]))
+        reference = history[offset]
+        reference_metrics = metrics_by_id.get(int(reference["id"]), {})
+        deltas = {
+            metric: float(value) - float(reference_metrics[metric])
+            for metric, value in current_metrics.items()
+            if value is not None and reference_metrics.get(metric) is not None
+        }
+        return {
+            "comparison_code": code, "label": label, "publication_state": "published",
+            "reference_snapshot": reference, "deltas": deltas,
+        }
+
+    @staticmethod
+    def _highest_board_percentile(
+        current_metrics: Mapping[str, Any],
+        history: Sequence[Mapping[str, Any]],
+        metrics_by_id: Mapping[int, Mapping[str, Any]],
+    ) -> Dict[str, Any]:
+        highest_values = [
+            float(metrics["highest_board"])
+            for item in history
+            if (metrics := metrics_by_id.get(int(item["id"]), {})).get("highest_board") is not None
+        ]
         current_highest = current_metrics.get("highest_board")
         percentile = (
             sum(1 for value in highest_values if value <= float(current_highest)) / len(highest_values)
             if current_highest is not None and len(highest_values) >= 20 else None
         )
-        output.append({
-            "comparison_code": "one_year_percentile", "label": "一年位置", "publication_state": "published" if percentile is not None else "unavailable",
-            "reason": None if percentile is not None else "至少需要20个封存交易日", "metric_code": "highest_board", "value": percentile,
-        })
-        return output
+        return {
+            "comparison_code": "one_year_percentile", "label": "一年位置",
+            "publication_state": "published" if percentile is not None else "unavailable",
+            "reason": None if percentile is not None else "至少需要20个封存交易日",
+            "metric_code": "highest_board", "value": percentile,
+        }
 
     @staticmethod
     def _evidence_summary(snapshot: Mapping[str, Any], sentiment: Mapping[str, Any], limit_ecosystem: Mapping[str, Any]) -> Dict[str, Any]:
@@ -369,11 +432,33 @@ class MarketResearchService:
             return (stored.get("fall_count") or {}).get("value")
         return None
 
+    @contextmanager
+    def _session(self) -> Iterator[None]:
+        previous = getattr(_THREAD_STATE, "connection", None)
+        if previous is not None:
+            yield
+            return
+        database = getattr(self, "database", None)
+        if database is None:
+            yield
+            return
+        with database.get_connection() as connection:
+            _THREAD_STATE.connection = connection
+            try:
+                yield
+            finally:
+                _THREAD_STATE.connection = None
+
     def _row(self, query: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
         rows = self._rows(query, params)
         return rows[0] if rows else None
 
     def _rows(self, query: str, params: Sequence[Any] = ()) -> List[Dict[str, Any]]:
+        connection = getattr(_THREAD_STATE, "connection", None)
+        if connection is not None:
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(query, params)
+                return [dict(item) for item in cursor.fetchall()]
         with self.database.get_connection() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(query, params)

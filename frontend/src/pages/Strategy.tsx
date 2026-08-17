@@ -25,6 +25,9 @@ type ListTab = 'my' | 'plaza' | 'audit' | 'ai';
 type StatusFilter = 'all' | 'running' | 'not_started';
 type AssetFilter = 'all' | 'ashare' | 'strategy_v1';
 
+/** First-cut trunk: keep 我的策略 + 新建. Restore extras by flipping this flag. */
+const SHOW_STRATEGY_EXTRAS = false;
+
 const statusFilters: { value: StatusFilter; label: string; dot: string }[] = [
   { value: 'all', label: '全部', dot: 'bg-blue-400' },
   { value: 'running', label: '运行中', dot: 'bg-emerald-400' },
@@ -386,31 +389,35 @@ export function Strategy() {
       <OperatorPageHeader
         icon={Code2}
         title="策略中心"
-        subtitle="同一条量化链路的策略台：默认打开「多因子风险预算」，再走校验 / 版本 / 回测 / 模拟。"
+        subtitle="策略目录、版本与校验。保存后可提交回测或开模拟。"
         actions={
           <>
-            <button
-              type="button"
-              onClick={() => setListTab('ai')}
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-4 text-sm font-semibold text-purple-100 transition-colors hover:border-purple-500/55 hover:bg-purple-500/20"
-            >
-              <Sparkles className="h-4 w-4" />
-              AI 写策略
-            </button>
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={loading || !aiCapabilities?.configured}
-              title={
-                aiCapabilities?.configured
-                  ? `Qwen ${aiCapabilities.model || ''}`
-                  : aiCapabilities?.reason || 'AI 能力状态读取中'
-              }
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/[0.12] px-4 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-500/45 hover:bg-purple-500/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Zap className="h-4 w-4" />
-              {aiCapabilities?.configured ? '规则生成' : 'AI 未配置'}
-            </button>
+            {SHOW_STRATEGY_EXTRAS ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setListTab('ai')}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-4 text-sm font-semibold text-purple-100 transition-colors hover:border-purple-500/55 hover:bg-purple-500/20"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  AI 写策略
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={loading || !aiCapabilities?.configured}
+                  title={
+                    aiCapabilities?.configured
+                      ? `Qwen ${aiCapabilities.model || ''}`
+                      : aiCapabilities?.reason || 'AI 能力状态读取中'
+                  }
+                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/[0.12] px-4 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-500/45 hover:bg-purple-500/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Zap className="h-4 w-4" />
+                  {aiCapabilities?.configured ? '规则生成' : 'AI 未配置'}
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               onClick={() => {
@@ -457,17 +464,19 @@ export function Strategy() {
             { label: '涨跌停 / 停牌过滤', detail: '信号池需剔除不可交易和接近涨跌停的标的。' },
           ]}
         />
-        <SegmentedControl<ListTab>
-          aria-label="策略目录"
-          value={listTab}
-          onChange={setListTab}
-          options={[
-            { value: 'my', label: '我的策略', icon: Layers, tone: 'blue', count: businessStrategies.length },
-            { value: 'plaza', label: '策略广场', icon: BookOpen, tone: 'purple', count: plazaTemplates.length + referenceStrategies.length },
-            { value: 'audit', label: '审计证据', icon: ShieldCheck, tone: 'amber', count: auditStrategies.length },
-            { value: 'ai', label: 'AI 研发', icon: Zap, tone: 'purple' },
-          ]}
-        />
+        {SHOW_STRATEGY_EXTRAS ? (
+          <SegmentedControl<ListTab>
+            aria-label="策略目录"
+            value={listTab}
+            onChange={setListTab}
+            options={[
+              { value: 'my', label: '我的策略', icon: Layers, tone: 'blue', count: businessStrategies.length },
+              { value: 'plaza', label: '策略广场', icon: BookOpen, tone: 'purple', count: plazaTemplates.length + referenceStrategies.length },
+              { value: 'audit', label: '审计证据', icon: ShieldCheck, tone: 'amber', count: auditStrategies.length },
+              { value: 'ai', label: 'AI 研发', icon: Zap, tone: 'purple' },
+            ]}
+          />
+        ) : null}
         {listTab === 'my' && (
           <OperatorFilterBar>
             <FilterChipGroup<AssetFilter>
@@ -607,7 +616,7 @@ export function Strategy() {
               <OperatorStatePanel
                 kind="empty"
                 title="当前筛选下无策略"
-                description="切换筛选条件，或从策略广场选择模板开始。"
+                description="调整筛选条件，或新建策略。"
               />
             </div>
           )}

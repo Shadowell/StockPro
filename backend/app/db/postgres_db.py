@@ -1006,11 +1006,22 @@ class PostgresDatabase:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
                     """
+                    WITH picked AS (
+                        SELECT exchange, symbol, timeframe
+                        FROM sync_metadata
+                        WHERE data_type = 'kline'
+                        ORDER BY last_sync_at DESC NULLS LAST, symbol ASC
+                        LIMIT %s
+                    )
                     SELECT h.exchange, h.symbol, COALESCE(NULLIF(MAX(h.name), ''), '') AS name,
                            h.timeframe, COUNT(*) AS rows, MIN(h.trade_date) AS first_date,
                            MAX(h.trade_date) AS last_date, m.status, m.last_sync_at,
                            m.error_message, m.total_records
-                    FROM kline_history h
+                    FROM picked p
+                    JOIN kline_history h
+                      ON h.exchange = p.exchange
+                     AND h.symbol = p.symbol
+                     AND h.timeframe = p.timeframe
                     LEFT JOIN sync_metadata m
                       ON m.exchange = h.exchange
                      AND m.symbol = h.symbol
@@ -1019,9 +1030,8 @@ class PostgresDatabase:
                     GROUP BY h.exchange, h.symbol, h.timeframe, m.status, m.last_sync_at,
                              m.error_message, m.total_records
                     ORDER BY MAX(h.updated_at) DESC, h.symbol ASC
-                    LIMIT %s
                     """,
-                    (limit,),
+                    (max(1, min(int(limit), 500)),),
                 )
                 rows = cursor.fetchall()
         payload = [
@@ -4332,13 +4342,18 @@ class PostgresDatabase:
             "paper_equity_curve",
             "paper_events",
         ]
-        output = []
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
-                for name in table_names:
-                    cursor.execute(f"SELECT COUNT(*) FROM {name}")
-                    output.append({"name": name, "rows": cursor.fetchone()[0]})
-        return output
+                cursor.execute(
+                    """
+                    SELECT relname, COALESCE(n_live_tup, 0)::BIGINT
+                    FROM pg_stat_user_tables
+                    WHERE relname = ANY(%s)
+                    """,
+                    (table_names,),
+                )
+                counts = {str(row[0]): int(row[1] or 0) for row in cursor.fetchall()}
+        return [{"name": name, "rows": counts.get(name, 0)} for name in table_names]
 
     def delete_klines(self, symbol: str, timeframe: str = "1d", exchange: str = "cn") -> int:
         timeframe = self._normalize_timeframe(timeframe)

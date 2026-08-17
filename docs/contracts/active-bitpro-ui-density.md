@@ -24,6 +24,16 @@ PostgreSQL evidence and paper-only safety boundary.
 
 Do not copy BitPro business-page source into StockPro.
 
+## Current visibility overlay (2026-08-17)
+
+First operator-trunk cut. Density work continues, but the sidebar only shows:
+
+`/` `/market` `/strategy` `/backtest` `/paper` `/watch` `/data`
+
+Hidden from the menu (routes stay): `/pools` `/factors` `/monitor` `/review` `/ai-lab` `/live` `/data/processing`.
+
+Site-wide research-desk rail (`多因子风险预算` / `本页就绪` / `继续盯盘`) and the homepage `量化研究台` panel stay unmounted. Strategy plaza / AI-write / audit tabs stay hidden. Do not revert these hides when continuing density work.
+
 ## Subpage Inventory (must all pass)
 
 | Route | Required surfaces |

@@ -76,7 +76,8 @@ class DailyReviewUnitTests(unittest.TestCase):
 
     def test_available_dates_are_normalized(self):
         self.service._rows = MagicMock(return_value=[{"trade_date": "2025-01-02"}, {"trade_date": "2024-12-31"}])
-        self.service.trading_dates.status.return_value = "open"
+        self.service._published_evidence_dates = MagicMock(return_value=set())
+        self.service.trading_dates.published_open_dates.return_value = {"2025-01-02", "2024-12-31"}
         self.assertEqual(self.service.available_dates(), ["2025-01-02", "2024-12-31"])
 
     def test_available_dates_exclude_closed_and_unknown_calendar_days(self):
@@ -88,9 +89,19 @@ class DailyReviewUnitTests(unittest.TestCase):
                 {"trade_date": "2026-08-06"},
             ]
         )
-        self.service.trading_dates.status.side_effect = ["closed", "closed", "open", "unknown"]
+        self.service._published_evidence_dates = MagicMock(return_value=set())
+        self.service.trading_dates.published_open_dates.return_value = {"2026-08-07"}
 
         self.assertEqual(self.service.available_dates(), ["2026-08-07"])
+
+    def test_available_dates_keep_unknown_days_with_published_evidence(self):
+        self.service._rows = MagicMock(
+            return_value=[{"trade_date": "2026-08-14"}, {"trade_date": "2026-08-07"}]
+        )
+        self.service._published_evidence_dates = MagicMock(return_value={"2026-08-14"})
+        self.service.trading_dates.published_open_dates.return_value = {"2026-08-07"}
+
+        self.assertEqual(self.service.available_dates(), ["2026-08-14", "2026-08-07"])
 
     def test_sealed_context_reads_persisted_evidence(self):
         review = {"id": "review-1", "trade_date": "2025-01-02", "status": "sealed"}

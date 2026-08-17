@@ -140,6 +140,35 @@ class ShortLineEvidenceFallbackTests(unittest.TestCase):
         research.list_snapshots.assert_called_once_with(market_scope="all_a", limit=1)
         research.sentiment.assert_called_once_with(7)
 
+    def test_mixed_age_short_line_cache_falls_back_to_sealed_evidence(self):
+        fake_db = Mock()
+        fake_db.get_short_line_indices_realtime.return_value = [
+            {"code": "LIMIT_UP", "name": "涨停家数", "price": 85, "updated_at": "2026-08-15T22:23:29"},
+            {"code": "ZT", "name": "涨停数", "price": 58, "updated_at": "2026-07-29T03:42:05"},
+        ]
+        research = Mock()
+        research.list_snapshots.return_value = [{
+            "id": 21,
+            "trade_date": "2026-08-14",
+            "captured_at": "2026-08-15T21:06:26+08:00",
+            "available_at": "2026-08-15T21:06:26+08:00",
+        }]
+        research.sentiment.return_value = {
+            "metrics": [
+                {"metric_code": "limit_up_count", "label": "涨停数", "value": 63, "unit": "stocks", "source_label": "tushare_limit_list_derived", "definition": "涨停池去重证券数"},
+            ]
+        }
+
+        with (
+            patch("app.services.market_service.db", fake_db),
+            patch("app.services.market_service.MarketResearchService", return_value=research),
+        ):
+            result = MarketService.get_short_line_indices()
+
+        self.assertEqual(["limit_up_count"], [item["code"] for item in result])
+        self.assertEqual("2026-08-14", result[0]["trade_date"])
+        self.assertEqual("sealed_snapshot", result[0]["data_state"])
+
 
 class LimitBoardEvidenceTests(unittest.TestCase):
     def test_empty_sealed_pool_is_authoritative_and_never_replaced_by_estimates(self):

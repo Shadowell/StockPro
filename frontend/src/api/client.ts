@@ -453,6 +453,12 @@ interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   skipRetry?: boolean;
 }
 
+export const PAGE_READ_TIMEOUT_MS = 8_000;
+// The first Data Center read may establish the SSH-tunnel-backed PostgreSQL
+// connection. Keep ordinary page reads fast, but do not turn a cold data
+// connection into a false "no data" state.
+const pageRead = { timeout: PAGE_READ_TIMEOUT_MS, skipRetry: true as const };
+
 export const apiClient = axios.create({
   baseURL: API_URL,
   timeout: 60000, // 60 seconds timeout
@@ -586,8 +592,12 @@ export const revokeMcpAgentToken = async (tokenId: number): Promise<void> => {
 };
 
 export const getMarketOverview = async (): Promise<MarketOverview> => {
-  const response = await apiClient.get<MarketOverview>('/market/overview');
-  return response.data;
+  try {
+    const response = await apiClient.get<MarketOverview>('/market/overview', pageRead);
+    return response.data;
+  } catch (error) {
+    return rejectPageTimeout('市场概览', error);
+  }
 };
 
 // 短线指标类型（涨停、连板、多板、涨跌比等短线强度指标）
@@ -927,8 +937,12 @@ export const getTableData = async (tableName: string, limit: number = 100): Prom
 // ============ Strategy API ============
 
 export const getStrategies = async (scope: 'business' | 'audit' = 'business'): Promise<Strategy[]> => {
-  const response = await apiClient.get<Strategy[]>('/strategy/list', { params: { scope } });
-  return response.data;
+  try {
+    const response = await apiClient.get<Strategy[]>('/strategy/list', { params: { scope }, ...pageRead });
+    return response.data;
+  } catch (error) {
+    return rejectPageTimeout('策略目录', error);
+  }
 };
 
 export const getAICapabilities = async (): Promise<AICapabilities> => {
@@ -1109,11 +1123,30 @@ export const listBacktestResults = async (limit = 20): Promise<{ items: Strategy
   return response.data;
 };
 
-export const getBacktestConfiguration = async (): Promise<BacktestConfiguration> =>
-  (await apiClient.get<BacktestConfiguration>('/backtest/configuration')).data;
+export const getBacktestConfiguration = async (): Promise<BacktestConfiguration> => {
+  try {
+    return (await apiClient.get<BacktestConfiguration>('/backtest/configuration', pageRead)).data;
+  } catch (error) {
+    return rejectPageTimeout('回测配置', error);
+  }
+};
 
-export const getMarketResearchContext = async (params?: { snapshot_id?: number; trade_date?: string; market_scope?: string }): Promise<MarketResearchContext> =>
-  (await apiClient.get<MarketResearchContext>('/market/research-context', { params })).data;
+export const MARKET_RESEARCH_CONTEXT_TIMEOUT_MS = 20_000;
+
+export const getMarketResearchContext = async (params?: { snapshot_id?: number; trade_date?: string; market_scope?: string }): Promise<MarketResearchContext> => {
+  try {
+    return (await apiClient.get<MarketResearchContext>('/market/research-context', {
+      params,
+      timeout: MARKET_RESEARCH_CONTEXT_TIMEOUT_MS,
+      skipRetry: true,
+    })).data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || /timeout/i.test(error.message))) {
+      throw new Error('市场研究快照读取超时，已停止等待。请稍后重试。');
+    }
+    throw error;
+  }
+};
 
 export const listStockPools = async (): Promise<{ items: StockPool[]; total: number }> =>
   (await apiClient.get<{ items: StockPool[]; total: number }>('/pools')).data;
@@ -1139,8 +1172,13 @@ export const getStockPoolSnapshot = async (snapshotId: number): Promise<StockPoo
 export const createPoolBacktestDraft = async (snapshotId: number, request: { strategy_version_id: string; start_date: string; end_date: string; initial_cash: number; benchmark_code?: string; parameters?: Record<string, unknown> }): Promise<{ status: string; experiment: Record<string, unknown>; pool_snapshot: StockPoolSnapshot }> =>
   (await apiClient.post(`/pool-snapshots/${snapshotId}/backtests`, request)).data;
 
-export const listBacktestRuns = async (limit = 100): Promise<{ items: BacktestRun[]; total: number }> =>
-  (await apiClient.get<{ items: BacktestRun[]; total: number }>('/backtest/runs', { params: { limit } })).data;
+export const listBacktestRuns = async (limit = 50): Promise<{ items: BacktestRun[]; total: number }> => {
+  try {
+    return (await apiClient.get<{ items: BacktestRun[]; total: number }>('/backtest/runs', { params: { limit }, ...pageRead })).data;
+  } catch (error) {
+    return rejectPageTimeout('回测记录', error);
+  }
+};
 
 export const runBacktestV1 = async (request: BacktestRunRequestV1, mode: 'quick' | 'full'): Promise<BacktestRun> =>
   (await apiClient.post<BacktestRun>(mode === 'quick' ? '/backtest/quick-runs' : '/backtest/runs', request, { timeout: 120000 })).data;
@@ -1151,8 +1189,13 @@ export const createBacktestJob = async (
 ): Promise<BacktestJob> =>
   (await apiClient.post<BacktestJob>('/backtest/jobs', { ...request, run_mode: mode })).data;
 
-export const listBacktestJobs = async (limit = 100): Promise<{ items: BacktestJob[]; total: number }> =>
-  (await apiClient.get<{ items: BacktestJob[]; total: number }>('/backtest/jobs', { params: { limit } })).data;
+export const listBacktestJobs = async (limit = 50): Promise<{ items: BacktestJob[]; total: number }> => {
+  try {
+    return (await apiClient.get<{ items: BacktestJob[]; total: number }>('/backtest/jobs', { params: { limit }, ...pageRead })).data;
+  } catch (error) {
+    return rejectPageTimeout('回测任务', error);
+  }
+};
 
 export const getBacktestJob = async (jobId: string): Promise<BacktestJob> =>
   (await apiClient.get<BacktestJob>(`/backtest/jobs/${jobId}`)).data;
@@ -1225,8 +1268,13 @@ export const stopPaperAccount = async (accountId: number): Promise<PaperRunResul
   return response.data;
 };
 
-export const listPaperInstances = async (): Promise<{ items: PaperRuntimeInstance[]; total: number }> =>
-  (await apiClient.get<{ items: PaperRuntimeInstance[]; total: number }>('/paper/instances')).data;
+export const listPaperInstances = async (): Promise<{ items: PaperRuntimeInstance[]; total: number }> => {
+  try {
+    return (await apiClient.get<{ items: PaperRuntimeInstance[]; total: number }>('/paper/instances', pageRead)).data;
+  } catch (error) {
+    return rejectPageTimeout('模拟实例', error);
+  }
+};
 
 export const getPaperInstance = async (instanceId: string): Promise<PaperRuntimeInstance> =>
   (await apiClient.get<PaperRuntimeInstance>(`/paper/instances/${instanceId}`)).data;
@@ -1256,8 +1304,30 @@ export const paperInstanceAction = async (instanceId: string, action: 'start' | 
 export const processPaperCycle = async (instanceId: string, request: { trade_date: string; data_available_at?: string; observed_at?: string; cycle_key?: string }): Promise<Record<string, unknown>> =>
   (await apiClient.post<Record<string, unknown>>(`/paper/instances/${instanceId}/cycles`, request)).data;
 
-export const getWatchContext = async (scope: 'business' | 'audit' = 'business'): Promise<WatchContext> =>
-  (await apiClient.get<WatchContext>('/watch/context', { params: { scope } })).data;
+export const advancePaperInstances = async (request?: {
+  instance_ids?: string[];
+  max_dates?: number;
+}): Promise<{
+  instances_attempted: number;
+  dates_processed: number;
+  instances: Array<{
+    instance_id: string;
+    processed_count?: number;
+    skipped_dates?: string[];
+    failures?: Array<{ trade_date: string; error: string }>;
+    pending_remaining?: number;
+    last_processed_trade_date?: string | null;
+    error?: string;
+  }>;
+}> => (await apiClient.post('/paper/instances/advance', request ?? {})).data;
+
+export const getWatchContext = async (scope: 'business' | 'audit' = 'business'): Promise<WatchContext> => {
+  try {
+    return (await apiClient.get<WatchContext>('/watch/context', { params: { scope }, ...pageRead })).data;
+  } catch (error) {
+    return rejectPageTimeout('盯盘观察台', error);
+  }
+};
 
 export const listRuntimeAlerts = async (status?: string): Promise<{ items: RuntimeAlert[]; total: number }> =>
   (await apiClient.get<{ items: RuntimeAlert[]; total: number }>('/watch/alerts', { params: status ? { status } : {} })).data;

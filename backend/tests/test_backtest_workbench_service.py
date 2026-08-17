@@ -1,7 +1,10 @@
 import unittest
 from unittest.mock import MagicMock, patch, patch
 
-from app.services.backtest_workbench_service import BacktestWorkbenchService
+from app.services.backtest_workbench_service import (
+    BacktestWorkbenchService,
+    reset_configuration_cache,
+)
 
 
 class BacktestProtocolContractTests(unittest.TestCase):
@@ -198,6 +201,40 @@ class BacktestPersistBatchTests(unittest.TestCase):
         )
         _insert_values(cursor, "INSERT INTO t (id) VALUES %s", [])
         execute_values.assert_called_once()
+
+
+class BacktestReadPathTests(unittest.TestCase):
+    def setUp(self):
+        reset_configuration_cache()
+        self.service = BacktestWorkbenchService.__new__(BacktestWorkbenchService)
+        self.service.database = MagicMock()
+        self.service._cursor = None
+        connection = self.service.database.get_connection.return_value.__enter__.return_value
+        connection.cursor.return_value.__enter__.return_value = MagicMock()
+        self.queries: list[str] = []
+
+        def fake_rows(query, params=()):
+            self.queries.append(query)
+            return []
+
+        self.service._rows = fake_rows
+
+    def test_configuration_omits_script_content_and_member_join(self):
+        payload = self.service.configuration()
+        version_sql = next(item for item in self.queries if "strategy_versions" in item)
+        universe_sql = next(item for item in self.queries if "universe_snapshots" in item)
+        self.assertNotIn("script_content", version_sql)
+        self.assertIn("content_hash", version_sql)
+        self.assertNotIn("LEFT JOIN universe_snapshot_members m ON m.snapshot_id=s.id", universe_sql)
+        self.assertEqual(payload["strategy_versions"], [])
+
+    def test_list_runs_selects_list_columns_not_full_row(self):
+        self.service.list_runs(20)
+        sql = self.queries[-1]
+        self.assertNotIn("SELECT r.*", sql)
+        self.assertIn("r.metrics", sql)
+        self.assertIn("promotion_gate_complete", sql)
+        self.assertNotIn("universe_manifest", sql)
 
 
 if __name__ == "__main__":

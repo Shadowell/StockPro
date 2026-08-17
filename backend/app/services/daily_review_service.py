@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import psycopg2.extras
@@ -18,6 +18,7 @@ class DailyReviewService:
 
     def available_dates(self, limit: int = 120) -> List[str]:
         requested_limit = max(1, min(int(limit), 500))
+        evidence_dates = self._published_evidence_dates()
         rows = self._rows(
             """
             SELECT DISTINCT trade_date FROM (
@@ -31,14 +32,28 @@ class DailyReviewService:
             """,
             (500,),
         )
+        open_dates = self.trading_dates.published_open_dates()
         result: List[str] = []
         for item in rows:
             trade_date = str(item["trade_date"])[:10]
-            if self.trading_dates.status(trade_date) == "open":
+            if self._is_reviewable_date(trade_date, open_dates, evidence_dates):
                 result.append(trade_date)
             if len(result) >= requested_limit:
                 break
         return result
+
+    def _published_evidence_dates(self) -> set[str]:
+        rows = self._rows(
+            "SELECT DISTINCT trade_date FROM market_evidence_snapshots WHERE trade_date IS NOT NULL"
+        )
+        return {str(item["trade_date"])[:10] for item in rows}
+
+    def _is_reviewable_date(self, trade_date: str, open_dates: set[str], evidence_dates: set[str]) -> bool:
+        if trade_date in open_dates:
+            return True
+        if trade_date not in evidence_dates:
+            return False
+        return date.fromisoformat(trade_date).weekday() < 5
 
     def context(self, trade_date: str, *, persist: bool = False) -> Dict[str, Any]:
         target = self._date(trade_date)

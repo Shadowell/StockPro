@@ -229,8 +229,7 @@ class MarketService:
     def _valid_short_line_cache(rows: Sequence[Dict[str, Any]]) -> bool:
         if not rows:
             return False
-        latest = MarketService._latest_timestamp(rows)
-        if MarketService._is_stale_timestamp(latest):
+        if any(MarketService._is_stale_timestamp(row.get("updated_at")) for row in rows):
             return False
         return any((row.get("price") is not None and float(row.get("price") or 0) != 0) for row in rows)
 

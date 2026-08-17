@@ -746,17 +746,26 @@ export function Backtest() {
   const [historyQuery, setHistoryQuery] = useState('');
   const [historyStatus, setHistoryStatus] = useState<StatusFilter>('all');
   const [historySort, setHistorySort] = useState<SortKey>('created');
+  const [listReady, setListReady] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
-    try {
-      const [configuration, history, jobHistory] = await Promise.all([
-        getBacktestConfiguration(),
-        listBacktestRuns(),
-        listBacktestJobs(),
-      ]);
-      setConfig(configuration); setRuns(history.items); setJobs(jobHistory.items);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '回测配置加载失败'); }
+    const listPromise = Promise.all([listBacktestRuns(50), listBacktestJobs(50)])
+      .then(([history, jobHistory]) => {
+        setRuns(history.items);
+        setJobs(jobHistory.items);
+        setListReady(true);
+      })
+      .catch((reason) => {
+        setError(reason instanceof Error ? reason.message : '回测记录加载失败');
+        setListReady(true);
+      });
+    const configPromise = getBacktestConfiguration()
+      .then((configuration) => setConfig(configuration))
+      .catch((reason) => {
+        setError(reason instanceof Error ? reason.message : '回测配置加载失败');
+      });
+    await Promise.allSettled([listPromise, configPromise]);
   }, []);
 
   useEffect(() => { if (!runId) void load(); }, [load, runId]);
@@ -864,7 +873,7 @@ export function Backtest() {
 
   if (runId) return <BacktestDetail runId={runId} />;
 
-  if (!config) return <div className="min-h-full bg-crypto-bg p-6 2xl:px-8"><header className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-3"><FlaskConical className="h-7 w-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">回测</h1></div><p className="mt-2 text-sm text-gray-500">A股策略回测 · T+1 撮合 · 成本与风险证据</p></div></header>{error ? <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-5 text-sm text-red-200"><div className="flex items-start gap-3"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /><span><strong>配置加载失败：</strong>{error}</span></div><button type="button" onClick={() => void load()} className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-red-400/30 px-3 text-xs font-semibold"><RefreshCw className="h-3.5 w-3.5" />重试</button></div> : <div className={`${panel} flex min-h-[360px] items-center justify-center text-sm text-gray-500`}><RefreshCw className="mr-3 h-5 w-5 animate-spin" />正在读取策略版本、数据快照与回测记录…</div>}</div>;
+  if (!listReady) return <div className="min-h-full bg-crypto-bg p-6 2xl:px-8"><header className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-3"><FlaskConical className="h-7 w-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">回测</h1></div><p className="mt-2 text-sm text-gray-500">A股策略回测 · T+1 撮合 · 成本与风险证据</p></div></header>{error ? <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-5 text-sm text-red-200"><div className="flex items-start gap-3"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /><span><strong>记录加载失败：</strong>{error}</span></div><button type="button" onClick={() => void load()} className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-red-400/30 px-3 text-xs font-semibold"><RefreshCw className="h-3.5 w-3.5" />重试</button></div> : <div className={`${panel} flex min-h-[360px] items-center justify-center text-sm text-gray-500`}><RefreshCw className="mr-3 h-5 w-5 animate-spin" />正在读取回测记录…</div>}</div>;
 
   const request = (): BacktestRunRequestV1 => ({
     strategy_version_id: strategyVersionId, dataset_snapshot_id: datasetSnapshotId, universe_snapshot_id: universeSnapshotId,
@@ -941,6 +950,10 @@ export function Backtest() {
   const selectedProtocol = config?.protocols.find((item) => item.id === protocolId);
   const selectedPool = config?.pool_snapshots.find((item) => item.id === poolSnapshotId);
   const openCreate = () => {
+    if (!config) {
+      setError('回测配置尚未就绪，请稍后重试');
+      return;
+    }
     setCreateStep(1);
     setStrategyQuery('');
     setError('');
@@ -961,8 +974,8 @@ export function Backtest() {
         title="回测"
         subtitle="绑定策略版本、数据快照与股票池后异步回测；任务队列、创建向导、结果详情与对比。"
         actions={
-          <button type="button" onClick={openCreate} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500">
-            <Plus className="h-4 w-4" />创建回测实例
+          <button type="button" onClick={openCreate} disabled={!config} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
+            <Plus className="h-4 w-4" />{config ? '创建回测实例' : '配置读取中…'}
           </button>
         }
       />
@@ -1117,7 +1130,7 @@ export function Backtest() {
         </div>
       </section>
 
-      {createOpen ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={closeCreate}>
+      {createOpen && config ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={closeCreate}>
         <section role="dialog" aria-modal="true" aria-labelledby="create-backtest-title" className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-crypto-border bg-[#10161f] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
           <div className="flex shrink-0 items-start justify-between border-b border-crypto-border px-6 py-5">
             <div><h2 id="create-backtest-title" className="text-lg font-semibold text-white">创建回测实例</h2><p className="mt-1 text-xs text-gray-500">策略选择 → 参数配置 → 证据确认</p></div>
@@ -1166,7 +1179,7 @@ export function Backtest() {
                 ].map(([label, value]) => <div key={label} className="rounded-lg border border-white/[0.05] bg-white/[0.02] p-3"><dt className="text-gray-600">{label}</dt><dd className="mt-1 font-medium text-gray-300">{value}</dd></div>)}</dl></section>
                 <section className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs leading-6 text-amber-200/80"><strong>执行规则：</strong>A 股日线信号最早于下一可交易日成交；100 股整数手、T+1、停牌与涨跌停约束均进入订单证据。快速预检不可对比或晋级。</section>
               </div>
-              <section className="rounded-xl border border-crypto-border bg-black/10 p-4"><div className="flex items-center gap-2"><Beaker className="h-4 w-4 text-purple-400" /><h3 className="text-sm font-semibold text-white">参数矩阵</h3></div><p className="mt-2 text-xs text-gray-600">可选：运行 1–24 个组合检验参数稳定性。</p><textarea value={grid} onChange={(event) => setGrid(event.target.value)} className="mt-4 h-28 w-full rounded-lg border border-crypto-border bg-crypto-bg p-3 font-mono text-xs leading-6 text-gray-300 outline-none focus:border-purple-500/60" /><button type="button" onClick={() => void runMatrix()} disabled={Boolean(busy)} className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 text-xs font-semibold text-purple-300 disabled:opacity-50"><Beaker className="h-3.5 w-3.5" />{busy === 'matrix' ? '矩阵运行中…' : '运行参数矩阵'}</button><div className="mt-5 border-t border-crypto-border pt-4"><div className="text-xs font-semibold text-gray-400">策略代码摘要</div><pre className="mt-3 max-h-44 overflow-auto rounded-lg bg-[#080c12] p-3 text-[10px] leading-5 text-blue-100"><code>{selectedVersion?.script_content ?? '请选择策略版本'}</code></pre></div></section>
+              <section className="rounded-xl border border-crypto-border bg-black/10 p-4"><div className="flex items-center gap-2"><Beaker className="h-4 w-4 text-purple-400" /><h3 className="text-sm font-semibold text-white">参数矩阵</h3></div><p className="mt-2 text-xs text-gray-600">可选：运行 1–24 个组合检验参数稳定性。</p><textarea value={grid} onChange={(event) => setGrid(event.target.value)} className="mt-4 h-28 w-full rounded-lg border border-crypto-border bg-crypto-bg p-3 font-mono text-xs leading-6 text-gray-300 outline-none focus:border-purple-500/60" /><button type="button" onClick={() => void runMatrix()} disabled={Boolean(busy)} className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 text-xs font-semibold text-purple-300 disabled:opacity-50"><Beaker className="h-3.5 w-3.5" />{busy === 'matrix' ? '矩阵运行中…' : '运行参数矩阵'}</button><div className="mt-5 border-t border-crypto-border pt-4"><div className="text-xs font-semibold text-gray-400">策略代码摘要</div><pre className="mt-3 max-h-44 overflow-auto rounded-lg bg-[#080c12] p-3 text-[10px] leading-5 text-blue-100"><code>{selectedVersion?.content_hash ? `内容哈希 ${selectedVersion.content_hash}` : '请选择策略版本'}</code></pre></div></section>
             </div> : null}
           </div>
           <div className="flex shrink-0 items-center justify-between border-t border-crypto-border px-6 py-4">

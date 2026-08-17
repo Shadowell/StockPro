@@ -7,7 +7,7 @@ weekdays remain unknown and are blocked instead of being guessed open.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Set
 
 import psycopg2.extras
 
@@ -83,6 +83,35 @@ class TradingDateService:
         )
         return str(row["trade_date"])[:10] if row and row.get("trade_date") else None
 
+    def published_open_dates(self, on_or_before: Any = None) -> Set[str]:
+        boundary = self.normalize(on_or_before or date.today().isoformat())
+        rows = self._rows(
+            """
+            WITH ranked AS (
+                SELECT r.payload->>'trade_date' AS trade_date,
+                       CASE
+                         WHEN lower(COALESCE(r.payload->>'is_open', 'false'))
+                              IN ('1','true','t','y','yes','open') THEN TRUE
+                         ELSE FALSE
+                       END AS is_open,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY r.payload->>'trade_date'
+                           ORDER BY p.created_at DESC, r.record_ordinal DESC
+                       ) AS rank
+                FROM dataset_partition_records r
+                JOIN dataset_partitions p ON p.id = r.partition_id
+                JOIN dataset_definitions d ON d.id = p.dataset_id
+                WHERE d.code = 'trade_calendar'
+                  AND p.status = 'published'
+                  AND r.payload ? 'trade_date'
+                  AND (r.payload->>'trade_date')::date <= %s::date
+            )
+            SELECT trade_date FROM ranked WHERE rank = 1 AND is_open = TRUE
+            """,
+            (boundary,),
+        )
+        return {str(row["trade_date"])[:10] for row in rows if row.get("trade_date")}
+
     def resolve_market_data_date(self, value: Any = None, *, on_or_before: Any = None) -> str:
         if value is None or not str(value).strip():
             latest = self.latest_open_date(on_or_before)
@@ -98,8 +127,11 @@ class TradingDateService:
         return target
 
     def _row(self, query: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
+        rows = self._rows(query, params)
+        return rows[0] if rows else None
+
+    def _rows(self, query: str, params: Sequence[Any] = ()) -> List[Dict[str, Any]]:
         with self.database.get_connection() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(query, params)
-                row = cursor.fetchone()
-                return dict(row) if row else None
+                return [dict(row) for row in cursor.fetchall()]

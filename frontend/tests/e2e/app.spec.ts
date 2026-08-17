@@ -1308,11 +1308,9 @@ test('paper watch and monitor keep separate operator ownership', async ({ page }
     await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible();
   }
   await page.goto('/watch');
-  for (const label of ['策略信号', '订单与成交', '股票池变动', '图表联动', '告警']) await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible();
-  const watchAuditRequest = page.waitForRequest((request) => request.url().includes('/api/watch/context') && request.url().includes('scope=audit'));
-  await page.getByRole('button', { name: '审计视图' }).click();
-  await watchAuditRequest;
-  await expect(page.getByTestId('data-scope-control')).toContainText('不改变原始记录');
+  for (const label of ['策略信号', '订单与成交', '图表联动', '告警']) await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '股票池变动', exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('data-scope-control')).toHaveCount(0);
   await page.getByRole('tab', { name: '订单与成交', exact: true }).click();
   await expect(page.getByRole('heading', { name: '模拟订单' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '模拟成交' })).toBeVisible();
@@ -1394,12 +1392,12 @@ test('strategy catalogue labels the user-strategy count separately from referenc
   await loginAsAdmin(page);
   await page.goto('/strategy');
 
-  await expect(page.getByRole('tab', { name: /我的策略 1/ })).toBeVisible();
-  await expect(page.getByRole('tab', { name: /策略广场 4/ })).toBeVisible();
-  await expect(page.getByRole('tab', { name: /审计证据 1/ })).toBeVisible();
+  await expect(page.getByRole('tab', { name: /我的策略/ })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: /策略广场/ })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: /审计证据/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'AI 写策略' })).toHaveCount(0);
   await expect(page.getByText('Sprint07 acceptance probe')).toHaveCount(0);
-  await page.getByRole('tab', { name: /审计证据 1/ }).click();
-  await expect(page.getByTestId('strategy-audit-scope')).toContainText('Sprint07 acceptance probe');
+  await expect(page.getByTestId('strategy-card')).toHaveCount(1);
 });
 
 test('strategy details have a reloadable deep link and visible return path', async ({ page }) => {
@@ -1471,7 +1469,7 @@ test('watch separates load failure from a legitimate empty signal set', async ({
   await loginAsAdmin(page);
   await page.goto('/watch');
 
-  await expect(page.getByText('模拟交易 / 告警 / 股票池')).toBeVisible();
+  await expect(page.getByText('模拟交易 / 告警')).toBeVisible();
   await expect(page.getByText(/Request failed with status code 503/)).toBeVisible();
   await expect(page.getByText('数据加载失败')).toBeVisible();
 });

@@ -12,7 +12,6 @@ import {
   type ColorScheme,
 } from '../stores/useSettingsStore';
 import { Navigation } from './Navigation';
-import { GuestCodeManager } from './GuestCodeManager';
 import { McpAgentManager } from './McpAgentManager';
 import { MarketSessionBadge } from './MarketSessionBadge';
 import { StockProMark } from './StockProMark';
@@ -254,7 +253,6 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
                   />
                 </div>
               </section>
-              <GuestCodeManager />
               <McpAgentManager />
             </div>
           </div>

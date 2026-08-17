@@ -137,6 +137,23 @@ async def process_cycle(instance_id: str, request: PaperCycleRequest) -> Dict[st
     return cycle
 
 
+class PaperAdvanceRequest(BaseModel):
+    instance_ids: Optional[List[str]] = None
+    max_dates: int = Field(default=260, ge=1, le=1000)
+
+
+@router.post("/instances/advance")
+async def advance_instances(request: PaperAdvanceRequest) -> Dict[str, Any]:
+    """批量推进运行中 Paper 实例的待处理交易日周期（幂等，可重复调用）。"""
+    result = await run_in_threadpool(
+        runtime_service.advance_instances,
+        instance_ids=request.instance_ids,
+        max_dates=request.max_dates,
+    )
+    reset_paper_list_cache()
+    return result
+
+
 @router.get("/instances/{instance_id}/events")
 async def list_instance_events(instance_id: str) -> Dict[str, Any]:
     try:
