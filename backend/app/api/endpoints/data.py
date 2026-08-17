@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -543,7 +544,7 @@ def _job_elapsed_seconds(job: Dict[str, Any]) -> Optional[float]:
 def _coverage_rows(database) -> List[Dict[str, Any]]:
     if not hasattr(database, "kline_coverage"):
         return []
-    return database.kline_coverage(limit=500)
+    return database.kline_coverage(limit=80)
 
 
 def _job_rows(database, limit: int = 20) -> List[Dict[str, Any]]:
@@ -576,10 +577,15 @@ def _detail_from_coverage(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def build_data_manager_status(database=db, current_sync_status: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    rows = _coverage_rows(database)
+def build_data_manager_status(
+    database=db,
+    current_sync_status: Optional[Dict[str, Any]] = None,
+    coverage: Optional[List[Dict[str, Any]]] = None,
+    jobs: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    rows = coverage if coverage is not None else _coverage_rows(database)
     details = [_detail_from_coverage(row) for row in rows]
-    jobs = _job_rows(database, limit=20)
+    jobs = jobs if jobs is not None else _job_rows(database, limit=20)
     is_running = bool((current_sync_status or {}).get("is_running")) or any(
         _normalize_status(job.get("status")) in {"queued", "running"} for job in jobs
     )
@@ -791,11 +797,23 @@ def _stock_spot_frame_for_cache() -> pd.DataFrame:
     raise RuntimeError("; ".join(errors))
 
 
+_STATUS_CACHE: Dict[str, Any] = {"at": 0.0, "payload": None}
+_STATUS_TTL_SECONDS = 30.0
+
+
+def reset_data_status_cache() -> None:
+    _STATUS_CACHE["at"] = 0.0
+    _STATUS_CACHE["payload"] = None
+
+
 def _data_status_payload() -> Dict[str, Any]:
-    coverage = db.kline_coverage(limit=500) if hasattr(db, "kline_coverage") else []
+    cached = _STATUS_CACHE.get("payload")
+    if cached and time.monotonic() - float(_STATUS_CACHE.get("at") or 0) < _STATUS_TTL_SECONDS:
+        return cached
+    coverage = db.kline_coverage(limit=80) if hasattr(db, "kline_coverage") else []
     jobs = db.list_sync_jobs(limit=20) if hasattr(db, "list_sync_jobs") else []
-    manager_status = build_data_manager_status(db, sync_status)
-    return {
+    manager_status = build_data_manager_status(db, sync_status, coverage=coverage, jobs=jobs)
+    payload = {
         "database": "postgresql",
         "status": "ready",
         "storage": "postgres",
@@ -806,6 +824,9 @@ def _data_status_payload() -> Dict[str, Any]:
         "sync_jobs": jobs[:10],
         **manager_status,
     }
+    _STATUS_CACHE["at"] = time.monotonic()
+    _STATUS_CACHE["payload"] = payload
+    return payload
 
 
 @router.get("/status")

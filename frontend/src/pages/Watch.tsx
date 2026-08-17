@@ -14,15 +14,14 @@ import clsx from "clsx";
 import { DataPanel, StatusBadge } from "@bitpro/ui";
 import { acknowledgeRuntimeAlert, getWatchContext } from "../api/client";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
-import { DataScopeControl } from "../components/DataScopeControl";
 import {
   EvidenceStrip,
   MetricValue,
   OperatorPageHeader,
 } from "../components/OperatorShell";
 import { WorkspacePipelineNote } from "../components/WorkspacePipelineNote";
-import { TremorDeltaBadge, TremorTracker } from "../components/TremorUI";
-import type { DataScope, RuntimeAlert, WatchContext } from "../types";
+import { TremorDeltaBadge } from "../components/TremorUI";
+import type { RuntimeAlert, WatchContext } from "../types";
 import {
   formatOperatorTime,
   orderTypeLabel,
@@ -48,6 +47,7 @@ const TABS = [
   ["alerts", "告警"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
+const HIDDEN_WATCH_TABS = new Set<Tab>(["pools"]);
 const panel = "rounded-xl border border-crypto-border bg-crypto-card";
 const text = (value: unknown) =>
   value === null || value === undefined || value === "" ? "--" : String(value);
@@ -61,24 +61,23 @@ const tone = (severity: string) =>
 export function Watch() {
   const [params, setParams] = useSearchParams();
   const requested = params.get("tab") as Tab | null;
-  const tab: Tab = TABS.some(([key]) => key === requested)
+  const tab: Tab = TABS.some(([key]) => key === requested && !HIDDEN_WATCH_TABS.has(requested!))
     ? requested!
     : "signals";
   const [context, setContext] = useState<WatchContext | null>(null);
-  const [scope, setScope] = useState<DataScope>("business");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     setBusy(true);
     setError("");
     try {
-      setContext(await getWatchContext(scope));
+      setContext(await getWatchContext("business"));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "观察台加载失败");
     } finally {
       setBusy(false);
     }
-  }, [scope]);
+  }, []);
   useEffect(() => {
     void load();
   }, [load]);
@@ -97,10 +96,6 @@ export function Watch() {
     runtime_events: context?.runtime_events ?? [],
     pool_moves: context?.pool_moves ?? [],
   };
-  const excludedCount = Object.values(context?.excluded_counts ?? {}).reduce(
-    (sum, count) => sum + Number(count || 0),
-    0,
-  );
   const latestObservedAt =
     scoped.alerts[0]?.triggered_at ??
     text(
@@ -118,25 +113,6 @@ export function Watch() {
         : context?.data_status === "stale"
           ? "旧快照 · 不可视为实时"
           : "暂无证据 · 不可观察";
-  const observationColor = error
-    ? "rose"
-    : busy
-      ? "blue"
-      : context?.data_status === "fresh"
-        ? "emerald"
-        : context?.data_status === "stale"
-          ? "amber"
-          : "gray";
-  const trackerData = [
-    ["策略实例", context?.coverage.instances],
-    ["策略信号", context?.coverage.signals],
-    ["订单", context?.coverage.orders],
-    ["成交", context?.coverage.trades],
-    ["告警", context?.coverage.alerts],
-  ].map(([label, count]) => ({
-    color: observationColor as "emerald" | "amber" | "rose" | "gray" | "blue",
-    tooltip: `${label}: ${count ?? 0} 条 · ${observationLabel}`,
-  }));
   const acknowledge = async (alert: RuntimeAlert) => {
     setBusy(true);
     try {
@@ -156,7 +132,7 @@ export function Watch() {
       <OperatorPageHeader
         icon={Eye}
         title="盯盘"
-        subtitle="观察同一策略版本的信号、委托、成交、股票池变动和待确认风险。五个子页签对齐密度。"
+        subtitle="观察同一策略版本的信号、委托、成交和待确认风险。"
         actions={
           <button
             type="button"
@@ -171,16 +147,10 @@ export function Watch() {
       <WorkspacePipelineNote stageId="watch" />
       <EvidenceStrip
         items={[
-          { label: "数据", value: "模拟交易 / 告警 / 股票池" },
+          { label: "数据", value: "模拟交易 / 告警" },
           {
             label: "状态",
-            value: error
-              ? "加载失败"
-              : busy
-                ? "读取中"
-                : context?.data_status === "fresh"
-                  ? "观测正常"
-                  : "数据离线/旧快照",
+            value: observationLabel,
             tone: error
               ? "red"
               : busy
@@ -198,26 +168,9 @@ export function Watch() {
           { label: "来源", value: sourceLabel(context?.source_label) },
         ]}
       />
-      <DataScopeControl value={scope} onChange={setScope} excludedCount={excludedCount} />
-      <div className="mb-4 rounded-xl border border-crypto-border bg-crypto-card p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 text-xs">
-          <span className="font-bold text-gray-200">系统观察台与策略引擎健康度 (Tremor Tracker 视角)</span>
-          <span className={clsx(
-            "text-[10px] font-semibold",
-            observationColor === "emerald"
-              ? "text-emerald-400"
-              : observationColor === "rose"
-                ? "text-rose-300"
-                : observationColor === "blue"
-                  ? "text-blue-300"
-                  : "text-amber-300",
-          )}>{observationLabel}</span>
-        </div>
-        <TremorTracker data={trackerData} />
-      </div>
       <WorkspaceTabs
         ariaLabel="观察台二级导航"
-        items={TABS.map(([id, label]) => ({ id, label, testId: `watch-tab-${id}` }))}
+        items={TABS.filter(([id]) => !HIDDEN_WATCH_TABS.has(id)).map(([id, label]) => ({ id, label, testId: `watch-tab-${id}` }))}
         value={tab}
         onChange={(id) => setParams({ tab: id })}
       />

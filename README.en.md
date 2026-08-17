@@ -22,9 +22,11 @@ StockPro is designed to preserve evidence: every research result should identify
 
 ## Workspaces
 
+The operator sidebar currently exposes the trunk only: Home, Market, Strategy, Backtest, Paper, Watch, and Data. Pools, Factors, Monitor, Review, AI Lab, and Live remain routed but hidden from the menu.
+
 | Workspace | Route | Purpose |
 | --- | --- | --- |
-| Home | `/` | Market and research overview |
+| Home | `/` | Market overview |
 | Market | `/market` | Structure, sentiment, events, calendar, and stock research |
 | Pools | `/pools` | Rules, generation runs, snapshots, and backtest handoff |
 | Factors | `/factors` | Catalogue, compute, diagnostics, correlation, and values |

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class SchedulerService:
     """
     调度服务，管理后台数据同步任务
-    
+
     调度策略：
     1. 天级任务：固定时间执行（如16:00、18:00）
     2. 小时级任务：交易时间内每小时执行
@@ -344,6 +344,18 @@ class SchedulerService:
             name='同步北向资金数据',
             replace_existing=True
         )
+
+        # Paper 模拟盘周期推进 - 每天19:05（日终参考数据 18:10 封存之后）
+        self.scheduler.add_job(
+            func=self._advance_paper_instances,
+            trigger=CronTrigger(hour=19, minute=5, day_of_week='mon-fri'),
+            id='paper_cycle_advance',
+            name='Paper 模拟盘周期推进',
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=7200,
+        )
         
         # Factor calculation is intentionally not registered here. Sprint 02
         # attaches it to the sealed dataset-snapshot event, never to a clock
@@ -603,6 +615,26 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"Error in northbound flow sync: {str(e)}")
     
+    async def _advance_paper_instances(self):
+        """
+        推进运行中的 Paper 实例周期（天级，封存快照内幂等补齐）
+        """
+        try:
+            from app.db import db_instance
+            from app.services.paper_runtime_service import PaperRuntimeService
+
+            logger.info("Starting paper instance cycle advance")
+            result = await asyncio.to_thread(
+                PaperRuntimeService(db_instance).advance_instances,
+                max_dates=30,
+            )
+            logger.info(
+                f"Paper cycle advance completed: {result.get('dates_processed')} dates "
+                f"across {result.get('instances_attempted')} instances"
+            )
+        except Exception as e:
+            logger.error(f"Error in paper cycle advance: {str(e)}")
+
     async def _sync_sector_realtime(self):
         """
         同步板块实时行情（小时级）

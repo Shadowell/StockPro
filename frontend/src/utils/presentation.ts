@@ -8,6 +8,7 @@ const STATUS_LABELS: Record<string, string> = {
   critical: '严重',
   draft: '草稿',
   empty: '暂无数据',
+  exhausted: '回放已到末端',
   failed: '失败',
   filled: '已成交',
   fresh: '最新',

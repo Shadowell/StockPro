@@ -4,8 +4,10 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import time
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence
 
 import psycopg2.extras
 
@@ -37,6 +39,14 @@ PAPER_PROMOTION_CHECK_CODES = (
 
 # Keep SSH-tunneled inserts small. A single 485-day × 20-name page can stall the tunnel.
 _PERSIST_PAGE_SIZE = 50
+_CONFIG_CACHE: Dict[str, Any] = {"at": 0.0, "payload": None}
+_CONFIG_TTL_SECONDS = 30.0
+_PROMOTION_CODES_SQL = ",".join(f"'{item}'" for item in PAPER_PROMOTION_CHECK_CODES)
+
+
+def reset_configuration_cache() -> None:
+    _CONFIG_CACHE["at"] = 0.0
+    _CONFIG_CACHE["payload"] = None
 
 
 def _insert_values(cursor, sql: str, rows: Sequence[Sequence[Any]], *, page_size: int = _PERSIST_PAGE_SIZE) -> None:
@@ -53,61 +63,72 @@ class BacktestWorkbenchService:
         self.snapshot_service = DatasetSnapshotService(database)
         self.reference_service = ReferenceDatasetSyncService(database, snapshot_service=self.snapshot_service)
         self.runtime = StrategyRuntimeService(database)
+        self._cursor = None
 
     def list_cost_models(self) -> List[Dict[str, Any]]:
         return self._rows("SELECT * FROM backtest_cost_models WHERE status='active' ORDER BY code,version DESC")
 
     def configuration(self) -> Dict[str, Any]:
-        configuration = {
-            "strategy_versions": self._rows(
-                """
-                SELECT id,legacy_strategy_id,name,version,description,content_hash,strategy_api_version,
-                       validation_status,script_content,created_at
-                FROM strategy_versions WHERE validation_status='valid' AND strategy_api_version=%s
-                ORDER BY name,version DESC
-                """,
-                (STRATEGY_API_VERSION,),
-            ),
-            "dataset_snapshots": self._rows(
-                """
-                SELECT s.id,s.name,s.status,s.knowledge_cutoff_at,s.manifest_hash,
-                       MIN(p.start_date) FILTER (WHERE i.dataset_code='daily_bars') AS start_date,
-                       MAX(p.end_date) FILTER (WHERE i.dataset_code='daily_bars') AS end_date,
-                       SUM(p.row_count) FILTER (WHERE i.dataset_code='daily_bars')::BIGINT AS row_count,
-                       MAX(p.symbol_count) FILTER (WHERE i.dataset_code='daily_bars')::INTEGER AS symbol_count,
-                       ARRAY_AGG(DISTINCT i.dataset_code ORDER BY i.dataset_code) AS datasets
-                FROM dataset_snapshots s
-                JOIN dataset_snapshot_items i ON i.snapshot_id=s.id
-                JOIN dataset_partitions p ON p.id=i.partition_id
-                WHERE s.status='sealed'
-                GROUP BY s.id HAVING COUNT(*) FILTER (WHERE i.dataset_code='daily_bars') > 0
-                ORDER BY s.id DESC
-                """
-            ),
-            "universe_snapshots": self._rows(
-                """
-                SELECT s.id,d.code,d.rule_version,s.trade_date,s.knowledge_cutoff_at,s.manifest_hash,s.status,
-                       COUNT(m.symbol)::INTEGER AS member_count
-                FROM universe_snapshots s JOIN universe_definitions d ON d.id=s.definition_id
-                LEFT JOIN universe_snapshot_members m ON m.snapshot_id=s.id
-                WHERE s.status='sealed' GROUP BY s.id,d.code,d.rule_version ORDER BY s.id DESC
-                """
-            ),
-            "factor_snapshots": self._rows(
-                "SELECT id,name,trade_date,dataset_snapshot_id,universe_snapshot_id,knowledge_cutoff_at,manifest_hash,status FROM factor_snapshots WHERE status='sealed' ORDER BY id DESC"
-            ),
-            "pool_snapshots": self._rows(
-                """
-                SELECT s.id,s.pool_id,p.name AS pool_name,p.pool_type,s.trade_date,s.dataset_snapshot_id,
-                       s.universe_snapshot_id,s.factor_snapshot_id,s.knowledge_cutoff_at,s.manifest_hash,
-                       s.member_count,s.status
-                FROM stock_pool_snapshots s JOIN stock_pools p ON p.id=s.pool_id
-                WHERE s.status='sealed' ORDER BY s.id DESC
-                """
-            ),
-            "cost_models": self.list_cost_models(),
-            "protocols": self.list_protocols(),
-        }
+        cached = _CONFIG_CACHE.get("payload")
+        if cached and time.monotonic() - float(_CONFIG_CACHE.get("at") or 0) < _CONFIG_TTL_SECONDS:
+            return cached
+        with self._session():
+            configuration = {
+                "strategy_versions": self._rows(
+                    """
+                    SELECT id,legacy_strategy_id,name,version,description,content_hash,strategy_api_version,
+                           validation_status,created_at
+                    FROM strategy_versions WHERE validation_status='valid' AND strategy_api_version=%s
+                    ORDER BY name,version DESC
+                    """,
+                    (STRATEGY_API_VERSION,),
+                ),
+                "dataset_snapshots": self._rows(
+                    """
+                    SELECT s.id,s.name,s.status,s.knowledge_cutoff_at,s.manifest_hash,
+                           MIN(p.start_date) FILTER (WHERE i.dataset_code='daily_bars') AS start_date,
+                           MAX(p.end_date) FILTER (WHERE i.dataset_code='daily_bars') AS end_date,
+                           SUM(p.row_count) FILTER (WHERE i.dataset_code='daily_bars')::BIGINT AS row_count,
+                           MAX(p.symbol_count) FILTER (WHERE i.dataset_code='daily_bars')::INTEGER AS symbol_count,
+                           ARRAY_AGG(DISTINCT i.dataset_code ORDER BY i.dataset_code) AS datasets
+                    FROM dataset_snapshots s
+                    JOIN dataset_snapshot_items i ON i.snapshot_id=s.id
+                    JOIN dataset_partitions p ON p.id=i.partition_id
+                    WHERE s.status='sealed'
+                    GROUP BY s.id HAVING COUNT(*) FILTER (WHERE i.dataset_code='daily_bars') > 0
+                    ORDER BY s.id DESC
+                    """
+                ),
+                "universe_snapshots": self._rows(
+                    """
+                    SELECT s.id,d.code,d.rule_version,s.trade_date,s.knowledge_cutoff_at,s.manifest_hash,s.status,
+                           COALESCE(m.member_count, 0)::INTEGER AS member_count
+                    FROM universe_snapshots s
+                    JOIN universe_definitions d ON d.id=s.definition_id
+                    LEFT JOIN (
+                        SELECT snapshot_id, COUNT(*)::INTEGER AS member_count
+                        FROM universe_snapshot_members
+                        GROUP BY snapshot_id
+                    ) m ON m.snapshot_id=s.id
+                    WHERE s.status='sealed'
+                    ORDER BY s.id DESC
+                    """
+                ),
+                "factor_snapshots": self._rows(
+                    "SELECT id,name,trade_date,dataset_snapshot_id,universe_snapshot_id,knowledge_cutoff_at,manifest_hash,status FROM factor_snapshots WHERE status='sealed' ORDER BY id DESC"
+                ),
+                "pool_snapshots": self._rows(
+                    """
+                    SELECT s.id,s.pool_id,p.name AS pool_name,p.pool_type,s.trade_date,s.dataset_snapshot_id,
+                           s.universe_snapshot_id,s.factor_snapshot_id,s.knowledge_cutoff_at,s.manifest_hash,
+                           s.member_count,s.status
+                    FROM stock_pool_snapshots s JOIN stock_pools p ON p.id=s.pool_id
+                    WHERE s.status='sealed' ORDER BY s.id DESC
+                    """
+                ),
+                "cost_models": self.list_cost_models(),
+                "protocols": self.list_protocols(),
+            }
         for key in (
             "strategy_versions",
             "dataset_snapshots",
@@ -121,6 +142,8 @@ class BacktestWorkbenchService:
                     item.get("pool_name"),
                     item.get("description"),
                 )
+        _CONFIG_CACHE["at"] = time.monotonic()
+        _CONFIG_CACHE["payload"] = configuration
         return configuration
 
     def create_protocol(self, payload: Mapping[str, Any]) -> Dict[str, Any]:
@@ -438,23 +461,26 @@ class BacktestWorkbenchService:
             raise
     def list_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         rows = self._rows(
-            """
-            SELECT r.*,v.name AS strategy_name,v.version AS strategy_version,v.content_hash AS strategy_content_hash,
+            f"""
+            SELECT r.id,r.name,r.status,r.run_mode,r.progress,r.promotion_status,r.strategy_version_id,
+                   r.dataset_snapshot_id,r.factor_snapshot_id,r.pool_snapshot_id,r.universe_snapshot_id,
+                   r.research_protocol_id,r.cost_model_id,r.benchmark_code,r.start_date,r.end_date,
+                   r.initial_cash,r.parameters,r.metrics,r.error_message,r.created_at,r.finished_at,r.input_hash,
+                   v.name AS strategy_name,v.version AS strategy_version,v.content_hash AS strategy_content_hash,
                    c.name AS cost_model_name,p.name AS protocol_name,
-                   (
-                       SELECT COUNT(*) = 11
-                       FROM backtest_promotion_checks pc
-                       WHERE pc.backtest_run_id=r.id AND pc.status='passed'
-                         AND pc.check_code IN (
-                             'FULL_SEALED_RUN','SEALED_PROTOCOL','TRAIN_PASS','VALIDATION_PASS',
-                             'OUT_OF_SAMPLE_PASS','COST_MODEL_PASS','CAPACITY_RULES_DEFINED','CAPACITY_PASS',
-                             'PROMOTION_THRESHOLDS_DEFINED','BENCHMARK_PASS','DATA_QUALITY_PASS'
-                         )
-                   ) AS promotion_gate_complete
+                   COALESCE(pc.promotion_gate_complete, FALSE) AS promotion_gate_complete
             FROM backtest_runs r
             LEFT JOIN strategy_versions v ON v.id=r.strategy_version_id
             LEFT JOIN backtest_cost_models c ON c.id=r.cost_model_id
             LEFT JOIN research_protocols p ON p.id=r.research_protocol_id
+            LEFT JOIN (
+                SELECT backtest_run_id,
+                       (COUNT(*) FILTER (
+                           WHERE status='passed' AND check_code IN ({_PROMOTION_CODES_SQL})
+                       ) = 11) AS promotion_gate_complete
+                FROM backtest_promotion_checks
+                GROUP BY backtest_run_id
+            ) pc ON pc.backtest_run_id=r.id
             WHERE r.run_mode IN ('quick','full') ORDER BY r.created_at DESC LIMIT %s
             """,
             (max(1, min(int(limit), 200)),),
@@ -1017,18 +1043,36 @@ class BacktestWorkbenchService:
         if not self._row("SELECT id FROM backtest_runs WHERE id=%s", (run_id,)):
             raise ValueError("回测运行不存在")
 
-    def _row(self, query: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
-        with self.database.get_connection() as connection:
+    @contextmanager
+    def _session(self) -> Iterator[Any]:
+        if getattr(self, "_cursor", None) is not None:
+            yield self._cursor
+            return
+        database = getattr(self, "database", None)
+        if database is None:
+            yield None
+            return
+        with database.get_connection() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute(query, params)
-                row = cursor.fetchone()
-                return dict(row) if row else None
+                self._cursor = cursor
+                try:
+                    yield cursor
+                finally:
+                    self._cursor = None
+
+    def _row(self, query: str, params: Sequence[Any] = ()) -> Optional[Dict[str, Any]]:
+        rows = self._rows(query, params)
+        return rows[0] if rows else None
 
     def _rows(self, query: str, params: Sequence[Any] = ()) -> List[Dict[str, Any]]:
+        cursor = getattr(self, "_cursor", None)
+        if cursor is not None:
+            cursor.execute(query, params)
+            return [dict(item) for item in cursor.fetchall()]
         with self.database.get_connection() as connection:
-            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute(query, params)
-                return [dict(item) for item in cursor.fetchall()]
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as owned:
+                owned.execute(query, params)
+                return [dict(item) for item in owned.fetchall()]
 
     def _execute(self, query: str, params: Sequence[Any] = ()) -> None:
         with self.database.get_connection() as connection:

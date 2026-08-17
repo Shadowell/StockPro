@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import clsx from "clsx";
 import {
   Eye,
+  FastForward,
   FlaskConical,
   PauseCircle,
   PlayCircle,
@@ -153,6 +154,8 @@ interface PaperInstanceDashboardProps {
     instance: PaperRuntimeInstance,
     action: LifecycleAction,
   ) => void;
+  onAdvanceAll?: () => void;
+  advancing?: boolean;
 }
 
 export function PaperInstanceDashboard({
@@ -162,6 +165,8 @@ export function PaperInstanceDashboard({
   onCreate,
   onOpenDetail,
   onAction,
+  onAdvanceAll,
+  advancing = false,
 }: PaperInstanceDashboardProps) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -250,14 +255,28 @@ export function PaperInstanceDashboard({
         title="模拟盘"
         subtitle="已晋级策略版本的模拟实例监控；信号、订单、成交与权益全部来自 PostgreSQL 持久化记录，不触碰真实资金。"
         actions={
-          <button
-            type="button"
-            onClick={onCreate}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-500"
-          >
-            <Plus className="h-4 w-4" />
-            创建 Paper 实例
-          </button>
+          <div className="flex items-center gap-2">
+            {onAdvanceAll ? (
+              <button
+                type="button"
+                onClick={onAdvanceAll}
+                disabled={advancing || busy}
+                title="按封存快照逐日补齐运行中实例的待处理周期；幂等，可重复执行"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-crypto-border bg-crypto-card px-4 text-sm font-semibold text-slate-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <FastForward className={clsx("h-4 w-4", advancing && "animate-pulse")} />
+                {advancing ? "推进中…" : "批量推进周期"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onCreate}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-500"
+            >
+              <Plus className="h-4 w-4" />
+              创建 Paper 实例
+            </button>
+          </div>
         }
       />
 

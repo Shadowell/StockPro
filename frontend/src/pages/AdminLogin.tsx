@@ -119,20 +119,22 @@ export const AdminLogin: React.FC = () => {
           </div>
         </div>
 
-        <div className="px-6 pt-5">
-          <SegmentedControl<'admin' | 'guest'>
-            aria-label="登录方式"
-            value={mode}
-            onChange={(next) => {
-              setMode(next);
-              setError('');
-            }}
-            options={[
-              { value: 'admin', label: '管理员' },
-              { value: 'guest', label: '邀请码访客', tone: 'amber' },
-            ]}
-          />
-        </div>
+        {mode === 'guest' ? (
+          <div className="px-6 pt-5">
+            <SegmentedControl<'admin' | 'guest'>
+              aria-label="登录方式"
+              value={mode}
+              onChange={(next) => {
+                setMode(next);
+                setError('');
+              }}
+              options={[
+                { value: 'admin', label: '管理员' },
+                { value: 'guest', label: '邀请码访客', tone: 'amber' },
+              ]}
+            />
+          </div>
+        ) : null}
 
         <form className="space-y-4 px-6 py-6" onSubmit={handleSubmit}>
           {mode === 'admin' ? (

@@ -767,7 +767,7 @@ export interface BacktestConfiguration {
     name: string;
     version: number;
     description?: string;
-    script_content: string;
+    script_content?: string;
     content_hash: string;
   }>;
   dataset_snapshots: Array<{
@@ -855,6 +855,7 @@ export interface MarketEvidenceMetric {
 
 export interface MarketResearchContext {
   publication_state: string;
+  reason?: string;
   snapshot: {
     id: number;
     trade_date: string;
@@ -1143,7 +1144,7 @@ export interface StrategyRuntimeHealth {
   id: string;
   name: string;
   status: PaperRuntimeInstance['status'];
-  health_state: 'fresh' | 'stale' | 'missing' | 'failed' | 'stopped' | 'draft';
+  health_state: 'fresh' | 'stale' | 'exhausted' | 'missing' | 'failed' | 'stopped' | 'draft';
   data_purpose: 'user' | 'acceptance' | 'seed';
   heartbeat_at?: string | null;
   heartbeat_age_seconds?: number | null;

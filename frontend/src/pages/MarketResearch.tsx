@@ -357,35 +357,35 @@ export function MarketResearch() {
   const tab: TabKey = TABS.some(([key]) => key === requested) ? requested! : 'structure';
   const [context, setContext] = useState<MarketResearchContext | null>(null);
   const [messages, setMessages] = useState<MessageStreamResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resourceErrors, setResourceErrors] = useState<{ messages?: string }>({});
   const [tradeDate, setTradeDate] = useState('');
   const [scope, setScope] = useState('all_a');
 
-  const load = async () => {
+  const load = async (nextDate = tradeDate) => {
     setLoading(true); setError(''); setResourceErrors({});
-    try {
-      const [research, news] = await Promise.allSettled([
-        getMarketResearchContext({ trade_date: tradeDate || undefined, market_scope: scope }),
-        getMessageStream(60),
-      ]);
-      if (research.status === 'fulfilled') {
-        setContext(research.value);
-        if (research.value?.snapshot?.trade_date && (!tradeDate || tradeDate === '')) {
-          setTradeDate(research.value.snapshot.trade_date);
-        }
-      } else {
-        setContext(null);
-        setError(research.reason instanceof Error ? research.reason.message : '市场研究快照加载失败');
-      }
-      if (news.status === 'fulfilled') setMessages(news.value);
-      else {
+    void getMessageStream(60)
+      .then((news) => setMessages(news))
+      .catch(() => {
         setMessages(null);
         setResourceErrors((current) => ({ ...current, messages: '资讯缓存接口失败' }));
+      });
+    try {
+      const research = await getMarketResearchContext({
+        trade_date: nextDate || undefined,
+        market_scope: scope,
+      });
+      setContext(research);
+      if (research?.snapshot?.trade_date && !nextDate) {
+        setTradeDate(research.snapshot.trade_date);
       }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '市场研究上下文加载失败'); }
-    finally { setLoading(false); }
+    } catch (reason) {
+      setContext(null);
+      setError(reason instanceof Error ? reason.message : '市场研究快照加载失败');
+    } finally {
+      setLoading(false);
+    }
   };
   // Initial discovery intentionally uses the default scope; date/scope edits are applied by “加载快照”.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -443,12 +443,7 @@ export function MarketResearch() {
             type="button"
             onClick={() => {
               setTradeDate('');
-              void getMarketResearchContext({ market_scope: scope }).then((res) => {
-                setContext(res);
-                if (res?.snapshot?.trade_date) {
-                  setTradeDate(res.snapshot.trade_date);
-                }
-              });
+              void load('');
             }}
             className="h-10 rounded-lg border border-crypto-border px-3 text-xs text-slate-400 hover:bg-crypto-card hover:text-slate-200"
             title="加载最新封存证据日期"
@@ -472,10 +467,16 @@ export function MarketResearch() {
     {error ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{error}</div> : null}
     {tab === 'events' && resourceErrors.messages ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{resourceErrors.messages}；未把失败响应显示为空资讯。</div> : null}
     {!context && loading && tab !== 'calendar' && tab !== 'stock' ? <div className={`${panel} flex h-72 items-center justify-center text-slate-500`}><RefreshCw className="mr-2 h-5 w-5 animate-spin" />读取市场快照…</div> : null}
-    {context && tab === 'structure' ? <Structure context={context} /> : null}
-    {context && tab === 'sectors' ? <Sectors context={context} /> : null}
-    {context && tab === 'sentiment' ? <Sentiment context={context} /> : null}
-    {context && tab === 'events' ? <Events messages={messages} context={context} /> : null}
+    {!loading && !context?.snapshot && tab !== 'calendar' && tab !== 'stock' ? (
+      <div className={`${panel} flex h-72 flex-col items-center justify-center gap-2 px-6 text-center`} data-testid="market-snapshot-empty">
+        <p className="text-sm text-slate-300">{error || context?.reason || '没有匹配的封存市场证据快照'}</p>
+        <p className="text-xs text-slate-600">未把缺失或超时伪装成已就绪行情。</p>
+      </div>
+    ) : null}
+    {context?.snapshot && tab === 'structure' ? <Structure context={context} /> : null}
+    {context?.snapshot && tab === 'sectors' ? <Sectors context={context} /> : null}
+    {context?.snapshot && tab === 'sentiment' ? <Sentiment context={context} /> : null}
+    {context?.snapshot && tab === 'events' ? <Events messages={messages} context={context} /> : null}
     {tab === 'calendar' ? <MarketTradingCalendar /> : null}
     {tab === 'stock' ? <div className="-mx-5 -mb-6 -mt-2 2xl:-mx-8"><StockTerminal asOfDate={tradeDate || context?.snapshot?.trade_date} /></div> : null}
     {context?.snapshot ? <footer className="mt-5 flex flex-wrap items-center gap-4 text-[11px] text-slate-600"><Database className="h-3.5 w-3.5" />市场证据已绑定<Layers3 className="h-3.5 w-3.5" />已封存校验 · {context.snapshot.trade_date}<Newspaper className="h-3.5 w-3.5" />资讯仅展示缓存<CalendarDays className="h-3.5 w-3.5" />交易日 {context.snapshot.trade_date}</footer> : null}

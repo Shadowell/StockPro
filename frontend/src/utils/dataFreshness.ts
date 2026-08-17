@@ -39,6 +39,7 @@ export const formatFreshnessTime = (timestamp?: string | null) => {
   const parsed = new Date(timestamp);
   if (Number.isNaN(parsed.getTime())) return '时间无效';
   return parsed.toLocaleString('zh-CN', {
+    year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',

@@ -2,7 +2,11 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from app.services.market_research_service import MarketResearchService, SENTIMENT_KPIS
+from app.services.market_research_service import (
+    MarketResearchService,
+    SENTIMENT_KPIS,
+    reset_research_context_cache,
+)
 
 
 class MarketTemperatureTests(unittest.TestCase):
@@ -57,6 +61,7 @@ class MarketEvidenceDefinitionTests(unittest.TestCase):
         self.assertTrue(self.service._is_stale(datetime.now(timezone.utc) - timedelta(hours=40)))
 
     def test_latest_research_context_exposes_snapshot_freshness(self):
+        reset_research_context_cache()
         self.service._latest_snapshot = MagicMock(return_value={
             "id": 7,
             "status": "published",
@@ -99,6 +104,57 @@ class MarketEvidenceDefinitionTests(unittest.TestCase):
 
         query = self.service._rows.call_args.args[0]
         self.assertIn("DISTINCT ON (trade_date)", query)
+
+    def test_comparisons_batch_metric_reads_for_long_history(self):
+        history = [{"id": 300 - index, "trade_date": f"2024-01-{(index % 28) + 1:02d}"} for index in range(242)]
+
+        def fake_rows(query, params=()):
+            if "DISTINCT ON" in query:
+                return history
+            snapshot_ids = list(params[0])
+            rows = []
+            for snapshot_id in snapshot_ids:
+                rows.append({"snapshot_id": snapshot_id, "metric_code": "limit_up_count", "value": 50})
+                rows.append({"snapshot_id": snapshot_id, "metric_code": "highest_board", "value": 5})
+            return rows
+
+        self.service._rows = MagicMock(side_effect=fake_rows)
+        self.service.sentiment = MagicMock(side_effect=AssertionError("must not load sentiment per snapshot"))
+
+        result = self.service._comparisons(
+            {"market_scope": "all_a", "snapshot_type": "post_close", "trade_date": "2025-01-02"},
+            {"metrics": [
+                {"metric_code": "limit_up_count", "value": 56},
+                {"metric_code": "highest_board", "value": 6},
+            ]},
+        )
+
+        self.assertLessEqual(self.service._rows.call_count, 2)
+        day_over_day = next(item for item in result if item["comparison_code"] == "day_over_day")
+        self.assertEqual(day_over_day["deltas"]["limit_up_count"], 6.0)
+        percentile = next(item for item in result if item["comparison_code"] == "one_year_percentile")
+        self.assertEqual(percentile["publication_state"], "published")
+        self.assertEqual(percentile["value"], 1.0)
+
+    def test_session_reuses_one_connection_for_nested_reads(self):
+        cursor = MagicMock()
+        cursor.fetchall.return_value = [{"id": 1}]
+        connection = MagicMock()
+        connection.cursor.return_value.__enter__.return_value = cursor
+        connection.cursor.return_value.__exit__.return_value = False
+        database = MagicMock()
+        database.get_connection.return_value.__enter__.return_value = connection
+        database.get_connection.return_value.__exit__.return_value = False
+        self.service.database = database
+
+        with self.service._session():
+            first = self.service._rows("SELECT 1")
+            second = self.service._rows("SELECT 2")
+
+        self.assertEqual(first, [{"id": 1}])
+        self.assertEqual(second, [{"id": 1}])
+        self.assertEqual(database.get_connection.call_count, 1)
+        self.assertEqual(cursor.execute.call_count, 2)
 
 
 if __name__ == "__main__":

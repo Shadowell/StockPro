@@ -63,6 +63,35 @@ Deferred (documented, not fixed): market-overview SQL-side aggregation
 bounds cost) and ECharts `echarts/core` on-demand import (6 surfaces, needs
 visual QA pass; bundle budget gate already enforces size).
 
+## Data freshness: stop showing 7/7 or 8/7 as latest (2026-08-17)
+
+User saw July 7 / August 7 while today is 2026-08-17. Facts:
+
+1. Trade calendar and research partitions were frozen at **2026-08-07**, so
+   `latest_open_date()` and Data Center knowledge cutoff stayed on 8/7.
+   `formatFreshnessTime` omitted the year, so 07/07 vs 08/07 was ambiguous.
+2. Short-line cache mixed **2026-07-29** 涨停数 with **2026-08-15** 涨跌比 and
+   treated the latest stamp as fresh, so homepage ecology looked like July.
+3. Review `available_dates` dropped 2026-08-14 (calendar `unknown`) and then
+   per-date calendar SQL timed out (~14–25s) →「暂无可用交易日」/ 最近复盘 2025-01-02.
+
+Fixes (no long-term scheduler change; schedule was already enabled, last seal 08-07):
+
+- Published TuShare `trade_cal` 2026-08-08..08-17. Latest complete session is
+  **2026-08-14** (today 08-17 is an open day, still in session).
+- Lean-inserted full-A daily bars 08-10..08-14; sealed dataset snapshot **23**
+  `daily-research-2026-08-14-…`. Market evidence snapshot 21 already 08-14.
+- Short-line cache is invalid if **any** row is stale → fall back to sealed
+  08-14 evidence. Homepage header shows `证据日 YYYY-MM-DD`. Freshness labels
+  include year. Review dates use one calendar query + keep unknown weekdays
+  that already have published market evidence.
+
+Verification: `unittest` review / trading-date / short-line cache (28 tests);
+`npx tsc -b --noEmit`. After local `:4444`/`:4445` restart, health healthy;
+short-line `trade_date=2026-08-14 sealed_snapshot`; desk 证据日 2026-08-14.
+Still missing: today 08-17 post-close seal; 08-15 Saturday kline rows exist
+but are not a trading day; daily reviews table still only 2025-01-02.
+
 ## Operator sidebar visual pass (2026-08-17)
 
 1. Desktop rail is 72px, near-black (`bg-crypto-bg`), hairline `crypto-border`. Group titles no longer render as 8px squeezed labels; groups stay as `role="group"` with `aria-label` and a 1px divider.
@@ -70,8 +99,162 @@ visual QA pass; bundle budget gate already enforces size).
 3. Logo uses `StockProMark quiet` (no gradient shell). Session badge compact is a single-line dot + label from the existing market-session source. Role footer is muted text, not a colored sticker.
 4. E2E desktop width assertion updated from `<= 65` to `70–80`. Did not touch paper read-path or Watch.tsx.
 
-Verification: `npx tsc -b --noEmit` passed. Local `:4444` / `:4445` restarted; both ports listening; `GET /api/health/health` returned healthy.
+Verification: `npx tsc -b --noEmit` passed (Watch.tsx 本轮未报错). Local `:4444` / `:4445` restarted; both ports listening; `GET /api/health/health` returned healthy. Pushed `f4abf5b` on `main` (menu files only).
 
+## First-screen read speed (2026-08-17)
+
+Root cause: backtest configuration opened 7 Postgres connections and shipped
+`script_content`; run list selected `r.*` (~300KB); research-context compared
+history with per-snapshot reads (now batched + one connection + 30s cache);
+data status scanned all `kline_history` and `COUNT(*)` every table.
+
+Changes:
+
+1. `/backtest/configuration` drops scripts, counts universe members in a
+   subquery, reuses one connection, 30s cache.
+2. `/backtest/runs` returns list columns only (keeps `metrics` for KPIs).
+3. `/market/research-context` reuses one connection and caches 30s. Comparison
+   batching from the parallel hang fix is kept.
+4. `/data/status` caches 30s, coverage from `sync_metadata` top 80, table
+   counts from `pg_stat_user_tables`, and reuses those rows for manager
+   status instead of querying coverage twice.
+5. Backtest page renders the run list as soon as runs/jobs return; create
+   wizard waits for configuration. Page GETs use 8s timeout + no retry
+   (research-context keeps its existing timeout).
+
+Verification: `unittest` workbench / research-context / backtest API /
+async reads / overview (65) passed. `npx tsc -b --noEmit` passed. Local
+`:4444` / `:4445` healthy after restart. Timed reads 2026-08-17:
+
+| API | before | after cold | after warm |
+| --- | ---: | ---: | ---: |
+| `/backtest/configuration` | 10.1s / 294KB | 2.3s / 52KB | 1ms |
+| `/backtest/runs?limit=50` | 1.3s / 301KB | 2.1s / 122KB | — |
+| `/market/research-context` | 25s timeout | 3.5s / 64KB | 1ms |
+| `/data/status` | 14.3s / 266KB | 6.5s / 47KB | 1ms |
+| `/strategy/list` | 2.5s | 1.6s | — |
+| `/paper/instances` | 1.2s | 1.3s | — |
+| `/market/overview` | 3.2s | 6.1s first after restart | 1ms |
+
+## Operator trunk visibility cut (2026-08-17)
+
+1. Sidebar now shows only the daily trunk: 首页 / 行情 / 策略 / 回测 / 模拟 / 盯盘 / 数据. Admin settings stay at the bottom.
+2. Menu-hidden (routes kept): 因子、股票池、监控、复盘、AI研发、实盘、数据处理. Extended the existing `HIDDEN_NAV_IDS` set; did not replace that hide mechanism or restore the research-desk rail.
+3. Kept prior hides: homepage has no 量化研究台 panel; `WorkspacePipelineNote` still returns null. Did not change MarketResearch load/API (parallel hang fix owns that path).
+4. Page chrome cut: Strategy hides AI 写策略 / 规则生成 / 策略广场 / 审计证据 / AI 研发 tabs. Watch hides 股票池变动 and the audit-scope / Tremor tracker chrome. Login hides 邀请码访客 unless `?invite=` is present. Settings no longer mount GuestCodeManager.
+
+Verification: local `:4444` / `:4445` listening; `/api/health/health` healthy.
+Screenshots `/tmp/stockpro-trunk-qa/01-home-sidebar.png`, `02-strategy.png`, `03-backtest.png`:
+sidebar text is 研究 首页/行情 · 研发 策略/回测 · 验证 模拟/盯盘 · 系统 数据.
+No 因子/股票池/监控/复盘/AI研发/实盘 links. No 量化研究台 / 本页就绪 / 继续盯盘 / AI 写策略 / 策略广场.
+
+## Hide 因子 / 股票池 from primary nav (2026-08-17)
+
+`Navigation.tsx` filters `pools` and `factors` via `HIDDEN_NAV_IDS`; `/pools` and `/factors` routes stay registered.
+
+## Paper read-path speed (2026-08-17)
+
+1. `/paper` dashboard was waiting on three reads: full instance list, 200
+   backtest runs, then `get_instance` for the first card. Detail used 14
+   Postgres connections (one `_row`/`_rows` each) plus `SELECT *` on
+   `strategy_versions` (script) and `backtest_runs`.
+2. `get_instance` now uses one connection and one SQL (`json_agg` ledgers),
+   omits `script_content`, and returns a slim qualifying backtest. K-line
+   history is capped at 800 bars. A first empty-instance read that still
+   took ~10s with 12 sequential queries is the reason for the single SQL.
+3. `GET /paper/instances` caches 20s and stamps TTL after the query; create /
+   start / pause / resume / stop / cycle clear the cache. Dashboard loads the
+   list only; create loads eligible runs; detail loads one instance.
+4. 10s card poll stays on the dashboard. Did not change Paper lifecycle,
+   ledger semantics, or invent missing Sharpe / win-rate fields.
+
+Verification: `unittest` paper runtime service / API 48 passed. Local
+`:4444` / `:4445` healthy. Timed reads after the single-SQL change:
+list 1.9s → 1ms cache; detail 9.8s → 3.3s (empty instance, no
+`script_content`). Dashboard no longer waits on 200 backtests or the
+first card's full ledger.
+
+## Operator trunk visibility cut (2026-08-17)
+
+1. Sidebar now shows only the daily trunk: 首页 / 行情 / 策略 / 回测 / 模拟 / 盯盘 / 数据. Admin settings stay at the bottom.
+2. Menu-hidden (routes kept): 因子、股票池、监控、复盘、AI研发、实盘、数据处理. Extended the existing `HIDDEN_NAV_IDS` set; did not replace that hide mechanism or restore the research-desk rail.
+3. Kept prior hides: homepage has no 量化研究台 panel; `WorkspacePipelineNote` still returns null. Did not change MarketResearch load/API (parallel hang fix owns that path).
+4. Page chrome cut: Strategy hides AI 写策略 / 规则生成 / 策略广场 / 审计证据 / AI 研发 tabs. Watch hides 股票池变动 and the audit-scope / Tremor tracker chrome. Login hides 邀请码访客 unless `?invite=` is present. Settings no longer mount GuestCodeManager.
+
+Verification: local `:4444` / `:4445` listening; `/api/health/health` healthy; admin token login.
+Screenshots `/tmp/stockpro-trunk-qa/01-home-sidebar.png`, `02-strategy.png`, `03-backtest.png`:
+sidebar text is 研究 首页/行情 · 研发 策略/回测 · 验证 模拟/盯盘 · 系统 数据.
+No 因子/股票池/监控/复盘/AI研发/实盘 links. No 量化研究台 / 本页就绪 / 继续盯盘 / AI 写策略 / 策略广场.
+
+## Market `/research-context` hang (2026-08-17)
+
+1. `/market` structure/sentiment tabs spun on「读取市场快照…」because
+   `GET /api/market/research-context` never returned in time. Health and
+   `/api/market/overview` were fine; the research-context path was the stall.
+2. Root cause: `MarketResearchService._comparisons` opened a new PostgreSQL
+   connection per query, then walked up to 242 history snapshots with
+   per-snapshot `sentiment()` plus a `highest_board` `_row` each. Through the
+   local DB tunnel that is 240+ round-trips and a 25s+ hang. No fabricated
+   quotes; the snapshot existed (evidence date 2026-08-14) but the comparison
+   fan-out never finished.
+3. Backend now loads comparison history once and batches all comparison
+   metrics with `snapshot_id = ANY(...)`. Query count for a long history is
+   2 instead of 240+. `research_context` also reuses one PostgreSQL connection
+   per request (`_session`) and keeps a 30s in-process cache. Frontend
+   `getMarketResearchContext` uses a 20s timeout, does not retry timeouts,
+   and the market page shows an honest empty/error panel instead of an
+   infinite spinner. Snapshot-less 200s also stop loading. Snapshot load no
+   longer waits for `/market/message-stream` (~12s); news fills the events
+   tab in the background.
+4. Did not touch Dashboard / 量化研究台. The parallel workspace change already
+   made `WorkspacePipelineNote` a no-op, so this slice does not restore that rail.
+
+Verification: focused `test_market_research_service` 17/17. Local 4444/4445
+restarted; `/api/health/health` 200. Authenticated
+`GET /api/market/research-context?market_scope=all_a` returned published
+snapshot 21 / 2026-08-14 in 3.9s (second call 1ms cache). Browser login
+`admin` then `/market?tab=structure` showed 市场数据快照 + 上涨/涨停真实值
+and `/market?tab=sentiment` showed 连板天梯; neither stayed on
+「读取市场快照…」. `message-stream` is still ~12s and only fills the events
+tab. `twenty_day` / one-year percentile stay unavailable because sealed
+history is shorter than 20 days — not fabricated.
+
+## Hide 因子 / 股票池 from primary nav (2026-08-17)
+
+`Navigation.tsx` filters `pools` and `factors` via `HIDDEN_NAV_IDS`; `/pools` and `/factors` routes stay registered.
+
+## Workspace: remove 多因子风险预算 rail (2026-08-17)
+
+1. User screenshot pointed at the shared workspace chrome: title 多因子风险预算,
+   green 本页就绪, snapshot/evidence line, 继续盯盘. That is
+   `WorkspacePipelineNote`, mounted under almost every workspace header
+   (行情 / 股票池 / 因子 / 策略 / 回测 / 模拟 / 盯盘 / 监控 / 复盘 / 数据 /
+   AI 研发). It is not the homepage `ResearchDeskPanel`.
+2. `WorkspacePipelineNote` now renders nothing. Page mounts stay so this
+   change does not touch Dashboard or MarketResearch load/API. Backend
+   `GET /workflow/research-desk` and `ResearchDeskContext` stay.
+3. `/pools` four-step strip (设定规则 → 筛选成员 → 封存快照 → 送去回测) is
+   local to `StockPools.tsx` and remains. `WorkflowRail` was already unused
+   in `MainLayout`.
+
+Verification: local `:4444` / `:4445` restarted; login `admin` and open
+`/pools`, `/market`, `/strategy` — none show 多因子风险预算 / 本页就绪 /
+继续盯盘. Pools still has the four-step strip.
+
+## Homepage: remove 量化研究台 panel (2026-08-17)
+
+1. User asked to take the 量化研究台 command panel off `/` only. The
+   homepage is now 市场大盘: indices, pulse, 涨停生态, and sector fund flow.
+2. `ResearchDeskPanel` is no longer mounted in `Dashboard.tsx`. The page
+   subtitle no longer describes a research-desk overview. Header-to-market
+   spacing is unchanged besides dropping the panel wrapper.
+3. Kept `GET /workflow/research-desk`, `ResearchDeskPanel.tsx`,
+   `ResearchDeskContext`, and the workspace `WorkflowRail` (多因子风险预算 /
+   本页就绪). Other pages still use the rail; the panel was not moved.
+
+Verification: local frontend `:4444` and backend `:4445` restarted after the
+source change; `/api/health/health` and homepage screenshot confirm the
+panel title is gone.
 
 ## 20 Daily-Bar 打板 / 隔日T Strategies (2026-08-16)
 

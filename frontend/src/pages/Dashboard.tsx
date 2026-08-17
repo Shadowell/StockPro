@@ -8,7 +8,6 @@ import { OperatorMetricCard, OperatorPageHeader, MetricValue } from '../componen
 import { MarketSessionBadge } from '../components/MarketSessionBadge';
 import { SectorFundFlowPanel } from '../components/SectorFundFlowPanel';
 import { LimitBoardPanel } from '../components/LimitBoardPanel';
-import { ResearchDeskPanel } from '../components/ResearchDeskPanel';
 import type { MarketOverview, MarketPulse, ThsHotItem } from '../types';
 import { evaluateFreshness, formatFreshnessTime, latestTimestamp } from '../utils/dataFreshness';
 import { marketMetricColor, marketToneClass, type MetricTone } from '../utils/marketColors';
@@ -510,17 +509,27 @@ export function Dashboard() {
     return () => window.clearInterval(timer);
   }, []);
 
+  const evidenceDate = shortLine.find((item) => item.data_state === 'sealed_snapshot')?.trade_date
+    ?? shortLine.find((item) => item.trade_date)?.trade_date
+    ?? null;
+  const cacheDate = overview?.data_status?.stock_snapshot_updated_at
+    ? String(overview.data_status.stock_snapshot_updated_at).slice(0, 10)
+    : null;
+
   return (
     <div className="min-h-full bg-crypto-bg p-4 sm:p-6" data-operator-page="dashboard">
       <OperatorPageHeader
         icon={LayoutDashboard}
         title="市场大盘"
-        subtitle="量化研究台总览：先看同一条多因子链路走到哪一步，再读指数、广度、涨停生态与板块资金。首页读缓存，不是盘中推送。"
+        subtitle="指数、广度、涨停生态与板块资金。首页读缓存，不是盘中推送。"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {overview?.data_status?.stock_snapshot_updated_at ? (
-              <StatusBadge tone={overview.data_status.stock_snapshot_state === 'fresh' ? 'green' : 'amber'}>
-                行情缓存 {String(overview.data_status.stock_snapshot_updated_at).slice(0, 10)}
+            {evidenceDate ? (
+              <StatusBadge tone="green">证据日 {evidenceDate}</StatusBadge>
+            ) : null}
+            {cacheDate ? (
+              <StatusBadge tone={overview?.data_status?.stock_snapshot_state === 'fresh' ? 'green' : 'amber'}>
+                行情缓存 {cacheDate}
               </StatusBadge>
             ) : (
               <StatusBadge tone="amber">行情缓存未同步</StatusBadge>
@@ -529,9 +538,6 @@ export function Dashboard() {
           </div>
         }
       />
-      <div className="mb-4">
-        <ResearchDeskPanel />
-      </div>
       <section className="min-h-[720px]">
         <RealtimeMarketModule
           overview={overview}

@@ -39,6 +39,16 @@ class TradingDateServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "交易日历未覆盖"):
             self.service.resolve_market_data_date("2026-08-10")
 
+    def test_published_open_dates_returns_open_set(self):
+        self.service._rows = MagicMock(
+            return_value=[{"trade_date": "2026-08-14"}, {"trade_date": "2026-08-07"}]
+        )
+
+        self.assertEqual(
+            self.service.published_open_dates("2026-08-17"),
+            {"2026-08-14", "2026-08-07"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

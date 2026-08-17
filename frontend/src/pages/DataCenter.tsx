@@ -908,7 +908,7 @@ export function DataCenter() {
           </div>
           <div className="min-w-0">
             <h1 className="whitespace-nowrap text-xl font-bold text-white">数据管理中心</h1>
-            <p className="mt-0.5 text-xs text-gray-500">多因子链路的数据入口：总览 / 研究数据 / 行情覆盖 / 同步任务 / 数据源 · {format(coverageSymbolCount)} 个覆盖样本</p>
+            <p className="mt-0.5 text-xs text-gray-500">研究证据入口：总览 / 研究数据 / 行情覆盖 / 同步任务 / 数据源 · {format(coverageSymbolCount)} 个覆盖样本</p>
             {loading && (
               <div className="mt-1 flex items-center gap-1.5 text-xs text-blue-300">
                 <RefreshCw className="h-3 w-3 animate-spin" />

@@ -16,6 +16,8 @@ from app.services.backtest_workbench_service import PAPER_PROMOTION_CHECK_CODES
 PAPER_RUNTIME_VERSION = "paper-runtime.v1"
 PAPER_KLINE_BAR_LIMIT = 800
 
+_snapshot_max_cache: Dict[str, Any] = {"at": 0.0, "dates": {}}
+
 
 class PaperRuntimeService:
     def __init__(self, database):
@@ -272,6 +274,118 @@ class PaperRuntimeService:
             self._record_event(instance_id, cycle_id, "runtime", "error", "行情周期失败", {"error": str(exc)})
             self._health("paper_runtime", "critical", processed_at, "CYCLE_FAILED", str(exc)[:500], {"instance_id": instance_id, "trade_date": trade_date, "simulated_observed_at": observed_at.isoformat()})
             raise
+
+    def _snapshot_trade_dates(self, dataset_snapshot_id: int) -> List[str]:
+        rows = self._rows(
+            """
+            SELECT DISTINCT r.payload->>'trade_date' AS trade_date
+            FROM dataset_partition_records r
+            JOIN dataset_snapshot_items s ON s.partition_id = r.partition_id
+            WHERE s.snapshot_id = %s AND s.dataset_code = 'daily_bars'
+            """,
+            (int(dataset_snapshot_id),),
+        )
+        return sorted({str(row.get("trade_date"))[:10] for row in rows if row.get("trade_date")})
+
+    def _snapshot_max_trade_date(self, snapshot_id: str) -> str:
+        """Latest sealed daily-bar date for a snapshot, from partition metadata (cached 60s)."""
+        if not snapshot_id:
+            return ""
+        import time as _time
+
+        cache = PaperRuntimeService._snapshot_max_cache
+        if _time.monotonic() - float(cache.get("at") or 0.0) > 60.0:
+            cache["at"] = _time.monotonic()
+            cache["dates"] = {}
+        elif snapshot_id in cache["dates"]:
+            return cache["dates"][snapshot_id]
+        rows = self._rows(
+            """
+            SELECT MAX(p.end_date)::text AS max_date
+            FROM dataset_snapshot_items s
+            JOIN dataset_partitions p ON p.id = s.partition_id
+            WHERE s.dataset_code = 'daily_bars' AND s.snapshot_id::text = %s
+            """,
+            (snapshot_id,),
+        )
+        value = str((rows[0] or {}).get("max_date") or "")[:10] if rows else ""
+        cache["dates"][snapshot_id] = value
+        return value
+
+    def advance_instance(self, instance_id: str, max_dates: int = 260) -> Dict[str, Any]:
+        """Catch up pending trade dates for one running instance from its sealed snapshot.
+
+        Idempotent per cycle_key; skipped dates (no pool bars) still advance
+        last_processed_trade_date so repeated calls always make progress.
+        """
+        instance = self._instance(instance_id)
+        if instance["status"] != "running":
+            raise ValueError("只有运行中实例可以推进周期")
+        feed = dict(instance.get("feed_config") or {})
+        last_processed = str(instance.get("last_processed_trade_date") or "")[:10] or None
+        start_floor = str(feed.get("start_date") or "")[:10] or None
+        end_ceiling = str(feed.get("end_date") or "")[:10] or None
+        dates = self._snapshot_trade_dates(int(instance["dataset_snapshot_id"]))
+        pending = [
+            item
+            for item in dates
+            if (not last_processed or item > last_processed)
+            and (not start_floor or item >= start_floor)
+            and (not end_ceiling or item <= end_ceiling)
+        ]
+        budget = max(1, min(int(max_dates or 1), 1000))
+        processed: List[str] = []
+        skipped: List[str] = []
+        failures: List[Dict[str, str]] = []
+        for trade_date in pending[:budget]:
+            try:
+                self.process_cycle(instance_id, {"trade_date": trade_date})
+                processed.append(trade_date)
+            except ValueError as exc:
+                if "没有股票池行情" not in str(exc):
+                    failures.append({"trade_date": trade_date, "error": str(exc)[:300]})
+                    break
+                skipped.append(trade_date)
+                self._execute(
+                    "UPDATE paper_instances SET last_processed_trade_date=%s,heartbeat_at=NOW(),updated_at=NOW() WHERE id=%s",
+                    (trade_date, instance_id),
+                )
+            except Exception as exc:
+                failures.append({"trade_date": trade_date, "error": str(exc)[:300]})
+                break
+        refreshed = self._row("SELECT last_processed_trade_date,heartbeat_at FROM paper_instances WHERE id=%s", (instance_id,))
+        return {
+            "instance_id": instance_id,
+            "processed_dates": processed,
+            "processed_count": len(processed),
+            "skipped_dates": skipped,
+            "failures": failures,
+            "pending_remaining": max(0, len(pending) - budget),
+            "last_processed_trade_date": (refreshed or {}).get("last_processed_trade_date"),
+            "heartbeat_at": (refreshed or {}).get("heartbeat_at"),
+        }
+
+    def advance_instances(self, instance_ids: Optional[Sequence[str]] = None, max_dates: int = 260) -> Dict[str, Any]:
+        """Bulk catch-up across running paper instances (all when ids omitted)."""
+        if instance_ids:
+            rows = self._rows(
+                "SELECT id FROM paper_instances WHERE status='running' AND id::text = ANY(%s) ORDER BY created_at",
+                ([str(item) for item in instance_ids],),
+            )
+        else:
+            rows = self._rows("SELECT id FROM paper_instances WHERE status='running' ORDER BY created_at")
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            instance_id = str(row["id"])
+            try:
+                results.append(self.advance_instance(instance_id, max_dates=max_dates))
+            except Exception as exc:
+                results.append({"instance_id": instance_id, "error": str(exc)[:300]})
+        return {
+            "instances_attempted": len(results),
+            "dates_processed": sum(int(item.get("processed_count") or 0) for item in results),
+            "instances": results,
+        }
 
     def list_instances(self) -> List[Dict[str, Any]]:
         rows = self._rows(
@@ -733,7 +847,7 @@ class PaperRuntimeService:
         strategy_health = self._rows(
             """
             SELECT i.id,i.name,i.data_purpose,i.status,i.runtime_version,i.heartbeat_at,i.last_processed_trade_date,
-                   i.error_message,i.updated_at,i.feed_config,p.cash_balance,p.initial_cash,
+                   i.error_message,i.updated_at,i.feed_config,i.dataset_snapshot_id,p.cash_balance,p.initial_cash,
                    c.id AS latest_cycle_id,c.status AS latest_cycle_status,c.trade_date AS latest_cycle_trade_date,
                    c.finished_at AS latest_cycle_finished_at,c.error_message AS latest_cycle_error,
                    c.ledger_difference AS latest_cycle_ledger_difference,
@@ -773,6 +887,11 @@ class PaperRuntimeService:
                 item["health_state"] = "stale"
             else:
                 item["health_state"] = "fresh"
+            if item["health_state"] in {"stale", "fresh"} and item["status"] in {"running", "paused"}:
+                last_processed = str(item.get("last_processed_trade_date") or "")[:10]
+                snapshot_max = self._snapshot_max_trade_date(str(item.get("dataset_snapshot_id") or ""))
+                if snapshot_max and last_processed and last_processed >= snapshot_max:
+                    item["health_state"] = "exhausted"
         notification_details = self._rows(
             """
             SELECT n.status,COALESCE(i.data_purpose,'user') AS data_purpose

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import {
   createPaperInstance,
+  advancePaperInstances,
   getPaperInstance,
   listBacktestRuns,
   listPaperInstances,
@@ -60,6 +61,7 @@ export function Paper() {
   const [name, setName] = useState("");
   const [initialCash, setInitialCash] = useState(1_000_000);
   const [busy, setBusy] = useState(false);
+  const [advancingAll, setAdvancingAll] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
 
@@ -282,6 +284,25 @@ export function Paper() {
       setBusy(false);
     }
   };
+  const advanceAll = async () => {
+    setAdvancingAll(true);
+    setError("");
+    try {
+      const result = await advancePaperInstances({ max_dates: 260 });
+      const failed = result.instances.filter((item) => (item.failures?.length ?? 0) > 0 || item.error);
+      if (failed.length > 0) {
+        setError(
+          `批量推进完成，但 ${failed.length} 个实例存在失败：` +
+            failed.map((item) => item.error ?? item.failures?.[0]?.error ?? item.instance_id).join("；"),
+        );
+      }
+      await loadInstances({ silent: true });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "批量推进失败");
+    } finally {
+      setAdvancingAll(false);
+    }
+  };
   const replay = async (requestedDate: string) => {
     if (!selected || !requestedDate) return setError("请选择回放交易日");
     setBusy(true);
@@ -342,6 +363,8 @@ export function Paper() {
           onCreate={openCreate}
           onOpenDetail={(instance) => void chooseInstance(instance.id)}
           onAction={(instance, next) => void actionFor(instance, next)}
+          onAdvanceAll={() => void advanceAll()}
+          advancing={advancingAll}
         />
       ) : null}
 
