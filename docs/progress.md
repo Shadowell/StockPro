@@ -2476,3 +2476,11 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - Nginx 在共享 443 SNI 分流后使用独立本机端口 `127.0.0.1:8451` 终止 TLS，
   避免影响同机其他产品；证书覆盖主域名和 `www`，由 Certbot timer 自动续期。
 - 部署脚本新增 HTTPS 健康检查，只有域名下的后端健康接口成功才记录部署完成。
+
+### 自托管 Runner 构建依赖去外部化（2026-08-17）
+
+- GitHub Actions 连续两次在任务初始化阶段下载 `actions/setup-node` 时收到
+  codeload 429，尚未执行仓库构建或部署。
+- StockPro 专用 Runner 已固定提供 Node.js 22 / npm 10，满足项目 Node.js 18+
+  与 npm 9+ 合同；部署改为本机版本门禁，继续使用干净的 `npm ci` 和完整前端构建，
+  避免发布依赖第三方 Action 归档下载可用性。
