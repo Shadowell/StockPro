@@ -673,6 +673,17 @@ export const getHotConceptLeaders = async (params: { name: string; limit?: numbe
   return response.data;
 };
 
+export const syncHotConceptLeaders = async (params?: { name?: string; limit?: number }): Promise<{
+  synced: string[];
+  synced_count: number;
+  empty: string[];
+  failed: Record<string, string>;
+  total_concepts: number;
+}> => {
+  const response = await apiClient.post('/market/hot-concept/leaders/sync', null, { params });
+  return response.data;
+};
+
 export const runSentiment = async (params?: { date?: string; universe?: 'all' | 'hot' }): Promise<RunSentimentResponse> => {
   const response = await apiClient.post<RunSentimentResponse>('/analysis/run-sentiment', null, { params });
   return response.data;

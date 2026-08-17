@@ -1,5 +1,30 @@
 # Progress Log
 
+## Concept leaders: visible sync path + em-delayed fallback (2026-08-17)
+
+Problem: 板块龙头 panel always showed「该板块暂无龙头缓存」.
+`concept_leaders_cache` had 0 rows — page reads are cache-only by contract,
+and the only writer (`realtime_sync_service`, ENABLE_REALTIME_SYNC) is off by
+default. Also, this machine's proxy/network blocks the eastmoney realtime
+push2 cluster, so even manual syncs returned empty.
+
+1. `POST /market/hot-concept/leaders/sync` (market.py): explicit write path
+   syncing one concept (`?name=`) or the hot-concept top N (default 30);
+   response reports synced/empty/failed plus the **source used per concept**.
+   Page reads stay cache-only.
+2. Leader fetch fallback chain: akshare realtime push2 →
+   `_fetch_concept_leaders_em_delayed` (searchadapter name→BK-code +
+   push2delay clist, direct connection, delayed ~15min, labelled
+   `eastmoney-delayed`). Proxy-broken environments still get leaders.
+3. Frontend (Market.tsx 板块龙头 panel): empty state gains a
+   「同步龙头股」button (spinning state) that triggers the sync endpoint and
+   refetches; client.ts adds `syncHotConceptLeaders`.
+
+Verification: live chain via local `:4445` — sync 乳业 returned
+`{"synced":["乳业"],"sources":{"乳业":"eastmoney-delayed"}}`; read-back
+returns ranked leaders (金健米业 +10.05% …) with `data_status: fresh`;
+`npx tsc -b --noEmit` clean. Seeded top-10 hot concepts afterwards.
+
 ## Backend performance fixes: PG pool + event-loop unblocking (2026-08-17)
 
 Review-driven fixes, all verified against local `:4445` with real PG.

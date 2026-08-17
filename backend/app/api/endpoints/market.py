@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from fastapi import APIRouter, Query, Body, HTTPException
 from app.services.market_service import MarketService
@@ -7,6 +8,7 @@ from app.db import db_instance as db
 from typing import Any, Dict, List
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 research_service = MarketResearchService(db)
 _OVERVIEW_CACHE: Dict[str, Any] = {"at": 0.0, "payload": None}
 
@@ -26,6 +28,118 @@ def _get_hot_concept_leaders_cached(name: str, limit: int) -> List[Dict[str, Any
         }
         for row in cached
     ]
+
+
+def _fetch_concept_leaders_em_delayed(name: str, limit: int) -> List[Dict[str, Any]]:
+    """Fetch concept members from the delayed eastmoney quote cluster.
+
+    Fallback for ``_fetch_concept_leaders_from_api`` when the realtime push2
+    cluster is unreachable (blocked network/proxy). Data is delayed ~15min;
+    callers must label the source accordingly.
+    """
+    import requests
+
+    session = requests.Session()
+    session.trust_env = False
+    headers = {"User-Agent": "Mozilla/5.0"}
+    suggest = session.get(
+        "https://searchadapter.eastmoney.com/api/suggest/get",
+        params={"input": name, "type": "14"},
+        headers=headers,
+        timeout=8,
+    )
+    suggest.raise_for_status()
+    table = (suggest.json() or {}).get("QuotationCodeTable") or {}
+    board_code = None
+    for item in table.get("Data") or []:
+        if str(item.get("Classify") or "").upper() == "BK" and item.get("Code"):
+            board_code = str(item["Code"])
+            break
+    if not board_code:
+        return []
+    quote = session.get(
+        "https://push2delay.eastmoney.com/api/qt/clist/get",
+        params={
+            "pn": 1,
+            "pz": 100,
+            "po": 1,
+            "np": 1,
+            "fltt": 2,
+            "invt": 2,
+            "fid": "f3",
+            "fs": f"b:{board_code}",
+            "fields": "f2,f3,f6,f8,f12,f14",
+        },
+        headers=headers,
+        timeout=10,
+    )
+    quote.raise_for_status()
+    diff = ((quote.json() or {}).get("data") or {}).get("diff") or []
+    rows: List[Dict[str, Any]] = []
+    for item in diff:
+        code = str(item.get("f12") or "").strip()
+        stock_name = str(item.get("f14") or "").strip()
+        if not code or not stock_name:
+            continue
+        rows.append(
+            {
+                "code": code,
+                "name": stock_name,
+                "price": float(item.get("f2") or 0.0),
+                "change_percent": float(item.get("f3") or 0.0),
+                "amount": float(item.get("f6") or 0.0),
+                "turnover": float(item.get("f8") or 0.0),
+            }
+        )
+    return rows[: max(1, min(int(limit), 200))]
+
+
+def _sync_concept_leaders(name: str | None, limit: int) -> Dict[str, Any]:
+    """Explicit leader-cache sync: page reads stay cache-only, this is the write path."""
+    import time as _time
+
+    names: List[str] = []
+    if name:
+        names = [str(name).strip()]
+    else:
+        concepts = db.get_hot_concepts_realtime(limit=max(1, min(int(limit), 50))) or []
+        names = [str(item.get("name") or "").strip() for item in concepts]
+        names = [item for item in names if item]
+    synced: List[str] = []
+    empty: List[str] = []
+    failed: Dict[str, str] = {}
+    sources: Dict[str, str] = {}
+    for index, concept_name in enumerate(names):
+        if index:
+            _time.sleep(0.3)
+        try:
+            leaders = MarketService._fetch_concept_leaders_from_api(concept_name, 20)
+            source = "eastmoney-realtime"
+            if not leaders:
+                try:
+                    leaders = _fetch_concept_leaders_em_delayed(concept_name, 20)
+                    source = "eastmoney-delayed" if leaders else "unavailable"
+                except Exception as fallback_exc:
+                    logger.warning("Delayed leader fallback failed for %s: %s", concept_name, fallback_exc)
+                    source = "unavailable"
+            if leaders:
+                db.update_concept_leaders_cache(concept_name, leaders)
+                synced.append(concept_name)
+                sources[concept_name] = source
+            else:
+                empty.append(concept_name)
+                sources[concept_name] = source
+        except Exception as exc:
+            failed[concept_name] = str(exc)
+            sources[concept_name] = "unavailable"
+    return {
+        "synced": synced,
+        "synced_count": len(synced),
+        "empty": empty,
+        "failed": failed,
+        "sources": sources,
+        "total_concepts": len(names),
+    }
 
 
 @router.get("/research-context")
@@ -183,6 +297,17 @@ async def get_hot_concept_leaders(
 ) -> List[Dict[str, Any]]:
     """Return the stored concept-leader cache without provider side effects."""
     return await asyncio.to_thread(_get_hot_concept_leaders_cached, name, limit)
+
+
+@router.post("/hot-concept/leaders/sync")
+async def sync_hot_concept_leaders(
+    name: str | None = Query(None, description="概念名；缺省则同步热门概念榜前 N 名"),
+    limit: int = Query(30, ge=1, le=50),
+) -> Dict[str, Any]:
+    """手动同步概念龙头股缓存；页面读取仍保持 cache-only。"""
+    if limit > 50:
+        limit = 50
+    return await asyncio.to_thread(_sync_concept_leaders, name, limit)
 
 @router.get("/fundamentals/{symbol}")
 async def get_stock_fundamentals(symbol: str) -> Dict[str, Any]:

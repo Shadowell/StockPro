@@ -11,6 +11,7 @@ import {
   getStockFundamentals,
   getThsHot,
   searchStocks,
+  syncHotConceptLeaders,
 } from '../api/client';
 import type {
   ConceptIntradayKlineItem,
@@ -85,6 +86,7 @@ export function Market({ asOfDate }: MarketProps = {}) {
   const [concepts, setConcepts] = useState<HotConceptItem[]>([]);
   const [selectedConcept, setSelectedConcept] = useState('');
   const [leaders, setLeaders] = useState<ConceptLeaderStock[]>([]);
+  const [leadersSyncing, setLeadersSyncing] = useState(false);
   const [conceptIntraday, setConceptIntraday] = useState<ConceptIntradayKlineItem[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState('SH_600000');
   const [daily, setDaily] = useState<DailyChartData[]>([]);
@@ -179,6 +181,25 @@ export function Market({ asOfDate }: MarketProps = {}) {
       active = false;
     };
   }, [asOfDate, marketScope, selectedConcept]);
+
+  const handleSyncLeaders = useCallback(async () => {
+    if (leadersSyncing) return;
+    setLeadersSyncing(true);
+    try {
+      await syncHotConceptLeaders(selectedConcept ? { name: selectedConcept, limit: 20 } : { limit: 30 });
+      if (selectedConcept) {
+        const items = await getHotConceptLeaders({ name: selectedConcept, limit: 20, date: asOfDate });
+        setLeaders(items);
+        if (marketScope === 'theme' && items[0]?.code) {
+          setSelectedSymbol(items[0].code);
+        }
+      }
+    } catch {
+      // 同步失败保持空态，重试由用户触发
+    } finally {
+      setLeadersSyncing(false);
+    }
+  }, [asOfDate, leadersSyncing, marketScope, selectedConcept]);
 
   useEffect(() => {
     if (marketScope !== 'theme' || !selectedConcept) {
@@ -1029,7 +1050,20 @@ export function Market({ asOfDate }: MarketProps = {}) {
                 <div className="min-h-0 flex-1 overflow-y-auto">
                   {leaders.length === 0 ? (
                     <div className="grid h-40 place-items-center text-center text-xs text-gray-500">
-                      {selectedConcept ? '该板块暂无龙头缓存' : '先选择一个板块'}
+                      <div className="flex flex-col items-center gap-2">
+                        <span>{selectedConcept ? '该板块暂无龙头缓存' : '先选择一个板块'}</span>
+                        {selectedConcept ? (
+                          <button
+                            type="button"
+                            onClick={handleSyncLeaders}
+                            disabled={leadersSyncing}
+                            className="inline-flex h-7 items-center gap-1 rounded border border-blue-500/30 bg-blue-500/10 px-2 text-[11px] font-medium text-blue-200 transition-colors hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <RefreshCw className={clsx('h-3 w-3', leadersSyncing && 'animate-spin')} />
+                            {leadersSyncing ? '同步中…' : '同步龙头股'}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   ) : (
                     leaders.map((item, index) => (
