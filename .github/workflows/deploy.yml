@@ -136,11 +136,12 @@ jobs:
       - name: Build Frontend
         if: ${{ steps.deploy_gate.outputs.should_deploy == 'true' }}
         working-directory: frontend
+        timeout-minutes: 15
         env:
           VITE_API_URL: /api
         run: |
           node scripts/check-local-dependencies.mjs
-          npm ci --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund
           npm run build
 
       - name: Deploy to Server
