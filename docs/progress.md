@@ -17,6 +17,10 @@
   Backtest configuration now uses a 30-second SSH-tunnel cold-read envelope.
   A 9-second delayed configuration browser test failed before the change and
   passes after it.
+- Production currently has zero sealed dataset snapshots. The preview action
+  therefore renders a disabled `无封存快照` state with a clear prerequisite,
+  while data-bearing environments keep the executable preview. Real E2E adapts
+  to both truthful states instead of assuming production contains local fixtures.
 - TDD: five fold/service contracts and two browser contracts cover insufficient
   ranges, unsealed snapshots, no-overlap semantics, rendering and cold reads.
 - Verification: Mock browser suite 56/56; real API and browser preview passed;
@@ -24,6 +28,10 @@
   existing Fast Refresh warning only, 397 backend tests and Python compilation.
   Paper continuity remained 15 instances / 18 trades / 7 positions / 128
   equity snapshots / 310 events.
+- Empty-state follow-up verification raised the Mock suite to 57/57; the full
+  repository check remains green with 397 backend tests. Production's zero-
+  snapshot state is now directly covered, and local Paper continuity is
+  unchanged.
 
 ## Strategy fusion: versioned AND/OR stock screening (2026-08-20)
 

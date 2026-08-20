@@ -966,6 +966,23 @@ test('backtest tolerates the SSH-tunnel cold configuration window', async ({ pag
   await expect(page.getByText('回测配置读取超时，已停止等待。请稍后重试。')).toHaveCount(0);
 });
 
+test('backtest disables walk-forward honestly when no sealed snapshot exists', async ({ page }) => {
+  await page.route('**/api/backtest/configuration', (route) => route.fulfill(json({
+    strategy_versions: [],
+    dataset_snapshots: [],
+    universe_snapshots: [],
+    factor_snapshots: [],
+    pool_snapshots: [],
+    cost_models: [],
+    protocols: [],
+  })));
+  await loginAsAdmin(page);
+  await page.goto('/backtest');
+
+  await expect(page.getByRole('button', { name: '无封存快照' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Walk-forward 预览' })).toHaveCount(0);
+});
+
 test('configured market colors apply to gains, losses and neutral values', async ({ page }) => {
   await loginAsAdmin(page);
   await page.addInitScript(() => {

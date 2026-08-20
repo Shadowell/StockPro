@@ -959,6 +959,7 @@ export function Backtest() {
   const selectedCostModel = config?.cost_models.find((item) => item.id === costModelId);
   const selectedProtocol = config?.protocols.find((item) => item.id === protocolId);
   const selectedPool = config?.pool_snapshots.find((item) => item.id === poolSnapshotId);
+  const hasWalkForwardSnapshot = Boolean(config?.dataset_snapshots.length && datasetSnapshotId);
   const openCreate = () => {
     if (!config) {
       setError('回测配置尚未就绪，请稍后重试');
@@ -1015,8 +1016,8 @@ export function Backtest() {
         subtitle="绑定策略版本、数据快照与股票池后异步回测；任务队列、创建向导、结果详情与对比。"
         actions={
           <>
-            <button type="button" onClick={openWalkForwardPreview} disabled={!config} className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 text-sm font-semibold text-purple-200 disabled:cursor-not-allowed disabled:opacity-50">
-              <CalendarRange className="h-4 w-4" />Walk-forward 预览
+            <button type="button" onClick={openWalkForwardPreview} disabled={!hasWalkForwardSnapshot} title={hasWalkForwardSnapshot ? '从封存快照生成滚动训练/OOS窗口' : '需要至少一个已封存数据快照'} className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 text-sm font-semibold text-purple-200 disabled:cursor-not-allowed disabled:opacity-50">
+              <CalendarRange className="h-4 w-4" />{hasWalkForwardSnapshot ? 'Walk-forward 预览' : '无封存快照'}
             </button>
             <button type="button" onClick={openCreate} disabled={!config} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
               <Plus className="h-4 w-4" />{config ? '创建回测实例' : '配置读取中…'}

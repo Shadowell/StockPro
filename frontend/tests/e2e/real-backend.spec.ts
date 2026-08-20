@@ -80,8 +80,17 @@ test('真实股票池筛选器提供版本化 AND OR 条件配置', async ({ pag
 
 test('真实回测页从封存快照预览无重叠 Walk-forward 折', async ({ page }) => {
   const token = await login(page.request);
+  const configResponse = await page.request.get('/api/backtest/configuration', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(configResponse.ok()).toBeTruthy();
+  const configuration = (await configResponse.json()) as { dataset_snapshots?: unknown[] };
   await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
   await page.goto('/backtest', { waitUntil: 'domcontentloaded' });
+  if ((configuration.dataset_snapshots ?? []).length === 0) {
+    await expect(page.getByRole('button', { name: '无封存快照' })).toBeDisabled({ timeout: 30_000 });
+    return;
+  }
   await page.getByRole('button', { name: 'Walk-forward 预览' }).click();
   await page.getByRole('button', { name: '生成折叠计划' }).click();
 
