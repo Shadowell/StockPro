@@ -23,6 +23,14 @@
 - External boundary remains explicit: no real `QWEN_API_KEY` is configured, so
   the live model call remains unavailable by design; deterministic and failure
   paths are covered, and no credential was borrowed from another project.
+- The first production browser smoke then exposed one expected-but-noisy 404:
+  an existing legacy strategy without an immutable version called
+  `/strategy/{id}/versions/latest`. The optional lookup now returns `200 null`
+  for an existing unversioned strategy while preserving 404 for a nonexistent
+  strategy. A fail-first backend contract and the real Strategy browser test
+  cover the behavior; the read remains provider-free and does not create a
+  version. Paper continuity remained 15 instances / 18 trades / 7 positions /
+  128 equity snapshots / 310 events after the subsequent clean restart.
 
 ## Form decision: restore AI R&D to the operator core chain (2026-08-18)
 
