@@ -65,6 +65,19 @@ test('真实一级导航突出策略回测模拟并保留补充入口', async ({
   await expect(page.getByRole('heading', { name: '不可变股票池' })).toBeVisible();
 });
 
+test('真实股票池筛选器提供版本化 AND OR 条件配置', async ({ page }) => {
+  const token = await login(page.request);
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  await page.goto('/pools?tab=screener', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: '基础条件', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: '多条件筛选' })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: '添加筛选条件' }).click();
+  await expect(page.getByRole('combobox', { name: '条件字段 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '全部满足 AND' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '任一满足 OR' })).toBeVisible();
+});
+
 test('登录后市场和数据库接口可访问', async ({ request }) => {
   const token = await login(request);
   const headers = { Authorization: `Bearer ${token}` };
