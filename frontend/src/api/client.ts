@@ -975,8 +975,8 @@ export const updateStrategy = async (strategyId: number, data: SaveStrategyReque
   return response.data;
 };
 
-export const getLatestStrategyVersion = async (strategyId: number): Promise<StrategyVersion> => {
-  const response = await apiClient.get<StrategyVersion>(`/strategy/${strategyId}/versions/latest`);
+export const getLatestStrategyVersion = async (strategyId: number): Promise<StrategyVersion | null> => {
+  const response = await apiClient.get<StrategyVersion | null>(`/strategy/${strategyId}/versions/latest`);
   return response.data;
 };
 

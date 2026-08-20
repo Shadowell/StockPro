@@ -68,6 +68,15 @@ class ProviderFreeResearchReadTests(unittest.TestCase):
         self.assertNotEqual(payload["updated_at"], payload["response_generated_at"])
 
 
+class OptionalStrategyVersionReadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_existing_legacy_strategy_without_version_returns_empty_optional_result(self):
+        with (
+            patch("app.api.endpoints.strategy_runtime.service.latest_for_legacy", return_value=None),
+            patch("app.api.endpoints.strategy_runtime.db_instance.get_strategy_by_id", return_value={"id": 1}),
+        ):
+            self.assertIsNone(await get_latest_strategy_version(1))
+
+
 class ProviderFreeMarketEndpointTests(unittest.IsolatedAsyncioTestCase):
     async def test_fundamentals_get_forces_cache_only_mode(self):
         with patch.object(

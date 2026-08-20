@@ -270,6 +270,11 @@ export function Strategy() {
     setReplayResult(null);
     getLatestStrategyVersion(selected.id)
       .then((version) => {
+        if (!version) {
+          setActiveVersion(null);
+          setValidation(null);
+          return;
+        }
         setActiveVersion(version);
         setValidation(version.validation_report);
         if (version.script_content) setScript(version.script_content);

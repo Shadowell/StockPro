@@ -65,15 +65,12 @@ async def create_strategy_version(strategy_id: str, request: StrategyVersionCrea
 
 
 @router.get("/{strategy_id}/versions/latest")
-async def get_latest_strategy_version(strategy_id: int) -> Dict[str, Any]:
+async def get_latest_strategy_version(strategy_id: int) -> Optional[Dict[str, Any]]:
     version = service.latest_for_legacy(strategy_id)
     if not version:
         if not db_instance.get_strategy_by_id(strategy_id):
             raise HTTPException(status_code=404, detail="策略不存在")
-        raise HTTPException(
-            status_code=404,
-            detail="策略尚未保存为版本；只读请求不会自动创建版本。",
-        )
+        return None
     return version
 
 
