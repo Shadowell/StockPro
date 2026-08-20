@@ -11,6 +11,7 @@ import { LimitBoardPanel } from '../components/LimitBoardPanel';
 import type { MarketOverview, MarketPulse, ThsHotItem } from '../types';
 import { evaluateFreshness, formatFreshnessTime, latestTimestamp } from '../utils/dataFreshness';
 import { marketMetricColor, marketToneClass, type MetricTone } from '../utils/marketColors';
+import { OnboardingReadinessPanel } from '../components/OnboardingReadinessPanel';
 
 type ShortLineIndex = {
   code: string;
@@ -538,6 +539,7 @@ export function Dashboard() {
           </div>
         }
       />
+      <OnboardingReadinessPanel />
       <section className="min-h-[720px]">
         <RealtimeMarketModule
           overview={overview}

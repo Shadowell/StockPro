@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import clsx from "clsx";
 import {
   Eye,
   FastForward,
   FlaskConical,
+  ClipboardList,
   PauseCircle,
   PlayCircle,
   Plus,
@@ -256,6 +258,7 @@ export function PaperInstanceDashboard({
         subtitle="已晋级策略版本的模拟实例监控；信号、订单、成交与权益全部来自 PostgreSQL 持久化记录，不触碰真实资金。"
         actions={
           <div className="flex items-center gap-2">
+            <Link to="/review" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-crypto-border bg-crypto-card px-4 text-sm font-semibold text-blue-300 hover:text-blue-200"><ClipboardList className="h-4 w-4" />盘后复盘</Link>
             {onAdvanceAll ? (
               <button
                 type="button"

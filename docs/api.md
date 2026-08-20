@@ -91,6 +91,7 @@ Token/访客码明文只应在必要时展示一次，禁止写入仓库、日�
 | 接口域 | 代表路径 | 说明 |
 | --- | --- | --- |
 | 工作流发现 | `/api/workflow/capabilities` | 客户端先确认阶段、能力和真实交易边界 |
+| 首次就绪 | `/api/workflow/onboarding-readiness` | 只读检查安全、存储、Provider、封存数据与后续主线状态 |
 | 市场研究 | `/api/market/*` | 概览、情绪、涨停生态、板块、事件、日历和 PostgreSQL 自选清单 |
 | 股票与图表 | `/api/stocks/*`、`/api/charts/*` | 搜索、筛选、日线和分时 |
 | 因子 | `/api/factors/*`、`/api/factor-*` | 定义、版本、计算、快照、指标与相关性 |

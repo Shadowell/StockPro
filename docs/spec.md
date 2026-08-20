@@ -48,6 +48,8 @@ StockPro 不以荐股、自动实盘或营销式 AI 评分为产品中心。系�
 
 菜单隐藏（路由保留）：AI 研发 `/ai-lab`、股票池 `/pools`、因子 `/factors`、监控 `/monitor`、复盘 `/review`、实盘 `/live`、数据处理 `/data/processing`。AI 研发能力继续在策略页标签中可用。
 
+首页首次就绪检查只读汇总管理员安全配置、PostgreSQL 迁移、TuShare 主源、封存研究快照以及后续策略/Paper/复盘状态；每项只提供 Owner 页面链接，不自动修复。首页和模拟页均提供统一盘后复盘入口。
+
 完整路由：
 
 ```text
