@@ -8,12 +8,14 @@ from app.db import db_instance
 from app.services.backtest_workbench_service import BacktestWorkbenchService
 from app.services.backtest_job_service import BacktestJobError, BacktestJobService
 from app.services.guest_access_service import GuestAccessError, GuestAccessService
+from app.services.walk_forward_plan_service import WalkForwardPlanService
 
 
 router = APIRouter()
 service = BacktestWorkbenchService(db_instance)
 guest_access_service = GuestAccessService(db_instance)
 job_service = BacktestJobService(db_instance)
+walk_forward_plan_service = WalkForwardPlanService(db_instance)
 
 
 class BacktestRunRequest(BaseModel):
@@ -96,6 +98,15 @@ class BacktestJobRequest(BacktestRunRequest):
     run_mode: str = Field(default="full", pattern="^(quick|full)$")
 
 
+class WalkForwardPreviewRequest(BaseModel):
+    dataset_snapshot_id: int
+    start_date: str
+    end_date: str
+    train_sessions: int = Field(default=252, ge=1, le=2000)
+    test_sessions: int = Field(default=63, ge=1, le=500)
+    step_sessions: int = Field(default=63, ge=1, le=500)
+
+
 def _http_error(exc: ValueError, status_code: int = 400) -> HTTPException:
     return HTTPException(status_code=status_code, detail=str(exc))
 
@@ -108,6 +119,14 @@ async def list_cost_models() -> Dict[str, Any]:
 @router.get("/configuration")
 async def get_configuration() -> Dict[str, Any]:
     return await run_in_threadpool(service.configuration)
+
+
+@router.post("/walk-forward/preview")
+async def preview_walk_forward(request: WalkForwardPreviewRequest) -> Dict[str, Any]:
+    try:
+        return await run_in_threadpool(walk_forward_plan_service.preview, request.model_dump())
+    except ValueError as exc:
+        raise _http_error(exc) from exc
 
 
 @router.post("/jobs", status_code=status.HTTP_202_ACCEPTED)

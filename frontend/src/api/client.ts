@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePreflightResult, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
+import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePreflightResult, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, WalkForwardPreview, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -1133,13 +1133,28 @@ export const listBacktestResults = async (limit = 20): Promise<{ items: Strategy
   return response.data;
 };
 
+export const BACKTEST_CONFIGURATION_READ_TIMEOUT_MS = 30_000;
+
 export const getBacktestConfiguration = async (): Promise<BacktestConfiguration> => {
   try {
-    return (await apiClient.get<BacktestConfiguration>('/backtest/configuration', pageRead)).data;
+    return (await apiClient.get<BacktestConfiguration>('/backtest/configuration', {
+      timeout: BACKTEST_CONFIGURATION_READ_TIMEOUT_MS,
+      skipRetry: true,
+    })).data;
   } catch (error) {
     return rejectPageTimeout('回测配置', error);
   }
 };
+
+export const previewWalkForward = async (request: {
+  dataset_snapshot_id: number;
+  start_date: string;
+  end_date: string;
+  train_sessions: number;
+  test_sessions: number;
+  step_sessions: number;
+}): Promise<WalkForwardPreview> =>
+  (await apiClient.post<WalkForwardPreview>('/backtest/walk-forward/preview', request, { timeout: 120_000 })).data;
 
 export const MARKET_RESEARCH_CONTEXT_TIMEOUT_MS = 20_000;
 
