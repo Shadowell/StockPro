@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Activity, AlertCircle, BarChart3, BookOpen, CalendarDays, CheckCircle2, Code2, FlaskConical, Layers, Play, Plus, RefreshCw, Save, Search, ShieldCheck, Sparkles, TrendingUp, Zap, X } from 'lucide-react';
+import { Activity, AlertCircle, BarChart3, BookOpen, CalendarDays, CheckCircle2, Code2, Filter, FlaskConical, Layers, Play, Plus, RefreshCw, Save, Search, ShieldCheck, Sparkles, TrendingUp, Zap, X } from 'lucide-react';
 import clsx from 'clsx';
 import { autoDevelopStrategy, getAICapabilities, getFactorSnapshots, getLatestStrategyVersion, getStrategies, quickRunStrategyVersion, saveStrategy, updateStrategy } from '../api/client';
 import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
@@ -19,9 +19,10 @@ import type { AICapabilities, Strategy as StrategyType, StrategyReplayResult, St
 import { MULTI_FACTOR_RISK_BUDGET_CODE } from '../lib/strategyTemplates';
 import { PIPELINE_STRATEGY_NAME } from '../lib/pipeline';
 import { WorkspacePipelineNote } from '../components/WorkspacePipelineNote';
+import { StrategyResearchInputs } from '../components/StrategyResearchInputs';
 import { useResearchDesk } from '../components/ResearchDeskContext';
 
-type ListTab = 'my' | 'plaza' | 'audit' | 'ai';
+type ListTab = 'my' | 'inputs' | 'plaza' | 'audit' | 'ai';
 type StatusFilter = 'all' | 'running' | 'not_started';
 type AssetFilter = 'all' | 'ashare' | 'strategy_v1';
 
@@ -476,6 +477,7 @@ export function Strategy() {
             onChange={setListTab}
             options={[
               { value: 'my', label: '我的策略', icon: Layers, tone: 'blue', count: businessStrategies.length },
+              { value: 'inputs', label: '选股与输入', icon: Filter, tone: 'blue' },
               { value: 'plaza', label: '策略广场', icon: BookOpen, tone: 'purple', count: plazaTemplates.length + referenceStrategies.length },
               { value: 'audit', label: '审计证据', icon: ShieldCheck, tone: 'amber', count: auditStrategies.length },
               { value: 'ai', label: 'AI 研发', icon: Zap, tone: 'purple' },
@@ -726,6 +728,8 @@ export function Strategy() {
           })}
         </div>
       )}
+
+      {listTab === 'inputs' && <StrategyResearchInputs />}
 
       {listTab === 'audit' && listState === 'ready' && (
         <section className="space-y-4" data-testid="strategy-audit-scope">

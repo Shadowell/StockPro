@@ -59,6 +59,10 @@ test('真实一级导航突出策略回测模拟并保留补充入口', async ({
   ]);
   await expect(page.getByRole('tab', { name: 'AI 研发' })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('navigation', { name: '主菜单' }).getByRole('link', { name: 'AI研发' })).toHaveCount(0);
+  await page.getByRole('tab', { name: '选股与输入' }).click();
+  await expect(page.getByTestId('strategy-research-inputs')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: '基础条件选股' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '不可变股票池' })).toBeVisible();
 });
 
 test('登录后市场和数据库接口可访问', async ({ request }) => {

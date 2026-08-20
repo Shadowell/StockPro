@@ -1401,6 +1401,28 @@ test('strategy catalogue labels the user-strategy count separately from referenc
   await expect(page.getByTestId('strategy-card')).toHaveCount(1);
 });
 
+test('strategy owns stock screening and sealed research inputs without eager loading them', async ({ page }) => {
+  const inputRequests: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (['/api/pools', '/api/pool-snapshots', '/api/factors/research/library'].includes(path)) {
+      inputRequests.push(path);
+    }
+  });
+  await loginAsAdmin(page);
+  await page.goto('/strategy');
+
+  expect(inputRequests).toEqual([]);
+  await page.getByRole('tab', { name: '选股与输入' }).click();
+  await expect(page.getByTestId('strategy-research-inputs')).toBeVisible();
+  for (const title of ['基础条件选股', '因子选股', '板块 / 事件选股', '不可变股票池', '因子研究', '快照与回测']) {
+    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole('link', { name: /进入基础筛选/ })).toHaveAttribute('href', '/pools?tab=screener');
+  await expect(page.getByRole('link', { name: /查看因子研究/ })).toHaveAttribute('href', '/factors');
+  await expect.poll(() => new Set(inputRequests).size).toBe(3);
+});
+
 test('strategy catalogue tolerates the SSH-tunnel cold read window', async ({ page }) => {
   await page.route('**/api/strategy/list*', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 9_000));
