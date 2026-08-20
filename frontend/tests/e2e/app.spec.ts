@@ -687,22 +687,21 @@ test('sidebar exposes the operator-trunk workspaces in groups', async ({ page })
   await page.goto('/');
 
   const sidebar = page.getByRole('complementary');
-  for (const group of ['研究', '研发', '验证', '系统']) {
+  for (const group of ['总览', '主线', '补充']) {
     await expect(sidebar.getByRole('group', { name: group })).toBeVisible();
   }
   const links = sidebar.locator('nav a');
-  await expect(links).toHaveCount(8);
+  await expect(links).toHaveCount(7);
   await expect(links).toHaveText([
     /首页/,
-    /行情/,
     /策略/,
     /回测/,
-    /AI研发/,
     /模拟/,
+    /行情/,
     /盯盘/,
     /数据/,
   ]);
-  for (const hidden of ['股票池', '因子', '监控', '实盘', '复盘']) {
+  for (const hidden of ['股票池', '因子', '监控', '实盘', '复盘', 'AI研发']) {
     await expect(sidebar.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
   }
 });
@@ -1442,10 +1441,9 @@ test('strategy lifecycle uses one BitPro-style first-level menu and does not imp
     for (const label of ['策略', '回测', '模拟', '盯盘']) {
       await expect(menu.getByRole('link', { name: label, exact: true })).toBeVisible();
     }
-    for (const hidden of ['监控', '复盘', '因子', '股票池']) {
+    for (const hidden of ['监控', '复盘', '因子', '股票池', 'AI研发']) {
       await expect(menu.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
     }
-    await expect(menu.getByRole('link', { name: 'AI研发', exact: true })).toBeVisible();
   }
 
   await expect(page.getByRole('link', { name: '模拟', exact: true })).toBeVisible();
@@ -1612,6 +1610,55 @@ test('daily review exposes the market snapshot blocks and a sealed audit timelin
   expect(assembleRequests).toHaveLength(0);
   await page.getByRole('button', { name: '生成复盘' }).click();
   await expect.poll(() => assembleRequests.length).toBe(1);
+});
+
+test('daily review loads core evidence before optional market blocks', async ({ page }) => {
+  let coreReviewReleased = false;
+  const earlyMarketRequests: string[] = [];
+  await page.route('**/api/review/2025-01-02', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    coreReviewReleased = true;
+    await route.fallback();
+  });
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (
+      !coreReviewReleased
+      && [
+        '/api/market/overview',
+        '/api/market/short-line-indices',
+        '/api/market/limit-board',
+        '/api/market/lianban-ladder',
+        '/api/market/sector-fund-flow',
+        '/api/market/ths-hot',
+      ].includes(path)
+    ) {
+      earlyMarketRequests.push(path);
+    }
+  });
+
+  await loginAsAdmin(page);
+  await page.goto('/review?date=2025-01-02');
+  await expect(page.getByText('复盘已封存，不可修改')).toBeVisible();
+  expect(earlyMarketRequests).toEqual([]);
+});
+
+test('daily review honors the trade date selected in the URL on first load', async ({ page }) => {
+  const requestedReviewDates: string[] = [];
+  await page.route('**/api/review/dates', (route) => route.fulfill(json({
+    items: ['2026-08-14', '2025-01-02'],
+    total: 2,
+  })));
+  page.on('request', (request) => {
+    const match = new URL(request.url()).pathname.match(/\/api\/review\/(\d{4}-\d{2}-\d{2})$/);
+    if (match) requestedReviewDates.push(match[1]);
+  });
+
+  await loginAsAdmin(page);
+  await page.goto('/review?date=2025-01-02');
+  await expect(page.getByText('复盘已封存，不可修改')).toBeVisible();
+  expect(requestedReviewDates).toContain('2025-01-02');
+  expect(requestedReviewDates).not.toContain('2026-08-14');
 });
 
 test('daily review keeps metrics unavailable when evidence assembly fails', async ({ page }) => {

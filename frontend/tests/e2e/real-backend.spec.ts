@@ -41,6 +41,26 @@ test('业务接口未登录返回 401', async ({ request }) => {
   expect(resp.status()).toBe(401);
 });
 
+test('真实一级导航突出策略回测模拟并保留补充入口', async ({ page }) => {
+  const token = await login(page.request);
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  await page.goto('/strategy', { waitUntil: 'domcontentloaded' });
+
+  const firstLevelLinks = page.getByRole('complementary').locator('nav a');
+  await expect(firstLevelLinks).toHaveCount(7);
+  await expect(firstLevelLinks).toHaveText([
+    /首页/,
+    /策略/,
+    /回测/,
+    /模拟/,
+    /行情/,
+    /盯盘/,
+    /数据/,
+  ]);
+  await expect(page.getByRole('tab', { name: 'AI 研发' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('navigation', { name: '主菜单' }).getByRole('link', { name: 'AI研发' })).toHaveCount(0);
+});
+
 test('登录后市场和数据库接口可访问', async ({ request }) => {
   const token = await login(request);
   const headers = { Authorization: `Bearer ${token}` };
@@ -595,17 +615,27 @@ test('真实交易日从市场研究贯穿到封存复盘且所有引用可解�
   await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
-  await page.goto('/review?date=2025-01-02&tab=logs', { waitUntil: 'networkidle' });
-  await expect(page.getByTestId('daily-review-workbench')).toBeVisible();
-  for (const label of ['市场复盘', '股票池复盘', '策略复盘', '交易复盘', '日志']) {
-    await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+  await page.goto('/review?date=2025-01-02&tab=logs', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('daily-review-workbench')).toBeVisible({ timeout: 30_000 });
+  for (const title of ['指数快照', '市场宽度', '情绪指标', '涨停生态', '人气榜', '板块资金']) {
+    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
   }
-  await expect(page.getByRole('heading', { name: '交易日证据时间线' })).toBeVisible();
-  await expect(page.getByText('复盘已封存，不可修改')).toBeVisible();
-  await expect(page.getByText(String(review.source_manifest_hash))).toBeVisible();
+  await expect(page.getByRole('heading', { name: '交易日时间线' })).toBeVisible();
+  await expect(page.getByText('复盘已封存，不可修改')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(String(review.source_manifest_hash))).toHaveCount(0);
+  await expect(page.getByText('查看关联记录 →').first()).toBeVisible();
 
   const firstLevelLinks = page.getByRole('complementary').locator('nav a');
-  await expect(firstLevelLinks).toHaveCount(12);
+  await expect(firstLevelLinks).toHaveCount(7);
+  await expect(firstLevelLinks).toHaveText([
+    /首页/,
+    /策略/,
+    /回测/,
+    /模拟/,
+    /行情/,
+    /盯盘/,
+    /数据/,
+  ]);
   expect(pageErrors, pageErrors.join('\n')).toEqual([]);
 });
 

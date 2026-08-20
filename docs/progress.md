@@ -1,5 +1,36 @@
 # Progress Log
 
+## Operator capability fusion foundation started (2026-08-20)
+
+- SP-014 closed after production SHA `029b2083111f03a5c14c987c821ed002b5a858fa`,
+  Actions run `32362320989`, active backend/Nginx, 32/32 migrations and a clean
+  production Strategy browser smoke.
+- Activated `docs/contracts/active-operator-capability-fusion.md`: the only
+  product mainline is Strategy → Backtest → Paper; Dashboard is the overview,
+  while Market, Watch and Data are supporting workspaces. Existing experimental
+  and safety routes remain registered while their capabilities are assigned to
+  one Owner page each.
+- Foundation slice starts with navigation and compatibility only. It does not
+  change strategy formats, backtest execution, Paper state, providers, database
+  schema or production data.
+- The first Foundation increment is implemented: the seven visible links are
+  grouped and ordered as 总览（首页）→ 主线（策略/回测/模拟）→ 补充（行情/盯盘/数据）.
+  AI R&D remains available inside the Strategy catalogue; `/ai-lab` and all
+  other hidden routes remain registered for compatibility. Fail-first browser
+  assertions captured the previous four-group/eight-link layout before the
+  navigation change.
+- Real acceptance of the hidden Review route exposed two pre-existing cold-load
+  defects and they were fixed in the same Foundation slice: optional market
+  blocks now wait for the core review evidence, and the initial `?date=` value
+  is honored instead of being replaced by the newest available date. Both
+  behaviors have fail-first request-order/URL regression tests. The real sealed
+  2025-01-02 review, resolved object links and seven-link navigation then passed.
+- Verification: Mock browser suite 52/52; focused real navigation and sealed
+  review tests passed; `./scripts/check.sh` passed production build, bundle
+  budget, lint with the existing Fast Refresh warning only, 389 backend tests
+  and Python compilation. Paper continuity remained 15 instances / 18 trades /
+  7 positions / 128 equity snapshots / 310 events after clean restarts.
+
 ## SP-014 Gate 0 final local acceptance (2026-08-20)
 
 - Restored AI R&D to the visible operator chain and restored the complete

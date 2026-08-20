@@ -43,44 +43,39 @@ const HIDDEN_NAV_IDS = new Set<string>([
   'factors',
   'monitor',
   'review',
+  'ai-lab',
   'live',
 ]);
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    id: 'discover',
-    label: '研究',
+    id: 'overview',
+    label: '总览',
     items: [
       { id: 'dashboard', to: '/', label: '首页', Icon: LayoutDashboard, end: true },
-      { id: 'market', to: '/market', label: '行情', Icon: TrendingUp },
-      { id: 'pools', to: '/pools', label: '股票池', Icon: Layers3 },
     ],
   },
   {
-    id: 'build',
-    label: '研发',
+    id: 'mainline',
+    label: '主线',
     items: [
-      { id: 'factors', to: '/factors', label: '因子', Icon: TestTube2 },
       { id: 'strategy', to: '/strategy', label: '策略', Icon: Code2 },
       { id: 'backtest', to: '/backtest', label: '回测', Icon: FlaskConical },
-      { id: 'ai-lab', to: '/ai-lab', label: 'AI研发', Icon: Bot },
+      { id: 'paper', to: '/paper', label: '模拟', Icon: Activity },
     ],
   },
   {
-    id: 'verify',
-    label: '验证',
+    id: 'support',
+    label: '补充',
     items: [
-      { id: 'paper', to: '/paper', label: '模拟', Icon: Activity },
+      { id: 'market', to: '/market', label: '行情', Icon: TrendingUp },
+      { id: 'pools', to: '/pools', label: '股票池', Icon: Layers3 },
+      { id: 'factors', to: '/factors', label: '因子', Icon: TestTube2 },
+      { id: 'ai-lab', to: '/ai-lab', label: 'AI研发', Icon: Bot },
       { id: 'watch', to: '/watch', label: '盯盘', Icon: ScanLine },
       { id: 'monitor', to: '/monitor', label: '监控', Icon: Eye },
       { id: 'live', to: '/live', label: '实盘', Icon: ShieldCheck },
       { id: 'review', to: '/review', label: '复盘', Icon: ClipboardList },
-    ],
-  },
-  {
-    id: 'system',
-    label: '系统',
-    items: [
       { id: 'data', to: '/data', label: '数据', Icon: Database },
     ],
   },
