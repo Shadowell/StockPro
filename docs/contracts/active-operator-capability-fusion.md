@@ -78,4 +78,4 @@
 
 ## 7. 当前切片
 
-Backtest：已交付持久化异步 Walk-forward：基于封存交易日生成无重叠折，每折运行受限参数矩阵、选择目标最优参数、执行紧邻OOS完整诊断并聚合复利收益/一致性/退化证据；所有子运行禁止产生Paper晋级检查。下一增量组织因子验证与参数实验入口。ETF范围依赖尚未具备的ETF快照、Universe、成本与Paper语义，转入Data基础阶段。
+Paper/Watch：已交付策略信号、指标、价格、异动四类版本化观察规则；复用现有 `alert_rules`、`alerts` 与 `notification_deliveries`，支持管理员创建新规则版本、只读预览和显式评估。显式评估只生成站内告警，不创建订单、不执行策略、不修改 Paper 账本。下一增量进入 Dashboard/Market 高密度信息组织；ETF范围依赖尚未具备的ETF快照、Universe、成本与Paper语义，保留到Data基础阶段。

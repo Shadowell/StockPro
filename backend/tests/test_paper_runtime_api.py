@@ -18,14 +18,17 @@ class PaperRuntimeApiContractTests(unittest.TestCase):
         self.client = TestClient(app)
         self.paper_patch = patch.object(paper, "runtime_service")
         self.watch_patch = patch.object(watch, "service")
+        self.watch_rule_patch = patch.object(watch, "rule_service")
         self.monitor_patch = patch.object(monitor_runtime, "service")
         watch.reset_watch_cache()
         paper.reset_paper_list_cache()
         self.paper = self.paper_patch.start()
         self.watch = self.watch_patch.start()
+        self.watch_rule = self.watch_rule_patch.start()
         self.monitor = self.monitor_patch.start()
         self.addCleanup(self.paper_patch.stop)
         self.addCleanup(self.watch_patch.stop)
+        self.addCleanup(self.watch_rule_patch.stop)
         self.addCleanup(self.monitor_patch.stop)
         self.addCleanup(paper.reset_paper_list_cache)
 
@@ -115,6 +118,34 @@ class PaperRuntimeApiContractTests(unittest.TestCase):
     def test_alert_acknowledgement_endpoint(self):
         self.watch.acknowledge_alert.return_value = {"id": "alert-1", "status": "acknowledged"}
         self.assertEqual(self.client.post("/watch/alerts/alert-1/acknowledge").json()["status"], "acknowledged")
+
+    def test_watch_rule_crud_preview_and_explicit_evaluation_contract(self):
+        payload = {
+            "name": "贵州茅台价格观察",
+            "rule_type": "price",
+            "severity": "warning",
+            "config": {
+                "symbols": ["600519.SH"],
+                "logic": "all",
+                "conditions": [{"field": "price", "operator": "gte", "value": 1500}],
+            },
+        }
+        self.watch_rule.list_watch_rules.return_value = [{"id": "rule-1", **payload}]
+        self.watch_rule.create_watch_rule.return_value = {"id": "rule-1", "rule_version": 1, **payload}
+        self.watch_rule.preview_watch_rule.return_value = {"matched": 1, "items": [{"symbol": "600519.SH"}]}
+        self.watch_rule.evaluate_watch_rule.return_value = {"matched": 1, "alerts_created": 1, "orders_created": 0}
+
+        self.assertEqual(self.client.get("/watch/rules").json()["total"], 1)
+        self.assertEqual(self.client.post("/watch/rules", json=payload).json()["rule_version"], 1)
+        self.assertEqual(self.client.post("/watch/rules/rule-1/preview").json()["matched"], 1)
+        evaluated = self.client.post("/watch/rules/rule-1/evaluate").json()
+        self.assertEqual(evaluated["alerts_created"], 1)
+        self.assertEqual(evaluated["orders_created"], 0)
+
+    def test_watch_rule_validation_error_is_400(self):
+        self.watch_rule.create_watch_rule.side_effect = ValueError("不支持的盯盘字段")
+        response = self.client.post("/watch/rules", json={"name": "非法规则"})
+        self.assertEqual(response.status_code, 400)
 
     def test_health_endpoint(self):
         self.monitor.health.return_value = {"status": "healthy", "services": []}

@@ -1,5 +1,30 @@
 # Progress Log
 
+## Paper/Watch fusion: versioned alert-only watch rules (2026-08-20)
+
+- Extended the existing `alert_rules`, `alerts` and `notification_deliveries`
+  chain instead of adding a parallel signal engine. The additive migration
+  stores a rule name, type, data purpose and last evaluation time while keeping
+  all existing system rules and alert history intact.
+- Added strategy-signal, indicator, price and abnormal-scan rules with strict
+  field/operator allowlists, optional symbol scope and ALL/ANY evaluation.
+  Updates create a new immutable version. Preview performs no writes; explicit
+  evaluation can only append an alert and in-app delivery, and always reports
+  `orders_created=0`.
+- Watch now owns a `规则` workspace with an operator form, rule cards, separate
+  preview/evaluate actions and a confirmation dialog that states the Paper and
+  order boundary. Guests remain read-only through the existing client write
+  guard. Cold Watch reads use a 30-second SSH-tunnel envelope rather than
+  converting an 8-second connection wait into an empty rule list.
+- Real acceptance created one acceptance-purpose price rule for `SH_688553`.
+  Preview scanned 5,545 rows, matched one and wrote nothing; explicit evaluation
+  created one alert and one in-app delivery with zero orders. Paper continuity
+  remained 15 instances / 24 orders / 18 trades / 7 positions / 128 equity
+  snapshots / 310 events before and after evaluation.
+- TDD/API and browser evidence covers allowlists, ALL/ANY matching, data-purpose
+  validation, CRUD/preview/evaluate contracts, Mock operator flow and a real
+  PostgreSQL read-only preview. Local storage is healthy at 34/34 migrations.
+
 ## Backtest fusion: persisted asynchronous walk-forward execution (2026-08-20)
 
 - Extended the existing `backtest_jobs` queue with `job_type=walk_forward` and
