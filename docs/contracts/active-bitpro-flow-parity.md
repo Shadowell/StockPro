@@ -1,6 +1,6 @@
 # Sprint 合同：BitPro 流程对齐 — AI 策略研发闭环与操作台改造
 
-- 状态：进行中
+- 状态：已完成（2026-08-20）；后续由 `active-operator-capability-fusion.md` 接续
 - 日期：2026-08-17
 - 交付边界：B/S、PostgreSQL、研究优先、Paper 模拟 + 实盘预检留痕（不发出真实委托）
 

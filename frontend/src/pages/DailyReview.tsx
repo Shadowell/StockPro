@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
@@ -324,8 +324,9 @@ const EXECUTION_CATEGORIES = ["risk", "order", "trade", "position", "performance
 export function DailyReview() {
   const { desk } = useResearchDesk();
   const [params, setParams] = useSearchParams();
+  const initialTradeDateRef = useRef(params.get("date") ?? "");
   const [dates, setDates] = useState<string[]>([]);
-  const [tradeDate, setTradeDate] = useState(params.get("date") ?? "");
+  const [tradeDate, setTradeDate] = useState(initialTradeDateRef.current);
   const [context, setContext] = useState<DailyReviewContext | null>(null);
   const [summary, setSummary] = useState("");
   const [plan, setPlan] = useState("");
@@ -383,7 +384,7 @@ export function DailyReview() {
   );
 
   useEffect(() => {
-    void load();
+    void load(initialTradeDateRef.current || undefined);
   }, [load]);
 
   const changeDate = (date: string) => {
@@ -432,7 +433,10 @@ export function DailyReview() {
 
   // 大盘 Snapshot：所有行情块并行读取，块内独立 loading / error / empty。
   useEffect(() => {
-    if (!tradeDate) return;
+    // Core review evidence owns the page. Load optional market blocks only
+    // after that date's review context is available so high-latency SSH-backed
+    // reads cannot starve the evidence request in the connection pool.
+    if (!tradeDate || !context || context.trade_date !== tradeDate) return;
     let live = true;
     setSnap({
       overview: { data: null, error: "", loading: true },
@@ -472,7 +476,7 @@ export function DailyReview() {
     return () => {
       live = false;
     };
-  }, [tradeDate]);
+  }, [context, tradeDate]);
 
   const overview = snap.overview.data;
   const shortLine = snap.shortLine.data;
