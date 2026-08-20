@@ -163,6 +163,13 @@ async function mockApi(context: BrowserContext) {
         ],
       }));
     }
+    if (method === 'GET' && path === '/workflow/onboarding-readiness') return route.fulfill(json({ status: 'action_required', required_ready: 3, required_total: 4, writes_performed: false, steps: [
+      { code: 'security', label: '管理员安全', required: true, status: 'ready', detail: '管理员密码与令牌签名已配置', action_route: '/admin/login' },
+      { code: 'storage', label: 'PostgreSQL', required: true, status: 'ready', detail: '迁移 37/37', action_route: '/data' },
+      { code: 'provider', label: '研究数据源', required: true, status: 'ready', detail: 'TuShare 主源已配置', action_route: '/data' },
+      { code: 'snapshot', label: '封存研究数据', required: true, status: 'missing', detail: '同步、质检并封存至少一个研究快照', action_route: '/data' },
+      { code: 'review', label: '盘后复盘', required: false, status: 'ready', detail: '复盘 1 份', action_route: '/review' },
+    ] }));
 
     if (method === 'GET' && path === '/market/overview') {
       return route.fulfill(json({
@@ -1243,6 +1250,8 @@ test('dashboard shows the realtime market cockpit by default', async ({ page }) 
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: '市场大盘' })).toBeVisible();
+  await expect(page.getByTestId('onboarding-readiness')).toContainText('必需项 3/4');
+  await expect(page.getByTestId('onboarding-readiness').getByRole('link', { name: /统一复盘/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: '市场指数' })).toBeVisible();
   await expect(page.getByText('上证指数').last()).toBeVisible();
   await expect(page.getByText('强势股', { exact: true })).toBeVisible();
@@ -1503,6 +1512,7 @@ test('paper watch and monitor keep separate operator ownership', async ({ page }
   await loginAsAdmin(page);
   await page.goto('/paper');
   await expect(page.getByRole('heading', { name: '模拟盘', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '盘后复盘' })).toHaveAttribute('href', '/review');
   await page.getByTestId('paper-instance-card').first().getByRole('button', { name: '详情' }).click();
   await expect(page.getByTestId('paper-instance-monitor')).toBeVisible();
   for (const label of ['核心选股与交易逻辑', '当前持仓', '成交与事件', '账户曲线', '风控状态']) {

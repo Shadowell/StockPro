@@ -65,6 +65,19 @@ test('真实一级导航突出策略回测模拟并保留补充入口', async ({
   await expect(page.getByRole('heading', { name: '不可变股票池' })).toBeVisible();
 });
 
+test('真实首页首次就绪检查只读并提供统一复盘入口', async ({ page }) => {
+  const token = await login(page.request);
+  const response = await page.request.get('/api/workflow/onboarding-readiness', { headers: { Authorization: `Bearer ${token}` } });
+  expect(response.ok()).toBeTruthy();
+  const readiness = (await response.json()) as { writes_performed?: unknown; required_total?: unknown };
+  expect(readiness.writes_performed).toBe(false);
+  expect(Number(readiness.required_total)).toBeGreaterThan(0);
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('onboarding-readiness')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('link', { name: /统一复盘/ })).toHaveAttribute('href', '/review');
+});
+
 test('真实股票池筛选器提供版本化 AND OR 条件配置', async ({ page }) => {
   const token = await login(page.request);
   await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);

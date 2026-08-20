@@ -1,5 +1,20 @@
 # Progress Log
 
+## Review/Onboarding fusion: read-only readiness and unified review entry (2026-08-20)
+
+- Added `/workflow/onboarding-readiness` as a read-only evidence endpoint. It
+  separates required admin security, PostgreSQL migration, TuShare provider and
+  sealed-snapshot readiness from later Strategy, Paper and Review progress.
+  Every step links to its existing Owner page and reports
+  `writes_performed=false`; it never syncs, migrates, repairs or creates data.
+- Dashboard renders the first-run checklist and a unified Review link. Paper's
+  operator header now exposes the same盘后复盘 route without moving review
+  editing into the execution page or exposing Review as first-level navigation.
+- Real local evidence reported 4/4 required steps ready with 37 migrations, 22
+  dataset snapshots, 67 strategy versions, 15 Paper instances and one review;
+  database counts were identical before and after the check. Real browser
+  acceptance passed for the dashboard checklist and `/review` link.
+
 ## Data fusion: isolated CSV/JSON/XLSX exchange (2026-08-20)
 
 - Added PostgreSQL `extension_data_imports` and `extension_data_records` as an

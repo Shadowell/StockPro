@@ -2,14 +2,18 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import APIRouter
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.db import db_instance
 from app.services.research_desk_service import ResearchDeskService
+from app.services.onboarding_readiness_service import OnboardingReadinessService
+from app.db.postgres_migrations import load_migrations
 
 
 router = APIRouter()
 desk_service = ResearchDeskService(db_instance)
+onboarding_service = OnboardingReadinessService(db_instance, settings, len(load_migrations()))
 
 
 @router.get("/capabilities")
@@ -138,3 +142,9 @@ async def workflow_capabilities() -> Dict[str, Any]:
 async def research_desk() -> Dict[str, Any]:
     """Read-only counts for the operator research desk. Page loads must not write."""
     return desk_service.build()
+
+
+@router.get("/onboarding-readiness")
+async def onboarding_readiness() -> Dict[str, Any]:
+    """Read-only evidence for first-run setup; it never syncs or repairs state."""
+    return await run_in_threadpool(onboarding_service.build)

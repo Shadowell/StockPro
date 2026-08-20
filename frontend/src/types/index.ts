@@ -148,6 +148,23 @@ export interface ExtensionDataImport {
   created_at: string;
 }
 
+export interface OnboardingReadinessStep {
+  code: string;
+  label: string;
+  required: boolean;
+  status: 'ready' | 'missing';
+  detail: string;
+  action_route: string;
+}
+
+export interface OnboardingReadiness {
+  status: 'ready' | 'action_required';
+  steps: OnboardingReadinessStep[];
+  required_ready: number;
+  required_total: number;
+  writes_performed: false;
+}
+
 export interface OrderBookLevel {
   level: number;
   price?: number | null;
