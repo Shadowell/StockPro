@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePreflightResult, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, WalkForwardPreview, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, WatchRule, WatchRulePreview, WatchRuleType, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
+import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePreflightResult, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, MarketWatchlistEntry, MarketWatchlistResponse, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, WalkForwardPreview, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, WatchRule, WatchRulePreview, WatchRuleType, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -652,6 +652,15 @@ export const searchStocks = async (params: { q?: string; limit?: number } = {}):
   });
   return response.data;
 };
+
+export const getMarketWatchlist = async (): Promise<MarketWatchlistResponse> =>
+  (await apiClient.get<MarketWatchlistResponse>('/market/watchlist', { timeout: 30_000, skipRetry: true })).data;
+
+export const addMarketWatchlistItem = async (request: { symbol: string; note?: string }): Promise<MarketWatchlistEntry> =>
+  (await apiClient.post<MarketWatchlistEntry>('/market/watchlist/items', request)).data;
+
+export const deleteMarketWatchlistItem = async (entryId: number): Promise<{ id: number; symbol: string; deleted: true }> =>
+  (await apiClient.delete(`/market/watchlist/items/${entryId}`)).data;
 
 export const getHotConcepts = async (limit = 50, date?: string): Promise<HotConceptItem[]> => {
   const response = await apiClient.get<HotConceptItem[]>('/market/hot-concepts', { params: { limit, date } });

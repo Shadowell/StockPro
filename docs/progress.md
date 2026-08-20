@@ -1,5 +1,24 @@
 # Progress Log
 
+## Dashboard/Market fusion: PostgreSQL watchlist owner (2026-08-20)
+
+- Audited existing ownership before adding UI: Dashboard already owns index,
+  breadth, sentiment, turnover, limit ecology and sector-flow summaries; Market
+  already owns sector/limit depth, news, calendar and stock research. The
+  missing high-value reference capability was a persistent watchlist.
+- Added `market_watchlist_entries` and Market APIs. Entries persist only owner,
+  six-digit symbol and note; reads join `all_stocks_realtime` for name, price,
+  change, amount, turnover, volume ratio, amplitude and quote timestamp. Empty
+  reads never bootstrap a list.
+- The new `自选` tab supports cached-stock search, explicit admin add, note
+  update by idempotent upsert, refresh and delete. Guests remain read-only and
+  missing quote evidence stays unavailable rather than retaining an add-time
+  price.
+- Real acceptance added and deleted `300308` (中际旭创), observed its existing
+  cached quote and restored the list to an honest empty state. Local migrations
+  are 35/35. Paper continuity remained 15 instances / 24 orders / 18 trades /
+  7 positions / 128 equity snapshots / 310 events.
+
 ## Paper/Watch fusion: versioned alert-only watch rules (2026-08-20)
 
 - Extended the existing `alert_rules`, `alerts` and `notification_deliveries`
