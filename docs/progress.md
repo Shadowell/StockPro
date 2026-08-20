@@ -1,5 +1,30 @@
 # Progress Log
 
+## Backtest fusion: sealed walk-forward fold preview (2026-08-20)
+
+- Added a read-only `walk-forward-plan.v1` service and API. It reads distinct
+  trading dates only from a sealed `daily_bars` snapshot, validates positive
+  train/test/step lengths, and generates rolling folds whose OOS start is the
+  next available trading day after the training end.
+- The Backtest page exposes a dedicated preview dialog for snapshot, date range
+  and train/test/step sessions. It renders every IS/OOS window and explicitly
+  labels the result as not Paper-eligible; no optimizer, backtest run, protocol,
+  database record or promotion evidence is created by preview.
+- A real local preview over snapshot 23 used 486 available trading dates and
+  produced 3 non-overlapping 252/63/63 folds. The endpoint returned the sealed
+  dataset manifest hash and `promotion_eligible=false`.
+- Real-browser acceptance exposed the ordinary 8-second configuration timeout;
+  Backtest configuration now uses a 30-second SSH-tunnel cold-read envelope.
+  A 9-second delayed configuration browser test failed before the change and
+  passes after it.
+- TDD: five fold/service contracts and two browser contracts cover insufficient
+  ranges, unsealed snapshots, no-overlap semantics, rendering and cold reads.
+- Verification: Mock browser suite 56/56; real API and browser preview passed;
+  `./scripts/check.sh` passed the production build, bundle budget, lint with the
+  existing Fast Refresh warning only, 397 backend tests and Python compilation.
+  Paper continuity remained 15 instances / 18 trades / 7 positions / 128
+  equity snapshots / 310 events.
+
 ## Strategy fusion: versioned AND/OR stock screening (2026-08-20)
 
 - Extended the existing `screener` stock-pool rule instead of adding a parallel

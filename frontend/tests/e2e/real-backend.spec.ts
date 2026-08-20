@@ -78,6 +78,20 @@ test('真实股票池筛选器提供版本化 AND OR 条件配置', async ({ pag
   await expect(page.getByRole('button', { name: '任一满足 OR' })).toBeVisible();
 });
 
+test('真实回测页从封存快照预览无重叠 Walk-forward 折', async ({ page }) => {
+  const token = await login(page.request);
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  await page.goto('/backtest', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Walk-forward 预览' }).click();
+  await page.getByRole('button', { name: '生成折叠计划' }).click();
+
+  await expect(page.getByText(/共 \d+ 折 · \d+ 个可用交易日/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('预览不可晋级模拟盘')).toBeVisible();
+  const firstFold = page.getByText('第 1 折').locator('xpath=ancestor::div[contains(@class,"grid")][1]');
+  await expect(firstFold).toContainText('训练');
+  await expect(firstFold).toContainText('样本外');
+});
+
 test('登录后市场和数据库接口可访问', async ({ request }) => {
   const token = await login(request);
   const headers = { Authorization: `Bearer ${token}` };

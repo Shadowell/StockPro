@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   BarChart3,
   Beaker,
+  CalendarRange,
   CheckCircle2,
   ChevronRight,
   CircleAlert,
@@ -40,6 +41,7 @@ import {
   listBacktestJobs,
   retryBacktestJob,
   runBacktestMatrix,
+  previewWalkForward,
 } from '../api/client';
 import type {
   BacktestConfiguration,
@@ -49,6 +51,7 @@ import type {
   BacktestJobLog,
   BacktestRun,
   BacktestRunRequestV1,
+  WalkForwardPreview,
 } from '../types';
 import { orderTypeLabel, sideLabel, statusLabel } from '../utils/presentation';
 import {
@@ -747,6 +750,13 @@ export function Backtest() {
   const [historyStatus, setHistoryStatus] = useState<StatusFilter>('all');
   const [historySort, setHistorySort] = useState<SortKey>('created');
   const [listReady, setListReady] = useState(false);
+  const [walkForwardOpen, setWalkForwardOpen] = useState(false);
+  const [walkForwardBusy, setWalkForwardBusy] = useState(false);
+  const [walkForwardError, setWalkForwardError] = useState('');
+  const [walkForwardPreview, setWalkForwardPreview] = useState<WalkForwardPreview | null>(null);
+  const [trainSessions, setTrainSessions] = useState(252);
+  const [testSessions, setTestSessions] = useState(63);
+  const [stepSessions, setStepSessions] = useState(63);
 
   const load = useCallback(async () => {
     setError('');
@@ -967,6 +977,36 @@ export function Backtest() {
     setCreateOpen(false);
   };
 
+  const openWalkForwardPreview = () => {
+    if (!config || !datasetSnapshotId) {
+      setError('Walk-forward 需要已封存数据快照');
+      return;
+    }
+    setWalkForwardError('');
+    setWalkForwardPreview(null);
+    setWalkForwardOpen(true);
+  };
+
+  const buildWalkForwardPreview = async () => {
+    setWalkForwardBusy(true);
+    setWalkForwardError('');
+    try {
+      setWalkForwardPreview(await previewWalkForward({
+        dataset_snapshot_id: datasetSnapshotId,
+        start_date: startDate,
+        end_date: endDate,
+        train_sessions: trainSessions,
+        test_sessions: testSessions,
+        step_sessions: stepSessions,
+      }));
+    } catch (reason) {
+      setWalkForwardPreview(null);
+      setWalkForwardError(reason instanceof Error ? reason.message : '折叠计划生成失败');
+    } finally {
+      setWalkForwardBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-full bg-crypto-bg p-6 2xl:px-8" data-operator-page="backtest">
       <OperatorPageHeader
@@ -974,9 +1014,14 @@ export function Backtest() {
         title="回测"
         subtitle="绑定策略版本、数据快照与股票池后异步回测；任务队列、创建向导、结果详情与对比。"
         actions={
-          <button type="button" onClick={openCreate} disabled={!config} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
-            <Plus className="h-4 w-4" />{config ? '创建回测实例' : '配置读取中…'}
-          </button>
+          <>
+            <button type="button" onClick={openWalkForwardPreview} disabled={!config} className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 text-sm font-semibold text-purple-200 disabled:cursor-not-allowed disabled:opacity-50">
+              <CalendarRange className="h-4 w-4" />Walk-forward 预览
+            </button>
+            <button type="button" onClick={openCreate} disabled={!config} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-950/30 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
+              <Plus className="h-4 w-4" />{config ? '创建回测实例' : '配置读取中…'}
+            </button>
+          </>
         }
       />
       <WorkspacePipelineNote stageId="backtest" />
@@ -1129,6 +1174,53 @@ export function Backtest() {
           {visibleJobs.length === 0 ? <div className="flex min-h-28 items-center justify-center text-sm text-gray-600">当前分区暂无持久化回测任务；创建后会在这里显示状态与日志。</div> : null}
         </div>
       </section>
+
+      {walkForwardOpen && config ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={() => !walkForwardBusy && setWalkForwardOpen(false)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="walk-forward-title" className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-crypto-border bg-[#10161f] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-crypto-border px-6 py-5">
+              <div>
+                <h2 id="walk-forward-title" className="text-lg font-semibold text-white">滚动样本外计划</h2>
+                <p className="mt-1 text-xs text-gray-500">先冻结封存快照与无重叠交易日窗口；本步骤不执行优化、不生成晋级证据。</p>
+              </div>
+              <button type="button" onClick={() => setWalkForwardOpen(false)} disabled={walkForwardBusy} className="rounded-lg p-2 text-gray-500 hover:bg-white/5 hover:text-white disabled:opacity-40"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="数据快照"><select className={input} value={datasetSnapshotId} onChange={(event) => { setDatasetSnapshotId(Number(event.target.value)); setWalkForwardPreview(null); }}>{config.dataset_snapshots.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></Field>
+                <Field label="开始日期"><input type="date" className={input} value={startDate} onChange={(event) => { setStartDate(event.target.value); setWalkForwardPreview(null); }} /></Field>
+                <Field label="结束日期"><input type="date" className={input} value={endDate} onChange={(event) => { setEndDate(event.target.value); setWalkForwardPreview(null); }} /></Field>
+                <Field label="训练交易日"><input aria-label="训练交易日" type="number" min={1} max={2000} className={input} value={trainSessions} onChange={(event) => { setTrainSessions(Number(event.target.value)); setWalkForwardPreview(null); }} /></Field>
+                <Field label="测试交易日"><input aria-label="测试交易日" type="number" min={1} max={500} className={input} value={testSessions} onChange={(event) => { setTestSessions(Number(event.target.value)); setWalkForwardPreview(null); }} /></Field>
+                <Field label="步进交易日"><input aria-label="步进交易日" type="number" min={1} max={500} className={input} value={stepSessions} onChange={(event) => { setStepSessions(Number(event.target.value)); setWalkForwardPreview(null); }} /></Field>
+              </div>
+
+              {walkForwardError ? <div className="mt-4 rounded-lg border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-200">{walkForwardError}</div> : null}
+              {walkForwardPreview ? (
+                <section className="mt-5 overflow-hidden rounded-xl border border-crypto-border bg-black/10">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-4 py-3">
+                    <div className="text-sm font-semibold text-white">共 {walkForwardPreview.n_folds} 折 · {walkForwardPreview.date_count} 个可用交易日</div>
+                    <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300">预览不可晋级模拟盘</span>
+                  </div>
+                  <div className="divide-y divide-white/[0.05]">
+                    {walkForwardPreview.folds.map((fold) => (
+                      <div key={fold.index} className="grid gap-3 px-4 py-3 text-xs sm:grid-cols-[4rem_1fr_1fr]">
+                        <div className="font-semibold text-blue-300">第 {fold.index} 折</div>
+                        <div><div className="text-[10px] text-gray-600">训练</div><div className="mt-1 font-mono text-gray-300">{fold.train_start} → {fold.train_end}</div></div>
+                        <div><div className="text-[10px] text-gray-600">样本外</div><div className="mt-1 font-mono text-emerald-300">{fold.test_start} → {fold.test_end}</div></div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+            </div>
+            <div className="flex items-center justify-between border-t border-crypto-border px-6 py-4">
+              <span className="text-[11px] text-gray-600">训练结束后的下一可用交易日才进入 OOS，禁止同日重叠。</span>
+              <button type="button" onClick={() => void buildWalkForwardPreview()} disabled={walkForwardBusy} className="inline-flex h-10 items-center gap-2 rounded-lg bg-purple-600 px-5 text-sm font-semibold text-white disabled:opacity-50"><CalendarRange className="h-4 w-4" />{walkForwardBusy ? '生成中…' : '生成折叠计划'}</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {createOpen && config ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={closeCreate}>
         <section role="dialog" aria-modal="true" aria-labelledby="create-backtest-title" className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-crypto-border bg-[#10161f] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>

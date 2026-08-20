@@ -761,6 +761,29 @@ export interface BacktestJobLog {
   created_at: string;
 }
 
+export interface WalkForwardFold {
+  index: number;
+  train_start: string;
+  train_end: string;
+  test_start: string;
+  test_end: string;
+  train_sessions?: number;
+  test_sessions?: number;
+}
+
+export interface WalkForwardPreview {
+  planning_version?: string;
+  dataset_snapshot_id: number;
+  dataset_manifest_hash: string;
+  start_date?: string;
+  end_date?: string;
+  date_count: number;
+  n_folds: number;
+  folds: WalkForwardFold[];
+  promotion_eligible: boolean;
+  next_step?: string;
+}
+
 export interface BacktestConfiguration {
   strategy_versions: Array<{
     id: string;

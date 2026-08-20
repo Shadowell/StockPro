@@ -552,6 +552,17 @@ async function mockApi(context: BrowserContext) {
     if (method === 'GET' && new RegExp(`^/backtest/runs/${mockBacktestRun.id}/(positions|orders|trades|logs|attribution)$`).test(path)) return route.fulfill(json({ items: [] }));
     if (method === 'GET' && new RegExp(`^/backtest/runs/${mockQuickBacktestRun.id}/(positions|orders|trades|logs|attribution)$`).test(path)) return route.fulfill(json({ items: [] }));
     if (method === 'POST' && path === '/backtest/runs') return route.fulfill(json(mockBacktestRun));
+    if (method === 'POST' && path === '/backtest/walk-forward/preview') return route.fulfill(json({
+      dataset_snapshot_id: 10,
+      dataset_manifest_hash: 'dataset-manifest',
+      date_count: 10,
+      n_folds: 2,
+      promotion_eligible: false,
+      folds: [
+        { index: 1, train_start: '2024-01-02', train_end: '2024-06-28', test_start: '2024-07-01', test_end: '2024-09-30' },
+        { index: 2, train_start: '2024-04-01', train_end: '2024-09-30', test_start: '2024-10-08', test_end: '2025-01-02' },
+      ],
+    }));
 
     const mockPool = { id: 'pool-1', name: '动量 Top20', pool_type: 'factor', description: 'fixture', status: 'active', data_purpose: 'user', rule_id: 'rule-1', rule_type: 'factor', rule_version: 1, config: { factor_code: 'momentum_20d', top_n: 20 }, rule_hash: 'rule-hash-abcdef', snapshot_count: 1, current_member_count: 2, latest_generation_id: 'generation-1', latest_dataset_snapshot_id: 10, latest_universe_snapshot_id: 1, latest_factor_snapshot_id: 3, latest_market_evidence_snapshot_id: null, latest_trade_date: '2025-01-02', latest_knowledge_cutoff_at: now, latest_input_hash: 'input-hash' };
     const mockMembers = [{ ordinal: 1, symbol: 'SH_600519', score: 1, reason: '20日动量排名 1', evidence: { factor_snapshot_id: 3 }, evidence_hash: 'member-hash-1', valid_from: '2025-01-02', valid_until: '2025-01-07', generator_version: 'stock-pool-generator.v1' }, { ordinal: 2, symbol: 'SZ_000333', score: 0.95, reason: '20日动量排名 2', evidence: { factor_snapshot_id: 3 }, evidence_hash: 'member-hash-2', valid_from: '2025-01-02', valid_until: '2025-01-07', generator_version: 'stock-pool-generator.v1' }];
@@ -925,6 +936,34 @@ test('quick backtest is visibly isolated from Paper promotion', async ({ page })
   await expect(page.getByText('不会进入模拟盘候选')).toBeVisible();
   await expect(page.getByText('晋级 Paper', { exact: true })).toHaveCount(0);
   await expect(page.getByText('门禁全部通过')).toHaveCount(0);
+});
+
+test('backtest previews non-overlapping walk-forward trading folds', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/backtest');
+  await page.getByRole('button', { name: 'Walk-forward 预览' }).click();
+
+  await expect(page.getByRole('dialog', { name: '滚动样本外计划' })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: '训练交易日' })).toHaveValue('252');
+  await expect(page.getByRole('spinbutton', { name: '测试交易日' })).toHaveValue('63');
+  await expect(page.getByRole('spinbutton', { name: '步进交易日' })).toHaveValue('63');
+  await page.getByRole('button', { name: '生成折叠计划' }).click();
+  await expect(page.getByText('共 2 折 · 10 个可用交易日')).toBeVisible();
+  await expect(page.getByText('2024-01-02 → 2024-06-28')).toBeVisible();
+  await expect(page.getByText('2024-07-01 → 2024-09-30')).toBeVisible();
+  await expect(page.getByText('预览不可晋级模拟盘')).toBeVisible();
+});
+
+test('backtest tolerates the SSH-tunnel cold configuration window', async ({ page }) => {
+  await page.route('**/api/backtest/configuration', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 9_000));
+    await route.fallback();
+  });
+  await loginAsAdmin(page);
+  await page.goto('/backtest');
+
+  await expect(page.getByRole('button', { name: 'Walk-forward 预览' })).toBeEnabled({ timeout: 15_000 });
+  await expect(page.getByText('回测配置读取超时，已停止等待。请稍后重试。')).toHaveCount(0);
 });
 
 test('configured market colors apply to gains, losses and neutral values', async ({ page }) => {
