@@ -103,6 +103,17 @@ test('真实行情自选页读取 PostgreSQL 清单且空状态不隐式写入',
   await expect(page.getByText('尚未添加自选证券')).toBeVisible({ timeout: 30_000 });
 });
 
+test('真实行情指数与回测因子验证入口归属明确', async ({ page }) => {
+  const token = await login(page.request);
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  await page.goto('/market?tab=indices', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('market-indices-panel')).toBeVisible({ timeout: 30_000 });
+  await page.goto('/backtest', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('button', { name: '因子验证' })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: '因子验证' }).click();
+  await expect(page).toHaveURL(/\/factors\?tab=single$/);
+});
+
 test('真实扩展数据交换页保持隔离暂存空状态', async ({ page }) => {
   const token = await login(page.request);
   await page.addInitScript((value) => {

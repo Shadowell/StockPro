@@ -1,5 +1,17 @@
 # Progress Log
 
+## Fusion completion audit: Index and factor-owner corrections (2026-08-20)
+
+- Requirement-by-requirement audit found two ownership gaps before completion:
+  Market had a watchlist tab but index evidence existed only on Dashboard, and
+  the factor-validation engine existed without a visible Backtest Owner entry.
+- Added a Market `指数` tab that reuses the existing PostgreSQL market-overview
+  cache, preserves state/source timestamp and leaves Dashboard as the summary.
+  Added a Backtest `因子验证` action that routes to the existing Factor API UI;
+  parameter matrix and persisted Walk-forward remain in Backtest.
+- Mock acceptance now asserts eight Market workspaces, four index cards and the
+  Backtest factor entry. No new index cache or factor engine was introduced.
+
 ## Review/Onboarding fusion: read-only readiness and unified review entry (2026-08-20)
 
 - Added `/workflow/onboarding-readiness` as a read-only evidence endpoint. It
