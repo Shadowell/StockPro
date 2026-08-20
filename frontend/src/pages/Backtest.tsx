@@ -888,7 +888,13 @@ export function Backtest() {
 
   if (runId) return <BacktestDetail runId={runId} />;
 
-  if (!listReady) return <div className="min-h-full bg-crypto-bg p-6 2xl:px-8"><header className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><div className="flex items-center gap-3"><FlaskConical className="h-7 w-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">回测</h1></div><p className="mt-2 text-sm text-gray-500">A股策略回测 · T+1 撮合 · 成本与风险证据</p></div></header>{error ? <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-5 text-sm text-red-200"><div className="flex items-start gap-3"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /><span><strong>记录加载失败：</strong>{error}</span></div><button type="button" onClick={() => void load()} className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-red-400/30 px-3 text-xs font-semibold"><RefreshCw className="h-3.5 w-3.5" />重试</button></div> : <div className={`${panel} flex min-h-[360px] items-center justify-center text-sm text-gray-500`}><RefreshCw className="mr-3 h-5 w-5 animate-spin" />正在读取回测记录…</div>}</div>;
+  if (!listReady) return <div className="min-h-full bg-crypto-bg p-6 2xl:px-8">
+    <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div><div className="flex items-center gap-3"><FlaskConical className="h-7 w-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">回测</h1></div><p className="mt-2 text-sm text-gray-500">A股策略回测 · T+1 撮合 · 成本与风险证据</p></div>
+      <button type="button" onClick={() => navigate('/factors?tab=single')} className="inline-flex h-11 items-center gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 px-4 text-sm font-semibold text-blue-200"><BarChart3 className="h-4 w-4" />因子验证</button>
+    </header>
+    {error ? <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-5 text-sm text-red-200"><div className="flex items-start gap-3"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /><span><strong>记录加载失败：</strong>{error}</span></div><button type="button" onClick={() => void load()} className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-red-400/30 px-3 text-xs font-semibold"><RefreshCw className="h-3.5 w-3.5" />重试</button></div> : <div className={`${panel} flex min-h-[360px] items-center justify-center text-sm text-gray-500`}><RefreshCw className="mr-3 h-5 w-5 animate-spin" />正在读取回测记录…</div>}
+  </div>;
 
   const request = (): BacktestRunRequestV1 => ({
     strategy_version_id: strategyVersionId, dataset_snapshot_id: datasetSnapshotId, universe_snapshot_id: universeSnapshotId,
@@ -1045,6 +1051,7 @@ export function Backtest() {
         subtitle="绑定策略版本、数据快照与股票池后异步回测；任务队列、创建向导、结果详情与对比。"
         actions={
           <>
+            <button type="button" onClick={() => navigate('/factors?tab=single')} className="inline-flex h-11 items-center gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 px-4 text-sm font-semibold text-blue-200"><BarChart3 className="h-4 w-4" />因子验证</button>
             <button type="button" onClick={openWalkForwardPreview} disabled={!hasWalkForwardSnapshot} title={hasWalkForwardSnapshot ? '从封存快照生成滚动训练/OOS窗口' : '需要至少一个已封存数据快照'} className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 text-sm font-semibold text-purple-200 disabled:cursor-not-allowed disabled:opacity-50">
               <CalendarRange className="h-4 w-4" />{hasWalkForwardSnapshot ? 'Walk-forward 预览' : '无封存快照'}
             </button>

@@ -1132,7 +1132,7 @@ test('configured market colors apply to gains, losses and neutral values', async
   await expect(monthlyReturns.getByText('0.00%', { exact: true })).toHaveCSS('color', 'rgb(185, 195, 207)');
 });
 
-test('market research exposes seven owner workspaces and legacy redirects', async ({ page }) => {
+test('market research exposes eight owner workspaces and legacy redirects', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/research/overview');
   await expect(page).toHaveURL(/\/market\?tab=structure$/);
@@ -1142,10 +1142,13 @@ test('market research exposes seven owner workspaces and legacy redirects', asyn
   await expect(page.getByTestId('market-headline-rise_count').locator('.bp-metric-card')).toHaveClass(/border-up/);
   await expect(page.getByTestId('market-headline-fall_count').locator('.bp-metric-card')).toHaveClass(/border-down/);
   await expect(page.getByTestId('market-headline-seal_rate')).toContainText('86.15%');
-  for (const label of ['市场结构', '自选', '板块轮动', '情绪 / 涨停', '事件', '交易日历', '个股研究']) {
+  for (const label of ['市场结构', '指数', '自选', '板块轮动', '情绪 / 涨停', '事件', '交易日历', '个股研究']) {
     await expect(page.getByRole('tab', { name: label })).toBeVisible();
   }
   await expect(page.getByText('市场数据快照')).toBeVisible();
+  await page.getByRole('tab', { name: '指数', exact: true }).click();
+  await expect(page.getByTestId('market-indices-panel')).toBeVisible();
+  await expect(page.getByTestId('market-index-card')).toHaveCount(4);
   await page.getByRole('tab', { name: '情绪 / 涨停' }).click();
   await expect(page.getByText('连板天梯')).toBeVisible();
   await expect(page.getByText('5+板')).toBeVisible();
@@ -1570,6 +1573,7 @@ test('strategy backtest and paper expose the A-share operator workflow without i
   await page.goto('/backtest');
   await expect(page.getByText('PG 封存研究输入 / Provider-free Read')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '回测', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '因子验证' })).toBeVisible();
   await expect(page.getByTestId('backtest-history-table')).toBeVisible();
   await expect(page.getByLabel('回测排序')).toBeVisible();
 
