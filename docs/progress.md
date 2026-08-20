@@ -1,5 +1,27 @@
 # Progress Log
 
+## Strategy fusion: screening and research-input ownership (2026-08-20)
+
+- Added an on-demand `选股与输入` tab to the Strategy centre. It owns the
+  product entry points for basic-condition, factor and sector/event screening,
+  immutable stock pools, factor research and sealed pool snapshots without
+  copying the existing pool/factor engines into a second implementation.
+- The tab reads business pool, sealed snapshot and factor-library counts only
+  after the operator selects it. Strategy catalogue cold start therefore keeps
+  its existing request budget; partial failures remain visible as unavailable
+  counts and do not invent zero values.
+- Every card states the gate into the mainline: candidates must be generated and
+  sealed as a pool snapshot before a fixed Strategy API v1 version can enter a
+  full backtest. Quick research still cannot create Paper evidence directly.
+- A fail-first browser contract proved the tab and lazy requests were absent;
+  focused Mock and real-backend browser acceptance now cover the six owner
+  entries and hidden-route handoff.
+- Verification: Mock browser suite 53/53; real-backend Strategy input-hub smoke
+  passed; `./scripts/check.sh` passed the production build, bundle budget, lint
+  with the existing Fast Refresh warning only, 389 backend tests and Python
+  compilation. Paper continuity remained 15 instances / 18 trades / 7
+  positions / 128 equity snapshots / 310 events after the clean restart.
+
 ## Operator capability fusion foundation started (2026-08-20)
 
 - SP-014 closed after production SHA `029b2083111f03a5c14c987c821ed002b5a858fa`,
