@@ -31,6 +31,7 @@ import {
   cancelBacktestJob,
   createBacktestJob,
   createBacktestExperiment,
+  createWalkForwardJob,
   getBacktestConfiguration,
   getBacktestEvidence,
   getBacktestMetrics,
@@ -51,6 +52,7 @@ import type {
   BacktestJobLog,
   BacktestRun,
   BacktestRunRequestV1,
+  WalkForwardExecutionResult,
   WalkForwardPreview,
 } from '../types';
 import { orderTypeLabel, sideLabel, statusLabel } from '../utils/presentation';
@@ -757,6 +759,9 @@ export function Backtest() {
   const [trainSessions, setTrainSessions] = useState(252);
   const [testSessions, setTestSessions] = useState(63);
   const [stepSessions, setStepSessions] = useState(63);
+  const [walkForwardGrid, setWalkForwardGrid] = useState('{"lookback":[5,10]}');
+  const [walkForwardObjective, setWalkForwardObjective] = useState<'sharpe' | 'sortino' | 'strategy_return' | 'maximum_drawdown'>('sharpe');
+  const [selectedWalkForwardResult, setSelectedWalkForwardResult] = useState<WalkForwardExecutionResult | null>(null);
 
   const load = useCallback(async () => {
     setError('');
@@ -1008,6 +1013,30 @@ export function Backtest() {
     }
   };
 
+  const startWalkForwardJob = async () => {
+    setWalkForwardBusy(true);
+    setWalkForwardError('');
+    try {
+      const parameterGrid = JSON.parse(walkForwardGrid) as Record<string, unknown[]>;
+      const job = await createWalkForwardJob({
+        ...request(),
+        train_sessions: trainSessions,
+        test_sessions: testSessions,
+        step_sessions: stepSessions,
+        parameter_grid: parameterGrid,
+        objective: walkForwardObjective,
+        name: `${selectedVersion?.name ?? '策略'} / Walk-forward`,
+      });
+      setJobs((current) => [job, ...current.filter((item) => item.job_id !== job.job_id)]);
+      setWalkForwardOpen(false);
+      setWalkForwardPreview(null);
+    } catch (reason) {
+      setWalkForwardError(reason instanceof Error ? reason.message : 'Walk-forward 任务创建失败');
+    } finally {
+      setWalkForwardBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-full bg-crypto-bg p-6 2xl:px-8" data-operator-page="backtest">
       <OperatorPageHeader
@@ -1140,13 +1169,18 @@ export function Backtest() {
                 : job.status === 'cancelled' || job.status === 'cancelling'
                   ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
                   : 'border-blue-500/30 bg-blue-500/10 text-blue-300';
+            const walkForwardResult = job.job_type === 'walk_forward'
+              && job.result_payload
+              && 'execution_version' in job.result_payload
+              ? job.result_payload as WalkForwardExecutionResult
+              : null;
             return (
               <article key={job.job_id} className="rounded-xl border border-crypto-border bg-[#0c1119] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${statusTone}`}>{statusLabel(job.status)}</span>
-                      <span className="text-xs font-semibold text-gray-300">{job.run_mode === 'quick' ? '快速预检' : '完整回测'} · 第 {job.attempt} 次</span>
+                      <span className="text-xs font-semibold text-gray-300">{job.job_type === 'walk_forward' ? 'Walk-forward' : job.run_mode === 'quick' ? '快速预检' : '完整回测'} · 第 {job.attempt} 次</span>
                       <span className="text-[10px] text-gray-600">{job.created_at ? `创建于 ${job.created_at}` : '创建时间未记录'}</span>
                     </div>
                     <p className="mt-2 text-xs text-gray-500">{job.message || job.phase}</p>
@@ -1160,6 +1194,7 @@ export function Backtest() {
                     <button type="button" onClick={() => void toggleJobLog(job.job_id)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-crypto-border px-2.5 text-[11px] text-gray-400 hover:text-white"><FileText className="h-3.5 w-3.5" />任务日志</button>
                     {active ? <button type="button" onClick={() => void controlJob(job, 'cancel')} disabled={Boolean(busy)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] text-amber-300 disabled:opacity-40"><Square className="h-3 w-3" />停止任务</button> : null}
                     {retryable ? <button type="button" onClick={() => void controlJob(job, 'retry')} disabled={Boolean(busy)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 text-[11px] text-blue-300 disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />重试任务</button> : null}
+                    {walkForwardResult ? <button type="button" onClick={() => setSelectedWalkForwardResult(walkForwardResult)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-2.5 text-[11px] font-semibold text-purple-200"><CalendarRange className="h-3.5 w-3.5" />折叠结果</button> : null}
                     {job.backtest_run_id ? <button type="button" onClick={() => navigate(`/backtest/${job.backtest_run_id}`)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 text-[11px] font-semibold text-white"><Eye className="h-3.5 w-3.5" />结果证据</button> : null}
                   </div>
                 </div>
@@ -1194,6 +1229,8 @@ export function Backtest() {
                 <Field label="训练交易日"><input aria-label="训练交易日" type="number" min={1} max={2000} className={input} value={trainSessions} onChange={(event) => { setTrainSessions(Number(event.target.value)); setWalkForwardPreview(null); }} /></Field>
                 <Field label="测试交易日"><input aria-label="测试交易日" type="number" min={1} max={500} className={input} value={testSessions} onChange={(event) => { setTestSessions(Number(event.target.value)); setWalkForwardPreview(null); }} /></Field>
                 <Field label="步进交易日"><input aria-label="步进交易日" type="number" min={1} max={500} className={input} value={stepSessions} onChange={(event) => { setStepSessions(Number(event.target.value)); setWalkForwardPreview(null); }} /></Field>
+                <Field label="优化目标"><select aria-label="Walk-forward 优化目标" className={input} value={walkForwardObjective} onChange={(event) => setWalkForwardObjective(event.target.value as typeof walkForwardObjective)}><option value="sharpe">夏普比率（越高越好）</option><option value="sortino">索提诺比率（越高越好）</option><option value="strategy_return">策略收益（越高越好）</option><option value="maximum_drawdown">最大回撤（越低越好）</option></select></Field>
+                <label className="block md:col-span-2"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">参数矩阵 JSON</span><textarea aria-label="Walk-forward 参数矩阵" className="h-24 w-full rounded-lg border border-crypto-border bg-crypto-bg p-3 font-mono text-xs leading-5 text-gray-300 outline-none focus:border-purple-500/60" value={walkForwardGrid} onChange={(event) => setWalkForwardGrid(event.target.value)} /></label>
               </div>
 
               {walkForwardError ? <div className="mt-4 rounded-lg border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-200">{walkForwardError}</div> : null}
@@ -1215,9 +1252,12 @@ export function Backtest() {
                 </section>
               ) : null}
             </div>
-            <div className="flex items-center justify-between border-t border-crypto-border px-6 py-4">
+            <div className="flex items-center justify-between gap-3 border-t border-crypto-border px-6 py-4">
               <span className="text-[11px] text-gray-600">训练结束后的下一可用交易日才进入 OOS，禁止同日重叠。</span>
-              <button type="button" onClick={() => void buildWalkForwardPreview()} disabled={walkForwardBusy} className="inline-flex h-10 items-center gap-2 rounded-lg bg-purple-600 px-5 text-sm font-semibold text-white disabled:opacity-50"><CalendarRange className="h-4 w-4" />{walkForwardBusy ? '生成中…' : '生成折叠计划'}</button>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => void buildWalkForwardPreview()} disabled={walkForwardBusy} className="inline-flex h-10 items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-4 text-sm font-semibold text-purple-200 disabled:opacity-50"><CalendarRange className="h-4 w-4" />{walkForwardBusy ? '生成中…' : '生成折叠计划'}</button>
+                {walkForwardPreview ? <button type="button" onClick={() => void startWalkForwardJob()} disabled={walkForwardBusy} className="inline-flex h-10 items-center gap-2 rounded-lg bg-purple-600 px-5 text-sm font-semibold text-white disabled:opacity-50"><Play className="h-4 w-4" />{walkForwardBusy ? '正在入队…' : '启动 Walk-forward 任务'}</button> : null}
+              </div>
             </div>
           </section>
         </div>
@@ -1283,6 +1323,38 @@ export function Backtest() {
       </div> : null}
 
       {compareData ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-5" onMouseDown={() => setCompareData(null)}><section className="max-h-[88vh] w-full max-w-6xl overflow-auto rounded-2xl border border-crypto-border bg-crypto-card shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="sticky top-0 flex items-center justify-between border-b border-crypto-border bg-crypto-card px-6 py-4"><div><h2 className="font-semibold text-white">完整回测对比</h2><p className="mt-1 text-xs text-gray-500">{compareData.runs.length} 个回测结果</p></div><button type="button" onClick={() => setCompareData(null)} className="text-sm text-gray-400">关闭</button></div><div className="p-6"><GenericTable rows={compareData.runs.map((run) => ({ name: run.name, strategy: run.strategy_name, period: `${run.start_date} — ${run.end_date}`, return: formatValue(run.metrics?.strategy_return, 'ratio'), drawdown: formatValue(run.metrics?.maximum_drawdown, 'ratio'), sharpe: formatValue(run.metrics?.sharpe) }))} columns={[["name", "运行"], ["strategy", "策略"], ["period", "区间"], ["return", "收益"], ["drawdown", "回撤"], ["sharpe", "Sharpe"]]} /></div></section></div> : null}
+
+      {selectedWalkForwardResult ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-5" onMouseDown={() => setSelectedWalkForwardResult(null)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="walk-forward-result-title" className="max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl border border-crypto-border bg-crypto-card shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b border-crypto-border bg-crypto-card px-6 py-4">
+              <div><h2 id="walk-forward-result-title" className="font-semibold text-white">Walk-forward OOS 结果</h2><p className="mt-1 text-xs text-gray-500">{selectedWalkForwardResult.n_folds} 折 · {selectedWalkForwardResult.n_combinations} 组参数 · {selectedWalkForwardResult.objective}</p></div>
+              <button type="button" onClick={() => setSelectedWalkForwardResult(null)} className="text-sm text-gray-400">关闭</button>
+            </div>
+            <div className="space-y-5 p-6">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <OperatorMetricCard label="OOS复利收益" value={formatValue(selectedWalkForwardResult.summary.compounded_oos_return, 'ratio')} tone={selectedWalkForwardResult.summary.compounded_oos_return >= 0 ? 'up' : 'down'} />
+                <OperatorMetricCard label="一致性" value={formatValue(selectedWalkForwardResult.summary.consistency, 'ratio')} tone="blue" />
+                <OperatorMetricCard label="样本内目标" value={formatValue(selectedWalkForwardResult.summary.avg_is_objective)} tone="blue" />
+                <OperatorMetricCard label="样本外目标" value={formatValue(selectedWalkForwardResult.summary.avg_oos_objective)} tone="amber" detail={`退化 ${formatValue(selectedWalkForwardResult.summary.degradation)}`} />
+              </div>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-4 text-xs leading-6 text-amber-200/80">
+                <strong>不可直接晋级模拟盘：</strong>{selectedWalkForwardResult.promotion_reason}
+              </div>
+              <div className="overflow-hidden rounded-xl border border-crypto-border">
+                {selectedWalkForwardResult.folds.map((fold) => (
+                  <article key={fold.index} className="grid gap-4 border-b border-white/[0.05] p-4 text-xs last:border-b-0 lg:grid-cols-[4rem_1fr_1fr_1fr]">
+                    <div className="font-semibold text-blue-300">第 {fold.index} 折</div>
+                    <div><div className="text-[10px] text-gray-600">训练 / IS</div><div className="mt-1 font-mono text-gray-300">{fold.train_start} → {fold.train_end}</div><div className="mt-1 text-gray-500">目标 {formatValue(fold.is_objective)}</div></div>
+                    <div><div className="text-[10px] text-gray-600">样本外 / OOS</div><div className="mt-1 font-mono text-emerald-300">{fold.test_start} → {fold.test_end}</div><div className="mt-1 text-gray-500">收益 {formatValue(fold.oos_return, 'ratio')}</div></div>
+                    <div><div className="text-[10px] text-gray-600">最优参数</div><div className="mt-1 font-mono text-purple-200">{Object.entries(fold.best_parameters).map(([key, value]) => `${key}=${String(value)}`).join(' · ') || '—'}</div><div className={`mt-1 ${fold.oos_degraded ? 'text-red-300' : 'text-emerald-300'}`}>{fold.oos_degraded ? '样本外退化' : '未检测到退化'}</div></div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

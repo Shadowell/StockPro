@@ -385,6 +385,7 @@ class BacktestWorkbenchService:
             "parameters": payload.get("parameters") or {}, "benchmark_code": prepared["benchmark_code"],
             "cost_model_id": str(cost_model["id"]), "cost_model_hash": cost_model["content_hash"],
             "research_protocol_id": payload.get("research_protocol_id"), "mode": mode,
+            "diagnostic_only": bool(payload.get("diagnostic_only")),
             "calculation_version": self.calculation_version,
         }
         input_hash = canonical_hash(input_manifest)
@@ -442,9 +443,9 @@ class BacktestWorkbenchService:
             )
             checkpoint(90, "persisting", "正在写入回测证据与指标")
             self._persist_result(run_id, replay, records, result, input_manifest)
-            if mode == "full" and payload.get("research_protocol_id"):
+            if self._should_evaluate_promotion(mode, payload) and payload.get("research_protocol_id"):
                 self._evaluate_protocol_segments(run_id, str(payload["research_protocol_id"]), result)
-            if mode == "full":
+            if self._should_evaluate_promotion(mode, payload):
                 self.evaluate_promotion(run_id)
             return self.get_run(run_id)
         except BacktestCancelled:
@@ -459,6 +460,11 @@ class BacktestWorkbenchService:
                 (str(exc)[:1000], run_id),
             )
             raise
+
+    @staticmethod
+    def _should_evaluate_promotion(mode: str, payload: Mapping[str, Any]) -> bool:
+        return mode == "full" and not bool(payload.get("diagnostic_only"))
+
     def list_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         rows = self._rows(
             f"""

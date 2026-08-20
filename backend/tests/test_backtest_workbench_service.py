@@ -203,6 +203,13 @@ class BacktestPersistBatchTests(unittest.TestCase):
         execute_values.assert_called_once()
 
 
+class BacktestDiagnosticRunTests(unittest.TestCase):
+    def test_walk_forward_diagnostic_full_runs_never_evaluate_promotion(self):
+        self.assertFalse(BacktestWorkbenchService._should_evaluate_promotion("full", {"diagnostic_only": True}))
+        self.assertFalse(BacktestWorkbenchService._should_evaluate_promotion("quick", {}))
+        self.assertTrue(BacktestWorkbenchService._should_evaluate_promotion("full", {}))
+
+
 class BacktestReadPathTests(unittest.TestCase):
     def setUp(self):
         reset_configuration_cache()
