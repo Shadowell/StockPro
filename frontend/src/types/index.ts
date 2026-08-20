@@ -132,6 +132,22 @@ export interface MarketWatchlistResponse {
   data_status: 'available' | 'empty';
 }
 
+export interface ExtensionDataImport {
+  id: string;
+  name: string;
+  source_type: 'file' | 'http';
+  source_uri?: string | null;
+  file_format: 'csv' | 'json' | 'xlsx';
+  original_filename: string;
+  status: 'staged' | 'rejected';
+  row_count: number;
+  column_names: string[];
+  content_hash: string;
+  size_bytes: number;
+  created_by: string;
+  created_at: string;
+}
+
 export interface OrderBookLevel {
   level: number;
   price?: number | null;

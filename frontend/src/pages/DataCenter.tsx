@@ -14,6 +14,7 @@ import {
   Clock,
   Database,
   Download,
+  FileSpreadsheet,
   HardDrive,
   Info,
   LayoutDashboard,
@@ -65,6 +66,7 @@ import type { StockCandidate } from '../types';
 import { evaluateFreshness } from '../utils/dataFreshness';
 import { formatSymbolLabel, resolveSymbolName, toPublicSymbol } from '../utils/symbolDisplay';
 import { WorkspaceTabs } from '../components/WorkspaceTabs';
+import { ExtensionDataExchangePanel } from '../components/ExtensionDataExchangePanel';
 
 type DataStatus = {
   database?: string;
@@ -111,7 +113,7 @@ type SyncJob = {
   finished_at?: string | null;
 };
 
-type DataSection = 'overview' | 'datasets' | 'coverage' | 'jobs' | 'providers';
+type DataSection = 'overview' | 'datasets' | 'coverage' | 'jobs' | 'providers' | 'exchange';
 
 const TIMEFRAME_LABELS: Record<string, string> = {
   '1m': '1M',
@@ -1004,6 +1006,7 @@ export function DataCenter() {
           { id: 'coverage', label: '行情覆盖', icon: BarChart3 },
           { id: 'jobs', label: '同步任务', icon: ListChecks },
           { id: 'providers', label: '数据源', icon: Zap },
+          { id: 'exchange', label: '导入导出', icon: FileSpreadsheet },
         ]}
         value={activeSection}
         onChange={setActiveSection}
@@ -1129,6 +1132,8 @@ export function DataCenter() {
       <LatestQualityReportPanel onMessage={setMessage} onChanged={load} />
         </>
       )}
+
+      {activeSection === 'exchange' && <ExtensionDataExchangePanel />}
 
       {activeSection === 'providers' && (
       <section className="shrink-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">

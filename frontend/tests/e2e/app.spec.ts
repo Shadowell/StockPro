@@ -84,6 +84,7 @@ async function mockApi(context: BrowserContext) {
   let persistedWalkForwardJob: Record<string, unknown> | null = null;
   let watchRules: Array<Record<string, unknown>> = [];
   let marketWatchlist: Array<Record<string, unknown>> = [];
+  let extensionImports: Array<Record<string, unknown>> = [];
   await context.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -670,6 +671,13 @@ async function mockApi(context: BrowserContext) {
     if (method === 'GET' && path === '/data/status') {
       return route.fulfill(json({ status: 'ok', storage: 'postgres', scheduler: { enabled: false } }));
     }
+    if (method === 'GET' && path === '/data/exchange/imports') return route.fulfill(json({ items: extensionImports, total: extensionImports.length, storage: 'postgresql', mapping_state: 'staged_only' }));
+    if (method === 'POST' && path === '/data/exchange/imports') {
+      extensionImports = [{ id: 'extension-1', name: '外部评分', source_type: 'file', file_format: 'csv', original_filename: 'scores.csv', status: 'staged', row_count: 1, column_names: ['代码','分数'], content_hash: 'exchange-hash', size_bytes: 32, created_by: 'admin', created_at: now }];
+      return route.fulfill(json(extensionImports[0]));
+    }
+    if (method === 'GET' && path === '/data/exchange/imports/extension-1/export') return route.fulfill({ status: 200, contentType: 'text/csv', body: '代码,分数\n600519,1.2\n' });
+    if (method === 'DELETE' && path === '/data/exchange/imports/extension-1') { extensionImports = []; return route.fulfill(json({ id: 'extension-1', name: '外部评分', deleted: true })); }
 
     if (method === 'GET' && path === '/data/config') {
       return route.fulfill(json({ defaultSymbols: ['600000.SH'], defaultTimeframes: ['1d'], defaultHistoryDays: 365 }));
@@ -2049,6 +2057,26 @@ test('data center keeps every primary action visible without a hidden horizontal
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy();
   }
+});
+
+test('data exchange stages CSV without mapping core data and supports export delete', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/data');
+  await page.getByRole('tab', { name: '导入导出' }).click();
+  await expect(page.getByTestId('extension-data-exchange')).toBeVisible();
+  await expect(page.getByText('仅暂存 · 未映射')).toBeVisible();
+  await expect(page.getByText('未配置 EXTENSION_HTTP_ALLOWED_HOSTS，HTTP 导入不可用。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '从白名单导入' })).toBeDisabled();
+  await page.getByLabel('扩展数据名称').fill('外部评分');
+  await page.getByLabel('扩展数据文件').setInputFiles({ name: 'scores.csv', mimeType: 'text/csv', buffer: Buffer.from('代码,分数\n600519,1.2\n') });
+  await page.getByRole('button', { name: '上传暂存' }).click();
+  const row = page.getByTestId('extension-import-row');
+  await expect(row).toContainText('外部评分');
+  await expect(row).toContainText('1 / 2');
+  await expect(row.getByRole('button', { name: 'CSV' })).toBeVisible();
+  await row.getByRole('button', { name: '删除扩展数据 外部评分' }).click();
+  await page.getByRole('alertdialog', { name: '删除扩展数据' }).getByRole('button', { name: '确认删除' }).click();
+  await expect(page.getByText('尚未导入扩展数据')).toBeVisible();
 });
 
 test('factor research exposes six PG-backed workspaces and explicit pending evidence', async ({ page }) => {

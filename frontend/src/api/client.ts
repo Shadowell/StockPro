@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePreflightResult, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, MarketWatchlistEntry, MarketWatchlistResponse, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, WalkForwardPreview, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, WatchRule, WatchRulePreview, WatchRuleType, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
+import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePreflightResult, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, MarketWatchlistEntry, MarketWatchlistResponse, ExtensionDataImport, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, WalkForwardPreview, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, WatchRule, WatchRulePreview, WatchRuleType, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -661,6 +661,25 @@ export const addMarketWatchlistItem = async (request: { symbol: string; note?: s
 
 export const deleteMarketWatchlistItem = async (entryId: number): Promise<{ id: number; symbol: string; deleted: true }> =>
   (await apiClient.delete(`/market/watchlist/items/${entryId}`)).data;
+
+export const listExtensionDataImports = async (): Promise<{ items: ExtensionDataImport[]; total: number; storage: 'postgresql'; mapping_state: 'staged_only'; http_allowed_hosts: string[] }> =>
+  (await apiClient.get('/data/exchange/imports', { timeout: 30_000, skipRetry: true })).data;
+
+export const uploadExtensionData = async (file: File, name: string): Promise<ExtensionDataImport> => {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('name', name);
+  return (await apiClient.post<ExtensionDataImport>('/data/exchange/imports', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60_000 })).data;
+};
+
+export const importExtensionDataFromHttp = async (request: { name: string; url: string; format: 'csv' | 'json' | 'xlsx' }): Promise<ExtensionDataImport> =>
+  (await apiClient.post<ExtensionDataImport>('/data/exchange/http-imports', request, { timeout: 60_000 })).data;
+
+export const downloadExtensionData = async (importId: string, format: 'csv' | 'json' | 'xlsx'): Promise<Blob> =>
+  (await apiClient.get(`/data/exchange/imports/${importId}/export`, { params: { format }, responseType: 'blob', timeout: 60_000 })).data;
+
+export const deleteExtensionDataImport = async (importId: string): Promise<{ id: string; name: string; deleted: true }> =>
+  (await apiClient.delete(`/data/exchange/imports/${importId}`)).data;
 
 export const getHotConcepts = async (limit = 50, date?: string): Promise<HotConceptItem[]> => {
   const response = await apiClient.get<HotConceptItem[]>('/market/hot-concepts', { params: { limit, date } });

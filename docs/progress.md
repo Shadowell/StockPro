@@ -1,5 +1,28 @@
 # Progress Log
 
+## Data fusion: isolated CSV/JSON/XLSX exchange (2026-08-20)
+
+- Added PostgreSQL `extension_data_imports` and `extension_data_records` as an
+  isolated staging boundary. Uploads do not map into market, factor, strategy,
+  backtest or Paper tables and can be explicitly deleted with cascading staged
+  rows.
+- CSV, object-array JSON and first-sheet XLSX share a 5MB / 10,000-row /
+  200-column contract. Empty/duplicate headers and XLSX formulas fail before a
+  database write. Every file and row receives a stable SHA-256 hash.
+- Staged data exports to CSV, JSON or XLSX. Spreadsheet exports contain static
+  values only, use Arial, a styled/frozen header and formula-injection escaping.
+  The Data Owner page exposes upload, three exports, a staged-only status and a
+  destructive-action confirmation; guests remain read-only.
+- Real acceptance uploaded a two-column score CSV, read one staged row, exported
+  all three formats, reopened XLSX as `代码|600519|1.2|Arial|0 formulas`, then
+  deleted the import. Local migrations are 36/36 and Paper counts remained
+  15 instances / 24 orders / 18 trades / 310 events.
+- Added an explicit HTTPS connector with an exact-host allowlist, no redirects,
+  public-DNS validation and the same 5MB parser limit. The default empty
+  allowlist is visible in the UI and rejected `example.com` with HTTP 400 before
+  any request. Source URLs are retained as staged provenance; migrations are
+  now 37/37.
+
 ## Dashboard/Market fusion: PostgreSQL watchlist owner (2026-08-20)
 
 - Audited existing ownership before adding UI: Dashboard already owns index,
