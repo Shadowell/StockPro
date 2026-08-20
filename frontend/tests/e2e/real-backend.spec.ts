@@ -90,6 +90,19 @@ test('真实行情自选页读取 PostgreSQL 清单且空状态不隐式写入',
   await expect(page.getByText('尚未添加自选证券')).toBeVisible({ timeout: 30_000 });
 });
 
+test('真实扩展数据交换页保持隔离暂存空状态', async ({ page }) => {
+  const token = await login(page.request);
+  await page.addInitScript((value) => {
+    window.localStorage.setItem('stockpro_admin_token', value);
+    window.localStorage.setItem('stockpro_auth_profile', JSON.stringify({ role: 'admin', username: 'admin', permissions: ['read', 'write', 'admin'] }));
+  }, token);
+  await page.goto('/data', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('tab', { name: '导入导出' }).click();
+  await expect(page.getByTestId('extension-data-exchange')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('仅暂存 · 未映射')).toBeVisible();
+  await expect(page.getByText('尚未导入扩展数据')).toBeVisible({ timeout: 30_000 });
+});
+
 test('真实回测页从封存快照预览无重叠 Walk-forward 折', async ({ page }) => {
   const token = await login(page.request);
   const configResponse = await page.request.get('/api/backtest/configuration', {

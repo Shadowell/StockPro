@@ -9,8 +9,9 @@ from typing import Any, Dict, List, Optional
 
 from app.services.tushare_provider import market_data_provider as ak
 import pandas as pd
+import httpx
 import psycopg2.extras
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -21,6 +22,7 @@ from app.services.dataset_snapshot_service import DatasetSnapshotService
 from app.services.kline_sync_service import KlineSyncService
 from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService
 from app.services.tushare_catalog_service import TushareCatalogService
+from app.services.extension_data_exchange_service import ExtensionDataExchangeService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -39,6 +41,68 @@ daily_reference_sync_service = DailyReferenceSyncService(
     snapshot_service=dataset_snapshot_service,
     reference_service=reference_dataset_sync_service,
 )
+extension_exchange_service = ExtensionDataExchangeService(db)
+
+
+@router.get("/exchange/imports")
+async def list_extension_imports() -> Dict[str, Any]:
+    items = await run_in_threadpool(extension_exchange_service.list_imports)
+    return {"items": items, "total": len(items), "storage": "postgresql", "mapping_state": "staged_only", "http_allowed_hosts": settings.EXTENSION_HTTP_ALLOWED_HOSTS}
+
+
+@router.post("/exchange/imports")
+async def create_extension_import(
+    file: UploadFile = File(...),
+    name: str = Form(""),
+) -> Dict[str, Any]:
+    content = await file.read(ExtensionDataExchangeService.MAX_BYTES + 1)
+    try:
+        return await run_in_threadpool(
+            extension_exchange_service.create_import,
+            name,
+            file.filename or "upload",
+            content,
+        )
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/exchange/imports/{import_id}/export")
+async def export_extension_import(import_id: str, format: str = Query("csv")) -> Response:
+    normalized = str(format).lower()
+    try:
+        imported, content = await run_in_threadpool(extension_exchange_service.export_import, import_id, normalized)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "不存在" in str(exc) else 400, detail=str(exc)) from exc
+    media_types = {
+        "csv": "text/csv; charset=utf-8",
+        "json": "application/json; charset=utf-8",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+    filename = f"extension-{imported['id']}.{normalized}"
+    return Response(content=content, media_type=media_types.get(normalized, "application/octet-stream"), headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.delete("/exchange/imports/{import_id}")
+async def delete_extension_import(import_id: str) -> Dict[str, Any]:
+    try:
+        return await run_in_threadpool(extension_exchange_service.delete_import, import_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/exchange/http-imports")
+async def create_extension_http_import(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    try:
+        return await run_in_threadpool(
+            extension_exchange_service.create_http_import,
+            str(payload.get("name") or ""),
+            str(payload.get("url") or ""),
+            str(payload.get("format") or ""),
+            settings.EXTENSION_HTTP_ALLOWED_HOSTS,
+        )
+    except (ValueError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 sync_status: Dict[str, Any] = {
     "is_running": False,

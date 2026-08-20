@@ -51,8 +51,9 @@ class Settings(BaseSettings):
 
     ENFORCE_OPERATION_ALLOWLIST: bool = False
     OPERATION_ALLOWLIST: List[str] = []
+    EXTENSION_HTTP_ALLOWED_HOSTS: List[str] = []
 
-    @field_validator("OPERATION_ALLOWLIST", mode="before")
+    @field_validator("OPERATION_ALLOWLIST", "EXTENSION_HTTP_ALLOWED_HOSTS", mode="before")
     def assemble_operation_allowlist(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
         if isinstance(v, str) and v.startswith("["):
             return json.loads(v)
