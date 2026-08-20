@@ -109,6 +109,29 @@ export interface StockCandidate {
   amount?: number | null;
 }
 
+export interface MarketWatchlistEntry {
+  id: number;
+  symbol: string;
+  note: string;
+  name?: string | null;
+  price?: number | null;
+  change_percent?: number | null;
+  amount?: number | null;
+  turnover?: number | null;
+  volume_ratio?: number | null;
+  amplitude?: number | null;
+  quote_updated_at?: string | null;
+  created_at: string;
+}
+
+export interface MarketWatchlistResponse {
+  items: MarketWatchlistEntry[];
+  total: number;
+  source_label: string;
+  source_updated_at?: string | null;
+  data_status: 'available' | 'empty';
+}
+
 export interface OrderBookLevel {
   level: number;
   price?: number | null;

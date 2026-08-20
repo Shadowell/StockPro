@@ -83,6 +83,7 @@ const json = (data: unknown, status = 200) => ({
 async function mockApi(context: BrowserContext) {
   let persistedWalkForwardJob: Record<string, unknown> | null = null;
   let watchRules: Array<Record<string, unknown>> = [];
+  let marketWatchlist: Array<Record<string, unknown>> = [];
   await context.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -204,6 +205,13 @@ async function mockApi(context: BrowserContext) {
         heat_rankings: [{ rank: 1, symbol: '600000.SH', name: '浦发银行', source_label: 'tushare_kpl_list' }],
       }));
     }
+    if (method === 'GET' && path === '/market/watchlist') return route.fulfill(json({ items: marketWatchlist, total: marketWatchlist.length, source_label: 'PostgreSQL 自选清单 + 行情缓存', source_updated_at: now, data_status: marketWatchlist.length ? 'available' : 'empty' }));
+    if (method === 'POST' && path === '/market/watchlist/items') {
+      const body = request.postDataJSON();
+      marketWatchlist = [{ id: 1, symbol: '600000', name: '浦发银行', note: body.note || '', price: 10.9, change_percent: 2.1, amount: 100000000, turnover: 0.8, volume_ratio: 1.2, quote_updated_at: now, created_at: now }];
+      return route.fulfill(json(marketWatchlist[0]));
+    }
+    if (method === 'DELETE' && path === '/market/watchlist/items/1') { marketWatchlist = []; return route.fulfill(json({ id: 1, symbol: '600000', deleted: true })); }
 
     if (method === 'GET' && path === '/market/short-line-indices') {
       return route.fulfill(json([
@@ -1109,7 +1117,7 @@ test('configured market colors apply to gains, losses and neutral values', async
   await expect(monthlyReturns.getByText('0.00%', { exact: true })).toHaveCSS('color', 'rgb(185, 195, 207)');
 });
 
-test('market research exposes exactly six evidence workspaces and legacy redirects', async ({ page }) => {
+test('market research exposes seven owner workspaces and legacy redirects', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/research/overview');
   await expect(page).toHaveURL(/\/market\?tab=structure$/);
@@ -1119,7 +1127,7 @@ test('market research exposes exactly six evidence workspaces and legacy redirec
   await expect(page.getByTestId('market-headline-rise_count').locator('.bp-metric-card')).toHaveClass(/border-up/);
   await expect(page.getByTestId('market-headline-fall_count').locator('.bp-metric-card')).toHaveClass(/border-down/);
   await expect(page.getByTestId('market-headline-seal_rate')).toContainText('86.15%');
-  for (const label of ['市场结构', '板块轮动', '情绪 / 涨停', '事件', '交易日历', '个股研究']) {
+  for (const label of ['市场结构', '自选', '板块轮动', '情绪 / 涨停', '事件', '交易日历', '个股研究']) {
     await expect(page.getByRole('tab', { name: label })).toBeVisible();
   }
   await expect(page.getByText('市场数据快照')).toBeVisible();
@@ -1146,6 +1154,21 @@ test('market research exposes exactly six evidence workspaces and legacy redirec
   await expect(page).toHaveURL(/\/market\?tab=calendar$/);
   await page.goto('/ai');
   await expect(page).toHaveURL(/\/market\?tab=stock&panel=ai$/);
+});
+
+test('market watchlist persists only symbols and joins existing quote evidence', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/market?tab=watchlist');
+  await expect(page.getByTestId('market-watchlist')).toBeVisible();
+  await expect(page.getByText('尚未添加自选证券')).toBeVisible();
+  await page.getByLabel('搜索自选证券').fill('600519');
+  await page.getByLabel('自选备注').fill('核心观察');
+  await page.getByRole('button', { name: '查找' }).click();
+  await page.getByRole('button', { name: /浦发银行/ }).click();
+  await expect(page.getByText('核心观察')).toBeVisible();
+  await expect(page.getByText('2.10%')).toBeVisible();
+  await page.getByRole('button', { name: '删除自选 600000' }).click();
+  await expect(page.getByText('尚未添加自选证券')).toBeVisible();
 });
 
 test('stock-pool snapshot carries evidence into a backtest draft without copied symbols', async ({ page }) => {

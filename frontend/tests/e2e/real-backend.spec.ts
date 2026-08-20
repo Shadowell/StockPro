@@ -78,6 +78,18 @@ test('真实股票池筛选器提供版本化 AND OR 条件配置', async ({ pag
   await expect(page.getByRole('button', { name: '任一满足 OR' })).toBeVisible();
 });
 
+test('真实行情自选页读取 PostgreSQL 清单且空状态不隐式写入', async ({ page }) => {
+  const token = await login(page.request);
+  await page.addInitScript((value) => {
+    window.localStorage.setItem('stockpro_admin_token', value);
+    window.localStorage.setItem('stockpro_auth_profile', JSON.stringify({ role: 'admin', username: 'admin', permissions: ['read', 'write', 'admin'] }));
+  }, token);
+  await page.goto('/market?tab=watchlist', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('market-watchlist')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('清单存 PostgreSQL；行情字段直接读取现有缓存，不复制价格。')).toBeVisible();
+  await expect(page.getByText('尚未添加自选证券')).toBeVisible({ timeout: 30_000 });
+});
+
 test('真实回测页从封存快照预览无重叠 Walk-forward 折', async ({ page }) => {
   const token = await login(page.request);
   const configResponse = await page.request.get('/api/backtest/configuration', {

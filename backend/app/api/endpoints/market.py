@@ -4,13 +4,36 @@ import time
 from fastapi import APIRouter, Query, Body, HTTPException
 from app.services.market_service import MarketService
 from app.services.market_research_service import MarketResearchService
+from app.services.market_watchlist_service import MarketWatchlistService
 from app.db import db_instance as db
 from typing import Any, Dict, List
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 research_service = MarketResearchService(db)
+watchlist_service = MarketWatchlistService(db)
 _OVERVIEW_CACHE: Dict[str, Any] = {"at": 0.0, "payload": None}
+
+
+@router.get("/watchlist")
+async def get_watchlist() -> Dict[str, Any]:
+    return await asyncio.to_thread(watchlist_service.list_entries)
+
+
+@router.post("/watchlist/items")
+async def add_watchlist_item(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    try:
+        return await asyncio.to_thread(watchlist_service.add_entry, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/watchlist/items/{entry_id}")
+async def delete_watchlist_item(entry_id: int) -> Dict[str, Any]:
+    try:
+        return await asyncio.to_thread(watchlist_service.delete_entry, entry_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def _get_hot_concept_leaders_cached(name: str, limit: int) -> List[Dict[str, Any]]:

@@ -14,9 +14,11 @@ import { formatSymbolLabel, toPublicSymbol } from '../utils/symbolDisplay';
 import { SymbolCell } from '../components/SymbolCell';
 import { useSymbolNames } from '../hooks/useSymbolNames';
 import { Market as StockTerminal } from './Market';
+import { MarketWatchlist } from '../components/MarketWatchlist';
 
 const TABS = [
   ['structure', '市场结构'],
+  ['watchlist', '自选'],
   ['sectors', '板块轮动'],
   ['sentiment', '情绪 / 涨停'],
   ['events', '事件'],
@@ -466,14 +468,15 @@ export function MarketResearch() {
     <WorkspaceTabs ariaLabel="市场研究二级导航" items={TABS.map(([id, label]) => ({ id, label, testId: `market-tab-${id}` }))} value={tab} onChange={(id) => setParams({ tab: id })} />
     {error ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{error}</div> : null}
     {tab === 'events' && resourceErrors.messages ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{resourceErrors.messages}；未把失败响应显示为空资讯。</div> : null}
-    {!context && loading && tab !== 'calendar' && tab !== 'stock' ? <div className={`${panel} flex h-72 items-center justify-center text-slate-500`}><RefreshCw className="mr-2 h-5 w-5 animate-spin" />读取市场快照…</div> : null}
-    {!loading && !context?.snapshot && tab !== 'calendar' && tab !== 'stock' ? (
+    {!context && loading && tab !== 'calendar' && tab !== 'stock' && tab !== 'watchlist' ? <div className={`${panel} flex h-72 items-center justify-center text-slate-500`}><RefreshCw className="mr-2 h-5 w-5 animate-spin" />读取市场快照…</div> : null}
+    {!loading && !context?.snapshot && tab !== 'calendar' && tab !== 'stock' && tab !== 'watchlist' ? (
       <div className={`${panel} flex h-72 flex-col items-center justify-center gap-2 px-6 text-center`} data-testid="market-snapshot-empty">
         <p className="text-sm text-slate-300">{error || context?.reason || '没有匹配的封存市场证据快照'}</p>
         <p className="text-xs text-slate-600">未把缺失或超时伪装成已就绪行情。</p>
       </div>
     ) : null}
     {context?.snapshot && tab === 'structure' ? <Structure context={context} /> : null}
+    {tab === 'watchlist' ? <MarketWatchlist /> : null}
     {context?.snapshot && tab === 'sectors' ? <Sectors context={context} /> : null}
     {context?.snapshot && tab === 'sentiment' ? <Sentiment context={context} /> : null}
     {context?.snapshot && tab === 'events' ? <Events messages={messages} context={context} /> : null}
