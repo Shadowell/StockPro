@@ -101,6 +101,26 @@ test('真实回测页从封存快照预览无重叠 Walk-forward 折', async ({ 
   await expect(firstFold).toContainText('样本外');
 });
 
+test('真实 Walk-forward 完成任务展示持久化 OOS 证据', async ({ page }) => {
+  const token = await login(page.request);
+  const jobsResponse = await page.request.get('/api/backtest/jobs?limit=100', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(jobsResponse.ok()).toBeTruthy();
+  const jobs = ((await jobsResponse.json()) as { items?: Array<{ job_type?: unknown; status?: unknown; result_payload?: unknown }> }).items ?? [];
+  const completed = jobs.find((item) => item.job_type === 'walk_forward' && item.status === 'success' && item.result_payload);
+  test.skip(!completed, '当前数据库没有已完成的 Walk-forward 验收任务');
+
+  await page.addInitScript((value) => window.localStorage.setItem('stockpro_admin_token', value), token);
+  await page.goto('/backtest', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: '折叠结果' }).first().click();
+
+  await expect(page.getByRole('dialog', { name: 'Walk-forward OOS 结果' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/不可直接晋级模拟盘/)).toBeVisible();
+  await expect(page.getByText('第 1 折')).toBeVisible();
+  await expect(page.getByText(/lookback=5/)).toBeVisible();
+});
+
 test('登录后市场和数据库接口可访问', async ({ request }) => {
   const token = await login(request);
   const headers = { Authorization: `Bearer ${token}` };

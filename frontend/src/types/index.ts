@@ -733,6 +733,7 @@ export type BacktestJobStatus =
 
 export interface BacktestJob {
   job_id: string;
+  job_type?: 'single' | 'walk_forward';
   request_payload: BacktestRunRequestV1;
   run_mode: 'quick' | 'full';
   status: BacktestJobStatus;
@@ -749,6 +750,7 @@ export interface BacktestJob {
   updated_at: string;
   finished_at?: string | null;
   cancel_requested_at?: string | null;
+  result_payload?: WalkForwardExecutionResult | Record<string, never>;
 }
 
 export interface BacktestJobLog {
@@ -782,6 +784,37 @@ export interface WalkForwardPreview {
   folds: WalkForwardFold[];
   promotion_eligible: boolean;
   next_step?: string;
+}
+
+export interface WalkForwardExecutionFold extends WalkForwardFold {
+  best_parameters: Record<string, unknown>;
+  is_objective: number;
+  oos_objective?: number | null;
+  oos_return?: number | null;
+  is_run_id: string;
+  oos_run_id: string;
+  oos_degraded?: boolean | null;
+}
+
+export interface WalkForwardExecutionResult {
+  execution_version: string;
+  objective: string;
+  direction: 'max' | 'min';
+  dataset_snapshot_id: number;
+  dataset_manifest_hash: string;
+  n_folds: number;
+  n_combinations: number;
+  folds: WalkForwardExecutionFold[];
+  summary: {
+    compounded_oos_return: number;
+    avg_is_objective?: number | null;
+    avg_oos_objective?: number | null;
+    degradation?: number | null;
+    consistency: number;
+    oos_equity_curve: Array<{ fold: number; date: string; value: number }>;
+  };
+  promotion_eligible: false;
+  promotion_reason: string;
 }
 
 export interface BacktestConfiguration {

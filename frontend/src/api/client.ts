@@ -1156,6 +1156,15 @@ export const previewWalkForward = async (request: {
 }): Promise<WalkForwardPreview> =>
   (await apiClient.post<WalkForwardPreview>('/backtest/walk-forward/preview', request, { timeout: 120_000 })).data;
 
+export const createWalkForwardJob = async (request: BacktestRunRequestV1 & {
+  train_sessions: number;
+  test_sessions: number;
+  step_sessions: number;
+  parameter_grid: Record<string, unknown[]>;
+  objective: 'sharpe' | 'sortino' | 'strategy_return' | 'maximum_drawdown';
+}): Promise<BacktestJob> =>
+  (await apiClient.post<BacktestJob>('/backtest/walk-forward/jobs', request, { timeout: 120_000 })).data;
+
 export const MARKET_RESEARCH_CONTEXT_TIMEOUT_MS = 20_000;
 
 export const getMarketResearchContext = async (params?: { snapshot_id?: number; trade_date?: string; market_scope?: string }): Promise<MarketResearchContext> => {
@@ -1197,9 +1206,15 @@ export const getStockPoolSnapshot = async (snapshotId: number): Promise<StockPoo
 export const createPoolBacktestDraft = async (snapshotId: number, request: { strategy_version_id: string; start_date: string; end_date: string; initial_cash: number; benchmark_code?: string; parameters?: Record<string, unknown> }): Promise<{ status: string; experiment: Record<string, unknown>; pool_snapshot: StockPoolSnapshot }> =>
   (await apiClient.post(`/pool-snapshots/${snapshotId}/backtests`, request)).data;
 
+export const BACKTEST_LIST_READ_TIMEOUT_MS = 30_000;
+
 export const listBacktestRuns = async (limit = 50): Promise<{ items: BacktestRun[]; total: number }> => {
   try {
-    return (await apiClient.get<{ items: BacktestRun[]; total: number }>('/backtest/runs', { params: { limit }, ...pageRead })).data;
+    return (await apiClient.get<{ items: BacktestRun[]; total: number }>('/backtest/runs', {
+      params: { limit },
+      timeout: BACKTEST_LIST_READ_TIMEOUT_MS,
+      skipRetry: true,
+    })).data;
   } catch (error) {
     return rejectPageTimeout('回测记录', error);
   }
@@ -1216,7 +1231,11 @@ export const createBacktestJob = async (
 
 export const listBacktestJobs = async (limit = 50): Promise<{ items: BacktestJob[]; total: number }> => {
   try {
-    return (await apiClient.get<{ items: BacktestJob[]; total: number }>('/backtest/jobs', { params: { limit }, ...pageRead })).data;
+    return (await apiClient.get<{ items: BacktestJob[]; total: number }>('/backtest/jobs', {
+      params: { limit },
+      timeout: BACKTEST_LIST_READ_TIMEOUT_MS,
+      skipRetry: true,
+    })).data;
   } catch (error) {
     return rejectPageTimeout('回测任务', error);
   }

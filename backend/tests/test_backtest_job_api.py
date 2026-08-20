@@ -17,6 +17,15 @@ RUN_REQUEST = {
     "run_mode": "full",
 }
 
+WALK_FORWARD_REQUEST = {
+    **{key: value for key, value in RUN_REQUEST.items() if key != "run_mode"},
+    "train_sessions": 3,
+    "test_sessions": 1,
+    "step_sessions": 1,
+    "parameter_grid": {"lookback": [5, 10]},
+    "objective": "sharpe",
+}
+
 
 class BacktestJobApiTests(unittest.TestCase):
     def setUp(self):
@@ -39,6 +48,22 @@ class BacktestJobApiTests(unittest.TestCase):
         self.assertEqual("pending", response.json()["status"])
         create_job.assert_called_once()
         self.assertEqual("full", create_job.call_args.kwargs["mode"])
+
+    @patch.object(backtest.job_service, "create_walk_forward_job")
+    def test_create_walk_forward_job_returns_accepted_persisted_job(self, create_job):
+        create_job.return_value = {
+            "job_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+            "job_type": "walk_forward",
+            "status": "pending",
+            "run_mode": "full",
+            "progress": 0,
+        }
+
+        response = self.client.post("/backtest/walk-forward/jobs", json=WALK_FORWARD_REQUEST)
+
+        self.assertEqual(202, response.status_code)
+        self.assertEqual("walk_forward", response.json()["job_type"])
+        create_job.assert_called_once()
 
     @patch.object(backtest.job_service, "list_jobs")
     def test_list_jobs_returns_stable_envelope(self, list_jobs):

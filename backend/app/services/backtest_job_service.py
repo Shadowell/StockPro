@@ -8,6 +8,7 @@ import psycopg2.extras
 
 from app.services.backtest_workbench_service import BacktestCancelled, BacktestWorkbenchService
 from app.services.guest_access_service import GuestAccessService
+from app.services.walk_forward_plan_service import WalkForwardExecutionService
 
 
 TERMINAL_JOB_STATUSES = {"cancelled", "success", "failed", "interrupted"}
@@ -24,6 +25,7 @@ class BacktestJobService:
     def __init__(self, database, *, max_workers: int = 2) -> None:
         self.database = database
         self.workbench = BacktestWorkbenchService(database)
+        self.walk_forward = WalkForwardExecutionService(database)
         self.guest_access = GuestAccessService(database)
         self._slots = threading.BoundedSemaphore(max(1, max_workers))
         self._active: dict[str, threading.Thread] = {}
@@ -87,6 +89,55 @@ class BacktestJobService:
                 usage_id, success=False, failure_reason="回测任务创建失败"
             )
             raise
+        self.start(job_id)
+        return self._serialize(row)
+
+    def create_walk_forward_job(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        principal: Mapping[str, Any],
+        parent_job_id: str | None = None,
+        attempt: int = 1,
+    ) -> dict[str, Any]:
+        if principal.get("role") == "guest":
+            raise BacktestJobError("访客账号不能启动 Walk-forward 参数优化", 403)
+        # Fail before the queue write when the snapshot, folds or grid are invalid.
+        self.walk_forward.plan_service.preview(payload)
+        self.walk_forward._expand_grid(payload.get("parameter_grid") or {})
+        job_id = str(uuid.uuid4())
+        with self.database.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO backtest_jobs
+                        (job_id, request_payload, run_mode, job_type, owner_role,
+                         owner_session_id, owner_guest_code_id, parent_job_id,
+                         attempt, message)
+                    VALUES (%s, %s, 'full', 'walk_forward', %s, %s, %s, %s, %s, %s)
+                    RETURNING *
+                    """,
+                    (
+                        job_id,
+                        psycopg2.extras.Json(dict(payload)),
+                        str(principal.get("role") or "admin"),
+                        principal.get("session_id"),
+                        principal.get("guest_code_id"),
+                        parent_job_id,
+                        attempt,
+                        "Walk-forward 任务已进入本地队列",
+                    ),
+                )
+                row = dict(cursor.fetchone())
+                self._log_cursor(
+                    cursor,
+                    job_id,
+                    "info",
+                    "queued",
+                    "Walk-forward 任务已持久化并进入本地队列",
+                    {"job_type": "walk_forward", "attempt": attempt},
+                )
+            conn.commit()
         self.start(job_id)
         return self._serialize(row)
 
@@ -195,6 +246,13 @@ class BacktestJobService:
             raise BacktestJobError(
                 f"当前状态不可重试: {current['status']}", 409
             )
+        if current.get("job_type") == "walk_forward":
+            return self.create_walk_forward_job(
+                current["request_payload"],
+                principal=principal,
+                parent_job_id=job_id,
+                attempt=int(current["attempt"] or 1) + 1,
+            )
         return self.create_job(
             current["request_payload"],
             mode=str(current["run_mode"]),
@@ -287,25 +345,41 @@ class BacktestJobService:
                     last_progress = progress_value
                     last_phase = phase
 
-                result = self.workbench.run(
-                    job["request_payload"],
-                    mode=str(job["run_mode"]),
-                    progress_hook=progress,
-                    cancel_check=lambda: self._cancel_requested(job_id),
-                )
-                run_id = str(result.get("id") or "")
-                self._transition(
-                    job_id,
-                    status="success",
-                    progress=100,
-                    phase="completed",
-                    message="回测完成，结果证据已封存",
-                    backtest_run_id=run_id,
-                    terminal=True,
-                )
-                self.guest_access.finish_backtest(
-                    usage_id, success=True, run_id=run_id
-                )
+                if job.get("job_type") == "walk_forward":
+                    result = self.walk_forward.execute(
+                        job["request_payload"],
+                        progress_hook=progress,
+                        cancel_check=lambda: self._cancel_requested(job_id),
+                    )
+                    self._transition(
+                        job_id,
+                        status="success",
+                        progress=100,
+                        phase="completed",
+                        message="Walk-forward OOS 证据已完成",
+                        result_payload=result,
+                        terminal=True,
+                    )
+                else:
+                    result = self.workbench.run(
+                        job["request_payload"],
+                        mode=str(job["run_mode"]),
+                        progress_hook=progress,
+                        cancel_check=lambda: self._cancel_requested(job_id),
+                    )
+                    run_id = str(result.get("id") or "")
+                    self._transition(
+                        job_id,
+                        status="success",
+                        progress=100,
+                        phase="completed",
+                        message="回测完成，结果证据已封存",
+                        backtest_run_id=run_id,
+                        terminal=True,
+                    )
+                    self.guest_access.finish_backtest(
+                        usage_id, success=True, run_id=run_id
+                    )
             except BacktestCancelled as exc:
                 latest = self._row(
                     "SELECT progress FROM backtest_jobs WHERE job_id = %s",
@@ -351,6 +425,7 @@ class BacktestJobService:
         message: str,
         error_message: str | None = None,
         backtest_run_id: str | None = None,
+        result_payload: Mapping[str, Any] | None = None,
         started: bool = False,
         terminal: bool = False,
         level: str = "info",
@@ -366,6 +441,7 @@ class BacktestJobService:
                         message = %s,
                         error_message = %s,
                         backtest_run_id = COALESCE(%s, backtest_run_id),
+                        result_payload = COALESCE(%s, result_payload),
                         started_at = CASE WHEN %s THEN COALESCE(started_at, NOW()) ELSE started_at END,
                         finished_at = CASE WHEN %s THEN NOW() ELSE finished_at END,
                         updated_at = NOW()
@@ -378,6 +454,7 @@ class BacktestJobService:
                         message,
                         error_message,
                         backtest_run_id,
+                        psycopg2.extras.Json(dict(result_payload)) if result_payload is not None else None,
                         started,
                         terminal,
                         job_id,

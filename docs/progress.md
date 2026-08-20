@@ -1,5 +1,37 @@
 # Progress Log
 
+## Backtest fusion: persisted asynchronous walk-forward execution (2026-08-20)
+
+- Extended the existing `backtest_jobs` queue with `job_type=walk_forward` and
+  a persisted JSON result; no parallel worker/queue was introduced. The schema
+  migration is additive and local storage is healthy at 33/33 migrations.
+- Each fold runs a capped training parameter grid (maximum 12 combinations and
+  48 total diagnostic runs), selects the configured objective with direction-
+  aware ordering, then executes the selected parameters on the immediately
+  adjacent OOS window. Cancellation is checked before folds and inside every
+  child BacktestWorkbench run.
+- Walk-forward child runs use full-range A-share matching and evidence but carry
+  `diagnostic_only=true`, no research protocol and a distinct input hash. They
+  therefore skip protocol evaluation and Paper promotion entirely; ordinary
+  full protocol runs retain the existing 11-gate path.
+- The result persists fold windows, candidate/sub-run IDs, best parameters,
+  IS/OOS objective values, OOS return, degradation, compounded OOS equity and
+  consistency. Backtest task cards expose a dedicated OOS result dialog and
+  state that an independent full protocol run is still required for Paper.
+- Real bounded acceptance first rejected an incompatible factor snapshot before
+  child-run creation. With pool snapshot 5 / factor snapshot 4 / dataset 10, a
+  one-fold one-combination job completed successfully: OOS return 0.296%,
+  consistency 100%, result version `walk-forward-execution.v1`. Its IS and OOS
+  runs both ended `promotion_status=not_evaluated` with zero promotion checks.
+- Real UI acceptance reads the persisted result. Run/job lists now share a
+  30-second SSH-tunnel cold-read envelope; a 9-second delayed-list test failed
+  before the fix and passes after it.
+- Verification: local migration health 33/33; Mock browser suite 59/59; real
+  bounded API and result-dialog acceptance passed; `./scripts/check.sh` passed
+  production build, bundle budget, lint with the existing Fast Refresh warning
+  only, 403 backend tests and Python compilation. Paper continuity remained 15
+  instances / 18 trades / 7 positions / 128 equity snapshots / 310 events.
+
 ## Backtest fusion: sealed walk-forward fold preview (2026-08-20)
 
 - Added a read-only `walk-forward-plan.v1` service and API. It reads distinct

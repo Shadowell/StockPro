@@ -107,6 +107,14 @@ class WalkForwardPreviewRequest(BaseModel):
     step_sessions: int = Field(default=63, ge=1, le=500)
 
 
+class WalkForwardJobRequest(BacktestRunRequest):
+    train_sessions: int = Field(default=252, ge=1, le=2000)
+    test_sessions: int = Field(default=63, ge=1, le=500)
+    step_sessions: int = Field(default=63, ge=1, le=500)
+    parameter_grid: Dict[str, List[Any]]
+    objective: str = Field(default="sharpe", pattern="^(sharpe|sortino|strategy_return|maximum_drawdown)$")
+
+
 def _http_error(exc: ValueError, status_code: int = 400) -> HTTPException:
     return HTTPException(status_code=status_code, detail=str(exc))
 
@@ -125,6 +133,23 @@ async def get_configuration() -> Dict[str, Any]:
 async def preview_walk_forward(request: WalkForwardPreviewRequest) -> Dict[str, Any]:
     try:
         return await run_in_threadpool(walk_forward_plan_service.preview, request.model_dump())
+    except ValueError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/walk-forward/jobs", status_code=status.HTTP_202_ACCEPTED)
+async def create_walk_forward_job(
+    request: WalkForwardJobRequest,
+    http_request: Request,
+) -> Dict[str, Any]:
+    principal = getattr(http_request.state, "auth_principal", {"role": "admin"})
+    try:
+        return job_service.create_walk_forward_job(
+            request.model_dump(),
+            principal=principal,
+        )
+    except BacktestJobError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except ValueError as exc:
         raise _http_error(exc) from exc
 

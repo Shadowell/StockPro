@@ -81,6 +81,7 @@ const json = (data: unknown, status = 200) => ({
 });
 
 async function mockApi(context: BrowserContext) {
+  let persistedWalkForwardJob: Record<string, unknown> | null = null;
   await context.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -539,7 +540,10 @@ async function mockApi(context: BrowserContext) {
       cancel_requested_at: null,
     };
 
-    if (method === 'GET' && path === '/backtest/jobs') return route.fulfill(json({ items: [mockBacktestJob], total: 1 }));
+    if (method === 'GET' && path === '/backtest/jobs') {
+      const items = persistedWalkForwardJob ? [persistedWalkForwardJob, mockBacktestJob] : [mockBacktestJob];
+      return route.fulfill(json({ items, total: items.length }));
+    }
     if (method === 'POST' && path === '/backtest/jobs') return route.fulfill(json(mockBacktestJob, 202));
     if (method === 'GET' && path === `/backtest/jobs/${mockBacktestJob.job_id}/logs`) return route.fulfill(json({ items: [{ id: 1, job_id: mockBacktestJob.job_id, level: 'info', phase: 'completed', message: mockBacktestJob.message, payload: { progress: 100 }, created_at: now }] }));
     if (method === 'GET' && path === '/backtest/runs') return route.fulfill(json({ items: [mockBacktestRun, mockQuickBacktestRun], total: 2 }));
@@ -563,6 +567,26 @@ async function mockApi(context: BrowserContext) {
         { index: 2, train_start: '2024-04-01', train_end: '2024-09-30', test_start: '2024-10-08', test_end: '2025-01-02' },
       ],
     }));
+    if (method === 'POST' && path === '/backtest/walk-forward/jobs') {
+      persistedWalkForwardJob = {
+        job_id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        job_type: 'walk_forward',
+        request_payload: {},
+        run_mode: 'full',
+        status: 'pending',
+        progress: 0,
+        phase: 'queued',
+        message: 'Walk-forward 任务已进入本地队列',
+        error_message: null,
+        backtest_run_id: null,
+        owner_role: 'admin',
+        attempt: 1,
+        created_at: now,
+        updated_at: now,
+        result_payload: {},
+      };
+      return route.fulfill(json(persistedWalkForwardJob, 202));
+    }
 
     const mockPool = { id: 'pool-1', name: '动量 Top20', pool_type: 'factor', description: 'fixture', status: 'active', data_purpose: 'user', rule_id: 'rule-1', rule_type: 'factor', rule_version: 1, config: { factor_code: 'momentum_20d', top_n: 20 }, rule_hash: 'rule-hash-abcdef', snapshot_count: 1, current_member_count: 2, latest_generation_id: 'generation-1', latest_dataset_snapshot_id: 10, latest_universe_snapshot_id: 1, latest_factor_snapshot_id: 3, latest_market_evidence_snapshot_id: null, latest_trade_date: '2025-01-02', latest_knowledge_cutoff_at: now, latest_input_hash: 'input-hash' };
     const mockMembers = [{ ordinal: 1, symbol: 'SH_600519', score: 1, reason: '20日动量排名 1', evidence: { factor_snapshot_id: 3 }, evidence_hash: 'member-hash-1', valid_from: '2025-01-02', valid_until: '2025-01-07', generator_version: 'stock-pool-generator.v1' }, { ordinal: 2, symbol: 'SZ_000333', score: 0.95, reason: '20日动量排名 2', evidence: { factor_snapshot_id: 3 }, evidence_hash: 'member-hash-2', valid_from: '2025-01-02', valid_until: '2025-01-07', generator_version: 'stock-pool-generator.v1' }];
@@ -952,6 +976,11 @@ test('backtest previews non-overlapping walk-forward trading folds', async ({ pa
   await expect(page.getByText('2024-01-02 → 2024-06-28')).toBeVisible();
   await expect(page.getByText('2024-07-01 → 2024-09-30')).toBeVisible();
   await expect(page.getByText('预览不可晋级模拟盘')).toBeVisible();
+  await expect(page.getByRole('button', { name: '启动 Walk-forward 任务' })).toBeVisible();
+  await page.getByRole('button', { name: '启动 Walk-forward 任务' }).click();
+  const jobConsole = page.getByTestId('backtest-job-console');
+  await expect(jobConsole.getByText(/Walk-forward · 第 1 次/)).toBeVisible();
+  await expect(jobConsole.getByText('Walk-forward 任务已进入本地队列')).toBeVisible();
 });
 
 test('backtest tolerates the SSH-tunnel cold configuration window', async ({ page }) => {
@@ -964,6 +993,23 @@ test('backtest tolerates the SSH-tunnel cold configuration window', async ({ pag
 
   await expect(page.getByRole('button', { name: 'Walk-forward 预览' })).toBeEnabled({ timeout: 15_000 });
   await expect(page.getByText('回测配置读取超时，已停止等待。请稍后重试。')).toHaveCount(0);
+});
+
+test('backtest tolerates cold run and job list reads', async ({ page }) => {
+  await page.route('**/api/backtest/runs*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 9_000));
+    await route.fallback();
+  });
+  await page.route('**/api/backtest/jobs*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 9_000));
+    await route.fallback();
+  });
+  await loginAsAdmin(page);
+  await page.goto('/backtest');
+
+  await expect(page.getByTestId('backtest-history-table').getByText('MA5 完整回测', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('backtest-job-console').getByText('回测完成，结果证据已封存')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('回测记录读取超时，已停止等待。请稍后重试。')).toHaveCount(0);
 });
 
 test('backtest disables walk-forward honestly when no sealed snapshot exists', async ({ page }) => {
@@ -981,6 +1027,50 @@ test('backtest disables walk-forward honestly when no sealed snapshot exists', a
 
   await expect(page.getByRole('button', { name: '无封存快照' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Walk-forward 预览' })).toHaveCount(0);
+});
+
+test('backtest renders persisted Walk-forward OOS result evidence', async ({ page }) => {
+  await page.route('**/api/backtest/jobs*', (route) => route.fulfill(json({
+    items: [{
+      job_id: 'wf-complete',
+      job_type: 'walk_forward',
+      request_payload: {},
+      run_mode: 'full',
+      status: 'success',
+      progress: 100,
+      phase: 'completed',
+      message: 'Walk-forward OOS 证据已完成',
+      error_message: null,
+      owner_role: 'admin',
+      attempt: 1,
+      created_at: now,
+      updated_at: now,
+      result_payload: {
+        execution_version: 'walk-forward-execution.v1',
+        objective: 'sharpe',
+        direction: 'max',
+        dataset_snapshot_id: 10,
+        dataset_manifest_hash: 'dataset-manifest',
+        n_folds: 2,
+        n_combinations: 2,
+        promotion_eligible: false,
+        promotion_reason: '需独立完整协议回测通过 11 项门控',
+        summary: { compounded_oos_return: 0.045, avg_is_objective: 2, avg_oos_objective: 1, degradation: 1, consistency: 0.5, oos_equity_curve: [] },
+        folds: [{ index: 1, train_start: '2024-01-02', train_end: '2024-06-28', test_start: '2024-07-01', test_end: '2024-09-30', best_parameters: { lookback: 10 }, is_objective: 2, oos_objective: 1, oos_return: 0.1, is_run_id: 'is-1', oos_run_id: 'oos-1', oos_degraded: true }],
+      },
+    }],
+    total: 1,
+  })));
+  await loginAsAdmin(page);
+  await page.goto('/backtest');
+
+  await page.getByRole('button', { name: '折叠结果' }).click();
+  await expect(page.getByRole('dialog', { name: 'Walk-forward OOS 结果' })).toBeVisible();
+  await expect(page.getByText('4.50%')).toBeVisible();
+  await expect(page.getByText('50.00%')).toBeVisible();
+  await expect(page.getByText('退化 1.000')).toBeVisible();
+  await expect(page.getByText('lookback=10')).toBeVisible();
+  await expect(page.getByText(/不可直接晋级模拟盘/)).toBeVisible();
 });
 
 test('configured market colors apply to gains, losses and neutral values', async ({ page }) => {
