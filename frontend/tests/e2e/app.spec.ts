@@ -82,6 +82,7 @@ const json = (data: unknown, status = 200) => ({
 
 async function mockApi(context: BrowserContext) {
   let persistedWalkForwardJob: Record<string, unknown> | null = null;
+  let watchRules: Array<Record<string, unknown>> = [];
   await context.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -633,6 +634,15 @@ async function mockApi(context: BrowserContext) {
       pool_moves: [{ snapshot_id: 11, pool_id: 'pool-1', pool_name: '动量 Top20', trade_date: '2025-01-02', member_count: 20, manifest_hash: 'pool-manifest' }],
       instances: [paperInstance], data_status: 'fresh', source_label: 'PostgreSQL Paper audit evidence', source_updated_at: now, response_generated_at: now,
     }));
+    if (method === 'GET' && path === '/watch/rules') return route.fulfill(json({ items: watchRules, total: watchRules.length }));
+    if (method === 'POST' && path === '/watch/rules') {
+      const body = request.postDataJSON();
+      const rule = { id: 'watch-rule-1', code: 'watch_fixture', rule_version: 1, enabled: true, data_purpose: 'user', created_at: now, last_evaluated_at: null, ...body };
+      watchRules = [rule];
+      return route.fulfill(json(rule));
+    }
+    if (method === 'POST' && path === '/watch/rules/watch-rule-1/preview') return route.fulfill(json({ rule_id: 'watch-rule-1', rule_version: 1, source_count: 5120, matched: 2, items: [{ code: '600519.SH' }], writes_performed: false }));
+    if (method === 'POST' && path === '/watch/rules/watch-rule-1/evaluate') return route.fulfill(json({ rule_id: 'watch-rule-1', rule_version: 1, source_count: 5120, matched: 2, items: [{ code: '600519.SH' }], writes_performed: true, alerts_created: 2, orders_created: 0 }));
     if (method === 'GET' && path === '/monitor/health') return route.fulfill(json({
       status: 'healthy',
       services: [{ id: 1, service_code: 'paper_runtime', status: 'healthy', freshness: 'fresh', message: '周期处理成功', observed_at: now }],
@@ -1468,7 +1478,7 @@ test('paper watch and monitor keep separate operator ownership', async ({ page }
     await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible();
   }
   await page.goto('/watch');
-  for (const label of ['策略信号', '订单与成交', '图表联动', '告警']) await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible();
+  for (const label of ['策略信号', '订单与成交', '图表联动', '规则', '告警']) await expect(page.getByRole('tab', { name: label, exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: '股票池变动', exact: true })).toHaveCount(0);
   await expect(page.getByTestId('data-scope-control')).toHaveCount(0);
   await page.getByRole('tab', { name: '订单与成交', exact: true }).click();
@@ -1486,6 +1496,27 @@ test('paper watch and monitor keep separate operator ownership', async ({ page }
   await page.getByRole('tab', { name: '策略健康', exact: true }).click();
   await expect(page.getByText('验收数据')).toHaveCount(0);
   await expect(page.getByText('最后心跳')).toBeVisible();
+});
+
+test('watch rules separate read-only preview from explicit alert evaluation', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/watch?tab=rules');
+  await expect(page.getByTestId('watch-rule-workbench')).toBeVisible();
+  await expect(page.getByText('规则只生成站内告警，不创建订单、不修改模拟盘。')).toBeVisible();
+  await page.getByLabel('规则名称').fill('贵州茅台价格观察');
+  await page.getByLabel('证券代码').fill('600519.SH');
+  await page.getByLabel('规则阈值').fill('1500');
+  await page.getByRole('button', { name: '保存规则' }).click();
+  const card = page.getByTestId('watch-rule-card');
+  await expect(card.getByText('贵州茅台价格观察')).toBeVisible();
+  await card.getByRole('button', { name: '只读预览' }).click();
+  await expect(page.getByTestId('watch-rule-result')).toContainText('命中 2 条');
+  await expect(page.getByTestId('watch-rule-result')).toContainText('新增告警 0 条');
+  await card.getByRole('button', { name: '评估并生成告警' }).click();
+  await expect(page.getByRole('alertdialog', { name: '评估观察规则' })).toContainText('不会创建订单');
+  await page.getByRole('alertdialog', { name: '评估观察规则' }).getByRole('button', { name: '评估并生成告警' }).click();
+  await expect(page.getByTestId('watch-rule-result')).toContainText('新增告警 2 条');
+  await expect(page.getByTestId('watch-rule-result')).toContainText('创建订单 0 条');
 });
 
 test('strategy backtest and paper expose the A-share operator workflow without implementation notes', async ({ page }) => {

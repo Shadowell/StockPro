@@ -1176,6 +1176,43 @@ export interface RuntimeAlert {
   triggered_at: string;
 }
 
+export type WatchRuleType = 'strategy' | 'indicator' | 'price' | 'abnormal';
+
+export interface WatchRuleCondition {
+  field: string;
+  operator: 'gt' | 'gte' | 'lt' | 'lte' | 'eq';
+  value: number | string;
+}
+
+export interface WatchRule {
+  id: string;
+  code: string;
+  name: string;
+  rule_type: WatchRuleType;
+  rule_version: number;
+  severity: 'info' | 'warning' | 'critical';
+  enabled: boolean;
+  data_purpose: 'user' | 'acceptance' | 'seed';
+  config: {
+    logic: 'all' | 'any';
+    symbols: string[];
+    conditions: WatchRuleCondition[];
+  };
+  last_evaluated_at?: string | null;
+  created_at: string;
+}
+
+export interface WatchRulePreview {
+  rule_id: string;
+  rule_version: number;
+  source_count: number;
+  matched: number;
+  items: Array<Record<string, unknown>>;
+  writes_performed: boolean;
+  alerts_created?: number;
+  orders_created?: 0;
+}
+
 export interface WatchContext {
   scope: DataScope;
   excluded_counts: Record<string, number>;

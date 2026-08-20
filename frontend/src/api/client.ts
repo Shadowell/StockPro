@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePreflightResult, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, WalkForwardPreview, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
+import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePreflightResult, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, WalkForwardPreview, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, WatchRule, WatchRulePreview, WatchRuleType, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
@@ -1367,7 +1367,7 @@ export const advancePaperInstances = async (request?: {
 
 export const getWatchContext = async (scope: 'business' | 'audit' = 'business'): Promise<WatchContext> => {
   try {
-    return (await apiClient.get<WatchContext>('/watch/context', { params: { scope }, ...pageRead })).data;
+    return (await apiClient.get<WatchContext>('/watch/context', { params: { scope }, timeout: 30_000, skipRetry: true })).data;
   } catch (error) {
     return rejectPageTimeout('盯盘观察台', error);
   }
@@ -1378,6 +1378,22 @@ export const listRuntimeAlerts = async (status?: string): Promise<{ items: Runti
 
 export const acknowledgeRuntimeAlert = async (alertId: string): Promise<RuntimeAlert> =>
   (await apiClient.post<RuntimeAlert>(`/watch/alerts/${alertId}/acknowledge`)).data;
+
+export const listWatchRules = async (): Promise<{ items: WatchRule[]; total: number }> =>
+  (await apiClient.get<{ items: WatchRule[]; total: number }>('/watch/rules', { timeout: 30_000, skipRetry: true })).data;
+
+export const createWatchRule = async (request: {
+  name: string;
+  rule_type: WatchRuleType;
+  severity: WatchRule['severity'];
+  config: WatchRule['config'];
+}): Promise<WatchRule> => (await apiClient.post<WatchRule>('/watch/rules', request)).data;
+
+export const previewWatchRule = async (ruleId: string): Promise<WatchRulePreview> =>
+  (await apiClient.post<WatchRulePreview>(`/watch/rules/${ruleId}/preview`)).data;
+
+export const evaluateWatchRule = async (ruleId: string): Promise<WatchRulePreview> =>
+  (await apiClient.post<WatchRulePreview>(`/watch/rules/${ruleId}/evaluate`)).data;
 
 export const getMonitorHealth = async (scope: 'business' | 'audit' = 'business'): Promise<MonitorHealth> =>
   (await apiClient.get<MonitorHealth>('/monitor/health', { params: { scope } })).data;

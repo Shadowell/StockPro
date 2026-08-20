@@ -8,11 +8,21 @@ import {
   GitCompareArrows,
   Layers3,
   RefreshCw,
+  Plus,
+  Radar,
   ShieldAlert,
 } from "lucide-react";
 import clsx from "clsx";
 import { DataPanel, StatusBadge } from "@bitpro/ui";
-import { acknowledgeRuntimeAlert, getWatchContext } from "../api/client";
+import {
+  acknowledgeRuntimeAlert,
+  createWatchRule,
+  evaluateWatchRule,
+  getStoredAuthProfile,
+  getWatchContext,
+  listWatchRules,
+  previewWatchRule,
+} from "../api/client";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import {
   EvidenceStrip,
@@ -21,7 +31,8 @@ import {
 } from "../components/OperatorShell";
 import { WorkspacePipelineNote } from "../components/WorkspacePipelineNote";
 import { TremorDeltaBadge } from "../components/TremorUI";
-import type { RuntimeAlert, WatchContext } from "../types";
+import type { RuntimeAlert, WatchContext, WatchRule, WatchRulePreview, WatchRuleType } from "../types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import {
   formatOperatorTime,
   orderTypeLabel,
@@ -44,6 +55,7 @@ const TABS = [
   ["execution", "订单与成交"],
   ["pools", "股票池变动"],
   ["charts", "图表联动"],
+  ["rules", "规则"],
   ["alerts", "告警"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
@@ -67,6 +79,16 @@ export function Watch() {
   const [context, setContext] = useState<WatchContext | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [rules, setRules] = useState<WatchRule[]>([]);
+  const [ruleName, setRuleName] = useState("价格阈值观察");
+  const [ruleType, setRuleType] = useState<WatchRuleType>("price");
+  const [ruleSymbol, setRuleSymbol] = useState("");
+  const [ruleField, setRuleField] = useState("price");
+  const [ruleOperator, setRuleOperator] = useState<"gt" | "gte" | "lt" | "lte" | "eq">("gte");
+  const [ruleValue, setRuleValue] = useState("0");
+  const [ruleResult, setRuleResult] = useState<WatchRulePreview | null>(null);
+  const [evaluateTarget, setEvaluateTarget] = useState<WatchRule | null>(null);
+  const isAdmin = getStoredAuthProfile()?.role === "admin";
   const load = useCallback(async () => {
     setBusy(true);
     setError("");
@@ -81,6 +103,69 @@ export function Watch() {
   useEffect(() => {
     void load();
   }, [load]);
+  const loadRules = useCallback(async () => {
+    try {
+      setRules((await listWatchRules()).items);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "盯盘规则加载失败");
+    }
+  }, []);
+  useEffect(() => {
+    if (tab === "rules") void loadRules();
+  }, [loadRules, tab]);
+
+  const ruleFields = ruleType === "strategy"
+    ? [["signal_type", "信号类型"], ["status", "信号状态"], ["strength", "信号强度"], ["symbol", "证券代码"]]
+    : ruleType === "price"
+      ? [["price", "最新价"], ["change_percent", "涨跌幅"]]
+      : [["change_percent", "涨跌幅"], ["volume", "成交量"], ["amount", "成交额"], ["turnover", "换手率"], ["volume_ratio", "量比"], ["amplitude", "振幅"]];
+  const changeRuleType = (next: WatchRuleType) => {
+    setRuleType(next);
+    setRuleField(next === "strategy" ? "signal_type" : next === "price" ? "price" : "change_percent");
+    setRuleValue(next === "strategy" ? "buy" : "0");
+  };
+  const saveRule = async () => {
+    if (!isAdmin) return;
+    setBusy(true);
+    setError("");
+    try {
+      await createWatchRule({
+        name: ruleName,
+        rule_type: ruleType,
+        severity: "warning",
+        config: {
+          logic: "all",
+          symbols: ruleSymbol.split(",").map((item) => item.trim()).filter(Boolean),
+          conditions: [{ field: ruleField, operator: ruleOperator, value: ruleType === "strategy" && ruleField !== "strength" ? ruleValue : Number(ruleValue) }],
+        },
+      });
+      await loadRules();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "规则创建失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const previewRule = async (rule: WatchRule) => {
+    setBusy(true);
+    setError("");
+    try { setRuleResult(await previewWatchRule(rule.id)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "规则预览失败"); }
+    finally { setBusy(false); }
+  };
+  const evaluateRule = async () => {
+    if (!evaluateTarget || !isAdmin) return;
+    setBusy(true);
+    setError("");
+    try {
+      setRuleResult(await evaluateWatchRule(evaluateTarget.id));
+      setEvaluateTarget(null);
+      await Promise.all([loadRules(), load()]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "规则评估失败");
+      setEvaluateTarget(null);
+    } finally { setBusy(false); }
+  };
   const instanceById = useMemo(
     () => new Map((context?.instances ?? []).map((item) => [item.id, item])),
     [context],
@@ -493,6 +578,44 @@ export function Watch() {
               ))}
             </div>
           </section>
+        </div>
+      ) : null}
+      {tab === "rules" ? (
+        <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]" data-testid="watch-rule-workbench">
+          <section className={`${panel} p-5`}>
+            <div className="flex items-center gap-2">
+              <Radar className="h-5 w-5 text-blue-400" />
+              <h2 className="font-semibold text-gray-100">新建观察规则</h2>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-500">规则只生成站内告警，不创建订单、不修改模拟盘。</p>
+            <div className="mt-5 space-y-3">
+              <label className="block text-xs text-slate-400">规则名称<input aria-label="规则名称" value={ruleName} onChange={(event) => setRuleName(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-white" /></label>
+              <label className="block text-xs text-slate-400">规则类型<select aria-label="规则类型" value={ruleType} onChange={(event) => changeRuleType(event.target.value as WatchRuleType)} className="mt-1 h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-white">
+                <option value="strategy">策略信号</option><option value="indicator">指标阈值</option><option value="price">价格阈值</option><option value="abnormal">异常扫描</option>
+              </select></label>
+              <label className="block text-xs text-slate-400">证券代码（可选，逗号分隔）<input aria-label="证券代码" value={ruleSymbol} onChange={(event) => setRuleSymbol(event.target.value)} placeholder="600519.SH, 000001.SZ" className="mt-1 h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 font-mono text-sm text-white" /></label>
+              <div className="grid grid-cols-[1fr_88px] gap-2">
+                <label className="block text-xs text-slate-400">字段<select aria-label="规则字段" value={ruleField} onChange={(event) => setRuleField(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-white">{ruleFields.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                <label className="block text-xs text-slate-400">比较<select aria-label="比较符" value={ruleOperator} onChange={(event) => setRuleOperator(event.target.value as typeof ruleOperator)} className="mt-1 h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-2 text-sm text-white"><option value="gte">≥</option><option value="gt">&gt;</option><option value="lte">≤</option><option value="lt">&lt;</option><option value="eq">=</option></select></label>
+              </div>
+              <label className="block text-xs text-slate-400">阈值<input aria-label="规则阈值" value={ruleValue} onChange={(event) => setRuleValue(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 font-mono text-sm text-white" /></label>
+              <button type="button" disabled={!isAdmin || busy || !ruleName.trim()} onClick={() => void saveRule()} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-semibold text-white disabled:opacity-40"><Plus className="h-4 w-4" />保存规则</button>
+              {!isAdmin ? <p className="text-xs text-amber-300">访客仅可查看和预览规则。</p> : null}
+            </div>
+          </section>
+          <section className="space-y-3">
+            {ruleResult ? <div className={`${panel} border-blue-500/25 p-4 text-sm text-slate-300`} data-testid="watch-rule-result">扫描 {ruleResult.source_count} 条 · 命中 {ruleResult.matched} 条 · 新增告警 {ruleResult.alerts_created ?? 0} 条 · 创建订单 {ruleResult.orders_created ?? 0} 条</div> : null}
+            {rules.map((rule) => (
+              <article key={rule.id} className={`${panel} p-5`} data-testid="watch-rule-card">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div><div className="flex items-center gap-2"><h2 className="font-semibold text-white">{rule.name}</h2><StatusBadge tone="blue">v{rule.rule_version}</StatusBadge></div><p className="mt-2 text-xs text-slate-500">{rule.rule_type} · {rule.config.conditions.map((item) => `${item.field} ${item.operator} ${item.value}`).join(" · ")} · 最近评估 {formatOperatorTime(rule.last_evaluated_at)}</p></div>
+                  <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => void previewRule(rule)} className="h-9 rounded-lg border border-crypto-border px-3 text-xs text-blue-300">只读预览</button><button type="button" disabled={!isAdmin || busy} onClick={() => setEvaluateTarget(rule)} className="h-9 rounded-lg bg-amber-600/90 px-3 text-xs font-semibold text-white disabled:opacity-40">评估并生成告警</button></div>
+                </div>
+              </article>
+            ))}
+            {!rules.length ? <div className={`${panel} p-16 text-center text-sm text-slate-600`}>{busy ? "正在读取规则…" : "尚未创建观察规则"}</div> : null}
+          </section>
+          <ConfirmDialog open={Boolean(evaluateTarget)} title="评估观察规则" message="本次会读取最新证据并为命中对象生成站内告警；不会创建订单，也不会修改模拟盘账本。" confirmLabel="评估并生成告警" busy={busy} onConfirm={() => void evaluateRule()} onCancel={() => setEvaluateTarget(null)} />
         </div>
       ) : null}
       {tab === "alerts" ? (

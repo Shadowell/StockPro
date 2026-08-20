@@ -121,6 +121,24 @@ test('真实 Walk-forward 完成任务展示持久化 OOS 证据', async ({ page
   await expect(page.getByText(/lookback=5/)).toBeVisible();
 });
 
+test('真实盯盘规则页可只读预览且明确禁止下单', async ({ page }) => {
+  const token = await login(page.request);
+  await page.addInitScript((value) => {
+    window.localStorage.setItem('stockpro_admin_token', value);
+    window.localStorage.setItem('stockpro_auth_profile', JSON.stringify({ role: 'admin', username: 'admin', permissions: ['read', 'write', 'admin'] }));
+  }, token);
+  await page.goto('/watch?tab=rules', { waitUntil: 'domcontentloaded' });
+
+  await expect(page.getByTestId('watch-rule-workbench')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('规则只生成站内告警，不创建订单、不修改模拟盘。')).toBeVisible();
+  const acceptanceRule = page.getByTestId('watch-rule-card').filter({ hasText: '验收 · 价格观察闭环' });
+  await expect(acceptanceRule).toBeVisible({ timeout: 30_000 });
+  await acceptanceRule.getByRole('button', { name: '只读预览' }).click();
+  await expect(page.getByTestId('watch-rule-result')).toContainText('命中 1 条', { timeout: 30_000 });
+  await expect(page.getByTestId('watch-rule-result')).toContainText('新增告警 0 条');
+  await expect(page.getByTestId('watch-rule-result')).toContainText('创建订单 0 条');
+});
+
 test('登录后市场和数据库接口可访问', async ({ request }) => {
   const token = await login(request);
   const headers = { Authorization: `Bearer ${token}` };
