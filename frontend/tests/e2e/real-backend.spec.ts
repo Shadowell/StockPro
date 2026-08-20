@@ -215,8 +215,9 @@ test('真实策略页面展示生命周期编辑器且无浏览器错误', async
 
   await page.goto('/strategy', { waitUntil: 'networkidle' });
   await expect(page.getByRole('heading', { name: '策略中心' })).toBeVisible();
-  await expect(page.getByText('当前筛选下无策略')).toBeVisible();
-  await page.getByRole('button', { name: '策略广场' }).click();
+  await expect(page.getByTestId('strategy-card').first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('策略目录读取超时，已停止等待。请稍后重试。')).toHaveCount(0);
+  await page.getByRole('tab', { name: /策略广场/ }).click();
   await expect(page.getByText('A股标准策略示例')).toBeVisible();
   await expect(page.getByText(/不需要修改框架、路由或重启服务/)).toHaveCount(0);
   await page.getByRole('button', { name: '新建策略' }).click();

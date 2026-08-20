@@ -691,17 +691,18 @@ test('sidebar exposes the operator-trunk workspaces in groups', async ({ page })
     await expect(sidebar.getByRole('group', { name: group })).toBeVisible();
   }
   const links = sidebar.locator('nav a');
-  await expect(links).toHaveCount(7);
+  await expect(links).toHaveCount(8);
   await expect(links).toHaveText([
     /首页/,
     /行情/,
     /策略/,
     /回测/,
+    /AI研发/,
     /模拟/,
     /盯盘/,
     /数据/,
   ]);
-  for (const hidden of ['股票池', '因子', '监控', '实盘', '复盘', 'AI研发']) {
+  for (const hidden of ['股票池', '因子', '监控', '实盘', '复盘']) {
     await expect(sidebar.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
   }
 });
@@ -1392,12 +1393,26 @@ test('strategy catalogue labels the user-strategy count separately from referenc
   await loginAsAdmin(page);
   await page.goto('/strategy');
 
-  await expect(page.getByRole('tab', { name: /我的策略/ })).toHaveCount(0);
-  await expect(page.getByRole('tab', { name: /策略广场/ })).toHaveCount(0);
-  await expect(page.getByRole('tab', { name: /审计证据/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'AI 写策略' })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: /我的策略/ })).toContainText('1');
+  await expect(page.getByRole('tab', { name: /策略广场/ })).toContainText('4');
+  await expect(page.getByRole('tab', { name: /审计证据/ })).toContainText('1');
+  await expect(page.getByRole('tab', { name: /^AI 研发$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'AI 写策略' })).toBeVisible();
   await expect(page.getByText('Sprint07 acceptance probe')).toHaveCount(0);
   await expect(page.getByTestId('strategy-card')).toHaveCount(1);
+});
+
+test('strategy catalogue tolerates the SSH-tunnel cold read window', async ({ page }) => {
+  await page.route('**/api/strategy/list*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 9_000));
+    await route.fulfill(json([]));
+  });
+  await loginAsAdmin(page);
+  await page.goto('/strategy');
+
+  await expect(page.getByRole('tab', { name: /我的策略/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('当前筛选下无策略')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('策略目录读取超时，已停止等待。请稍后重试。')).toHaveCount(0);
 });
 
 test('strategy details have a reloadable deep link and visible return path', async ({ page }) => {
@@ -1427,9 +1442,10 @@ test('strategy lifecycle uses one BitPro-style first-level menu and does not imp
     for (const label of ['策略', '回测', '模拟', '盯盘']) {
       await expect(menu.getByRole('link', { name: label, exact: true })).toBeVisible();
     }
-    for (const hidden of ['监控', '复盘', '因子', '股票池', 'AI研发']) {
+    for (const hidden of ['监控', '复盘', '因子', '股票池']) {
       await expect(menu.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
     }
+    await expect(menu.getByRole('link', { name: 'AI研发', exact: true })).toBeVisible();
   }
 
   await expect(page.getByRole('link', { name: '模拟', exact: true })).toBeVisible();

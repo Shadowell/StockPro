@@ -43,7 +43,6 @@ const HIDDEN_NAV_IDS = new Set<string>([
   'factors',
   'monitor',
   'review',
-  'ai-lab',
   'live',
 ]);
 
@@ -64,6 +63,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'factors', to: '/factors', label: '因子', Icon: TestTube2 },
       { id: 'strategy', to: '/strategy', label: '策略', Icon: Code2 },
       { id: 'backtest', to: '/backtest', label: '回测', Icon: FlaskConical },
+      { id: 'ai-lab', to: '/ai-lab', label: 'AI研发', Icon: Bot },
     ],
   },
   {
@@ -82,7 +82,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: '系统',
     items: [
       { id: 'data', to: '/data', label: '数据', Icon: Database },
-      { id: 'ai-lab', to: '/ai-lab', label: 'AI研发', Icon: Bot },
     ],
   },
 ];
