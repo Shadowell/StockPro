@@ -1,5 +1,25 @@
 # Progress Log
 
+## Strategy fusion: versioned AND/OR stock screening (2026-08-20)
+
+- Extended the existing `screener` stock-pool rule instead of adding a parallel
+  signal engine. Operators can combine open/high/low/close, volume, amount and
+  percentage-change conditions with explicit ALL/AND or ANY/OR semantics.
+- The service validates a strict field/operator allowlist, evaluates only the
+  sealed selection-date bar and persists the normalized logic plus matched
+  conditions in each member's evidence. Unsupported fields fail before any
+  generation write; missing values do not pass a condition.
+- The hidden stock-pool builder exposes an accessible condition editor while
+  Strategy remains the product Owner through its `选股与输入` tab. Candidates
+  still require generation and immutable pool sealing before full backtest.
+- TDD evidence: three backend tests and one browser contract failed before the
+  implementation; focused service tests now pass 27/27, and the real-backend
+  condition-builder smoke passed without creating a pool or changing data.
+- Verification: Mock browser suite 54/54; `./scripts/check.sh` passed the
+  production build, bundle budget, lint with the existing Fast Refresh warning
+  only, 392 backend tests and Python compilation. Paper continuity remained 15
+  instances / 18 trades / 7 positions / 128 equity snapshots / 310 events.
+
 ## Strategy fusion: screening and research-input ownership (2026-08-20)
 
 - Added an on-demand `选股与输入` tab to the Strategy centre. It owns the

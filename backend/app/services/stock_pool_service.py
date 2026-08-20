@@ -605,6 +605,10 @@ class StockPoolService:
         exclude_st = bool(config.get("exclude_st", True))
         exclude_suspended = bool(config.get("exclude_suspended", True))
         min_listing_days = max(0, int(config.get("min_listing_days") or 0))
+        conditions = self._normalize_conditions(config.get("conditions") or [])
+        condition_logic = str(config.get("condition_logic") or "all").lower()
+        if condition_logic not in {"all", "any"}:
+            raise ValueError("筛选条件逻辑只支持 all 或 any")
         unique: Dict[str, Dict[str, Any]] = {}
         for raw in candidates:
             candidate = dict(raw)
@@ -642,7 +646,7 @@ class StockPoolService:
         min_price = float(config.get("min_price") or 0)
         max_price = float(config.get("max_price") or 0)
         min_turnover = float(config.get("min_turnover") or 0)
-        if unique and (min_price > 0 or max_price > 0 or min_turnover > 0):
+        if unique and (min_price > 0 or max_price > 0 or min_turnover > 0 or conditions):
             bars = self.datasets.load_daily_bars(
                 int(dataset["id"]), symbols=sorted(unique), limit=100_000
             )
@@ -661,15 +665,97 @@ class StockPoolService:
                     continue
                 if min_turnover > 0 and turnover < min_turnover:
                     continue
+                matches = [
+                    self._condition_matches(bar, condition)
+                    for condition in conditions
+                ]
+                if conditions and condition_logic == "all" and not all(matches):
+                    continue
+                if conditions and condition_logic == "any" and not any(matches):
+                    continue
                 item["evidence"] = {
                     **dict(item["evidence"]),
-                    "selection_bar": {"trade_date": trade_date, "close": close, "turnover": turnover},
+                    "selection_bar": {
+                        "trade_date": trade_date,
+                        "open": bar.get("open"),
+                        "high": bar.get("high"),
+                        "low": bar.get("low"),
+                        "close": close,
+                        "volume": bar.get("volume") or bar.get("vol"),
+                        "turnover": turnover,
+                        "pct_change": self._bar_condition_value(bar, "pct_change"),
+                    },
+                    "condition_logic": condition_logic,
+                    "matched_conditions": [
+                        condition for condition, matched in zip(conditions, matches) if matched
+                    ],
                 }
                 filtered[symbol] = item
             unique = filtered
         maximum = max(1, min(int(config.get("top_n") or len(unique) or 1), 500))
         ordered = sorted(unique.values(), key=lambda item: (-float(item.get("score") or 0), str(item["symbol"])))
         return ordered[:maximum]
+
+    @staticmethod
+    def _normalize_conditions(raw_conditions: Any) -> List[Dict[str, Any]]:
+        allowed_fields = {"open", "high", "low", "close", "volume", "amount", "pct_change"}
+        allowed_ops = {"gt", "gte", "lt", "lte", "eq"}
+        if not isinstance(raw_conditions, Sequence) or isinstance(raw_conditions, (str, bytes)):
+            raise ValueError("筛选条件必须为数组")
+        normalized: List[Dict[str, Any]] = []
+        for raw in raw_conditions:
+            if not isinstance(raw, Mapping):
+                raise ValueError("筛选条件必须为对象")
+            field = str(raw.get("field") or "").strip()
+            op = str(raw.get("op") or "").strip().lower()
+            if field not in allowed_fields:
+                raise ValueError(f"不支持的筛选字段: {field or '--'}")
+            if op not in allowed_ops:
+                raise ValueError(f"不支持的比较符: {op or '--'}")
+            try:
+                value = float(raw.get("value"))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("筛选条件值必须为数字") from exc
+            normalized.append({"field": field, "op": op, "value": value})
+        return normalized
+
+    @staticmethod
+    def _bar_condition_value(bar: Mapping[str, Any], field: str) -> Optional[float]:
+        aliases = {
+            "volume": ("volume", "vol"),
+            "amount": ("amount", "turnover"),
+            "pct_change": ("pct_change", "pct_chg"),
+        }
+        for key in aliases.get(field, (field,)):
+            value = bar.get(key)
+            if value is not None:
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return None
+        if field == "pct_change":
+            try:
+                close = float(bar.get("close"))
+                previous = float(bar.get("pre_close"))
+                return (close / previous - 1.0) * 100 if previous else None
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    @classmethod
+    def _condition_matches(cls, bar: Mapping[str, Any], condition: Mapping[str, Any]) -> bool:
+        current = cls._bar_condition_value(bar, str(condition["field"]))
+        if current is None:
+            return False
+        target = float(condition["value"])
+        op = str(condition["op"])
+        return {
+            "gt": current > target,
+            "gte": current >= target,
+            "lt": current < target,
+            "lte": current <= target,
+            "eq": current == target,
+        }[op]
 
     @staticmethod
     def _internal_symbol(value: Any) -> str:

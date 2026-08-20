@@ -1037,6 +1037,20 @@ test('stock-pool catalogue survives optional market-evidence failure', async ({ 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy();
 });
 
+test('stock-pool screener exposes versioned AND OR condition rules', async ({ page }) => {
+  await loginAsAdmin(page);
+  await page.goto('/pools?tab=screener');
+  await page.getByRole('button', { name: '基础条件', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: '多条件筛选' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '全部满足 AND' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '任一满足 OR' })).toBeVisible();
+  await page.getByRole('button', { name: '添加筛选条件' }).click();
+  await expect(page.getByRole('combobox', { name: '条件字段 1' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: '比较符 1' })).toBeVisible();
+  await expect(page.getByRole('spinbutton', { name: '条件值 1' })).toBeVisible();
+});
+
 test('dashboard shows the realtime market cockpit by default', async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto('/');

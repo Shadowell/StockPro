@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Sparkles,
   Tag,
+  Trash2,
 } from "lucide-react";
 import {
   createPoolBacktestDraft,
@@ -58,6 +59,10 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number][0];
 type PoolTypeFilter = "all" | StockPool["pool_type"];
+type ConditionLogic = "all" | "any";
+type ConditionField = "open" | "high" | "low" | "close" | "volume" | "amount" | "pct_change";
+type ConditionOperator = "gt" | "gte" | "lt" | "lte" | "eq";
+type ScreenerCondition = { field: ConditionField; op: ConditionOperator; value: number };
 type CreationType = Extract<
   StockPool["pool_type"],
   "sector" | "event" | "screener" | "factor"
@@ -71,6 +76,24 @@ const poolTypeLabel = (type: string) =>
   ({ screener: "条件", factor: "因子", sector: "板块", event: "事件", manual: "手工" })[
     type
   ] ?? type;
+
+const CONDITION_FIELDS: Array<[ConditionField, string]> = [
+  ["close", "收盘价"],
+  ["open", "开盘价"],
+  ["high", "最高价"],
+  ["low", "最低价"],
+  ["amount", "成交额"],
+  ["volume", "成交量"],
+  ["pct_change", "涨跌幅 %"],
+];
+
+const CONDITION_OPERATORS: Array<[ConditionOperator, string]> = [
+  ["gte", "≥"],
+  ["gt", ">"],
+  ["lte", "≤"],
+  ["lt", "<"],
+  ["eq", "="],
+];
 
 const TYPE_GUIDES: Record<
   CreationType,
@@ -201,6 +224,8 @@ export function StockPools() {
   const [symbols, setSymbols] = useState("600519.SH,000333.SZ");
   const [minPrice, setMinPrice] = useState(0);
   const [minTurnover, setMinTurnover] = useState(0);
+  const [conditionLogic, setConditionLogic] = useState<ConditionLogic>("all");
+  const [conditions, setConditions] = useState<ScreenerCondition[]>([]);
   const [lastGenerationId, setLastGenerationId] = useState("");
 
   const [poolTypeFilter, setPoolTypeFilter] = useState<PoolTypeFilter>("all");
@@ -494,6 +519,8 @@ export function StockPools() {
             .filter(Boolean),
           min_price: minPrice,
           min_turnover: minTurnover,
+          condition_logic: conditionLogic,
+          conditions,
         });
       const created = await createStockPool({
         name:
@@ -1313,6 +1340,92 @@ export function StockPools() {
                       placeholder="0 表示不限制"
                     />
                   </label>
+
+                  <section className="rounded-lg border border-crypto-border bg-crypto-bg/40 p-4 md:col-span-2">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-100">多条件筛选</h3>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          条件与逻辑会写入规则版本、内容哈希和成员证据。
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 rounded-lg border border-crypto-border bg-crypto-card p-1">
+                        <button
+                          type="button"
+                          onClick={() => setConditionLogic("all")}
+                          className={`rounded-md px-3 py-1.5 text-[11px] font-semibold ${
+                            conditionLogic === "all" ? "bg-blue-600 text-white" : "text-slate-400"
+                          }`}
+                        >
+                          全部满足 AND
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConditionLogic("any")}
+                          className={`rounded-md px-3 py-1.5 text-[11px] font-semibold ${
+                            conditionLogic === "any" ? "bg-blue-600 text-white" : "text-slate-400"
+                          }`}
+                        >
+                          任一满足 OR
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      {conditions.map((condition, index) => (
+                        <div key={`${index}-${condition.field}-${condition.op}`} className="grid gap-2 sm:grid-cols-[1fr_7rem_1fr_2.5rem]">
+                          <select
+                            aria-label={`条件字段 ${index + 1}`}
+                            value={condition.field}
+                            onChange={(event) => setConditions((current) => current.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, field: event.target.value as ConditionField } : item
+                            ))}
+                            className={input}
+                          >
+                            {CONDITION_FIELDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                          </select>
+                          <select
+                            aria-label={`比较符 ${index + 1}`}
+                            value={condition.op}
+                            onChange={(event) => setConditions((current) => current.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, op: event.target.value as ConditionOperator } : item
+                            ))}
+                            className={input}
+                          >
+                            {CONDITION_OPERATORS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                          </select>
+                          <input
+                            aria-label={`条件值 ${index + 1}`}
+                            type="number"
+                            value={condition.value}
+                            onChange={(event) => setConditions((current) => current.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, value: Number(event.target.value) } : item
+                            ))}
+                            className={input}
+                          />
+                          <button
+                            type="button"
+                            aria-label={`删除条件 ${index + 1}`}
+                            onClick={() => setConditions((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                            className="inline-flex h-10 items-center justify-center rounded-lg border border-red-500/20 text-red-300 hover:bg-red-500/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setConditions((current) => [
+                        ...current,
+                        { field: "close", op: "gte", value: 0 },
+                      ])}
+                      className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-blue-500/25 bg-blue-500/[0.06] px-3 text-xs font-semibold text-blue-300"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      添加筛选条件
+                    </button>
+                  </section>
                 </>
               )}
 

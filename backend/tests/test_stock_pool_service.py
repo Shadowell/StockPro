@@ -101,6 +101,58 @@ class StockPoolFilterTests(unittest.TestCase):
         self.assertEqual([item["symbol"] for item in rows], ["SH_600519"])
         self.assertEqual(rows[0]["evidence"]["selection_bar"]["turnover"], 2000)
 
+    def test_all_condition_rules_require_every_selection_bar_condition(self):
+        self.service.datasets.load_daily_bars.return_value = [
+            {"symbol": "SH_600519", "trade_date": "2025-01-02", "close": 120, "amount": 2000},
+            {"symbol": "SZ_300750", "trade_date": "2025-01-02", "close": 200, "amount": 1000},
+        ]
+        rows = self.service._apply_universe_filters(
+            self.candidates,
+            self.universe,
+            self.dataset,
+            "2025-01-02",
+            {
+                "condition_logic": "all",
+                "conditions": [
+                    {"field": "close", "op": "lte", "value": 150},
+                    {"field": "amount", "op": "gte", "value": 1500},
+                ],
+            },
+        )
+        self.assertEqual([item["symbol"] for item in rows], ["SH_600519"])
+        self.assertEqual(rows[0]["evidence"]["condition_logic"], "all")
+        self.assertEqual(len(rows[0]["evidence"]["matched_conditions"]), 2)
+
+    def test_any_condition_rules_accept_one_matching_selection_bar_condition(self):
+        self.service.datasets.load_daily_bars.return_value = [
+            {"symbol": "SH_600519", "trade_date": "2025-01-02", "close": 120, "amount": 2000},
+            {"symbol": "SZ_300750", "trade_date": "2025-01-02", "close": 200, "amount": 10},
+        ]
+        rows = self.service._apply_universe_filters(
+            self.candidates,
+            self.universe,
+            self.dataset,
+            "2025-01-02",
+            {
+                "condition_logic": "any",
+                "conditions": [
+                    {"field": "close", "op": "gt", "value": 1000},
+                    {"field": "amount", "op": "gte", "value": 1500},
+                ],
+            },
+        )
+        self.assertEqual([item["symbol"] for item in rows], ["SH_600519"])
+
+    def test_condition_rules_reject_unsupported_fields(self):
+        with self.assertRaisesRegex(ValueError, "不支持的筛选字段"):
+            self.service._apply_universe_filters(
+                self.candidates,
+                self.universe,
+                self.dataset,
+                "2025-01-02",
+                {"conditions": [{"field": "future_return", "op": "gte", "value": 1}]},
+            )
+
     def test_member_manifest_hash_is_order_sensitive(self):
         a = [{"ordinal": 1, "symbol": "A"}, {"ordinal": 2, "symbol": "B"}]
         b = list(reversed(a))
