@@ -20,6 +20,8 @@ _snapshot_max_cache: Dict[str, Any] = {"at": 0.0, "dates": {}}
 
 
 class PaperRuntimeService:
+    _snapshot_max_cache: Dict[str, Any] = {"at": 0.0, "dates": {}}
+
     def __init__(self, database):
         self.database = database
         self.datasets = DatasetSnapshotService(database)

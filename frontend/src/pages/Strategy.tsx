@@ -25,8 +25,8 @@ type ListTab = 'my' | 'plaza' | 'audit' | 'ai';
 type StatusFilter = 'all' | 'running' | 'not_started';
 type AssetFilter = 'all' | 'ashare' | 'strategy_v1';
 
-/** First-cut trunk: keep 我的策略 + 新建. Restore extras by flipping this flag. */
-const SHOW_STRATEGY_EXTRAS = false;
+/** 2026-08-18 形态决策：核心链恢复完整策略目录（我的策略/策略广场/审计证据/AI 研发）。 */
+const SHOW_STRATEGY_EXTRAS = true;
 
 const statusFilters: { value: StatusFilter; label: string; dot: string }[] = [
   { value: 'all', label: '全部', dot: 'bg-blue-400' },

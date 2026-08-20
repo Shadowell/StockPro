@@ -1,5 +1,61 @@
 # Progress Log
 
+## SP-014 Gate 0 final local acceptance (2026-08-20)
+
+- Restored AI R&D to the visible operator chain and restored the complete
+  Strategy catalogue (`我的策略 / 策略广场 / 审计证据 / AI 研发`) without
+  exposing pools, factors, monitor, review or live as first-level links.
+- Real-browser acceptance found the Strategy catalogue still used the ordinary
+  8-second page-read timeout. The SSH-tunnel-backed PostgreSQL path measured
+  about 9-12 seconds per request (connection validation + SELECT + transaction
+  cleanup), so the page showed a false timeout even though the API returned 53
+  business strategies successfully. `getStrategies` now uses the established
+  20-second cold-read envelope; a 9-second delayed-response browser regression
+  test failed before the change and passes after it.
+- Paper continuity was read back before and after clean local service restarts:
+  all 15 instances preserved the same id, status, `started_at`, equity, trade
+  count, position count, equity-snapshot count and event count. No migration,
+  bootstrap, Paper recovery, realtime sync or strategy execution was triggered.
+- Verification: focused backend contracts 37/37; Mock browser suite 50/50;
+  real-backend Strategy browser acceptance passed with no page/console errors;
+  `./scripts/check.sh` passed the production build, bundle budget, lint with the
+  existing Fast Refresh warning only, 388 backend tests and Python compilation.
+- External boundary remains explicit: no real `QWEN_API_KEY` is configured, so
+  the live model call remains unavailable by design; deterministic and failure
+  paths are covered, and no credential was borrowed from another project.
+
+## Form decision: restore AI R&D to the operator core chain (2026-08-18)
+
+The parity contract's deliverables (strategy-page AI entry + `/ai-lab`) had been
+buried by the later operator-trunk cut: `HIDDEN_NAV_IDS` hid AI 研发 along with
+the experimental workspaces, and `SHOW_STRATEGY_EXTRAS` removed the strategy
+page tabs and the "AI 写策略" button. The 2026-08-18 decision: the AI R&D
+closed loop belongs to the core chain (data → strategy → backtest → paper →
+AI R&D) and is restored; experimental workspaces (pools/factors/monitor/
+review) and live stay menu-hidden with direct routes preserved.
+
+- `docs/spec.md` §3: core chain table now includes AI 研发 `/ai-lab`; the
+  menu-hidden list no longer contains it; decision recorded.
+- `docs/contracts/active-bitpro-flow-parity.md`: goal 5 "12+1 nav invariant"
+  replaced by the hybrid form decision; non-goals updated; decision blockquote
+  added. This clears the conflict between the contract and the trunk cut.
+- `frontend/src/components/Navigation.tsx`: removed `'ai-lab'` from
+  `HIDDEN_NAV_IDS`; moved the item from the 系统 group to the 研发 group
+  (after 回测). Sidebar order is now 首页/行情/策略/回测/AI研发/模拟/盯盘/数据.
+- `frontend/src/pages/Strategy.tsx`: `SHOW_STRATEGY_EXTRAS = true` restores
+  我的策略/策略广场/审计证据/AI研发 tabs and the "AI 写策略" + "规则生成"
+  buttons (legacy `/strategy/auto-develop` endpoint still serves the
+  deterministic template mode).
+- `frontend/tests/e2e/app.spec.ts`: sidebar link list/count updated to the 8
+  visible entries; strategy-catalogue test now asserts the tab counts
+  (mine 1 / plaza 4 / audit 1), the visible AI研发 tab, and the visible
+  "AI 写策略" button while keeping the acceptance-probe hidden.
+
+Remaining blockers are non-navigation: `QWEN_API_KEY` is empty in
+`backend/.env`, so the AI loop fails fast by design until a DashScope key is
+configured; Goal 1/4 acceptance still needs that plus a real run recorded
+here.
+
 ## Deployment merge follow-up: bound frontend dependency install (2026-08-18)
 
 The merge itself reached `main`, but its production workflow stalled in

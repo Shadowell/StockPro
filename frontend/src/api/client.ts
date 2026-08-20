@@ -936,9 +936,19 @@ export const getTableData = async (tableName: string, limit: number = 100): Prom
 
 // ============ Strategy API ============
 
+// The strategy catalogue reads PostgreSQL through the same SSH tunnel as the
+// Data Center. A cold checkout includes connection validation, the SELECT and
+// transaction cleanup, so it needs the established cold-read envelope rather
+// than the ordinary interactive-page timeout.
+export const STRATEGY_LIST_READ_TIMEOUT_MS = 20_000;
+
 export const getStrategies = async (scope: 'business' | 'audit' = 'business'): Promise<Strategy[]> => {
   try {
-    const response = await apiClient.get<Strategy[]>('/strategy/list', { params: { scope }, ...pageRead });
+    const response = await apiClient.get<Strategy[]>('/strategy/list', {
+      params: { scope },
+      timeout: STRATEGY_LIST_READ_TIMEOUT_MS,
+      skipRetry: true,
+    });
     return response.data;
   } catch (error) {
     return rejectPageTimeout('策略目录', error);
