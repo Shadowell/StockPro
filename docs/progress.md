@@ -1,5 +1,29 @@
 # Progress Log
 
+## Operator capability fusion final acceptance (2026-08-20)
+
+- Completed all eight contract phases while preserving Strategy → Backtest →
+  Paper as the only product mainline. Supporting capabilities have one Owner:
+  Market owns indices/watchlist/depth, Watch owns alert-only rules, Data owns
+  isolated exchange, and Dashboard/Paper link to the existing Review owner.
+- Final verification passed 62/62 Mock browser tests, 424 backend tests,
+  production build/bundle budget/Python compilation, focused real local flows
+  and four production read-only browser smokes. The only lint output is the
+  pre-existing Fast Refresh warning in `ResearchDeskContext.tsx` (zero errors).
+- Production is deployed at SHA `1689c65e7542124adbd2b8b7e36d20feb16922f5`
+  through Actions run `32377373771`; backend and Nginx are active, internal and
+  public health pass, and PostgreSQL migrations are 37/37.
+- Production truthfully has zero Watch rules, zero watchlist entries and zero
+  staged extension imports. Its first-run checklist is action-required 2/4:
+  admin security and PostgreSQL are ready; TuShare and sealed snapshots are not
+  configured. No production fixtures were created to make the UI look ready.
+- Local Paper continuity remained 15 instances / 24 orders / 18 trades / 7
+  positions / 128 equity snapshots / 310 events. Existing unrelated untracked
+  tool directories and `frontend/scripts/qa_visual_pass.mjs` remain untouched.
+- ETF strategy/backtest/Paper semantics remain explicitly unsupported until a
+  dedicated ETF dataset snapshot, Universe, cost model and Paper contract exist;
+  no stock-only behavior is relabeled as ETF support.
+
 ## Fusion completion audit: Index and factor-owner corrections (2026-08-20)
 
 - Requirement-by-requirement audit found two ownership gaps before completion:
