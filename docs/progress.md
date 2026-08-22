@@ -16,6 +16,10 @@
   `3646d2181a72907520e5b7ba820b39c2fe62a8cb2a5e2e3fd8158073a7a110f2`。
 - 基线工具 5 项测试和真实数据库即时回验通过。下一步只验证 BitPro 固定提交来源，
   尚未导入 BitPro 应用代码，也未启动任何服务、worker 或调度器。
+- BitPro 来源验证门禁已通过：只从 Git 对象库解析完整提交
+  `00517963e90f463e608289b0277fe598bd82d9bf`，并确认该提交包含 frontend、backend、
+  packages、scripts 和 tests 五个应用根。当前 BitPro 脏工作区、`.env` 和根治理文件
+  均不属于导入来源；来源验证 2 项测试通过。
 
 ## BitPro-first A股整仓重建设计获批（2026-08-22）
 

@@ -133,7 +133,7 @@ git commit -m "test(rebuild): capture immutable continuity baseline"
 - Consumes: BitPro repo、固定 SHA、StockPro 设计提交。
 - Produces: `verify_source(repo: Path, expected_sha: str) -> SourceManifest`；确认当前目录已经是目标 worktree。
 
-- [ ] **Step 1: 写固定 SHA 和脏工作区排除测试**
+- [x] **Step 1: 写固定 SHA 和脏工作区排除测试**
 
 ```python
 def test_source_manifest_uses_committed_tree_only(bitpro_repo):
@@ -144,13 +144,13 @@ def test_source_manifest_uses_committed_tree_only(bitpro_repo):
     assert ".env" not in result["application_roots"]
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `backend/venv/bin/python -m pytest rebuild/tests/test_source_pin.py -q`
 
 Expected: FAIL，提示 `verify_bitpro_source` 不存在。
 
-- [ ] **Step 3: 实现来源验证器**
+- [x] **Step 3: 实现来源验证器**
 
 ```python
 APPLICATION_ROOTS = ("frontend", "backend", "packages", "scripts", "tests")
@@ -162,7 +162,7 @@ def verify_source(repo: Path, expected_sha: str) -> dict[str, object]:
     return {"head": resolved, "archive_source": "git-object-database", "application_roots": list(APPLICATION_ROOTS)}
 ```
 
-- [ ] **Step 4: 验证当前执行目录和分支**
+- [x] **Step 4: 验证当前执行目录和分支**
 
 ```bash
 test "$(pwd)" = "/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share"
@@ -171,7 +171,7 @@ test "$(git branch --show-current)" = "codex/bitpro-a-share-rebase"
 
 Expected: 两个检查均 exit 0。
 
-- [ ] **Step 5: 运行来源测试并提交**
+- [x] **Step 5: 运行来源测试并提交**
 
 ```bash
 backend/venv/bin/python -m pytest rebuild/tests/test_source_pin.py -q
