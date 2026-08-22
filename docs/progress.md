@@ -40,6 +40,17 @@
 - 安全门禁 8 项测试通过；全树扫描五类可达阻断计数均为 0，69 个 BitPro 遗留文件
   仅计为不可达来源。前端生产构建与零 warning lint 通过，17 项 rebuild 测试、Python
   编译和真实 PostgreSQL 连续性回验通过；整个 Wave 仍未启动任何长运行服务。
+- Wave 0 最终审计通过：基线 manifest hash 为
+  `3646d2181a72907520e5b7ba820b39c2fe62a8cb2a5e2e3fd8158073a7a110f2`，导入
+  manifest 文件 SHA-256 为 `d47948eb5ccc235100a16f37d3680ef3bd744b7c26d9d6ca2dbd5c9d38a94c57`，
+  安全报告文件 SHA-256 为 `dabbdd279750f4108257f658de224f6412b4f6e97f2090706d35a503c681e427`。
+- 原 StockPro 工作区仍在 `codex/bitpro-a-share-rebuild-design`，用户既有未跟踪工具目录
+  保持原状；`main` 与 `origin/main` 均为
+  `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`。4444/4445 的既有进程 cwd 指向原
+  StockPro frontend/backend，不属于重建 worktree；本 Wave 没有启动、重启或接管它们。
+- Wave 0 提交链为 `dd5b1ba`（连续性基线）、`911553f`（固定来源）、`4a07b41`
+  （导入工具）、`f84fc53`（纯应用快照）、`9ae2869`（导入记录）和 `5a7056b`
+  （fail-closed 安全封锁）。未推送、未合并、未部署；Wave 1 开始前必须再次执行安全扫描。
 
 ## BitPro-first A股整仓重建设计获批（2026-08-22）
 

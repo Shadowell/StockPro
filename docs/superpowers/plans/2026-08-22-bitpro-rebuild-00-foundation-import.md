@@ -369,19 +369,19 @@ git commit -m "feat(rebuild): fail closed before A-share adaptation"
 - Consumes: Wave 0 的四个提交与两个 manifest。
 - Produces: Wave 1 可依赖的固定导入/安全证据。
 
-- [ ] **Step 1: 检查提交和未提交边界**
+- [x] **Step 1: 检查提交和未提交边界**
 
 Run: `git log --oneline --decorate -6 && git status --short`
 
 Expected: 业务变更只在目标 worktree；无环境文件、数据库、日志和当前 StockPro 工具目录进入提交。
 
-- [ ] **Step 2: 复核原 StockPro 工作区和生产分支未变化**
+- [x] **Step 2: 复核原 StockPro 工作区和生产分支未变化**
 
 Run: `git -C /Users/jie.feng/Dev/Github/Private/StockPro status --short --branch && git -C /Users/jie.feng/Dev/Github/Private/StockPro rev-parse main origin/main`
 
 Expected: 原工作区仍在设计分支或 `main` 的已知状态；`main` 与 `origin/main` 未因 Wave 0 更新。
 
-- [ ] **Step 3: 更新进度文档并运行文档检查**
+- [x] **Step 3: 更新进度文档并运行文档检查**
 
 记录固定 SHA、导入根、两个 manifest hash、安全扫描结果和“服务从未启动”。
 
@@ -389,7 +389,7 @@ Run: `git diff --check`
 
 Expected: 无空白错误。
 
-- [ ] **Step 4: 提交 Wave 0 验收记录**
+- [x] **Step 4: 提交 Wave 0 验收记录**
 
 ```bash
 git add docs/progress.md docs/contracts/active-bitpro-first-a-share-rebuild.md
