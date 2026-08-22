@@ -1,5 +1,22 @@
 # Progress Log
 
+## BitPro-first Wave 0：隔离基线门禁完成（2026-08-22）
+
+- 已从计划提交 `27f53ce` 创建独立 worktree
+  `/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share` 和分支
+  `codex/bitpro-a-share-rebase`；原 StockPro 工作区、`main` 与生产均未改动。
+- 隔离环境基线检查通过：前端生产构建和 bundle budget 通过，lint 为 0 error（保留
+  既有 Fast Refresh warning），后端 424 项测试与 Python 编译通过。
+- 新增只读 PostgreSQL/Paper 连续性采集与校验器。连接强制启用只读事务，只接受
+  `SELECT`；基线清单使用规范化 SHA-256 防篡改，并对 Paper 计数下降和实例 ID 丢失
+  执行硬失败。
+- 当前本地基线已写入 Git 忽略目录 `.codex-artifacts/rebuild/baseline.json`：37 个迁移、
+  67 个策略版本、79 个回测、15 个 Paper 实例、61 个 Paper 订单、47 个 Paper 成交、
+  23 个 Paper 持仓、428 个权益快照、681 个运行事件；清单哈希为
+  `3646d2181a72907520e5b7ba820b39c2fe62a8cb2a5e2e3fd8158073a7a110f2`。
+- 基线工具 5 项测试和真实数据库即时回验通过。下一步只验证 BitPro 固定提交来源，
+  尚未导入 BitPro 应用代码，也未启动任何服务、worker 或调度器。
+
 ## BitPro-first A股整仓重建设计获批（2026-08-22）
 
 - 用户批准采用 BitPro-first B2 路线：从 BitPro 固定提交

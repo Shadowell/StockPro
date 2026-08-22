@@ -30,13 +30,13 @@
 - Consumes: 已提交全部设计与计划的 `codex/bitpro-a-share-rebuild-design` 最新 SHA。
 - Produces: `codex/bitpro-a-share-rebase` 独立 worktree；后续 Task 全部在该目录执行。
 
-- [ ] **Step 1: 使用 using-git-worktrees skill 检查目标和分支**
+- [x] **Step 1: 使用 using-git-worktrees skill 检查目标和分支**
 
 Run: `test ! -e /Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share && ! git show-ref --verify --quiet refs/heads/codex/bitpro-a-share-rebase`
 
 Expected: exit 0，目标路径和分支都不存在。
 
-- [ ] **Step 2: 从计划分支最新提交创建 worktree**
+- [x] **Step 2: 从计划分支最新提交创建 worktree**
 
 ```bash
 REBUILD_PLAN_BASE_SHA=$(git rev-parse codex/bitpro-a-share-rebuild-design)
@@ -58,7 +58,7 @@ Expected: `git branch --show-current` 返回 `codex/bitpro-a-share-rebase`；原
 - Consumes: `DATABASE_URL`、Git 仓库路径、`schema_migrations` 与现有业务表。
 - Produces: `capture_baseline(database_url: str, repo_root: Path) -> RebuildBaseline`、`.codex-artifacts/rebuild/baseline.json`；后续 Wave 使用同一 JSON 对账。
 
-- [ ] **Step 1: 写失败测试，锁定基线 JSON 字段与只读 SQL**
+- [x] **Step 1: 写失败测试，锁定基线 JSON 字段与只读 SQL**
 
 ```python
 def test_capture_baseline_contains_required_continuity_fields(fake_repository, tmp_path):
@@ -74,13 +74,13 @@ def test_capture_baseline_contains_required_continuity_fields(fake_repository, t
     assert fake_repository.executed_writes == []
 ```
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run: `backend/venv/bin/python -m pytest rebuild/tests/test_baseline.py -q`
 
 Expected: FAIL，提示 `capture_baseline` 模块不存在。
 
-- [ ] **Step 3: 实现只读基线采集器**
+- [x] **Step 3: 实现只读基线采集器**
 
 ```python
 @dataclass(frozen=True)
@@ -104,19 +104,19 @@ def capture_baseline(database_url: str, repo_root: Path, repository: BaselineRep
 `paper_instances`、`portfolios`、`orders`、`trades`、`positions`、
 `paper_equity_snapshots`、`paper_instance_events` 和 `daily_reviews`。
 
-- [ ] **Step 4: 将生成目录加入忽略清单**
+- [x] **Step 4: 将生成目录加入忽略清单**
 
 ```gitignore
 .codex-artifacts/rebuild/
 ```
 
-- [ ] **Step 5: 运行测试并采集当前真实基线**
+- [x] **Step 5: 运行测试并采集当前真实基线**
 
 Run: `backend/venv/bin/python -m pytest rebuild/tests/test_baseline.py -q && backend/venv/bin/python rebuild/capture_baseline.py --output .codex-artifacts/rebuild/baseline.json`
 
 Expected: PASS；JSON 顶层包含 `repository`、`counts`、`paper`、`manifest_hash`，数据库计数与设计合同一致。
 
-- [ ] **Step 6: 提交基线工具**
+- [x] **Step 6: 提交基线工具**
 
 ```bash
 git add .gitignore rebuild/capture_baseline.py rebuild/verify_baseline.py rebuild/tests/test_baseline.py
