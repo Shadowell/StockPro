@@ -20,8 +20,8 @@
    - 搜索并开通"获取与上传图片或文件资源"权限
    - 发布应用版本
 
-3. 配置代码：
-   - 将下面的 FEISHU_APP_ID 和 FEISHU_APP_SECRET 替换为实际值
+3. 配置运行环境：
+   - 通过环境变量设置 FEISHU_WEBHOOK_URL、FEISHU_APP_ID 和 FEISHU_APP_SECRET
    - 如果不需要图片功能，可以保持默认值，程序会自动跳过图片发送
 
 注意：如果没有配置正确的app_id和app_secret，程序仍会正常运行，只是不会发送图片到飞书。
@@ -112,13 +112,13 @@ def should_filter_concept(concept_name):
             return True
     return False
 
-# 飞书机器人的Webhook URL
-feishu_webhook_url = 'https://open.feishu.cn/open-apis/bot/v2/hook/your-webhook-id'
+# 飞书凭据。真实值只能放在本机环境变量中。
+feishu_webhook_url = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
 
 # 飞书应用凭证（需要创建飞书应用并开通上传图片权限）
 # 注意：这些需要在飞书开放平台创建应用后获取
-FEISHU_APP_ID = "cli_a37c6ffbdxxxxxxx"  # 请替换为实际的app_id
-FEISHU_APP_SECRET = "mLstZkv0C4d1sxxxxxxxxxxxxxxx"  # 请替换为实际的app_secret
+FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "").strip()
+FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "").strip()
 
 period_days = 20
 close_price_threshold = 5.0
@@ -142,14 +142,16 @@ _concept_stocks_cache = {}
 
 def get_tenant_access_token():
     """获取飞书应用的tenant_access_token"""
+    if not FEISHU_APP_ID or not FEISHU_APP_SECRET:
+        return None
     try:
         url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
         headers = {
             "Content-Type": "application/json; charset=utf-8",
         }
         payload_data = {
-            "app_id": "YOUR_FEISHU_APP_ID",
-            "app_secret": "YOUR_FEISHU_APP_SECRET"
+            "app_id": FEISHU_APP_ID,
+            "app_secret": FEISHU_APP_SECRET,
         }
         response = requests.post(url=url, json=payload_data, headers=headers)
         result = response.json()
@@ -197,6 +199,8 @@ def upload_image_to_feishu(image_path):
 
 def send_feishu_message(content):
     """发送消息到飞书"""
+    if not feishu_webhook_url:
+        return {"ok": False, "skipped": True, "error": "FEISHU_WEBHOOK_URL is not configured"}
     headers = {
         'Content-Type': 'application/json'
     }
@@ -211,6 +215,8 @@ def send_feishu_message(content):
 
 def send_feishu_image(image_key):
     """发送图片到飞书群"""
+    if not feishu_webhook_url:
+        return {"ok": False, "skipped": True, "error": "FEISHU_WEBHOOK_URL is not configured"}
     try:
         headers = {
             'Content-Type': 'application/json'
