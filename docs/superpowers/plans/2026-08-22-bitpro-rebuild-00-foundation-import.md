@@ -13,7 +13,8 @@
 ## Global Constraints
 
 - 必须使用 `superpowers:using-git-worktrees` 创建 worktree；BitPro 规则禁止子代理。
-- 源 SHA 固定为 `00517963e90f463e608289b0277fe598bd82d9bf`，StockPro 设计提交固定为 `007c9c7`。
+- 源 SHA 固定为 `00517963e90f463e608289b0277fe598bd82d9bf`，StockPro 计划提交固定为
+  `27f53cead43557760f5ce74ffc2a598078f9fcfa`。
 - 只允许在 `/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share` 写入导入代码。
 - 当前 StockPro 工作区中的 `.agents/`、`.claude-flow/`、`.cursor/`、`.zcode/`、`backend/.claude-flow/`、`frontend/.claude-flow/` 和 `frontend/scripts/qa_visual_pass.mjs` 不得加入提交。
 - 本 Wave 禁止启动 uvicorn、Vite、scheduler、Provider、Paper recovery 或策略 worker。
