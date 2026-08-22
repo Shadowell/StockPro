@@ -2,7 +2,7 @@
 
 - 状态：设计已批准；Wave 0 固定底座导入与第一启动前安全封锁已验收
 - 批准日期：2026-08-22
-- StockPro 基线：`bff8e05a69faa9aef1adf8391abb73843ad3c7d7`
+- StockPro 基线：`99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`
 - BitPro 固定来源：`00517963e90f463e608289b0277fe598bd82d9bf`
 - 目标分支：`codex/bitpro-a-share-rebase`
 - 目标 worktree：`/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share`

@@ -301,7 +301,7 @@ Expected: FAIL，恢复演练工具不存在。
 
 - [ ] **Step 5: 启动旧 StockPro 只读 smoke**
 
-从 `bff8e05a69faa9aef1adf8391abb73843ad3c7d7` 创建临时只读 checkout，指向同一恢复数据库，禁用全部写服务；验证健康、策略列表、回测列表和 Paper 列表可读。
+从 `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440` 创建临时只读 checkout，指向同一恢复数据库，禁用全部写服务；验证健康、策略列表、回测列表和 Paper 列表可读。
 
 - [ ] **Step 6: 销毁显式临时数据库并保留 manifest**
 

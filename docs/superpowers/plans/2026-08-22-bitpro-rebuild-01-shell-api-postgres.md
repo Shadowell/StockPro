@@ -217,7 +217,7 @@ Expected: FAIL，Repository 不存在。
 在隔离 worktree 中执行：
 
 ```bash
-git restore --source=bff8e05a69faa9aef1adf8391abb73843ad3c7d7 -- \
+git restore --source=99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440 -- \
   backend/app/db/postgres_db.py \
   backend/app/db/postgres_migrations.py \
   backend/postgres/migrations

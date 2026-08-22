@@ -1,5 +1,15 @@
 # Progress Log
 
+## 重建基线 SHA 现场纠正（2026-08-22）
+
+- Wave 1 开始前验证发现设计草稿中的 `bff8e05…` 不是当前仓库的 Git 对象，不能作为
+  PostgreSQL 基础文件的恢复来源。现场证据确认设计提交 `e204e9f` 的父提交、`main`
+  和 `origin/main` 均为 `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`。
+- 合同、总控计划、Wave 1 恢复命令和 Wave 6 回滚演练已统一固定到真实 SHA
+  `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`；设计/计划提交分别固定为
+  `e204e9f41a9df26a0aefd77a7a6079a86265a234` 和
+  `27f53cead43557760f5ce74ffc2a598078f9fcfa`。本修正不涉及代码、数据库或运行服务。
+
 ## BitPro-first Wave 0：隔离基线门禁完成（2026-08-22）
 
 - 已从计划提交 `27f53ce` 创建独立 worktree

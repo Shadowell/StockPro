@@ -13,7 +13,9 @@
 ## Global Constraints
 
 - 固定 BitPro 来源必须是 `00517963e90f463e608289b0277fe598bd82d9bf`，不得读取其未提交工作区。
-- StockPro 设计基线必须是 `bff8e05a69faa9aef1adf8391abb73843ad3c7d7` 加设计提交 `007c9c7`。
+- StockPro 设计基线必须是 `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440` 加设计提交
+  `e204e9f41a9df26a0aefd77a7a6079a86265a234` 和计划提交
+  `27f53cead43557760f5ce74ffc2a598078f9fcfa`。
 - BitPro 项目规则禁止子代理，因此执行本计划时只能选择 `superpowers:executing-plans` 内联执行。
 - 当前 StockPro `main`、生产 release、生产数据库和 GitHub Actions workflow 在最终切换确认前不得修改。
 - 新分支只连接 `stockpro_bitpro_rebase_dev`，不得连接生产数据库执行写操作。
@@ -49,7 +51,7 @@
 - Produce: 独立 worktree、导入提交、安全封锁提交、基线 JSON
 
 **Interfaces:**
-- Consumes: 当前设计分支提交 `007c9c7`、BitPro 固定提交、只读 PostgreSQL。
+- Consumes: 当前计划分支提交 `27f53cead43557760f5ce74ffc2a598078f9fcfa`、BitPro 固定提交、只读 PostgreSQL。
 - Produces: 后续 Wave 使用的 `codex/bitpro-a-share-rebase`、`RebuildBaseline` JSON、禁止执行扫描器。
 
 - [ ] **Step 1: 逐项执行 Wave 0 计划并在每个提交后运行其门禁**
