@@ -1,649 +1,479 @@
-"""AI 策略研发编排器：Planner → [合约 → Strategist → 沙箱 → Backtester → Evaluator] × N。
-
-- 任务与每轮迭代全量落 PostgreSQL，重启后自动恢复未完成任务（BitPro 模式）。
-- 回测复用 BacktestWorkbenchService 的 quick 诊断链路，与人工策略同一执行路径。
-- 晋级（promote）只把已通过验证的策略版本暴露给策略工作台，Paper 晋级仍受 11 项门控约束。
 """
-from __future__ import annotations
+Orchestrator v2 — 编排器 (GAN-inspired multi-agent)
 
+四 Agent 闭环架构 (借鉴 Anthropic 文章):
+  Planner → [Sprint Contract 协商 → Strategist → Backtester → Evaluator] × N
+
+核心改进:
+1. Planner: 任务启动时生成策略规格书
+2. Sprint Contract: 每轮迭代前 Strategist 提案 + Evaluator 审查
+3. Context Reset: 每轮用结构化交接文档传递状态 (非累积对话)
+4. Pivot/Refine: Evaluator 决定下一步方向, Strategist 执行
+"""
+import asyncio
+import json
 import logging
-import threading
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
-import psycopg2.extras
-
+from app.services.agent.schemas import (
+    AgentTask, GoalCriteria, IterationRecord, SprintContract, EvalScores,
+    CreateTaskRequest, AI_RESEARCH_MARKET_SCOPE, normalize_agent_market_type,
+    normalize_agent_symbol_scope,
+)
+from app.services.agent.planner_agent import PlannerAgent
+from app.services.agent.strategist_agent import StrategistAgent
 from app.services.agent.backtester_agent import BacktesterAgent
 from app.services.agent.evaluator_agent import EvaluatorAgent
-from app.services.agent.llm_client import QwenClient, llm_available, resolve_model_name
-from app.services.agent.planner_agent import PlannerAgent
-from app.services.agent.prompts import build_handoff_context
-from app.services.agent.strategist_agent import StrategistAgent
-from app.services.agent.schemas import (
-    AgentTask,
-    EvalScores,
-    GoalCriteria,
-    IterationRecord,
-    SprintContract,
-    StrategySpec,
+from app.services.agent.factor_research import default_factor_key_indicators
+from app.services.agent.prompts import (
+    format_goal_description, format_iteration_history, build_handoff_context,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class AgentOrchestrator:
-    def __init__(self, database):
-        self.database = database
+    """
+    Agent 编排器 v2。
+    管理任务生命周期，驱动 Planner → [Contract → Strategist → Backtester → Evaluator] 闭环。
+    """
+
+    def __init__(self):
+        self.tasks: Dict[str, AgentTask] = {}
         self._planner = PlannerAgent()
         self._strategist = StrategistAgent()
-        self._backtester = BacktesterAgent(database)
+        self._backtester = BacktesterAgent()
         self._evaluator = EvaluatorAgent()
-        self._tasks: Dict[str, AgentTask] = {}
-        self._runners: Dict[str, threading.Thread] = {}
-        self._lock = threading.RLock()
+        self._on_iteration_cb: Optional[Callable] = None
+        self._on_task_update_cb: Optional[Callable] = None
+        self._runner_tasks: Dict[str, asyncio.Task] = {}
 
-    # ------------------------------------------------------------------
-    # 研究环境默认值
-    # ------------------------------------------------------------------
-    def default_research_config(self) -> Dict[str, Any]:
-        dataset = self._row(
-            """
-            SELECT s.id, s.name, s.knowledge_cutoff_at,
-                   MIN(p.start_date) FILTER (WHERE i.dataset_code='daily_bars') AS start_date,
-                   MAX(p.end_date) FILTER (WHERE i.dataset_code='daily_bars') AS end_date
-            FROM dataset_snapshots s
-            JOIN dataset_snapshot_items i ON i.snapshot_id=s.id
-            JOIN dataset_partitions p ON p.id=i.partition_id
-            WHERE s.status='sealed'
-            GROUP BY s.id HAVING COUNT(*) FILTER (WHERE i.dataset_code='daily_bars') > 0
-            ORDER BY s.id DESC LIMIT 1
-            """
-        )
-        universe = self._row(
-            """
-            SELECT s.id, d.code, d.rule_version, s.trade_date
-            FROM universe_snapshots s JOIN universe_definitions d ON d.id=s.definition_id
-            WHERE s.status='sealed' ORDER BY s.id DESC LIMIT 1
-            """
-        )
-        cost_model = self._row(
-            "SELECT id, code, version FROM backtest_cost_models WHERE status='active' ORDER BY code, version DESC LIMIT 1"
-        )
-        symbols: List[str] = []
-        if universe:
-            members = self._rows(
-                """
-                SELECT symbol FROM universe_snapshot_members
-                WHERE snapshot_id=%s
-                  AND (eligibility_flags->>'eligible_for_research')::boolean IS TRUE
-                ORDER BY symbol LIMIT 10
-                """,
-                (int(universe["id"]),),
-            )
-            symbols = [str(item["symbol"]) for item in members]
-        start_date = str(dataset.get("start_date"))[:10] if dataset and dataset.get("start_date") else ""
-        end_date = str(dataset.get("end_date"))[:10] if dataset and dataset.get("end_date") else ""
-        return {
-            "dataset_snapshot_id": int(dataset["id"]) if dataset else None,
-            "dataset_snapshot_name": str(dataset.get("name") or "") if dataset else "",
-            "universe_snapshot_id": int(universe["id"]) if universe else None,
-            "universe_code": str(universe.get("code") or "") if universe else "",
-            "cost_model_id": str(cost_model["id"]) if cost_model else None,
-            "benchmark_code": "000300.SH",
-            "symbols": symbols,
-            "start_date": start_date,
-            "end_date": end_date,
-            "event_limit": 45,
-            "initial_cash": 1_000_000,
-        }
+    def set_on_iteration(self, callback: Callable):
+        self._on_iteration_cb = callback
 
-    def resolve_research_config(self, overrides: Dict[str, Any]) -> Dict[str, Any]:
-        config = self.default_research_config()
-        for key in (
-            "dataset_snapshot_id", "universe_snapshot_id", "cost_model_id", "benchmark_code",
-            "symbols", "start_date", "end_date", "event_limit", "initial_cash",
+    def set_on_task_update(self, callback: Callable):
+        self._on_task_update_cb = callback
+
+    def create_task(self, req: CreateTaskRequest) -> AgentTask:
+        task_id = uuid.uuid4().hex[:12]
+        now = datetime.now().isoformat()
+        goal = GoalCriteria.from_dict(req.goal) if req.goal else GoalCriteria()
+
+        market_type = normalize_agent_market_type(req.market_type)
+        request_symbol = req.symbol
+        if (
+            market_type == "swap"
+            and not req.symbols
+            and str(request_symbol or "").strip() in {"", AI_RESEARCH_MARKET_SCOPE}
         ):
-            if overrides.get(key) not in (None, "", []):
-                config[key] = overrides[key]
-        if not config.get("dataset_snapshot_id"):
-            raise ValueError("没有已封存的数据快照，请先在数据中心同步并封存日线数据")
-        if not config.get("universe_snapshot_id"):
-            raise ValueError("没有已封存的 Universe Snapshot，无法确定研究证券范围")
-        if not config.get("symbols"):
-            raise ValueError("Universe Snapshot 中没有可研究证券，请先生成并封存股票池")
-        if not config.get("start_date") or not config.get("end_date") or str(config["start_date"]) > str(config["end_date"]):
-            raise ValueError("数据快照缺少可用的日线日期区间")
-        config["event_limit"] = max(10, min(int(config.get("event_limit") or 45), 60))
-        config["initial_cash"] = max(100_000.0, min(float(config.get("initial_cash") or 1_000_000), 100_000_000.0))
-        return config
+            request_symbol = ""
+        symbol_scope = ",".join(normalize_agent_symbol_scope(request_symbol, req.symbols, market_type))
 
-    # ------------------------------------------------------------------
-    # 任务生命周期
-    # ------------------------------------------------------------------
-    def create_task(self, payload: Dict[str, Any]) -> AgentTask:
-        name = str(payload.get("name") or "").strip()
-        if not name:
-            raise ValueError("任务名称必填")
-        max_iterations = max(1, min(int(payload.get("max_iterations") or 6), 12))
-        config = self.resolve_research_config(dict(payload.get("research_config") or {}))
-        goal = GoalCriteria.from_dict(payload.get("goal") or {})
         task = AgentTask(
-            task_id=str(uuid.uuid4()),
-            name=name[:80],
+            task_id=task_id,
             status="pending",
             stage="planner",
-            stage_label="等待启动",
+            stage_label="等待 Planner 生成规格书",
             goal=goal,
-            research_config=config,
-            max_iterations=max_iterations,
-            user_prompt=str(payload.get("user_prompt") or "")[:2000],
-            llm_model=resolve_model_name(payload.get("llm_model")) if payload.get("llm_model") else resolve_model_name(None),
-            created_at=_now(),
-            updated_at=_now(),
+            market_type=market_type,
+            symbol=symbol_scope,
+            timeframe=req.timeframe,
+            backtest_start=req.backtest_start,
+            backtest_end=req.backtest_end,
+            max_iterations=req.max_iterations,
+            user_prompt=req.user_prompt,
+            llm_model=str(req.llm_model or "").strip(),
+            created_at=now,
+            updated_at=now,
         )
-        self._persist_task(task, insert=True)
-        with self._lock:
-            self._tasks[task.task_id] = task
+        self.tasks[task_id] = task
         return task
-
-    def start_task(self, task_id: str) -> AgentTask:
-        task = self.get_task(task_id)
-        if not task:
-            raise ValueError("任务不存在")
-        if task.status not in {"pending", "stopped"}:
-            raise ValueError(f"任务状态为 {task.status}，不能启动")
-        if not llm_available():
-            raise ValueError("QWEN_API_KEY 未配置，AI 策略研发不可用")
-        runner = threading.Thread(target=self._run_task_safe, args=(task_id,), daemon=True, name=f"agent-{task_id}")
-        with self._lock:
-            self._runners[task_id] = runner
-        runner.start()
-        return task
-
-    def stop_task(self, task_id: str) -> bool:
-        task = self.get_task(task_id)
-        if not task or task.status not in {"pending", "running"}:
-            return False
-        task.status = "stopped"
-        task.stage = "stopped"
-        task.stage_label = "任务已停止"
-        task.updated_at = _now()
-        self._persist_task(task)
-        return True
-
-    def delete_task(self, task_id: str) -> bool:
-        task = self.get_task(task_id)
-        if not task:
-            return False
-        runner = self._runners.get(task_id)
-        if task.status in {"pending", "running"} or (runner and runner.is_alive()):
-            raise ValueError("任务仍在运行，请先停止")
-        with self._lock:
-            self._tasks.pop(task_id, None)
-            self._runners.pop(task_id, None)
-        with self.database.get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("DELETE FROM agent_tasks WHERE id=%s", (task_id,))
-        return True
 
     def get_task(self, task_id: str) -> Optional[AgentTask]:
-        with self._lock:
-            task = self._tasks.get(task_id)
-        if task:
-            return task
-        loaded = self._load_task(task_id)
-        if loaded:
-            with self._lock:
-                self._tasks[task_id] = loaded
-            return loaded
-        return None
+        return self.tasks.get(task_id)
 
-    def list_tasks(self, limit: int = 50) -> List[AgentTask]:
-        rows = self._rows(
-            """
-            SELECT t.*,
-                   (SELECT COUNT(*) FROM agent_iterations i WHERE i.task_id=t.id) AS iteration_count,
-                   (SELECT MAX(i.score) FROM agent_iterations i WHERE i.task_id=t.id) AS best_score
-            FROM agent_tasks t ORDER BY t.created_at DESC LIMIT %s
-            """,
-            (max(1, min(int(limit), 200)),),
-        )
-        tasks: List[AgentTask] = []
-        for row in rows:
-            task_id = str(row["id"])
-            with self._lock:
-                cached = self._tasks.get(task_id)
-            if cached and cached.status in {"pending", "running"}:
-                tasks.append(cached)
-                continue
-            task = self._task_from_row(row)
-            task.research_config.setdefault("_iteration_count", int(row.get("iteration_count") or 0))
-            task.research_config.setdefault("_best_score", row.get("best_score"))
-            tasks.append(task)
-        return tasks
+    def list_tasks(self):
+        return list(self.tasks.values())
 
-    def list_iterations(self, task_id: str) -> List[Dict[str, Any]]:
-        return self._rows(
-            "SELECT * FROM agent_iterations WHERE task_id=%s ORDER BY iteration", (task_id,)
-        )
+    def register_task(self, task: AgentTask) -> AgentTask:
+        """Register a task reconstructed from SQLite so it can continue running."""
+        self.tasks[task.task_id] = task
+        return task
 
-    def promote(self, task_id: str, iteration: int) -> Dict[str, Any]:
-        task = self.get_task(task_id)
+    def attach_runner(self, task_id: str, runner: asyncio.Task) -> None:
+        self._runner_tasks[task_id] = runner
+
+    def clear_runner(self, task_id: str) -> None:
+        self._runner_tasks.pop(task_id, None)
+
+    def stop_task(self, task_id: str) -> bool:
+        task = self.tasks.get(task_id)
+        if task and task.status in {"pending", "running"}:
+            task.status = "stopped"
+            self._set_stage(task, "stopped", "任务已停止")
+            task.updated_at = datetime.now().isoformat()
+            runner = self._runner_tasks.get(task_id)
+            if runner and not runner.done():
+                runner.cancel()
+            return True
+        return False
+
+    def delete_task(self, task_id: str) -> bool:
+        """Remove a non-running task from in-memory history."""
+        task = self.tasks.get(task_id)
+        runner = self._runner_tasks.get(task_id)
+        if (task and task.status in {"pending", "running"}) or (runner and not runner.done()):
+            return False
+        self.tasks.pop(task_id, None)
+        self._runner_tasks.pop(task_id, None)
+        return True
+
+    async def run_task(self, task_id: str) -> AgentTask:
+        """
+        执行完整的 Agent 闭环迭代。
+
+        流程:
+        Phase 0: Planner 生成策略规格书 (仅一次)
+        Phase 1-N: 迭代循环
+            Step 1: Sprint 合约协商 (Strategist 提案 → Evaluator 审查)
+            Step 2: Strategist 生成策略代码
+            Step 3: Backtester 执行回测
+            Step 4: Evaluator 独立评估 (多维度打分 + 方向决策)
+            Step 5: Context Reset — 构建结构化交接文档
+        """
+        task = self.tasks.get(task_id)
         if not task:
-            raise ValueError("任务不存在")
-        rows = self._rows(
-            "SELECT * FROM agent_iterations WHERE task_id=%s AND iteration=%s",
-            (task_id, int(iteration)),
-        )
-        if not rows:
-            raise ValueError("迭代不存在")
-        row = rows[0]
-        if row.get("error"):
-            raise ValueError("该迭代存在错误，不能采纳")
-        version_id = row.get("strategy_version_id")
-        if not version_id:
-            raise ValueError("该迭代没有策略版本，不能采纳")
-        version = self._row("SELECT * FROM strategy_versions WHERE id=%s", (str(version_id),))
-        if not version or version.get("validation_status") != "valid":
-            raise ValueError("策略版本未通过验证，不能采纳")
-        with self.database.get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE agent_tasks SET promoted_strategy_version_id=%s, updated_at=NOW()
-                    WHERE id=%s
-                    """,
-                    (str(version_id), task_id),
-                )
-        task.promoted_strategy_version_id = str(version_id)
-        task.updated_at = _now()
-        return {"strategy_version": self._serialize_version(version), "iteration": int(iteration)}
-
-    # ------------------------------------------------------------------
-    # 执行闭环
-    # ------------------------------------------------------------------
-    def _run_task_safe(self, task_id: str) -> None:
-        try:
-            self.run_task(task_id)
-        except Exception as exc:
-            logger.exception("Agent task %s crashed", task_id)
-            task = self.get_task(task_id)
-            if task:
-                task.status = "failed"
-                task.error_message = str(exc)[:800]
-                task.stage = "failed"
-                task.stage_label = f"任务失败：{str(exc)[:80]}"
-                task.updated_at = _now()
-                self._persist_task(task)
-        finally:
-            with self._lock:
-                self._runners.pop(task_id, None)
-
-    def run_task(self, task_id: str) -> AgentTask:
-        task = self.get_task(task_id)
-        if not task:
-            raise ValueError("任务不存在")
+            raise ValueError(f"Task {task_id} not found")
         if task.status == "stopped":
             return task
-        if not llm_available():
-            task.status = "failed"
-            task.error_message = "QWEN_API_KEY 未配置"
-            task.stage_label = "任务失败：QWEN_API_KEY 未配置"
-            self._persist_task(task)
+        if len(task.iterations) >= task.max_iterations:
+            task.status = "completed"
+            self._set_stage(task, "completed", "策略研发已完成")
+            task.updated_at = datetime.now().isoformat()
+            await self._persist_task_state(task)
             return task
 
         task.status = "running"
-        task.error_message = ""
-        client = QwenClient(model=task.llm_model or None)
-        task.llm_model = client.model
-        task.updated_at = _now()
-        self._set_stage(task, "planner" if not task.strategy_spec else "planner_done",
-                        "Planner 正在生成策略规格书" if not task.strategy_spec else "复用已持久化规格书")
-        self._persist_task(task)
+        if task.strategy_spec:
+            next_iteration = min(len(task.iterations) + 1, task.max_iterations)
+            self._set_stage(task, "planner_done", f"Planner 已完成，准备第 {next_iteration} 轮策略生成")
+        else:
+            self._set_stage(task, "planner", "Planner 正在生成策略规格书")
+        task.updated_at = datetime.now().isoformat()
+        await self._persist_task_state(task)
 
         try:
-            if not task.strategy_spec:
-                task.strategy_spec = self._planner.plan(task, client)
-                self._set_stage(task, "planner_done", f"Planner 已完成，准备第 1 轮策略生成")
-                task.updated_at = _now()
-                self._persist_task(task)
+            # ========================
+            # Phase 0: Planner
+            # ========================
+            if task.strategy_spec:
+                logger.info("=== Task %s: Phase 0 — 复用已持久化 Planner 规格书 ===", task_id)
+            else:
+                logger.info("=== Task %s: Phase 0 — Planner 生成规格书 ===", task_id)
+                task.strategy_spec = await self._planner.plan(task)
+            next_iteration = min(len(task.iterations) + 1, task.max_iterations)
+            self._set_stage(task, "planner_done", f"Planner 已完成，准备第 {next_iteration} 轮策略生成")
+            task.updated_at = datetime.now().isoformat()
+            await self._persist_task_state(task)
+            if task.status == "stopped":
+                logger.info("Task %s stopped after planner phase", task_id)
+                return task
 
-            strategy_prefix = f"AI·{task.name}"
-            for iteration in range(len(task.iterations), task.max_iterations):
+            # ========================
+            # Phase 1-N: 迭代循环
+            # ========================
+            start_iteration = len(task.iterations)
+            for iteration in range(start_iteration, task.max_iterations):
                 if task.status == "stopped":
-                    return task
+                    logger.info("Task %s stopped by user at iteration %d", task_id, iteration)
+                    break
+
                 task.current_iteration = iteration
-                record = IterationRecord(iteration=iteration, created_at=_now())
+                task.updated_at = datetime.now().isoformat()
+                await self._persist_task_state(task)
+                logger.info("=== Task %s: 第 %d/%d 轮 ===", task_id, iteration + 1, task.max_iterations)
 
-                # --- Step 1: Sprint 合约（首轮来自规格书，后续来自上一轮评审） ---
-                handoff = build_handoff_context(task, task.iterations[-1]) if task.iterations else ""
-                contract = self._build_contract(task, task.iterations[-1] if task.iterations else None)
+                record = IterationRecord(
+                    iteration=iteration,
+                    created_at=datetime.now().isoformat(),
+                )
+
+                # --- Step 1: Sprint 合约协商 ---
+                handoff_context = ""
+                if task.iterations:
+                    last = task.iterations[-1]
+                    handoff_context = build_handoff_context(task, last)
+
+                self._set_stage(
+                    task,
+                    "contract",
+                    f"第 {iteration + 1} 轮：准备策略合约",
+                )
+                await self._persist_task_state(task)
+                contract = await self._negotiate_contract(task, handoff_context)
                 record.contract = contract
-                record.action = contract.action
+                record.action = contract.action if contract else "new"
 
-                # --- Step 2: Strategist 生成代码 + 沙箱静态校验（一次修复机会） ---
-                self._set_stage(task, "strategist", f"第 {iteration + 1} 轮：正在生成策略代码")
-                self._persist_task(task)
+                # --- Step 2: Strategist 生成策略 ---
                 try:
-                    generated = self._strategist.generate(task, client, contract=contract, handoff_context=handoff)
-                    code = generated["strategy_code"]
-                    report = self._backtester.validate(code)
-                    if not report.get("valid"):
-                        generated = self._strategist.generate(
-                            task, client, contract=contract, handoff_context=handoff,
-                            repair_issues=report.get("issues") or [],
-                        )
-                        code = generated["strategy_code"]
-                        report = self._backtester.validate(code)
-                    record.strategy_name = generated["strategy_name"]
-                    record.strategy_code = code
-                    record.reasoning = generated["reasoning"]
-                    record.sandbox_report = report
-                    if not report.get("valid"):
-                        record.error = "SANDBOX_REJECTED: " + "; ".join(
-                            item.get("message", "") for item in (report.get("issues") or [])[:4]
-                        )
-                except Exception as exc:
-                    record.error = f"策略生成失败: {str(exc)[:400]}"
+                    self._set_stage(
+                        task,
+                        "strategist",
+                        f"第 {iteration + 1} 轮：正在生成策略代码",
+                    )
+                    await self._persist_task_state(task)
+                    strategy_result = await self._strategist.generate(
+                        task=task,
+                        previous_feedback=handoff_context,
+                        contract=contract,
+                    )
+                    record.strategy_name = strategy_result.get("strategy_name", f"策略_v{iteration+1}")
+                    record.strategy_code = strategy_result.get("strategy_class_code", "")
+                    record.reasoning = strategy_result.get("reasoning", "")
 
-                # --- Step 3: Backtester 走生产链路 ---
-                if not record.error:
-                    self._set_stage(task, "backtester", f"第 {iteration + 1} 轮：正在执行诊断回测")
-                    self._persist_task(task)
-                    try:
-                        version_name = f"{strategy_prefix}·{generated['strategy_name']}"[:80]
-                        bt = self._backtester.run(task, record.strategy_code, version_name, generated["reasoning"])
-                        if bt.get("error"):
-                            record.error = str(bt["error"])[:600]
-                        record.strategy_version_id = bt.get("strategy_version_id")
-                        record.backtest_run_id = bt.get("backtest_run_id")
-                        record.backtest_metrics = bt.get("metrics") or {}
-                    except Exception as exc:
-                        record.error = f"回测执行失败: {str(exc)[:400]}"
+                    stop_loss = strategy_result.get("stop_loss")
+                except Exception as e:
+                    record.error = f"策略生成失败: {e}"
+                    logger.exception("Strategist failed at iteration %d", iteration)
+                    task.iterations.append(record)
+                    await self._persist_iteration(task, record)
+                    continue
 
-                # --- Step 4: Evaluator 独立评分 ---
-                self._set_stage(task, "evaluator", f"第 {iteration + 1} 轮：正在评分")
+                # --- Step 3: Backtester 执行回测 ---
                 try:
-                    evaluation = self._evaluator.evaluate(task, record, client, contract)
-                    record.eval_scores = evaluation["eval_scores"]
-                    record.meets_goal = evaluation["meets_goal"]
-                    record.score = evaluation["score"]
-                    record.analysis = evaluation["analysis"]
-                    record.suggestions = evaluation["suggestions"]
-                    record.next_action = evaluation["next_action"]
-                except Exception as exc:
-                    evaluation = self._evaluator.deterministic_evaluate(task, record)
-                    record.eval_scores = evaluation["eval_scores"]
-                    record.meets_goal = evaluation["meets_goal"]
-                    record.score = evaluation["score"]
-                    record.analysis = f"评估失败，使用确定性评分: {str(exc)[:200]}"
-                    record.suggestions = evaluation["suggestions"]
+                    self._set_stage(
+                        task,
+                        "backtester",
+                        f"第 {iteration + 1} 轮：正在执行回测",
+                    )
+                    await self._persist_task_state(task)
+                    bt_result = await self._backtester.run(
+                        strategy_code=record.strategy_code,
+                        symbol=task.symbol,
+                        market_type=task.market_type,
+                        timeframe=task.timeframe,
+                        start_date=task.backtest_start,
+                        end_date=task.backtest_end,
+                        stop_loss=stop_loss,
+                    )
+                    record.backtest_metrics = bt_result.get("metrics", {})
 
+                    if bt_result.get("error"):
+                        record.error = bt_result["error"]
+                        logger.warning("Backtester error at iteration %d: %s", iteration, record.error)
+                        task.iterations.append(record)
+                        await self._persist_iteration(task, record)
+                        continue
+
+                except Exception as e:
+                    record.error = f"回测执行失败: {e}"
+                    logger.exception("Backtester failed at iteration %d", iteration)
+                    task.iterations.append(record)
+                    await self._persist_iteration(task, record)
+                    continue
+
+                # --- Step 4: Evaluator 独立评估 ---
+                try:
+                    self._set_stage(
+                        task,
+                        "evaluator",
+                        f"第 {iteration + 1} 轮：正在评分",
+                    )
+                    await self._persist_task_state(task)
+                    eval_result = await self._evaluator.evaluate(
+                        task=task,
+                        strategy_code=record.strategy_code,
+                        metrics=record.backtest_metrics,
+                        contract=contract,
+                    )
+                    record.eval_scores = eval_result.get("eval_scores")
+                    record.meets_goal = eval_result.get("meets_goal", False)
+                    record.score = eval_result.get("score", 0)
+                    record.analysis = eval_result.get("analysis", "")
+                    record.suggestions = eval_result.get("suggestions", [])
+
+                except Exception as e:
+                    record.analysis = f"评估失败: {e}"
+                    record.meets_goal = task.goal.check(record.backtest_metrics)
+                    record.score = 50.0 if record.meets_goal else 20.0
+                    logger.exception("Evaluator failed at iteration %d", iteration)
+
+                # --- 更新最佳记录 ---
                 task.iterations.append(record)
                 self._update_best(task)
-                self._persist_iteration(task, record)
-                task.updated_at = _now()
-                self._persist_task(task)
+                await self._persist_iteration(task, record)
+
+                scores_text = ""
+                if record.eval_scores:
+                    s = record.eval_scores
+                    scores_text = (
+                        f" | 风控={s.risk_control:.0f} 盈利={s.profitability:.0f} "
+                        f"稳健={s.robustness:.0f} 逻辑={s.strategy_logic:.0f} 原创={s.originality:.0f}"
+                    )
                 logger.info(
-                    "Agent 任务 %s 第 %d 轮完成: score=%.1f 达标=%s 错误=%s",
-                    task_id, iteration + 1, record.score, record.meets_goal, bool(record.error),
+                    "第 %d 轮完成: %s | 综合=%.1f | 达标=%s | 收益=%.1f%% | 夏普=%.2f%s | 行动=%s",
+                    iteration + 1,
+                    record.strategy_name,
+                    record.score,
+                    record.meets_goal,
+                    record.backtest_metrics.get("total_return_pct", 0),
+                    record.backtest_metrics.get("sharpe_ratio", 0),
+                    scores_text,
+                    record.action,
                 )
-                if record.meets_goal and not record.error:
+
+                if record.meets_goal:
+                    logger.info("Task %s 在第 %d 轮达标!", task_id, iteration + 1)
                     task.status = "completed"
                     self._set_stage(task, "completed", f"第 {iteration + 1} 轮已达标")
-                    self._finish_task(task)
+                    task.updated_at = datetime.now().isoformat()
+                    await self._persist_task_state(task)
                     return task
 
             if task.status == "running":
                 task.status = "completed"
-                self._set_stage(task, "completed", "研发轮次已用完，请查看最佳迭代")
-            self._finish_task(task)
+                self._set_stage(task, "completed", "策略研发已完成")
+            task.updated_at = datetime.now().isoformat()
+            await self._persist_task_state(task)
             return task
-        except Exception as exc:
+
+        except Exception as e:
             task.status = "failed"
-            task.error_message = str(exc)[:800]
-            self._set_stage(task, "failed", f"任务失败：{str(exc)[:80]}")
-            self._finish_task(task)
+            self._set_stage(task, "failed", f"任务失败：{e}")
+            task.updated_at = datetime.now().isoformat()
+            await self._persist_task_state(task)
+            logger.exception("Task %s failed", task_id)
             raise
 
-    def _build_contract(self, task: AgentTask, last_record: Optional[IterationRecord]) -> SprintContract:
-        spec = task.strategy_spec
-        if last_record is None:
-            first = (spec.strategy_candidates[0] if spec and spec.strategy_candidates else {})
-            return SprintContract(
-                strategy_direction=str((spec.recommended_approach if spec else "") or first.get("name") or "A 股日线多头策略"),
-                key_indicators=["close", "volume", "turnover"],
-                entry_logic_desc=str(first.get("description") or "按规格书推荐方向构建入场条件"),
-                exit_logic_desc="趋势失效、止损或风控触发时退出",
-                risk_management_desc=str((spec.risk_considerations if spec else "") or "控制最大回撤、单票权重与交易频率"),
-                acceptance_criteria=[
-                    f"夏普 ≥ {task.goal.min_sharpe}",
-                    f"最大回撤 ≤ {task.goal.max_drawdown:.0%}",
-                    f"胜率 ≥ {task.goal.min_win_rate:.0%}",
-                    f"区间收益 ≥ {task.goal.min_return:.0%}",
-                    f"平仓交易数 ≥ {task.goal.min_trades}",
-                    f"盈亏比 ≥ {task.goal.min_profit_loss_ratio}",
-                ],
-                action="new",
-            )
-        pivot = str(getattr(last_record, "next_action", "refine")) == "pivot"
-        return SprintContract(
-            strategy_direction=str(last_record.contract.strategy_direction if last_record.contract else "A 股日线多头策略"),
-            key_indicators=list((last_record.contract.key_indicators if last_record.contract else []) or ["close", "volume"]),
-            entry_logic_desc="根据上一轮评审建议调整入场逻辑",
-            exit_logic_desc="根据上一轮评审建议调整出场与风控",
-            risk_management_desc=str((spec.risk_considerations if spec else "") or "控制最大回撤、单票权重与交易频率"),
-            acceptance_criteria=list((last_record.contract.acceptance_criteria if last_record.contract else []) or []),
-            action="pivot" if pivot else "refine",
-        )
+    async def _negotiate_contract(
+        self, task: AgentTask, evaluator_feedback: str = "",
+    ) -> Optional[SprintContract]:
+        """
+        Sprint 合约协商: Strategist 提案 → Evaluator 审查 (最多 2 轮)
+        """
+        try:
+            if not task.iterations and task.strategy_spec:
+                contract = self._build_initial_contract_from_spec(task)
+                logger.info(
+                    "首轮使用 Planner 规格书生成本地合约，跳过额外 LLM 合约协商: direction=%s",
+                    contract.strategy_direction[:50],
+                )
+                return contract
 
-    def _update_best(self, task: AgentTask) -> None:
-        best_index = None
-        best_score = -1.0
-        for index, record in enumerate(task.iterations):
-            if record.error or not record.strategy_code.strip():
-                continue
-            metrics = record.backtest_metrics or {}
-            total_return = _float_or_none(metrics.get("strategy_return"))
-            if total_return is None or total_return <= 0 or record.score < 50:
-                continue
-            if record.score > best_score:
-                best_score = record.score
-                best_index = index
-        task.best_iteration = best_index
+            proposal = await self._strategist.propose_contract(
+                task=task,
+                evaluator_feedback=evaluator_feedback,
+            )
+
+            review = await self._evaluator.review_contract(
+                contract_proposal=proposal,
+                task=task,
+            )
+
+            criteria = proposal.get("acceptance_criteria", [])
+            added = review.get("added_criteria", [])
+            if added:
+                criteria.extend(added)
+
+            contract = SprintContract(
+                strategy_direction=proposal.get("strategy_direction", ""),
+                key_indicators=proposal.get("key_indicators", []),
+                entry_logic_desc=proposal.get("entry_logic_desc", ""),
+                exit_logic_desc=proposal.get("exit_logic_desc", ""),
+                risk_management_desc=proposal.get("risk_management_desc", ""),
+                acceptance_criteria=criteria,
+                action=proposal.get("action", "new"),
+            )
+
+            logger.info(
+                "合约协商完成: action=%s, direction=%s, criteria=%d条",
+                contract.action, contract.strategy_direction[:30], len(criteria),
+            )
+            return contract
+
+        except Exception as e:
+            logger.warning("合约协商失败, 跳过: %s", e)
+            return None
+
+    def _build_initial_contract_from_spec(self, task: AgentTask) -> SprintContract:
+        spec = task.strategy_spec
+        candidates = spec.strategy_candidates if spec else []
+        first_candidate = candidates[0] if candidates else {}
+        direction = (
+            (spec.recommended_approach if spec else "")
+            or first_candidate.get("name")
+            or first_candidate.get("description")
+            or "基于 K 线趋势、波动率和成交量过滤的策略"
+        )
+        return SprintContract(
+            strategy_direction=str(direction),
+            key_indicators=default_factor_key_indicators(),
+            entry_logic_desc=(
+                first_candidate.get("description")
+                or "按 Planner 推荐方向构建入场条件，结合主流因子库中的趋势、截面、波动率和成交量代理。"
+            ),
+            exit_logic_desc="按趋势失效、止损、止盈或风控条件退出。",
+            risk_management_desc=(
+                (spec.risk_considerations if spec else "")
+                or "控制最大回撤、仓位大小和交易频率，避免过拟合。"
+            ),
+            acceptance_criteria=[
+                f"夏普比率 >= {task.goal.min_sharpe_ratio}",
+                f"最大回撤 <= {task.goal.max_drawdown_pct}%",
+                f"胜率 >= {task.goal.min_win_rate_pct}%",
+                f"总收益率 >= {task.goal.min_total_return_pct}%",
+                f"盈亏比 >= {task.goal.min_profit_factor}",
+                f"交易次数 >= {task.goal.min_total_trades}",
+            ],
+            action="new",
+        )
 
     @staticmethod
     def _set_stage(task: AgentTask, stage: str, label: str) -> None:
         task.stage = stage
         task.stage_label = label
-        task.updated_at = _now()
 
-    def _finish_task(self, task: AgentTask) -> None:
-        task.updated_at = _now()
-        self._persist_task(task)
-
-    # ------------------------------------------------------------------
-    # 持久化与恢复
-    # ------------------------------------------------------------------
-    def recover_interrupted(self) -> int:
-        rows = self._rows("SELECT id FROM agent_tasks WHERE status IN ('pending', 'running')")
-        resumed = 0
-        for row in rows:
-            task_id = str(row["id"])
-            task = self._load_task(task_id)
-            if not task:
-                continue
-            with self._lock:
-                self._tasks[task_id] = task
-            if not llm_available() or len(task.iterations) >= task.max_iterations:
-                task.status = "stopped"
-                task.stage_label = "服务重启中断，已停止（可手动重启）"
-                task.updated_at = _now()
-                self._persist_task(task)
-                continue
-            runner = threading.Thread(target=self._run_task_safe, args=(task_id,), daemon=True, name=f"agent-resume-{task_id}")
-            with self._lock:
-                self._runners[task_id] = runner
-            runner.start()
-            resumed += 1
-        return resumed
-
-    def _persist_task(self, task: AgentTask, insert: bool = False) -> None:
-        payload = (
-            task.name, task.status, task.stage, task.stage_label, task.user_prompt,
-            psycopg2.extras.Json(task.goal.to_dict()),
-            psycopg2.extras.Json({k: v for k, v in task.research_config.items() if not k.startswith("_")}),
-            psycopg2.extras.Json(task.strategy_spec.to_dict()) if task.strategy_spec else None,
-            task.max_iterations, task.current_iteration,
-            task.iterations[task.best_iteration].iteration if task.best_iteration is not None else None,
-            task.llm_model, task.promoted_strategy_version_id, task.error_message or None,
-        )
-        with self.database.get_connection() as connection:
-            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                if insert:
-                    cursor.execute(
-                        """
-                        INSERT INTO agent_tasks
-                        (id, name, status, stage, stage_label, user_prompt, goal, research_config,
-                         strategy_spec, max_iterations, current_iteration, best_iteration,
-                         llm_model, promoted_strategy_version_id, error_message)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
-                        """,
-                        (task.task_id, *payload),
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        UPDATE agent_tasks SET name=%s,status=%s,stage=%s,stage_label=%s,user_prompt=%s,
-                            goal=%s,research_config=%s,strategy_spec=%s,max_iterations=%s,
-                            current_iteration=%s,best_iteration=%s,llm_model=%s,
-                            promoted_strategy_version_id=%s,error_message=%s,updated_at=NOW(),
-                            finished_at=CASE WHEN %s IN ('completed','failed','stopped') THEN NOW() ELSE finished_at END
-                        WHERE id=%s
-                        """,
-                        (*payload, task.status, task.task_id),
-                    )
-
-    def _persist_iteration(self, task: AgentTask, record: IterationRecord) -> None:
-        with self.database.get_connection() as connection:
-            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO agent_iterations
-                    (task_id, iteration, action, contract, strategy_name, strategy_version_id,
-                     strategy_code, reasoning, sandbox_report, backtest_run_id, backtest_metrics,
-                     eval_scores, score, meets_goal, analysis, suggestions, error, next_action)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT(task_id, iteration) DO UPDATE SET
-                        action=EXCLUDED.action, contract=EXCLUDED.contract,
-                        strategy_name=EXCLUDED.strategy_name, strategy_version_id=EXCLUDED.strategy_version_id,
-                        strategy_code=EXCLUDED.strategy_code, reasoning=EXCLUDED.reasoning,
-                        sandbox_report=EXCLUDED.sandbox_report, backtest_run_id=EXCLUDED.backtest_run_id,
-                        backtest_metrics=EXCLUDED.backtest_metrics, eval_scores=EXCLUDED.eval_scores,
-                        score=EXCLUDED.score, meets_goal=EXCLUDED.meets_goal,
-                        analysis=EXCLUDED.analysis, suggestions=EXCLUDED.suggestions, error=EXCLUDED.error,
-                        next_action=EXCLUDED.next_action
-                    """,
-                    (
-                        task.task_id, record.iteration, record.action,
-                        psycopg2.extras.Json(record.contract.to_dict()) if record.contract else None,
-                        record.strategy_name, record.strategy_version_id, record.strategy_code,
-                        record.reasoning,
-                        psycopg2.extras.Json(record.sandbox_report) if record.sandbox_report else None,
-                        record.backtest_run_id,
-                        psycopg2.extras.Json(record.backtest_metrics),
-                        psycopg2.extras.Json(record.eval_scores.to_dict()) if record.eval_scores else None,
-                        record.score, record.meets_goal, record.analysis,
-                        psycopg2.extras.Json(record.suggestions), record.error, record.next_action,
-                    ),
-                )
-
-    def _load_task(self, task_id: str) -> Optional[AgentTask]:
-        row = self._row("SELECT * FROM agent_tasks WHERE id=%s", (task_id,))
-        if not row:
-            return None
-        task = self._task_from_row(row)
-        iterations = self._rows(
-            "SELECT * FROM agent_iterations WHERE task_id=%s ORDER BY iteration", (task_id,)
-        )
-        task.iterations = [self._record_from_row(item) for item in iterations]
-        return task
-
-    def _task_from_row(self, row: Dict[str, Any]) -> AgentTask:
-        return AgentTask(
-            task_id=str(row["id"]),
-            name=str(row.get("name") or ""),
-            status=str(row.get("status") or "pending"),
-            stage=str(row.get("stage") or "planner"),
-            stage_label=str(row.get("stage_label") or ""),
-            goal=GoalCriteria.from_dict(row.get("goal") or {}),
-            research_config=dict(row.get("research_config") or {}),
-            strategy_spec=StrategySpec.from_dict(row.get("strategy_spec") or {}) if row.get("strategy_spec") else None,
-            max_iterations=int(row.get("max_iterations") or 6),
-            current_iteration=int(row.get("current_iteration") or 0),
-            best_iteration=int(row["best_iteration"]) if row.get("best_iteration") is not None else None,
-            user_prompt=str(row.get("user_prompt") or ""),
-            llm_model=str(row.get("llm_model") or ""),
-            promoted_strategy_version_id=str(row["promoted_strategy_version_id"]) if row.get("promoted_strategy_version_id") else None,
-            error_message=str(row.get("error_message") or ""),
-            created_at=str(row.get("created_at") or ""),
-            updated_at=str(row.get("updated_at") or ""),
-        )
+    def _update_best(self, task: AgentTask):
+        best_idx = None
+        best_score = -1
+        for i, rec in enumerate(task.iterations):
+            if rec.score > best_score and not rec.error and self._is_basic_candidate(rec):
+                best_score = rec.score
+                best_idx = i
+        task.best_iteration = best_idx
 
     @staticmethod
-    def _record_from_row(row: Dict[str, Any]) -> IterationRecord:
-        return IterationRecord(
-            iteration=int(row.get("iteration") or 0),
-            strategy_name=str(row.get("strategy_name") or ""),
-            strategy_code=str(row.get("strategy_code") or ""),
-            reasoning=str(row.get("reasoning") or ""),
-            strategy_version_id=str(row["strategy_version_id"]) if row.get("strategy_version_id") else None,
-            sandbox_report=dict(row["sandbox_report"]) if row.get("sandbox_report") else None,
-            backtest_run_id=str(row["backtest_run_id"]) if row.get("backtest_run_id") else None,
-            backtest_metrics=dict(row.get("backtest_metrics") or {}),
-            eval_scores=EvalScores.from_dict(row.get("eval_scores") or {}) if row.get("eval_scores") else None,
-            analysis=str(row.get("analysis") or ""),
-            suggestions=list(row.get("suggestions") or []),
-            score=float(row.get("score") or 0.0),
-            meets_goal=bool(row.get("meets_goal")),
-            error=str(row.get("error") or ""),
-            created_at=str(row.get("created_at") or ""),
-            contract=SprintContract.from_dict(row.get("contract") or {}) if row.get("contract") else None,
-            action=str(row.get("action") or "new"),
-            next_action=str(row.get("next_action") or "refine"),
+    def _is_basic_candidate(record: IterationRecord) -> bool:
+        metrics = record.backtest_metrics or {}
+        try:
+            total_return = float(metrics.get("total_return_pct", 0))
+            sharpe = float(metrics.get("sharpe_ratio", 0))
+            profit_factor = float(metrics.get("profit_factor", 0))
+        except (TypeError, ValueError):
+            return False
+        return (
+            bool(record.strategy_code.strip())
+            and total_return > 0
+            and sharpe > 0
+            and profit_factor >= 1
+            and record.score >= 50
         )
 
-    @staticmethod
-    def _serialize_version(version: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            "id": str(version["id"]),
-            "name": version.get("name"),
-            "version": version.get("version"),
-            "validation_status": version.get("validation_status"),
-            "content_hash": version.get("content_hash"),
-        }
+    async def _persist_iteration(self, task: AgentTask, record: IterationRecord):
+        if self._on_iteration_cb:
+            try:
+                await self._on_iteration_cb(task, record)
+            except Exception as e:
+                logger.warning("Failed to persist iteration: %s", e)
 
-    def _row(self, query: str, params: Any = ()) -> Optional[Dict[str, Any]]:
-        with self.database.get_connection() as connection:
-            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute(query, params)
-                row = cursor.fetchone()
-                return dict(row) if row else None
-
-    def _rows(self, query: str, params: Any = ()) -> List[Dict[str, Any]]:
-        with self.database.get_connection() as connection:
-            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute(query, params)
-                return [dict(item) for item in cursor.fetchall()]
+    async def _persist_task_state(self, task: AgentTask):
+        if self._on_task_update_cb:
+            try:
+                await self._on_task_update_cb(task)
+            except Exception as e:
+                logger.warning("Failed to persist task state: %s", e)
 
 
-def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
-
-
-def _float_or_none(value: Any) -> Optional[float]:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+orchestrator = AgentOrchestrator()

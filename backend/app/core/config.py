@@ -1,82 +1,106 @@
+"""
+BitPro 配置管理
+"""
+import os
+from typing import List, Optional
+from pydantic_settings import BaseSettings
+from pydantic import field_validator
 import json
-from typing import List, Union
-
-from pydantic import AnyHttpUrl, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    API_PREFIX: str = "/api"
-    PROJECT_NAME: str = "Stock Analysis App"
-
-    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
-
+    """应用配置"""
+    
+    # API 配置
+    PROJECT_NAME: str = "BitPro"
+    
+    # CORS 配置
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:8888", "http://127.0.0.1:8888"]
+    
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
-    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
-        if isinstance(v, str) and v.startswith("["):
-            return json.loads(v)
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",") if i.strip()]
-        if isinstance(v, (list, str)):
-            return v
-        raise ValueError(v)
+    @classmethod
+    def assemble_cors_origins(cls, v):
+        if isinstance(v, str):
+            if v.startswith("["):
+                return json.loads(v)
+            return [i.strip() for i in v.split(",")]
+        return v
+    
+    # 数据库配置
+    DB_PATH: Optional[str] = None
+    
+    # 日志配置
+    LOG_LEVEL: str = "INFO"
+    
+    # 交易所配置 - OKX
+    OKX_API_KEY: Optional[str] = None
+    OKX_API_SECRET: Optional[str] = None
+    OKX_PASSPHRASE: Optional[str] = None
+    OKX_TESTNET: bool = True
 
-    QWEN_API_KEY: str = ""
-    QWEN_STOCK_MODEL: str = "qwen-plus"
+    # 交易所配置 - Binance USD-M（首版用于跨所套利研究与账户展示）
+    BINANCE_API_KEY: Optional[str] = None
+    BINANCE_API_SECRET: Optional[str] = None
+    BINANCE_TESTNET: bool = False
+    
+    # AI Agent 配置
+    DASHSCOPE_API_KEY: Optional[str] = None
+    QWEN_API_KEY: Optional[str] = None
+    AI_AGENT_MODEL: str = "qwen3.6-plus"
+    QWEN_MODEL: str = "qwen3.6-plus"
     QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    AI_AGENT_ENABLE_THINKING: bool = False
+    AI_AGENT_THINKING_BUDGET: int = 512
+    AI_AGENT_REQUEST_TIMEOUT: int = 180
+    AGENT_MAX_ITERATIONS: int = 10
+    AGENT_CODE_TIMEOUT: int = 120
+    HERMES_AGENT_ENABLED: bool = False
+    HERMES_AGENT_COMMAND: str = "hermes"
+    HERMES_AGENT_TIMEOUT: int = 240
+    
+    # 飞书 Webhook 推送
+    FEISHU_WEBHOOK_URL: Optional[str] = None
+    ENABLE_FEISHU_NOTIFY: bool = False
+    FEISHU_APP_ID: Optional[str] = None
+    FEISHU_APP_SECRET: Optional[str] = None
+    FEISHU_PROFIT_CARD_IMAGE_ENABLED: bool = True
 
-    LIVE_TRADING_ENABLED: bool = False
-    LIVE_MINIQMT_ENABLED: bool = False
-    LIVE_PTRADE_ENABLED: bool = False
-    LIVE_MAX_SINGLE_ORDER_VALUE: float = 200_000.0
-    LIVE_MAX_POSITION_WEIGHT: float = 0.3
-    LIVE_MAX_DAILY_LOSS_RATIO: float = 0.05
+    # 登录与临时邀请码访问控制
+    BITPRO_AUTH_ENABLED: bool = False
+    BITPRO_ADMIN_USERNAME: Optional[str] = None
+    BITPRO_ADMIN_PASSWORD_HASH: Optional[str] = None
+    BITPRO_AUTH_COOKIE_NAME: str = "bitpro_session"
+    BITPRO_AUTH_COOKIE_SECURE: bool = False
+    BITPRO_ADMIN_SESSION_HOURS: int = 24 * 365 * 10
+    BITPRO_MCP_API_TOKEN: Optional[str] = None
+    BITPRO_MCP_AUTH_HEADER: str = "X-BitPro-MCP-Token"
+    BITPRO_REMOTE_MCP_ENABLED: bool = False
+    BITPRO_REMOTE_MCP_PATH: str = "/api/v2/mcp"
+    BITPRO_REMOTE_MCP_REQUIRE_TOKEN: bool = True
 
-    TUSHARE_TOKEN: str = ""
-    TUSHARE_CREDIT_TIER: int = 5000
-    TUSHARE_REALTIME_SOURCE: str = "dc"
-    ENABLE_TUSHARE: bool = True
-    AKSHARE_TIMEOUT: int = 30
-    AKSHARE_SUBPROCESS_FALLBACK: bool = True
-    RUN_STARTUP_DATA_SYNC: bool = False
-    RUN_MIGRATIONS_ON_STARTUP: bool = False
-    RUN_BOOTSTRAP_ON_STARTUP: bool = False
-    RUN_PAPER_RECOVERY_ON_STARTUP: bool = False
-    ENABLE_SCHEDULER: bool = False
-    ENABLE_LOCAL_PG_BACKUP: bool = True
-    LOCAL_PG_BACKUP_CRON: str = "30 2 * * *"
-    ENABLE_REALTIME_SYNC: bool = False
-    ENABLE_STRATEGY_EXECUTION: bool = False
-    ENABLE_EXTERNAL_MARKET_FETCH: bool = False
+    # HyperTrade 研究机构服务（仅由 BitPro 服务端读取，绝不下发给浏览器）
+    HYPERTRADE_API_BASE: Optional[str] = None
+    # 完整 Cookie header，例如 `hypertrade_session=...`；不得写入数据库、日志或 API 响应。
+    HYPERTRADE_ADMIN_SESSION_COOKIE: Optional[str] = None
+    HYPERTRADE_REQUEST_TIMEOUT_SEC: float = 20.0
+    # ARC 控制台：服务令牌 + 审批签名。空 BASE_URL 时页面显示未配置，不得 500。
+    HYPERTRADE_BASE_URL: Optional[str] = None
+    HYPERTRADE_SERVICE_TOKEN: Optional[str] = None
+    HYPERTRADE_APPROVAL_SIGNING_SECRET: Optional[str] = None
 
-    ENFORCE_OPERATION_ALLOWLIST: bool = False
-    OPERATION_ALLOWLIST: List[str] = []
-    EXTENSION_HTTP_ALLOWED_HOSTS: List[str] = []
-
-    @field_validator("OPERATION_ALLOWLIST", "EXTENSION_HTTP_ALLOWED_HOSTS", mode="before")
-    def assemble_operation_allowlist(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
-        if isinstance(v, str) and v.startswith("["):
-            return json.loads(v)
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",") if i.strip()]
-        if isinstance(v, (list, str)):
-            return v
-        raise ValueError(v)
-
-    ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = ""
-    ADMIN_TOKEN_SECRET: str = ""
-    ADMIN_TOKEN_TTL_SECONDS: int = 60 * 60 * 12
-
-    DATABASE_URL: str = "postgresql://stockpro:stockpro@127.0.0.1:55432/stockpro"
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=True,
-        enable_decoding=False,
-        extra="ignore",
-    )
+    # Redis 配置 (可选)
+    REDIS_URL: Optional[str] = None
+    
+    # 数据同步间隔 (秒)
+    SYNC_INTERVAL_TICKER: int = 10
+    SYNC_INTERVAL_FUNDING: int = 60
+    SYNC_INTERVAL_KLINE: int = 300
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+        extra = "ignore"
 
 
+# 全局配置实例
 settings = Settings()

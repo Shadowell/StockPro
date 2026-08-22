@@ -1,8 +1,3 @@
-from app.db.postgres_db import PostgresDatabase
+from .local_db import LocalDatabase, db_instance
 
-
-db_instance = PostgresDatabase()
-
-
-def get_database() -> PostgresDatabase:
-    return db_instance
+__all__ = ["LocalDatabase", "db_instance"]

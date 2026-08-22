@@ -1,1 +1,2 @@
-"""Stable StockPro Agent/MCP interface."""
+"""BitPro MCP integration package."""
+

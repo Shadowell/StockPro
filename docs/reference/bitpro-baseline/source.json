@@ -1,0 +1,52 @@
+{
+  "schema_version": "stockpro-bitpro-import.v1",
+  "mode": "apply",
+  "source_repo": "/Users/jie.feng/Dev/Github/Private/BitPro",
+  "source_sha": "00517963e90f463e608289b0277fe598bd82d9bf",
+  "source_archive": "git-object-database",
+  "target_root": "/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share",
+  "generated_at": "2026-08-22T04:56:21Z",
+  "writes_performed": true,
+  "copied_roots": [
+    "backend",
+    "frontend",
+    "packages",
+    "scripts",
+    "tests"
+  ],
+  "preserved_roots": [
+    ".github",
+    "deploy",
+    "docs/contracts",
+    "docs/spec.md",
+    "docs/progress.md",
+    "AGENTS.md",
+    "LICENSE"
+  ],
+  "excluded_roots": [
+    "data",
+    "content"
+  ],
+  "excluded_patterns": [
+    ".env",
+    ".env.*",
+    "venv/",
+    "node_modules/",
+    "dist/",
+    "__pycache__/",
+    "*.pyc",
+    "*.db",
+    "*.sqlite",
+    "*.log"
+  ],
+  "reference_paths": [
+    "docs/pages",
+    "docs/screenshots",
+    "docs/product_manual"
+  ],
+  "reference_destinations": [
+    "docs/reference/bitpro-baseline/pages",
+    "docs/reference/bitpro-baseline/screenshots",
+    "docs/reference/bitpro-baseline/product-manual"
+  ]
+}

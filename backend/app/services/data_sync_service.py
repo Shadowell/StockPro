@@ -1,963 +1,1195 @@
 """
-后台数据同步服务：定时从统一行情 provider 获取数据并写入数据库
+历史数据同步服务
+负责从交易所批量拉取历史K线/资金费率数据，存入本地 SQLite
+支持增量同步、断点续传、定时调度
 """
 import asyncio
+import json
 import logging
+import re
+import uuid
+from typing import Callable, Dict, List, Optional, Any
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
-from app.services.tushare_provider import market_data_provider as ak
-import pandas as pd
-from sqlalchemy import text
-from app.db import db_instance as pg_db_instance
-from app.core.config import settings
+from dataclasses import dataclass, field
+from enum import Enum
 
+from app.db.local_db import db_instance as db
+from app.exchange import exchange_manager
+from app.services.kline_file_store import kline_store
 
 logger = logging.getLogger(__name__)
+CONTRACT_USDT_SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,30}/USDT:USDT$")
+
+
+# ============================================
+# 默认同步配置
+# ============================================
+
+# 默认同步的交易对
+DEFAULT_SYMBOLS = [
+    'BTC/USDT:USDT',
+    'ETH/USDT:USDT',
+    'SOL/USDT:USDT',
+    'BNB/USDT:USDT',
+    'XRP/USDT:USDT',
+    'DOGE/USDT:USDT',
+    'ADA/USDT:USDT',
+    'AVAX/USDT:USDT',
+    'LINK/USDT:USDT',
+    'DOT/USDT:USDT',
+    'ZAMA/USDT:USDT',
+]
+
+# 默认同步的时间周期
+DEFAULT_TIMEFRAMES = ['15m', '30m', '1h', '4h', '12h', '1d']
+
+# 时间周期对应的毫秒数
+TIMEFRAME_MS = {
+    '1m': 60 * 1000,
+    '5m': 5 * 60 * 1000,
+    '15m': 15 * 60 * 1000,
+    '30m': 30 * 60 * 1000,
+    '1h': 60 * 60 * 1000,
+    '4h': 4 * 60 * 60 * 1000,
+    '12h': 12 * 60 * 60 * 1000,
+    '1d': 24 * 60 * 60 * 1000,
+    '1w': 7 * 24 * 60 * 60 * 1000,
+}
+
+# 默认回溯天数（首次同步时拉取多少天的历史数据）
+DEFAULT_HISTORY_DAYS = 90
+
+# 每次 API 请求的最大K线数 (OKX 单次限制 300)
+MAX_KLINES_PER_REQUEST = 300
+
+# API 请求间隔（秒），避免触发限流
+API_REQUEST_DELAY = 0.15
+
+# 单个任务最大连续错误次数
+MAX_CONSECUTIVE_ERRORS = 5
+
+NON_RETRYABLE_MARKET_ERROR_PATTERNS = (
+    'does not have market symbol',
+    'bad symbol',
+    'symbol not found',
+    'instrument id does not exist',
+    'instrument does not exist',
+    'instid does not exist',
+    'invalid instrument id',
+)
+
+
+def _is_non_retryable_market_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return any(pattern in message for pattern in NON_RETRYABLE_MARKET_ERROR_PATTERNS)
+
+
+def _sync_start_date_ms(date_text: str) -> int:
+    return int(datetime.strptime(date_text, "%Y-%m-%d").timestamp() * 1000)
+
+
+def _sync_end_date_ms(date_text: str) -> int:
+    end_date = datetime.strptime(date_text, "%Y-%m-%d") + timedelta(days=1)
+    return int(end_date.timestamp() * 1000)
+
+
+def _market_listing_timestamp(exchange: Any, symbol: str) -> Optional[int]:
+    try:
+        market = exchange.exchange.market(symbol)
+    except Exception:
+        return None
+    candidates = [market.get("created"), (market.get("info") or {}).get("listTime")]
+    for value in candidates:
+        try:
+            timestamp = int(value)
+        except (TypeError, ValueError):
+            continue
+        if timestamp > 0:
+            return timestamp
+    return None
+
+
+class SyncStatus(str, Enum):
+    """同步状态"""
+    IDLE = "idle"
+    SYNCING = "syncing"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+@dataclass
+class SyncProgress:
+    """单个同步任务进度"""
+    exchange: str
+    symbol: str
+    timeframe: str
+    status: SyncStatus = SyncStatus.IDLE
+    total_fetched: int = 0
+    total_inserted: int = 0
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    error: Optional[str] = None
+
+
+@dataclass
+class SyncJobResult:
+    """同步任务汇总结果"""
+    exchange: str
+    started_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+    total_symbols: int = 0
+    total_timeframes: int = 0
+    total_records_fetched: int = 0
+    total_records_inserted: int = 0
+    errors: List[str] = field(default_factory=list)
+    progress: List[SyncProgress] = field(default_factory=list)
+
+    @property
+    def status(self) -> str:
+        if self.completed_at is None:
+            return "running"
+        if self.errors:
+            return "completed_with_errors"
+        return "completed"
+
+
+def _format_dt(value: Optional[datetime]) -> Optional[str]:
+    return value.strftime("%Y-%m-%d %H:%M:%S") if value else None
+
+
+def _elapsed_seconds(start: Optional[datetime], end: Optional[datetime] = None) -> Optional[float]:
+    if not start:
+        return None
+    return round(((end or datetime.now()) - start).total_seconds(), 1)
+
+
+def _parse_dt(value: Optional[Any]) -> Optional[datetime]:
+    if value is None or isinstance(value, datetime):
+        return value
+    text = str(value)
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text[:19], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _serialize_progress(progress: SyncProgress) -> Dict[str, Any]:
+    return {
+        "exchange": progress.exchange,
+        "symbol": progress.symbol,
+        "timeframe": progress.timeframe,
+        "status": progress.status.value,
+        "total_fetched": progress.total_fetched,
+        "total_inserted": progress.total_inserted,
+        "started_at": _format_dt(progress.start_time),
+        "ended_at": _format_dt(progress.end_time),
+        "elapsed_seconds": _elapsed_seconds(progress.start_time, progress.end_time),
+        "error": progress.error,
+    }
 
 
 class DataSyncService:
-    """
-    数据同步服务，负责从 TuShare-first provider 获取数据并写入数据库
-    """
-    
+    """数据同步服务"""
+
     def __init__(self):
-        self.db = pg_db_instance
-        self.is_running = False
+        self._running = False
+        self._current_job: Optional[SyncJobResult] = None
+        self._current_job_id: Optional[str] = None
+        self._last_job_id: Optional[str] = None
+        self._lock = asyncio.Lock()
+        self._scheduler = None  # APScheduler 实例，后续集成
 
-    @staticmethod
-    def _stock_spot_frame():
-        errors = []
-        for source_name, fetcher in (
-            ("eastmoney", ak.stock_zh_a_spot_em),
-            ("sina", ak.stock_zh_a_spot),
-        ):
-            try:
-                df = fetcher()
-                if df is not None and not df.empty:
-                    logger.info("Using %s spot data for realtime stock sync: %s rows", source_name, len(df))
-                    return df
-                errors.append(f"{source_name}: empty")
-            except Exception as exc:
-                errors.append(f"{source_name}: {exc}")
-        raise RuntimeError("; ".join(errors))
+    # ============================================
+    # 持久化同步任务
+    # ============================================
 
-    @staticmethod
-    def _number(value: Any, default: Any = 0):
+    def _now_text(self) -> str:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _active_statuses(self) -> tuple[str, ...]:
+        return ("queued", "running")
+
+    def _row_to_dict(self, row) -> Optional[Dict[str, Any]]:
+        return dict(row) if row else None
+
+    def _parse_json_list(self, raw: Optional[Any]) -> List[str]:
+        if raw is None:
+            return []
         try:
-            if value is None or pd.isna(value):
-                return default
-            return float(value)
-        except Exception:
-            return default
-        
-    def sync_stock_history(self, date: Optional[str] = None) -> Dict[str, Any]:
-        """
-        同步股票历史数据
-        """
-        if not date:
-            # 默认获取昨天的数据
-            yesterday = datetime.now() - timedelta(days=1)
-            date = yesterday.strftime('%Y%m%d')
-        
+            values = json.loads(str(raw))
+        except (TypeError, json.JSONDecodeError):
+            return []
+        if not isinstance(values, list):
+            return []
+        return [str(value) for value in values]
+
+    def _load_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         try:
-            # 获取A股实时行情数据作为基础数据
-            stock_zh_a_spot_df = ak.stock_zh_a_spot_em()
-            
-            # 只处理A股数据（代码以00、60、30开头）
-            filtered_df = stock_zh_a_spot_df[
-                stock_zh_a_spot_df['代码'].str.startswith(('00', '60', '30'))
-            ].copy()
-            
-            # 准备数据插入数据库
-            records = []
-            for _, row in filtered_df.iterrows():
-                record = {
-                    'date': date,
-                    'code': row['代码'],
-                    'name': row['名称'],
-                    'open': float(row['今开']) if pd.notna(row['今开']) else None,
-                    'high': float(row['最高']) if pd.notna(row['最高']) else None,
-                    'low': float(row['最低']) if pd.notna(row['最低']) else None,
-                    'close': float(row['最新价']) if pd.notna(row['最新价']) else None,
-                    'volume': int(row['成交量']) if pd.notna(row['成交量']) else 0,
-                    'amount': float(row['成交额']) if pd.notna(row['成交额']) else 0,
-                    'change_amount': float(row['涨跌额']) if pd.notna(row['涨跌额']) else None,
-                    'change_percent': float(row['涨跌幅']) if pd.notna(row['涨跌幅']) else None,
-                    'turnover_rate': float(row['换手率']) if pd.notna(row['换手率']) else None,
-                    'pe_ttm': float(row['市盈率-动态']) if pd.notna(row['市盈率-动态']) else None,
-                    'pb': float(row['市净率']) if pd.notna(row['市净率']) else None,
-                    'total_mv': float(row['总市值']) if pd.notna(row['总市值']) else None,
-                    'circ_mv': float(row['流通市值']) if pd.notna(row['流通市值']) else None
-                }
-                records.append(record)
-            
-            if records:
-                history_records = [
-                    {
-                        "date": record["date"],
-                        "symbol": record["code"],
-                        "name": record["name"],
-                        "open": record["open"],
-                        "high": record["high"],
-                        "low": record["low"],
-                        "close": record["close"],
-                        "volume": record["volume"],
-                        "turnover": record.get("amount", record.get("turnover", 0)),
-                    }
-                    for record in records
-                ]
-                self.db.insert_stock_history_batch(history_records)
-                    
-                logger.info(f"Successfully synced {len(records)} stock history records for date {date}")
-                return {
-                    'status': 'success',
-                    'message': f'Synced {len(records)} stock history records for {date}',
-                    'count': len(records),
-                    'date': date
-                }
-            else:
-                logger.warning(f"No stock history data found for date {date}")
-                return {
-                    'status': 'warning',
-                    'message': f'No stock history data found for {date}',
-                    'count': 0,
-                    'date': date
-                }
-                
-        except Exception as e:
-            logger.error(f"Error syncing stock history for date {date}: {str(e)}")
-            return {
-                'status': 'error',
-                'message': f'Error syncing stock history: {str(e)}',
-                'date': date
-            }
-    
-    def sync_hot_concepts(self, date: Optional[str] = None) -> Dict[str, Any]:
-        """
-        同步热门概念数据
-        """
+            conn = db.get_connection()
+            row = conn.execute("SELECT * FROM sync_jobs WHERE id = ?", (job_id,)).fetchone()
+            return self._row_to_dict(row)
+        except Exception as exc:
+            logger.debug("sync_jobs unavailable while loading job %s: %s", job_id, exc)
+            return None
+
+    def _load_job_items(self, job_id: str) -> List[Dict[str, Any]]:
         try:
-            # 获取概念板块资金流
-            concept_flow_df = ak.stock_fund_flow_concept(symbol="即时")
-            
-            if concept_flow_df is not None and not concept_flow_df.empty:
-                records = []
-                for _, row in concept_flow_df.iterrows():
-                    record = {
-                        'date': date or datetime.now().strftime('%Y-%m-%d'),
-                        'concept_name': row.get('名称', ''),
-                        'net_amount': float(row.get('净额', 0)),
-                        'net_volume': float(row.get('净量', 0)),
-                        'main_net_amount': float(row.get('主线净额', 0)) if pd.notna(row.get('主线净额')) else 0,
-                        'super_large_net_amount': float(row.get('超大单净额', 0)) if pd.notna(row.get('超大单净额')) else 0,
-                        'large_net_amount': float(row.get('大单净额', 0)) if pd.notna(row.get('大单净额')) else 0,
-                        'medium_net_amount': float(row.get('中单净额', 0)) if pd.notna(row.get('中单净额')) else 0,
-                        'small_net_amount': float(row.get('小单净额', 0)) if pd.notna(row.get('小单净额')) else 0,
-                        'rank': int(row.get('序号', 0)) if pd.notna(row.get('序号')) else 0
-                    }
-                    records.append(record)
-                
-                if records:
-                    self.db.update_hot_concepts_realtime(
-                        [
-                            {
-                                "rank": record["rank"],
-                                "name": record["concept_name"],
-                                "change_percent": 0,
-                                "net_inflow": record["net_amount"],
-                            }
-                            for record in records
-                        ]
+            conn = db.get_connection()
+            rows = conn.execute(
+                """
+                SELECT * FROM sync_job_items
+                WHERE job_id = ?
+                ORDER BY id
+                """,
+                (job_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        except Exception as exc:
+            logger.debug("sync_job_items unavailable while loading job %s: %s", job_id, exc)
+            return []
+
+    def _latest_job(self) -> Optional[Dict[str, Any]]:
+        try:
+            conn = db.get_connection()
+            row = conn.execute(
+                """
+                SELECT * FROM sync_jobs
+                ORDER BY datetime(created_at) DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            return self._row_to_dict(row)
+        except Exception as exc:
+            logger.debug("sync_jobs unavailable while loading latest job: %s", exc)
+            return None
+
+    def _active_job(self) -> Optional[Dict[str, Any]]:
+        try:
+            conn = db.get_connection()
+            row = conn.execute(
+                """
+                SELECT * FROM sync_jobs
+                WHERE status IN ('queued', 'running')
+                ORDER BY datetime(created_at), id
+                LIMIT 1
+                """
+            ).fetchone()
+            return self._row_to_dict(row)
+        except Exception as exc:
+            logger.debug("sync_jobs unavailable while loading active job: %s", exc)
+            return None
+
+    def has_active_persistent_job(self) -> bool:
+        return self._active_job() is not None
+
+    def create_sync_job(
+        self,
+        exchange_name: str = "okx",
+        symbols: Optional[List[str]] = None,
+        timeframes: Optional[List[str]] = None,
+        history_days: int = DEFAULT_HISTORY_DAYS,
+        start_date: str = None,
+        end_date: str = None,
+    ) -> Dict[str, Any]:
+        """Create a durable sync job and item rows before background execution."""
+        if self._running or self.has_active_persistent_job():
+            raise ValueError("已有同步任务在运行中")
+
+        resolved_symbols = symbols or DEFAULT_SYMBOLS
+        resolved_timeframes = timeframes or DEFAULT_TIMEFRAMES
+        self.validate_sync_scope(resolved_symbols, resolved_timeframes)
+        job_id = uuid.uuid4().hex
+        now = self._now_text()
+
+        conn = db.get_connection()
+        conn.execute(
+            """
+            INSERT INTO sync_jobs (
+                id, exchange, status, symbols_json, timeframes_json,
+                history_days, start_date, end_date,
+                total_symbols, total_timeframes, created_at, updated_at
+            )
+            VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job_id,
+                exchange_name,
+                json.dumps(resolved_symbols, ensure_ascii=False),
+                json.dumps(resolved_timeframes, ensure_ascii=False),
+                history_days,
+                start_date,
+                end_date,
+                len(resolved_symbols),
+                len(resolved_timeframes),
+                now,
+                now,
+            ),
+        )
+        for symbol in resolved_symbols:
+            for timeframe in resolved_timeframes:
+                conn.execute(
+                    """
+                    INSERT INTO sync_job_items (
+                        job_id, exchange, symbol, timeframe, status, created_at, updated_at
                     )
-                    
-                    logger.info(f"Successfully synced {len(records)} concept flow records")
-                    return {
-                        'status': 'success',
-                        'message': f'Synced {len(records)} concept flow records',
-                        'count': len(records)
-                    }
-            
-            logger.warning("No concept flow data found")
-            return {
-                'status': 'warning',
-                'message': 'No concept flow data found',
-                'count': 0
-            }
-        except Exception as e:
-            logger.error(f"Error syncing concept flow: {str(e)}")
-            return {
-                'status': 'error',
-                'message': f'Error syncing concept flow: {str(e)}'
-            }
-    
-    def sync_fundamentals(self) -> Dict[str, Any]:
-        """
-        同步股票基本面数据
-        """
-        try:
-            # 获取A股实时行情数据（包含基本面信息）
-            stock_zh_a_spot_df = ak.stock_zh_a_spot_em()
-            
-            # 只处理A股数据
-            filtered_df = stock_zh_a_spot_df[
-                stock_zh_a_spot_df['代码'].str.startswith(('00', '60', '30'))
-            ].copy()
-            
-            records = []
-            for _, row in filtered_df.iterrows():
-                record = {
-                    'code': row['代码'],
-                    'name': row['名称'],
-                    'price': float(row['最新价']) if pd.notna(row['最新价']) else None,
-                    'change_amount': float(row['涨跌额']) if pd.notna(row['涨跌额']) else None,
-                    'change_percent': float(row['涨跌幅']) if pd.notna(row['涨跌幅']) else None,
-                    'volume': int(row['成交量']) if pd.notna(row['成交量']) else 0,
-                    'amount': float(row['成交额']) if pd.notna(row['成交额']) else 0,
-                    'amplitude': float(row['振幅']) if pd.notna(row['振幅']) else None,
-                    'turnover_rate': float(row['换手率']) if pd.notna(row['换手率']) else None,
-                    'pe_ttm': float(row['市盈率-动态']) if pd.notna(row['市盈率-动态']) else None,
-                    'pb': float(row['市净率']) if pd.notna(row['市净率']) else None,
-                    'total_mv': float(row['总市值']) if pd.notna(row['总市值']) else None,
-                    'circ_mv': float(row['流通市值']) if pd.notna(row['流通市值']) else None,
-                    'high_52w': float(row.get('年至今涨幅', 0)),  # 这里可能需要从其他接口获取
-                    'low_52w': float(row.get('60日涨跌幅', 0)),  # 这里可能需要从其他接口获取
-                    'eps': None,  # 需要从财务数据接口获取
-                    'bvps': None,  # 需要从财务数据接口获取
-                    'roe': None,  # 需要从财务数据接口获取
-                    'net_profit_margin': None,  # 需要从财务数据接口获取
-                    'debt_to_equity': None,  # 需要从财务数据接口获取
-                    'last_updated': datetime.now()
-                }
-                records.append(record)
-            
-            if records:
-                self.db.insert_stock_fundamentals_batch(
-                    [
-                        {
-                            "code": record["code"],
-                            "name": record["name"],
-                            "price": record["price"],
-                            "current_price": record["price"],
-                            "change_amount": record["change_amount"],
-                            "change_percent": record["change_percent"],
-                            "volume": record["volume"],
-                            "amount": record["amount"],
-                            "amplitude": record["amplitude"],
-                            "turnover_rate": record["turnover_rate"],
-                            "pe": record["pe_ttm"],
-                            "pb": record["pb"],
-                            "market_cap": record["total_mv"],
-                        }
-                        for record in records
-                    ]
+                    VALUES (?, ?, ?, ?, 'pending', ?, ?)
+                    """,
+                    (job_id, exchange_name, symbol, timeframe, now, now),
                 )
-                
-                logger.info(f"Successfully synced {len(records)} fundamentals records")
-                return {
-                    'status': 'success',
-                    'message': f'Synced {len(records)} fundamentals records',
-                    'count': len(records)
-                }
-            
-            logger.warning("No fundamentals data found")
-            return {
-                'status': 'warning',
-                'message': 'No fundamentals data found',
-                'count': 0
-            }
-        except Exception as e:
-            logger.error(f"Error syncing fundamentals: {str(e)}")
-            return {
-                'status': 'error',
-                'message': f'Error syncing fundamentals: {str(e)}'
-            }
-    
-    def sync_ths_hot(self) -> Dict[str, Any]:
-        """
-        同步同花顺热门股票数据
-        """
-        try:
-            # 获取热门股票
-            hot_rank_df = ak.stock_hot_rank_em()
-            
-            if hot_rank_df is not None and not hot_rank_df.empty:
-                records = []
-                for _, row in hot_rank_df.iterrows():
-                    record = {
-                        'rank': int(row.get('当前排名', 0)),
-                        'code': row.get('代码', ''),
-                        'name': row.get('股票名称', ''),
-                        'price': float(row.get('最新价', 0)) if pd.notna(row.get('最新价')) else None,
-                        'change_amount': float(row.get('涨跌额', 0)) if pd.notna(row.get('涨跌额')) else None,
-                        'change_percent': float(row.get('涨跌幅', 0)) if pd.notna(row.get('涨跌幅')) else None,
-                        'date': datetime.now().strftime('%Y-%m-%d'),
-                        'last_updated': datetime.now()
-                    }
-                    records.append(record)
-                
-                if records:
-                    self.db.update_ths_hot_realtime(records)
-                    self.db.insert_ths_hot_history(datetime.now().strftime('%Y-%m-%d'), records)
-                    
-                    logger.info(f"Successfully synced {len(records)} THS hot rank records")
-                    return {
-                        'status': 'success',
-                        'message': f'Synced {len(records)} THS hot rank records',
-                        'count': len(records)
-                    }
-            
-            logger.warning("No THS hot rank data found")
-            return {
-                'status': 'warning',
-                'message': 'No THS hot rank data found',
-                'count': 0
-            }
-        except Exception as e:
-            logger.error(f"Error syncing THS hot rank: {str(e)}")
-            return {
-                'status': 'error',
-                'message': f'Error syncing THS hot rank: {str(e)}'
-            }
+        conn.commit()
 
-    # ============ 新增同步方法 ============
-    
-    def sync_zt_pool(self, date: Optional[str] = None) -> Dict[str, Any]:
-        """
-        同步涨停连板数据（天级）
-        """
-        import time
-        
-        if not date:
-            date = datetime.now().strftime('%Y%m%d')
-        
-        start_time = time.time()
-        try:
-            # 获取涨停股池数据
-            zt_df = ak.stock_zt_pool_em(date=date)
-            count = 0
-            
-            if zt_df is not None and not zt_df.empty:
-                # 转换为连板历史数据格式
-                levels_data = []
-                for _, row in zt_df.iterrows():
-                    level = int(row.get('连板数', 1)) if pd.notna(row.get('连板数')) else 1
-                    item = {
-                        'code': row.get('代码', ''),
-                        'name': row.get('名称', ''),
-                        'change_percent': float(row.get('涨跌幅', 0)) if pd.notna(row.get('涨跌幅')) else 0,
-                        'price': float(row.get('最新价', 0)) if pd.notna(row.get('最新价')) else 0,
-                        'duration_days': level,
-                        'reason': row.get('所属行业', '')
-                    }
-                    
-                    # 找到或创建对应级别
-                    level_found = False
-                    for ld in levels_data:
-                        if ld.get('today_level') == level:
-                            ld['today_items'].append(item)
-                            level_found = True
-                            break
-                    
-                    if not level_found:
-                        levels_data.append({
-                            'today_level': level,
-                            'today_items': [item]
-                        })
-                
-                # 写入数据库
-                formatted_date = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
-                self.db.insert_lianban_ladder_history(formatted_date, None, levels_data)
-                count = len(zt_df)
-            
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.save_sync_log('zt_pool', date, 'success', count, None, duration_ms)
-            
-            return {'status': 'success', 'count': count, 'date': date}
-            
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.save_sync_log('zt_pool', date, 'failed', 0, str(e), duration_ms)
-            logger.error(f"Error syncing zt pool: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-    
-    def sync_dragon_tiger(self, date: Optional[str] = None) -> Dict[str, Any]:
-        """
-        同步龙虎榜数据（天级）
-        """
-        import time
-        
-        if not date:
-            date = datetime.now().strftime('%Y%m%d')
-        
-        start_time = time.time()
-        try:
-            # 获取龙虎榜详情
-            lhb_df = ak.stock_lhb_detail_em(start_date=date, end_date=date)
-            count = 0
-            
-            if lhb_df is not None and not lhb_df.empty:
-                records = []
-                for _, row in lhb_df.iterrows():
-                    records.append({
-                        'code': row.get('代码', ''),
-                        'name': row.get('名称', ''),
-                        'close_price': float(row.get('收盘价', 0)) if pd.notna(row.get('收盘价')) else None,
-                        'change_percent': float(row.get('涨跌幅', 0)) if pd.notna(row.get('涨跌幅')) else None,
-                        'turnover_rate': float(row.get('换手率', 0)) if pd.notna(row.get('换手率')) else None,
-                        'net_buy': float(row.get('龙虎榜净买额', 0)) if pd.notna(row.get('龙虎榜净买额')) else None,
-                        'buy_amount': float(row.get('龙虎榜买入额', 0)) if pd.notna(row.get('龙虎榜买入额')) else None,
-                        'sell_amount': float(row.get('龙虎榜卖出额', 0)) if pd.notna(row.get('龙虎榜卖出额')) else None,
-                        'reason': row.get('上榜原因', '')
-                    })
-                
-                formatted_date = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
-                self.db.insert_dragon_tiger_board(formatted_date, records)
-                count = len(records)
-            
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.save_sync_log('dragon_tiger', date, 'success', count, None, duration_ms)
-            
-            return {'status': 'success', 'count': count, 'date': date}
-            
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.save_sync_log('dragon_tiger', date, 'failed', 0, str(e), duration_ms)
-            logger.error(f"Error syncing dragon tiger: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-    
-    def sync_northbound_flow(self, days: int = 30) -> Dict[str, Any]:
-        """
-        同步北向资金数据（天级）
-        """
-        import time
-        
-        start_time = time.time()
-        try:
-            # 获取沪股通数据
-            hgt_df = ak.stock_hsgt_hist_em(symbol="沪股通")
-            # 获取深股通数据
-            sgt_df = ak.stock_hsgt_hist_em(symbol="深股通")
-            
-            records = []
-            
-            if hgt_df is not None and not hgt_df.empty:
-                for _, row in hgt_df.tail(days).iterrows():
-                    records.append({
-                        'date': str(row.get('日期', ''))[:10],
-                        'channel': '沪股通',
-                        'buy_amount': row.get('买入成交额'),
-                        'sell_amount': row.get('卖出成交额'),
-                        'net_buy': row.get('当日成交净买额'),
-                        'total_buy': row.get('历史累计净买额'),
-                    })
-            
-            if sgt_df is not None and not sgt_df.empty:
-                for _, row in sgt_df.tail(days).iterrows():
-                    records.append({
-                        'date': str(row.get('日期', ''))[:10],
-                        'channel': '深股通',
-                        'buy_amount': row.get('买入成交额'),
-                        'sell_amount': row.get('卖出成交额'),
-                        'net_buy': row.get('当日成交净买额'),
-                        'total_buy': row.get('历史累计净买额'),
-                    })
-            
-            if records:
-                self.db.insert_northbound_flow(records)
-            
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.save_sync_log('northbound_flow', datetime.now().strftime('%Y-%m-%d'), 
-                                  'success', len(records), None, duration_ms)
-            
-            return {'status': 'success', 'count': len(records)}
-            
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.save_sync_log('northbound_flow', datetime.now().strftime('%Y-%m-%d'),
-                                  'failed', 0, str(e), duration_ms)
-            logger.error(f"Error syncing northbound flow: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-    
-    def sync_sector_realtime(self) -> Dict[str, Any]:
-        """
-        同步板块实时行情（小时级）
-        """
-        import time
-        
-        start_time = time.time()
-        try:
-            total_count = 0
-            
-            # 同步行业板块
-            industry_df = ak.stock_board_industry_name_em()
-            if industry_df is not None and not industry_df.empty:
-                records = industry_df.to_dict('records')
-                self.db.update_sector_realtime('industry', records)
-                total_count += len(records)
-            
-            time.sleep(0.5)  # 避免请求过快
-            
-            # 同步概念板块
-            concept_df = ak.stock_board_concept_name_em()
-            if concept_df is not None and not concept_df.empty:
-                records = concept_df.to_dict('records')
-                self.db.update_sector_realtime('concept', records)
-                total_count += len(records)
-            
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.save_sync_log('sector_realtime', datetime.now().strftime('%Y-%m-%d'),
-                                  'success', total_count, None, duration_ms)
-            
-            return {'status': 'success', 'count': total_count}
-            
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.save_sync_log('sector_realtime', datetime.now().strftime('%Y-%m-%d'),
-                                  'failed', 0, str(e), duration_ms)
-            logger.error(f"Error syncing sector realtime: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-    
-    def sync_daily_concept_sectors(self, date: str = None) -> Dict[str, Any]:
-        """
-        同步每日概念板块数据（天级，用于复盘中心板块轮动分析）
-        每日收盘后调用一次，存储当天的概念板块涨跌数据
-        
-        优先使用东方财富接口，失败则使用同花顺接口
-        """
-        import time
-        
-        if not date:
-            date = datetime.now().strftime('%Y-%m-%d')
-        
-        start_time = time.time()
-        records = []
-        source = 'unknown'
-        
-        # 尝试东方财富接口
-        try:
-            logger.info("Trying to fetch concept sectors from EastMoney...")
-            concept_df = ak.stock_board_concept_name_em()
-            
-            if concept_df is not None and not concept_df.empty:
-                source = 'eastmoney'
-                for _, row in concept_df.iterrows():
-                    records.append({
-                        'code': row.get('板块代码', ''),
-                        'name': row.get('板块名称', ''),
-                        'change_percent': float(row.get('涨跌幅', 0)) if pd.notna(row.get('涨跌幅')) else 0,
-                        'leader_stock': row.get('领涨股票', ''),
-                        'leader_change': float(row.get('涨跌幅.1', 0)) if pd.notna(row.get('涨跌幅.1')) else 0,
-                        'total_market_cap': float(row.get('总市值', 0)) if pd.notna(row.get('总市值')) else 0,
-                        'up_count': int(row.get('上涨家数', 0)) if pd.notna(row.get('上涨家数')) else 0,
-                        'down_count': int(row.get('下跌家数', 0)) if pd.notna(row.get('下跌家数')) else 0
-                    })
-        except Exception as e:
-            logger.warning(f"EastMoney failed: {e}, trying THS...")
-        
-        # 如果东方财富失败，尝试同花顺
-        if not records:
-            try:
-                logger.info("Trying to fetch concept sectors from THS...")
-                concept_df = ak.stock_board_concept_name_ths()
-                
-                if concept_df is not None and not concept_df.empty:
-                    source = 'ths'
-                    # 同花顺只有名称和代码，需要逐个获取行情
-                    for _, row in concept_df.iterrows():
-                        concept_name = row['name']
-                        try:
-                            # 获取今日行情
-                            hist_df = ak.stock_board_concept_index_ths(
-                                symbol=concept_name,
-                                start_date=(datetime.now() - timedelta(days=5)).strftime('%Y%m%d'),
-                                end_date=datetime.now().strftime('%Y%m%d')
-                            )
-                            if hist_df is not None and len(hist_df) >= 2:
-                                hist_df = hist_df.sort_values('日期').reset_index(drop=True)
-                                last_row = hist_df.iloc[-1]
-                                prev_close = hist_df.iloc[-2]['收盘价']
-                                change_pct = ((last_row['收盘价'] - prev_close) / prev_close * 100)
-                                
-                                records.append({
-                                    'code': row.get('code', ''),
-                                    'name': concept_name,
-                                    'change_percent': round(float(change_pct), 2)
-                                })
-                            time.sleep(0.3)  # 避免请求过快
-                        except Exception:
-                            continue
-            except Exception as e:
-                logger.error(f"THS also failed: {e}")
-        
-        try:
-            if records:
-                # 按涨幅排序
-                records.sort(key=lambda x: x['change_percent'], reverse=True)
-                
-                # 写入数据库
-                self.db.insert_daily_concept_sectors(date, records)
-                
-                duration_ms = int((time.time() - start_time) * 1000)
-                self.db.save_sync_log('daily_concept_sectors', date, 'success', len(records), None, duration_ms)
-                
-                logger.info(f"Synced {len(records)} concept sectors for {date} from {source}")
-                return {'status': 'success', 'count': len(records), 'date': date, 'source': source}
-            else:
-                return {'status': 'warning', 'count': 0, 'message': '无法从任何数据源获取数据'}
-            
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.save_sync_log('daily_concept_sectors', date, 'failed', 0, str(e), duration_ms)
-            logger.error(f"Error syncing daily concept sectors: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-    
-    def backfill_concept_history(self, days: int = 30) -> Dict[str, Any]:
-        """
-        回填历史概念板块数据
-        
-        使用同花顺接口 stock_board_concept_index_ths 获取历史K线数据，
-        然后计算每日涨跌幅并存入数据库。
-        
-        Args:
-            days: 回填最近多少天的数据
-        
-        Returns:
-            {'status': 'success/error', 'days_filled': n, 'message': '...'}
-        """
-        import time
-        
-        logger.info(f"Starting backfill concept history for {days} days (using THS)")
-        start_time = time.time()
-        
-        try:
-            # 1. 获取同花顺概念板块列表
-            logger.info("Fetching concept sector list from THS...")
-            concept_df = ak.stock_board_concept_name_ths()
-            if concept_df is None or concept_df.empty:
-                return {'status': 'error', 'message': '无法获取同花顺概念板块列表'}
-            
-            concept_names = concept_df['name'].tolist()
-            total = len(concept_names)
-            logger.info(f"Found {total} concept sectors from THS")
-            
-            # 2. 用于存储每日数据
-            daily_data: Dict[str, List[Dict]] = {}  # date -> [sector_info, ...]
-            
-            success_count = 0
-            fail_count = 0
-            
-            # 计算日期范围
-            end_date = datetime.now().strftime('%Y%m%d')
-            start_date = (datetime.now() - timedelta(days=days + 10)).strftime('%Y%m%d')
-            
-            # 3. 遍历每个板块获取历史数据
-            for i, concept_name in enumerate(concept_names):
-                try:
-                    # 使用同花顺历史指数接口
-                    hist_df = ak.stock_board_concept_index_ths(
-                        symbol=concept_name,
-                        start_date=start_date,
-                        end_date=end_date
-                    )
-                    
-                    if hist_df is not None and not hist_df.empty and len(hist_df) >= 2:
-                        # 计算每日涨跌幅（基于收盘价）
-                        hist_df = hist_df.sort_values('日期').reset_index(drop=True)
-                        hist_df['prev_close'] = hist_df['收盘价'].shift(1)
-                        hist_df['change_percent'] = ((hist_df['收盘价'] - hist_df['prev_close']) / hist_df['prev_close'] * 100).round(2)
-                        
-                        for _, row in hist_df.dropna(subset=['change_percent']).tail(days).iterrows():
-                            date_val = row.get('日期')
-                            change_pct = row.get('change_percent')
-                            
-                            if pd.notna(date_val) and pd.notna(change_pct):
-                                date_str = pd.to_datetime(date_val).strftime('%Y-%m-%d')
-                                
-                                if date_str not in daily_data:
-                                    daily_data[date_str] = []
-                                
-                                daily_data[date_str].append({
-                                    'name': concept_name,
-                                    'change_percent': float(change_pct)
-                                })
-                        
-                        success_count += 1
-                    else:
-                        fail_count += 1
-                    
-                    # 进度日志
-                    if (i + 1) % 30 == 0:
-                        logger.info(f"Progress: {i + 1}/{total} - Success: {success_count}, Failed: {fail_count}")
-                    
-                    # 同花顺限流较严，休息久一点
-                    if (i + 1) % 30 == 0:
-                        time.sleep(3)
-                    else:
-                        time.sleep(0.5)
-                        
-                except Exception as e:
-                    fail_count += 1
-                    logger.debug(f"Failed to get history for {concept_name}: {e}")
-                    continue
-            
-            logger.info(f"Data fetching completed: Success {success_count}, Failed {fail_count}")
-            
-            # 4. 写入数据库
-            days_filled = 0
-            for date in sorted(daily_data.keys()):
-                sectors = daily_data[date]
-                # 按涨幅排序
-                sectors.sort(key=lambda x: x['change_percent'], reverse=True)
-                
-                # 写入数据库
-                self.db.insert_daily_concept_sectors(date, sectors)
-                days_filled += 1
-                logger.info(f"Saved {len(sectors)} sectors for {date}")
-            
-            duration_ms = int((time.time() - start_time) * 1000)
-            duration_min = duration_ms / 60000
-            
-            logger.info(f"Backfill completed: {days_filled} days, {duration_min:.1f} minutes")
-            
-            return {
-                'status': 'success',
-                'days_filled': days_filled,
-                'sectors_processed': success_count,
-                'sectors_failed': fail_count,
-                'duration_minutes': round(duration_min, 1),
-                'message': f'成功回填 {days_filled} 天的数据'
-            }
-            
-        except Exception as e:
-            logger.error(f"Error backfilling concept history: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-    
-    def sync_realtime_stocks(self) -> Dict[str, Any]:
-        """
-        同步全市场实时行情（分钟级）
-        """
-        import time
-        
-        start_time = time.time()
-        try:
-            stock_df = self._stock_spot_frame()
-            
-            if stock_df is not None and not stock_df.empty:
-                records = []
-                for _, row in stock_df.iterrows():
-                    records.append({
-                        'code': row.get('代码'),
-                        'name': row.get('名称'),
-                        'price': self._number(row.get('最新价')),
-                        'change_percent': self._number(row.get('涨跌幅')),
-                        'volume': self._number(row.get('成交量')),
-                        'amount': self._number(row.get('成交额')),
-                        'turnover': self._number(row.get('换手率'), None),
-                        'volume_ratio': self._number(row.get('量比'), None),
-                        'pe_dynamic': self._number(row.get('市盈率-动态'), None),
-                        'pb': self._number(row.get('市净率'), None),
-                        'total_market_cap': self._number(row.get('总市值'), None),
-                        'float_market_cap': self._number(row.get('流通市值'), None),
-                        'amplitude': self._number(row.get('振幅'), None)
-                    })
-                
-                self.db.update_all_stocks_realtime(records)
-                
-                duration_ms = int((time.time() - start_time) * 1000)
-                return {'status': 'success', 'count': len(records), 'duration_ms': duration_ms}
-            
-            return {'status': 'warning', 'count': 0}
-            
-        except Exception as e:
-            logger.error(f"Error syncing realtime stocks: {str(e)}")
-            return {'status': 'error', 'message': str(e)}
-    
-    def sync_news(self, sources: List[str] = None) -> Dict[str, Any]:
-        """
-        同步快讯资讯（分钟级）
-        
-        数据来源：
-        - ths: 同花顺实时快讯 (https://news.10jqka.com.cn/realtimenews.html)
-               接口: ak.stock_info_global_ths()
-        - cls: 财联社电报 (https://www.cls.cn/telegraph)
-               接口: ak.stock_info_global_cls(symbol="全部")
-        """
-        import time
-        
-        if sources is None:
-            sources = ['ths', 'cls']  # 默认从两个数据源获取
-        
-        start_time = time.time()
-        total_count = 0
-        results = {}
-        
-        for source in sources:
-            try:
-                news_df = None
-                
-                if source == 'ths':
-                    # 同花顺实时快讯
-                    # https://news.10jqka.com.cn/realtimenews.html
-                    try:
-                        news_df = ak.stock_info_global_ths()
-                        logger.debug(f"Fetched {len(news_df) if news_df is not None else 0} news from THS")
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch THS news: {e}")
-                        
-                elif source == 'cls':
-                    # 财联社电报
-                    # https://www.cls.cn/telegraph
-                    try:
-                        news_df = ak.stock_info_global_cls(symbol="全部")
-                        logger.debug(f"Fetched {len(news_df) if news_df is not None else 0} news from CLS")
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch CLS news: {e}")
-                
-                if news_df is not None and not news_df.empty:
-                    records = []
-                    for _, row in news_df.iterrows():
-                        # 解析发布时间
-                        publish_time = row.get('发布时间', row.get('时间', row.get('datetime', '')))
-                        
-                        # 处理时间格式
-                        if isinstance(publish_time, str):
-                            try:
-                                # HH:MM 格式 -> 补全日期
-                                if len(publish_time) == 5 and ':' in publish_time:
-                                    publish_time = f"{datetime.now().strftime('%Y-%m-%d')} {publish_time}:00"
-                                # HH:MM:SS 格式 -> 补全日期
-                                elif len(publish_time) == 8 and publish_time.count(':') == 2:
-                                    publish_time = f"{datetime.now().strftime('%Y-%m-%d')} {publish_time}"
-                            except:
-                                publish_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        elif hasattr(publish_time, 'strftime'):
-                            # pandas Timestamp 或 datetime 对象
-                            publish_time = publish_time.strftime('%Y-%m-%d %H:%M:%S')
-                        else:
-                            publish_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        
-                        # 获取内容
-                        title = str(row.get('标题', row.get('title', '')))
-                        content = str(row.get('内容', row.get('content', title)))
-                        
-                        # 跳过空内容
-                        if not content or content == 'nan':
-                            content = title
-                        if not content or content == 'nan':
-                            continue
-                        
-                        records.append({
-                            'source': source,
-                            'publish_time': publish_time,
-                            'title': title if title and title != 'nan' else content[:50],
-                            'content': content,
-                            'importance': 1,
-                            'category': self._classify_news(content),
-                            'related_stocks': self._extract_stock_codes(content)
-                        })
-                    
-                    if records:
-                        self.db.insert_news_batch(records)
-                        total_count += len(records)
-                        results[source] = len(records)
-                        
-            except Exception as e:
-                logger.error(f"Error syncing news from {source}: {str(e)}")
-                results[source] = f"error: {str(e)}"
-        
-        duration_ms = int((time.time() - start_time) * 1000)
         return {
-            'status': 'success' if total_count > 0 else 'warning',
-            'count': total_count,
-            'sources': results,
-            'duration_ms': duration_ms
+            "job_id": job_id,
+            "exchange": exchange_name,
+            "symbols": resolved_symbols,
+            "timeframes": resolved_timeframes,
+            "history_days": history_days,
+            "start_date": start_date,
+            "end_date": end_date,
         }
-    
-    def _classify_news(self, content: str) -> Optional[str]:
-        """
-        简单分类新闻
-        """
-        if not content:
-            return None
-        
-        content_lower = content.lower()
-        
-        # 宏观政策
-        if any(kw in content for kw in ['央行', '货币政策', 'GDP', 'CPI', 'PMI', '利率', '降准', '降息', '国务院', '发改委']):
-            return '宏观'
-        
-        # 行业
-        if any(kw in content for kw in ['行业', '板块', '概念', '赛道']):
-            return '行业'
-        
-        # 公司
-        if any(kw in content for kw in ['公司', '股份', '集团', '涨停', '跌停', '业绩', '财报']):
-            return '公司'
-        
-        # 市场
-        if any(kw in content for kw in ['大盘', '指数', '成交', '北向', '外资', '两市']):
-            return '市场'
-        
-        return None
-    
-    def _extract_stock_codes(self, content: str) -> Optional[str]:
-        """
-        从内容中提取股票代码
-        """
-        import re
-        
-        if not content:
-            return None
-        
-        # 匹配 6 位数字的股票代码
-        codes = re.findall(r'\b([036]\d{5})\b', content)
-        
-        if codes:
-            # 去重并返回，最多5个
-            unique_codes = list(dict.fromkeys(codes))[:5]
-            return ','.join(unique_codes)
-        
-        return None
 
-    async def start_sync_loop(self):
-        """
-        启动数据同步循环
-        """
-        if self.is_running:
-            logger.warning("Data sync loop is already running")
+    @staticmethod
+    def validate_sync_scope(symbols: List[str], timeframes: List[str]) -> None:
+        if any(not CONTRACT_USDT_SYMBOL_RE.fullmatch(str(symbol or "").upper()) for symbol in symbols):
+            raise ValueError("数据中心只同步 USDT 永续合约")
+        unsupported = [timeframe for timeframe in timeframes if timeframe not in DEFAULT_TIMEFRAMES]
+        if unsupported:
+            raise ValueError(f"数据中心只同步以下周期: {', '.join(DEFAULT_TIMEFRAMES)}")
+
+    def _update_job(self, job_id: str, **fields: Any) -> None:
+        if not fields:
             return
-            
-        self.is_running = True
-        logger.info("Starting data sync loop...")
-        
-        while self.is_running:
-            try:
-                # 同步股票历史数据（使用昨日数据）
-                yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-                self.sync_stock_history(yesterday)
-                
-                # 同步热门概念
-                self.sync_hot_concepts()
-                
-                # 同步基本面数据
-                self.sync_fundamentals()
-                
-                # 同步同花顺热门股票
-                self.sync_ths_hot()
-                
-                logger.info("Completed one sync cycle, sleeping for 30 minutes...")
-                await asyncio.sleep(30 * 60)  # 每30分钟同步一次
-                
-            except Exception as e:
-                logger.error(f"Error in sync loop: {str(e)}")
-                await asyncio.sleep(60)  # 出错后等待1分钟再继续
-    
-    def stop_sync_loop(self):
+        allowed = {
+            "status",
+            "total_records_fetched",
+            "total_records_inserted",
+            "error_count",
+            "error_message",
+            "started_at",
+            "completed_at",
+        }
+        set_clauses = ["updated_at = ?"]
+        params: List[Any] = [self._now_text()]
+        for key, value in fields.items():
+            if key not in allowed:
+                continue
+            set_clauses.append(f"{key} = ?")
+            params.append(value)
+        params.append(job_id)
+        conn = db.get_connection()
+        conn.execute(
+            f"UPDATE sync_jobs SET {', '.join(set_clauses)} WHERE id = ?",
+            params,
+        )
+        conn.commit()
+
+    def _update_job_item(self, item_id: int, **fields: Any) -> None:
+        if not fields:
+            return
+        allowed = {
+            "status",
+            "total_fetched",
+            "total_inserted",
+            "checkpoint_timestamp",
+            "started_at",
+            "ended_at",
+            "error_message",
+        }
+        set_clauses = ["updated_at = ?"]
+        params: List[Any] = [self._now_text()]
+        for key, value in fields.items():
+            if key not in allowed:
+                continue
+            set_clauses.append(f"{key} = ?")
+            params.append(value)
+        params.append(item_id)
+        conn = db.get_connection()
+        conn.execute(
+            f"UPDATE sync_job_items SET {', '.join(set_clauses)} WHERE id = ?",
+            params,
+        )
+        conn.commit()
+
+    def _progress_from_item(self, item: Dict[str, Any]) -> SyncProgress:
+        status_value = item.get("status") or SyncStatus.IDLE.value
+        try:
+            status = SyncStatus(status_value)
+        except ValueError:
+            status = SyncStatus.SYNCING if status_value == "running" else SyncStatus.IDLE
+        return SyncProgress(
+            exchange=item["exchange"],
+            symbol=item["symbol"],
+            timeframe=item["timeframe"],
+            status=status,
+            total_fetched=int(item.get("total_fetched") or 0),
+            total_inserted=int(item.get("total_inserted") or 0),
+            start_time=_parse_dt(item.get("started_at")),
+            end_time=_parse_dt(item.get("ended_at")),
+            error=item.get("error_message"),
+        )
+
+    def _job_result_from_rows(self, job: Dict[str, Any], items: List[Dict[str, Any]]) -> SyncJobResult:
+        item_total_fetched = sum(int(item.get("total_fetched") or 0) for item in items)
+        item_total_inserted = sum(int(item.get("total_inserted") or 0) for item in items)
+        result = SyncJobResult(
+            exchange=job["exchange"],
+            started_at=_parse_dt(job.get("started_at")) or _parse_dt(job.get("created_at")) or datetime.now(),
+            completed_at=_parse_dt(job.get("completed_at")),
+            total_symbols=int(job.get("total_symbols") or 0),
+            total_timeframes=int(job.get("total_timeframes") or 0),
+            total_records_fetched=item_total_fetched or int(job.get("total_records_fetched") or 0),
+            total_records_inserted=item_total_inserted or int(job.get("total_records_inserted") or 0),
+        )
+        for item in items:
+            progress = self._progress_from_item(item)
+            result.progress.append(progress)
+            if progress.error:
+                result.errors.append(f"{progress.symbol} {progress.timeframe}: {progress.error}")
+        return result
+
+    def _finish_job_from_items(self, job_id: str) -> SyncJobResult:
+        job = self._load_job(job_id)
+        if not job:
+            raise ValueError(f"同步任务不存在: {job_id}")
+
+        items = self._load_job_items(job_id)
+        total_fetched = sum(int(item.get("total_fetched") or 0) for item in items)
+        total_inserted = sum(int(item.get("total_inserted") or 0) for item in items)
+        errors = [
+            item
+            for item in items
+            if item.get("status") == SyncStatus.ERROR.value or item.get("error_message")
+        ]
+        completed_at = self._now_text()
+        status = "completed_with_errors" if errors else "completed"
+        self._update_job(
+            job_id,
+            status=status,
+            total_records_fetched=total_fetched,
+            total_records_inserted=total_inserted,
+            error_count=len(errors),
+            completed_at=completed_at,
+            error_message="\n".join(
+                f"{item['symbol']} {item['timeframe']}: {item.get('error_message')}"
+                for item in errors
+                if item.get("error_message")
+            ) or None,
+        )
+        job = self._load_job(job_id)
+        return self._job_result_from_rows(job, self._load_job_items(job_id))
+
+    def _serialize_job_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        progress = self._progress_from_item(item)
+        return {
+            "id": item.get("id"),
+            "exchange": item.get("exchange"),
+            "symbol": item.get("symbol"),
+            "timeframe": item.get("timeframe"),
+            "status": item.get("status") or SyncStatus.IDLE.value,
+            "total_fetched": int(item.get("total_fetched") or 0),
+            "total_inserted": int(item.get("total_inserted") or 0),
+            "checkpoint_timestamp": item.get("checkpoint_timestamp"),
+            "started_at": _format_dt(progress.start_time),
+            "ended_at": _format_dt(progress.end_time),
+            "elapsed_seconds": _elapsed_seconds(progress.start_time, progress.end_time),
+            "error_message": item.get("error_message"),
+        }
+
+    def _serialize_job_summary(
+        self,
+        job: Dict[str, Any],
+        items: List[Dict[str, Any]],
+        *,
+        include_items: bool = True,
+    ) -> Dict[str, Any]:
+        symbols = self._parse_json_list(job.get("symbols_json"))
+        timeframes = self._parse_json_list(job.get("timeframes_json"))
+        total_items = len(items) or (int(job.get("total_symbols") or 0) * int(job.get("total_timeframes") or 0))
+        completed_items = sum(1 for item in items if item.get("status") == SyncStatus.COMPLETED.value)
+        running_items = sum(1 for item in items if item.get("status") == "running")
+        pending_items = sum(1 for item in items if item.get("status") == "pending")
+        error_items = sum(
+            1
+            for item in items
+            if item.get("status") == SyncStatus.ERROR.value or item.get("error_message")
+        )
+        processed_items = completed_items + error_items
+        started_at = _parse_dt(job.get("started_at")) or _parse_dt(job.get("created_at"))
+        completed_at = _parse_dt(job.get("completed_at"))
+        total_fetched = sum(int(item.get("total_fetched") or 0) for item in items) or int(job.get("total_records_fetched") or 0)
+        total_inserted = sum(int(item.get("total_inserted") or 0) for item in items) or int(job.get("total_records_inserted") or 0)
+        progress_percent = round((processed_items / total_items) * 100, 1) if total_items else 0.0
+
+        payload = {
+            "job_id": job.get("id"),
+            "exchange": job.get("exchange"),
+            "status": job.get("status"),
+            "symbols": symbols,
+            "timeframes": timeframes,
+            "history_days": int(job.get("history_days") or DEFAULT_HISTORY_DAYS),
+            "start_date": job.get("start_date"),
+            "end_date": job.get("end_date"),
+            "total_symbols": int(job.get("total_symbols") or len(symbols)),
+            "total_timeframes": int(job.get("total_timeframes") or len(timeframes)),
+            "total_items": total_items,
+            "completed_items": completed_items,
+            "running_items": running_items,
+            "pending_items": pending_items,
+            "error_items": error_items,
+            "processed_items": processed_items,
+            "progress_percent": progress_percent,
+            "total_fetched": total_fetched,
+            "total_inserted": total_inserted,
+            "error_count": int(job.get("error_count") or error_items),
+            "error_message": job.get("error_message"),
+            "created_at": job.get("created_at"),
+            "started_at": job.get("started_at"),
+            "completed_at": job.get("completed_at"),
+            "updated_at": job.get("updated_at"),
+            "elapsed_seconds": _elapsed_seconds(started_at, completed_at),
+        }
+        if include_items:
+            payload["items"] = [self._serialize_job_item(item) for item in items]
+        return payload
+
+    def list_sync_jobs(self, limit: int = 20, include_items: bool = True) -> Dict[str, Any]:
+        """Return current and historical durable sync jobs for the data manager."""
+        safe_limit = max(1, min(int(limit or 20), 100))
+        try:
+            conn = db.get_connection()
+            rows = conn.execute(
+                """
+                SELECT * FROM sync_jobs
+                ORDER BY
+                    CASE WHEN status IN ('queued', 'running') THEN 0 ELSE 1 END,
+                    datetime(COALESCE(started_at, created_at)) DESC,
+                    id DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+        except Exception as exc:
+            logger.debug("sync_jobs unavailable while listing jobs: %s", exc)
+            return {"jobs": []}
+
+        jobs = []
+        for row in rows:
+            job = dict(row)
+            items = self._load_job_items(job["id"])
+            jobs.append(self._serialize_job_summary(job, items, include_items=include_items))
+        return {"jobs": jobs}
+
+    # ============================================
+    # 核心同步逻辑
+    # ============================================
+
+    async def sync_klines(
+        self,
+        exchange_name: str,
+        symbol: str,
+        timeframe: str,
+        start_date: str = None,
+        end_date: str = None,
+        history_days: int = DEFAULT_HISTORY_DAYS,
+        progress: Optional[SyncProgress] = None,
+        resume_from_timestamp: Optional[int] = None,
+        progress_callback: Optional[Callable[[SyncProgress, int], None]] = None,
+    ) -> SyncProgress:
         """
-        停止数据同步循环
+        同步单个交易对的K线数据
+
+        Args:
+            exchange_name: 交易所名称
+            symbol: 交易对 (如 BTC/USDT)
+            timeframe: K线周期 (如 1h, 4h, 1d)
+            start_date: 起始日期 (YYYY-MM-DD)，不传则使用上次同步位置或默认回溯
+            end_date: 结束日期 (YYYY-MM-DD)，不传则同步到当前
+            history_days: 首次同步回溯天数
         """
-        self.is_running = False
-        logger.info("Data sync loop stopped")
+        self.validate_sync_scope([symbol], [timeframe])
+        progress = progress or SyncProgress(
+            exchange=exchange_name,
+            symbol=symbol,
+            timeframe=timeframe,
+        )
+        progress.status = SyncStatus.SYNCING
+        progress.start_time = progress.start_time or datetime.now()
+
+        try:
+            exchange = exchange_manager.get_exchange(exchange_name)
+            if not exchange:
+                raise ValueError(f"交易所 {exchange_name} 不可用")
+
+            interval_ms = TIMEFRAME_MS.get(timeframe, 3600000)
+            now_ms = int(datetime.now().timestamp() * 1000)
+
+            # 确定起始时间：优先使用断点 > 参数 > 上次同步位置 > 默认回溯
+            requested_start_ms = None
+            if start_date:
+                requested_start_ms = _sync_start_date_ms(start_date)
+                start_ms = requested_start_ms
+            else:
+                # 检查上次同步位置
+                meta = db.get_sync_metadata(exchange_name, symbol, timeframe, 'kline')
+                if meta and meta.get('last_timestamp'):
+                    # 从上次位置的下一根K线开始（增量同步）
+                    start_ms = meta['last_timestamp'] + interval_ms
+                else:
+                    # 首次同步，回溯 history_days 天
+                    start_ms = now_ms - history_days * 24 * 3600 * 1000
+
+            if resume_from_timestamp is not None:
+                resumed_ms = int(resume_from_timestamp) + interval_ms
+                start_ms = max(start_ms, resumed_ms)
+                if requested_start_ms is not None:
+                    start_ms = max(requested_start_ms, start_ms)
+
+            # 确定结束时间
+            if end_date:
+                end_ms = _sync_end_date_ms(end_date)
+            else:
+                end_ms = now_ms
+
+            listing_ms = _market_listing_timestamp(exchange, symbol)
+            if listing_ms is not None:
+                start_ms = max(start_ms, listing_ms)
+
+            # 如果起始已经超过结束，说明数据已是最新
+            if start_ms >= end_ms:
+                logger.info(f"[{exchange_name}] {symbol} {timeframe} 数据已是最新")
+                stats = await asyncio.to_thread(
+                    kline_store.get_stats,
+                    exchange_name,
+                    symbol,
+                    timeframe,
+                )
+                time_range = {
+                    'first_timestamp': stats.get('first_timestamp'),
+                    'last_timestamp': stats.get('last_timestamp'),
+                } if stats.get('record_count', 0) > 0 else None
+                db.update_sync_metadata(
+                    exchange_name, symbol, timeframe, 'kline',
+                    first_timestamp=time_range['first_timestamp'] if time_range else None,
+                    last_timestamp=time_range['last_timestamp'] if time_range else None,
+                    total_records=stats.get('record_count', 0),
+                    status=SyncStatus.COMPLETED.value,
+                    last_sync_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    error_message=None,
+                )
+                progress.status = SyncStatus.COMPLETED
+                progress.end_time = datetime.now()
+                return progress
+
+            # 更新同步状态为 syncing
+            db.update_sync_metadata(
+                exchange_name, symbol, timeframe, 'kline',
+                status='syncing'
+            )
+
+            logger.info(
+                f"[{exchange_name}] 开始同步 {symbol} {timeframe} "
+                f"从 {datetime.fromtimestamp(start_ms/1000).strftime('%Y-%m-%d %H:%M')} "
+                f"到 {datetime.fromtimestamp(end_ms/1000).strftime('%Y-%m-%d %H:%M')}"
+            )
+
+            # 分批拉取数据
+            current_ms = start_ms
+            batch_count = 0
+            consecutive_errors = 0
+
+            while current_ms < end_ms:
+                try:
+                    # Exchange REST and file-store writes are synchronous.  This
+                    # service also runs from the API process, so execute them in
+                    # worker threads to keep health checks and page requests
+                    # responsive while a large scheduled sync is in progress.
+                    klines = await asyncio.to_thread(
+                        exchange.fetch_ohlcv,
+                        symbol,
+                        timeframe,
+                        limit=MAX_KLINES_PER_REQUEST,
+                        since=current_ms,
+                    )
+
+                    if not klines:
+                        logger.debug(f"[{exchange_name}] {symbol} {timeframe} 无更多数据 (since={current_ms})")
+                        break
+
+                    # end_ms is exclusive so a date-only end value includes the selected day.
+                    klines = [k for k in klines if k['timestamp'] < end_ms]
+
+                    if not klines:
+                        break
+
+                    # 检测是否卡在同一位置（OKX 有时会返回重复数据）
+                    first_ts = klines[0]['timestamp']
+                    last_ts = klines[-1]['timestamp']
+                    if last_ts < current_ms:
+                        logger.debug(f"[{exchange_name}] {symbol} {timeframe} 数据不再前进，结束")
+                        break
+
+                    # 写入文件系统（Parquet/CSV）
+                    inserted = await asyncio.to_thread(
+                        kline_store.append_klines,
+                        exchange_name,
+                        symbol,
+                        timeframe,
+                        klines,
+                    )
+
+                    progress.total_fetched += len(klines)
+                    progress.total_inserted += inserted
+                    batch_count += 1
+                    consecutive_errors = 0  # 成功后重置错误计数
+
+                    # 更新游标到最后一条数据的下一个时间戳
+                    current_ms = last_ts + interval_ms
+
+                    db.update_sync_metadata(
+                        exchange_name, symbol, timeframe, 'kline',
+                        last_timestamp=last_ts,
+                        status='syncing',
+                    )
+                    if progress_callback:
+                        progress_callback(progress, last_ts)
+
+                    # 每 20 批次或每 5000 条更新一次元数据并打印日志
+                    if batch_count % 20 == 0:
+                        db.update_sync_metadata(
+                            exchange_name, symbol, timeframe, 'kline',
+                            last_timestamp=last_ts,
+                            total_records=progress.total_fetched,
+                        )
+                        logger.info(
+                            f"[{exchange_name}] {symbol} {timeframe} "
+                            f"已同步 {progress.total_fetched} 条 "
+                            f"(到 {datetime.fromtimestamp(last_ts/1000).strftime('%Y-%m-%d %H:%M')})"
+                        )
+
+                    # 避免触发 API 限流
+                    await asyncio.sleep(API_REQUEST_DELAY)
+
+                except Exception as e:
+                    if _is_non_retryable_market_error(e):
+                        logger.warning(
+                            f"[{exchange_name}] {symbol} {timeframe} "
+                            f"不可重试的交易对错误，直接跳过: {e}"
+                        )
+                        progress.error = f"不可同步交易对: {e}"
+                        break
+
+                    consecutive_errors += 1
+                    logger.warning(
+                        f"[{exchange_name}] {symbol} {timeframe} "
+                        f"批次 {batch_count} 拉取失败 (连续第{consecutive_errors}次): {e}"
+                    )
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                        logger.error(
+                            f"[{exchange_name}] {symbol} {timeframe} "
+                            f"连续失败 {MAX_CONSECUTIVE_ERRORS} 次，跳过"
+                        )
+                        progress.error = f"连续失败 {MAX_CONSECUTIVE_ERRORS} 次: {e}"
+                        break
+                    # 指数退避重试
+                    await asyncio.sleep(min(2 ** consecutive_errors, 30))
+
+            # 同步完成，更新最终元数据（来源：文件存储统计）
+            stats = await asyncio.to_thread(
+                kline_store.get_stats,
+                exchange_name,
+                symbol,
+                timeframe,
+            )
+            time_range = {
+                'first_timestamp': stats.get('first_timestamp'),
+                'last_timestamp': stats.get('last_timestamp'),
+            } if stats.get('record_count', 0) > 0 else None
+            total_count = stats.get('record_count', 0)
+
+            if progress.total_fetched == 0 and total_count == 0 and not progress.error:
+                progress.error = f"交易所未返回 K 线: {exchange_name} {symbol} {timeframe}"
+
+            final_status = SyncStatus.ERROR if progress.error else SyncStatus.COMPLETED
+            db.update_sync_metadata(
+                exchange_name, symbol, timeframe, 'kline',
+                first_timestamp=time_range['first_timestamp'] if time_range else None,
+                last_timestamp=time_range['last_timestamp'] if time_range else None,
+                total_records=total_count,
+                status=final_status.value,
+                last_sync_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                error_message=progress.error,
+            )
+
+            progress.status = final_status
+            progress.end_time = datetime.now()
+
+            logger.info(
+                f"[{exchange_name}] {symbol} {timeframe} 同步完成: "
+                f"拉取 {progress.total_fetched} 条, 新增 {progress.total_inserted} 条, "
+                f"本地总计 {total_count} 条"
+            )
+
+        except Exception as e:
+            logger.error(f"[{exchange_name}] {symbol} {timeframe} 同步失败: {e}")
+            progress.status = SyncStatus.ERROR
+            progress.error = str(e)
+            progress.end_time = datetime.now()
+
+            db.update_sync_metadata(
+                exchange_name, symbol, timeframe, 'kline',
+                status='error',
+                error_message=str(e),
+            )
+
+        return progress
+
+    async def sync_all(
+        self,
+        exchange_name: str = 'okx',
+        symbols: List[str] = None,
+        timeframes: List[str] = None,
+        history_days: int = DEFAULT_HISTORY_DAYS,
+        start_date: str = None,
+        end_date: str = None,
+    ) -> SyncJobResult:
+        """
+        批量同步所有配置的交易对和时间周期
+
+        Args:
+            exchange_name: 交易所名称
+            symbols: 要同步的交易对列表，None 则使用默认
+            timeframes: 要同步的时间周期列表，None 则使用默认
+            start_date: 起始日期 (YYYY-MM-DD)
+            end_date: 结束日期 (YYYY-MM-DD)
+        """
+        job = self.create_sync_job(
+            exchange_name=exchange_name,
+            symbols=symbols or DEFAULT_SYMBOLS,
+            timeframes=timeframes or DEFAULT_TIMEFRAMES,
+            history_days=history_days,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return await self.run_sync_job(job["job_id"])
+
+    async def run_sync_job(self, job_id: str) -> SyncJobResult:
+        """Run or resume a durable sync job."""
+        async with self._lock:
+            if self._running:
+                logger.warning("已有同步任务在运行中，请稍后再试")
+                if self._current_job:
+                    return self._current_job
+                job = self._load_job(job_id)
+                return SyncJobResult(exchange=job["exchange"] if job else "okx")
+
+            self._running = True
+            self._current_job_id = job_id
+            self._last_job_id = job_id
+
+        job_row = self._load_job(job_id)
+        if not job_row:
+            self._running = False
+            self._current_job_id = None
+            raise ValueError(f"同步任务不存在: {job_id}")
+
+        exchange_name = job_row["exchange"]
+        history_days = int(job_row.get("history_days") or DEFAULT_HISTORY_DAYS)
+        start_date = job_row.get("start_date")
+        end_date = job_row.get("end_date")
+        started_at = job_row.get("started_at") or self._now_text()
+        self._update_job(
+            job_id,
+            status="running",
+            started_at=started_at,
+            completed_at=None,
+            error_message=None,
+        )
+
+        items = self._load_job_items(job_id)
+        self._current_job = self._job_result_from_rows(self._load_job(job_id), items)
+
+        date_range = f"{start_date} ~ {end_date}" if start_date else f"回溯 {history_days} 天"
+        logger.info(
+            f"========== 开始数据同步 ==========\n"
+            f"任务: {job_id}\n"
+            f"交易所: {exchange_name}\n"
+            f"交易对: {job_row.get('total_symbols')} 个\n"
+            f"周期: {job_row.get('timeframes_json')}\n"
+            f"日期范围: {date_range}"
+        )
+
+        try:
+            for item in items:
+                if item.get("status") == SyncStatus.COMPLETED.value:
+                    continue
+
+                item_started_at = item.get("started_at") or self._now_text()
+                self._update_job_item(
+                    item["id"],
+                    status="running",
+                    started_at=item_started_at,
+                    ended_at=None,
+                    error_message=None,
+                )
+                item = self._row_to_dict(
+                    db.get_connection().execute(
+                        "SELECT * FROM sync_job_items WHERE id = ?",
+                        (item["id"],),
+                    ).fetchone()
+                )
+                progress = self._progress_from_item(item)
+                progress.status = SyncStatus.SYNCING
+                progress.start_time = progress.start_time or datetime.now()
+
+                def persist_progress(current_progress: SyncProgress, checkpoint_ts: int, item_id: int = item["id"]) -> None:
+                    self._update_job_item(
+                        item_id,
+                        status="running",
+                        total_fetched=current_progress.total_fetched,
+                        total_inserted=current_progress.total_inserted,
+                        checkpoint_timestamp=checkpoint_ts,
+                    )
+
+                progress = await self.sync_klines(
+                    exchange_name=exchange_name,
+                    symbol=item["symbol"],
+                    timeframe=item["timeframe"],
+                    history_days=history_days,
+                    start_date=start_date,
+                    end_date=end_date,
+                    progress=progress,
+                    resume_from_timestamp=item.get("checkpoint_timestamp"),
+                    progress_callback=persist_progress,
+                )
+
+                final_status = SyncStatus.ERROR.value if progress.error else SyncStatus.COMPLETED.value
+                self._update_job_item(
+                    item["id"],
+                    status=final_status,
+                    total_fetched=progress.total_fetched,
+                    total_inserted=progress.total_inserted,
+                    ended_at=self._now_text(),
+                    error_message=progress.error,
+                )
+                self._current_job = self._job_result_from_rows(
+                    self._load_job(job_id),
+                    self._load_job_items(job_id),
+                )
+
+        except Exception as e:
+            logger.error(f"批量同步异常: {e}")
+            self._update_job(
+                job_id,
+                status="error",
+                error_message=f"全局异常: {str(e)}",
+                completed_at=self._now_text(),
+            )
+
+        finally:
+            if (self._load_job(job_id) or {}).get("status") == "running":
+                self._current_job = self._finish_job_from_items(job_id)
+            else:
+                self._current_job = self._job_result_from_rows(
+                    self._load_job(job_id),
+                    self._load_job_items(job_id),
+                )
+            self._running = False
+            self._current_job_id = None
+
+        job = self._current_job or self._finish_job_from_items(job_id)
+        elapsed = ((job.completed_at or datetime.now()) - job.started_at).total_seconds()
+        logger.info(
+            f"========== 数据同步完成 ==========\n"
+            f"耗时: {elapsed:.1f}s\n"
+            f"总拉取: {job.total_records_fetched} 条\n"
+            f"总新增: {job.total_records_inserted} 条\n"
+            f"错误: {len(job.errors)} 个"
+        )
+
+        return job
+
+    # ============================================
+    # 增量日更新（定时调度用）
+    # ============================================
+
+    async def daily_update(self, exchange_name: str = 'okx'):
+        """
+        每日增量更新
+        只同步自上次同步以来的新数据
+        """
+        logger.info(f"[定时任务] 开始每日增量更新: {exchange_name}")
+        return await self.sync_all(
+            exchange_name=exchange_name,
+            history_days=7,  # 增量更新时只回溯7天（以防断档）
+        )
+
+    def schedule_resume_incomplete_jobs(self) -> int:
+        """Schedule automatic resume for the oldest queued/running sync job."""
+        active_job = self._active_job()
+        if not active_job:
+            conn = db.get_connection()
+            conn.execute(
+                """
+                UPDATE sync_metadata
+                SET status = CASE WHEN COALESCE(total_records, 0) > 0 THEN 'completed' ELSE 'idle' END,
+                    updated_at = datetime('now')
+                WHERE status = 'syncing'
+                """
+            )
+            conn.commit()
+            return 0
+        asyncio.create_task(self.run_sync_job(active_job["id"]))
+        logger.info("已调度恢复未完成数据同步任务: %s", active_job["id"])
+        return 1
+
+    def delete_klines(
+        self,
+        exchange_name: str = "okx",
+        symbol: Optional[str] = None,
+        timeframe: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Delete file-store K-lines and clear matching sync metadata counters."""
+        if not symbol:
+            raise ValueError("阶段4后仅支持按 symbol 删除文件数据（避免误删整库）")
+
+        deleted_files = kline_store.delete(exchange_name, symbol, timeframe)
+        metas = [
+            m
+            for m in db.get_all_sync_metadata(exchange_name)
+            if m.get("data_type") == "kline"
+            and m.get("symbol") == symbol
+            and (timeframe is None or m.get("timeframe") == timeframe)
+        ]
+
+        for meta in metas:
+            db.update_sync_metadata(
+                exchange_name,
+                symbol,
+                meta["timeframe"],
+                "kline",
+                first_timestamp=None,
+                last_timestamp=None,
+                total_records=0,
+                status="idle",
+                last_sync_at=None,
+                error_message=None,
+            )
+
+        return {
+            "message": f"已删除 {deleted_files} 个K线数据文件",
+            "deleted": deleted_files,
+            "deleted_files": deleted_files,
+        }
+
+    # ============================================
+    # 状态查询
+    # ============================================
+
+    def get_sync_status(self) -> Dict[str, Any]:
+        """获取当前同步状态"""
+        meta_list = db.get_all_sync_metadata()
+        active_job = None if self._current_job_id else self._active_job()
+        if self._current_job_id:
+            persisted_job = self._load_job(self._current_job_id)
+        elif active_job:
+            persisted_job = active_job
+        elif self._last_job_id:
+            persisted_job = self._load_job(self._last_job_id)
+        elif self._current_job is None:
+            persisted_job = self._active_job() or self._latest_job()
+        else:
+            persisted_job = None
+        persisted_items = self._load_job_items(persisted_job["id"]) if persisted_job else []
+
+        # 汇总统计
+        total_records = sum(m.get('total_records', 0) for m in meta_list)
+        exchanges = list(set(m['exchange'] for m in meta_list))
+        symbols = list(set(m['symbol'] for m in meta_list))
+        job_result = self._job_result_from_rows(persisted_job, persisted_items) if persisted_job else self._current_job
+        progress_rows = []
+        if persisted_job:
+            for item in persisted_items:
+                row = _serialize_progress(self._progress_from_item(item))
+                row["checkpoint_timestamp"] = item.get("checkpoint_timestamp")
+                progress_rows.append(row)
+        elif self._current_job:
+            progress_rows = [_serialize_progress(progress) for progress in self._current_job.progress]
+
+        is_persisted_running = bool(
+            persisted_job and persisted_job.get("status") in self._active_statuses()
+        )
+        current_job_payload = None
+        if persisted_job or job_result:
+            completed_items = sum(
+                1
+                for progress in (job_result.progress if job_result else [])
+                if progress.status == SyncStatus.COMPLETED
+            )
+            error_items = sum(
+                1
+                for progress in (job_result.progress if job_result else [])
+                if progress.status == SyncStatus.ERROR or progress.error
+            )
+            current_job_payload = {
+                'job_id': persisted_job.get("id") if persisted_job else self._current_job_id,
+                'exchange': job_result.exchange if job_result else None,
+                'status': persisted_job.get("status") if persisted_job else (job_result.status if job_result else None),
+                'total_fetched': job_result.total_records_fetched if job_result else 0,
+                'total_inserted': job_result.total_records_inserted if job_result else 0,
+                'errors': len(job_result.errors) if job_result else 0,
+                'started_at': (
+                    persisted_job.get("started_at") if persisted_job else _format_dt(job_result.started_at)
+                ) if job_result else None,
+                'completed_at': (
+                    persisted_job.get("completed_at") if persisted_job else _format_dt(job_result.completed_at)
+                ) if job_result else None,
+                'elapsed_seconds': _elapsed_seconds(
+                    job_result.started_at,
+                    job_result.completed_at,
+                ) if job_result else None,
+                'total_items': (
+                    job_result.total_symbols * job_result.total_timeframes
+                ) if job_result else 0,
+                'completed_items': completed_items,
+                'error_items': error_items,
+                'processed_items': completed_items + error_items,
+                'progress': progress_rows,
+            }
+
+        return {
+            'is_running': self._running or is_persisted_running,
+            'current_job': current_job_payload,
+            'summary': {
+                'total_records': total_records,
+                'exchanges': exchanges,
+                'symbols_count': len(symbols),
+                'pairs': len(meta_list),
+            },
+            'details': meta_list,
+        }
+
+    def get_available_data(self, exchange: str = None) -> List[Dict]:
+        """获取已同步的数据清单"""
+        meta_list = db.get_all_sync_metadata(exchange)
+
+        result = []
+        for m in meta_list:
+            first_ts = m.get('first_timestamp')
+            last_ts = m.get('last_timestamp')
+            result.append({
+                'exchange': m['exchange'],
+                'symbol': m['symbol'],
+                'timeframe': m['timeframe'],
+                'total_records': m.get('total_records', 0),
+                'first_date': datetime.fromtimestamp(first_ts / 1000).strftime('%Y-%m-%d') if first_ts else None,
+                'last_date': datetime.fromtimestamp(last_ts / 1000).strftime('%Y-%m-%d %H:%M') if last_ts else None,
+                'status': m.get('status'),
+                'last_sync_at': m.get('last_sync_at'),
+            })
+
+        return result
 
 
 # 全局实例

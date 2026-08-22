@@ -1,0 +1,811 @@
+{
+  "doc": "FVO0d8NHeoG8kNxCAV6c6vSdnxh",
+  "generatedAt": "2026-05-09T06:18:59.879Z",
+  "totalSections": 61,
+  "totalImagePlacements": 71,
+  "plan": [
+    {
+      "type": "markdown",
+      "file": "000-封面.md",
+      "images": []
+    },
+    {
+      "type": "markdown",
+      "file": "001-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/01-home-overview.png",
+          "caption": "图01 - 首页行情总览",
+          "route": "/",
+          "title": "首页行情总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "002-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/01-home-overview.png",
+          "caption": "图01 - 首页行情总览",
+          "route": "/",
+          "title": "首页行情总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "003-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/19-live-real-overview.png",
+          "caption": "图19 - 实盘工作台总览",
+          "route": "/live-real",
+          "title": "实盘工作台总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "004-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/01-home-overview.png",
+          "caption": "图01 - 首页行情总览",
+          "route": "/",
+          "title": "首页行情总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "005-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/02-market-kline-orderbook.png",
+          "caption": "图02 - 行情 K 线与订单簿",
+          "route": "/market",
+          "title": "行情 K 线与订单簿"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "006-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/02-market-kline-orderbook.png",
+          "caption": "图02 - 行情 K 线与订单簿",
+          "route": "/market",
+          "title": "行情 K 线与订单簿"
+        },
+        {
+          "file": "docs/product_manual/screenshots/03-market-timeframes.png",
+          "caption": "图03 - 行情周期切换区",
+          "route": "/market",
+          "title": "行情周期切换区"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "007-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/02-market-kline-orderbook.png",
+          "caption": "图02 - 行情 K 线与订单簿",
+          "route": "/market",
+          "title": "行情 K 线与订单簿"
+        },
+        {
+          "file": "docs/product_manual/screenshots/03-market-timeframes.png",
+          "caption": "图03 - 行情周期切换区",
+          "route": "/market",
+          "title": "行情周期切换区"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "008-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/02-market-kline-orderbook.png",
+          "caption": "图02 - 行情 K 线与订单簿",
+          "route": "/market",
+          "title": "行情 K 线与订单簿"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "009-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/02-market-kline-orderbook.png",
+          "caption": "图02 - 行情 K 线与订单簿",
+          "route": "/market",
+          "title": "行情 K 线与订单簿"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "010-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/22-data-overview.png",
+          "caption": "图22 - 数据管理中心",
+          "route": "/data",
+          "title": "数据管理中心"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "011-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/22-data-overview.png",
+          "caption": "图22 - 数据管理中心",
+          "route": "/data",
+          "title": "数据管理中心"
+        },
+        {
+          "file": "docs/product_manual/screenshots/23-data-sync-modal.png",
+          "caption": "图23 - 同步配置弹窗",
+          "route": "/data",
+          "title": "同步配置弹窗"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "012-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/23-data-sync-modal.png",
+          "caption": "图23 - 同步配置弹窗",
+          "route": "/data",
+          "title": "同步配置弹窗"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "013-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/24-data-add-symbol-modal.png",
+          "caption": "图24 - 增加交易对弹窗",
+          "route": "/data",
+          "title": "增加交易对弹窗"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "014-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/22-data-overview.png",
+          "caption": "图22 - 数据管理中心",
+          "route": "/data",
+          "title": "数据管理中心"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "015-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/04-strategy-center.png",
+          "caption": "图04 - 策略中心列表",
+          "route": "/strategy",
+          "title": "策略中心列表"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "016-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/04-strategy-center.png",
+          "caption": "图04 - 策略中心列表",
+          "route": "/strategy",
+          "title": "策略中心列表"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "017-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/05-strategy-detail.png",
+          "caption": "图05 - 策略详情页",
+          "route": "/strategy",
+          "title": "策略详情页"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "018-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/06-strategy-create-modal.png",
+          "caption": "图06 - 新建策略弹窗",
+          "route": "/strategy",
+          "title": "新建策略弹窗"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "019-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/04-strategy-center.png",
+          "caption": "图04 - 策略中心列表",
+          "route": "/strategy",
+          "title": "策略中心列表"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "020-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/12-live-instance-detail-top.png",
+          "caption": "图12 - 模拟实例详情顶部",
+          "route": "/live",
+          "title": "模拟实例详情顶部"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "021-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/12-live-instance-detail-top.png",
+          "caption": "图12 - 模拟实例详情顶部",
+          "route": "/live",
+          "title": "模拟实例详情顶部"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "022-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/12-live-instance-detail-top.png",
+          "caption": "图12 - 模拟实例详情顶部",
+          "route": "/live",
+          "title": "模拟实例详情顶部"
+        },
+        {
+          "file": "docs/product_manual/screenshots/13-live-instance-detail-lower.png",
+          "caption": "图13 - 模拟实例详情持仓成交",
+          "route": "/live",
+          "title": "模拟实例详情持仓成交"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "023-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/12-live-instance-detail-top.png",
+          "caption": "图12 - 模拟实例详情顶部",
+          "route": "/live",
+          "title": "模拟实例详情顶部"
+        },
+        {
+          "file": "docs/product_manual/screenshots/13-live-instance-detail-lower.png",
+          "caption": "图13 - 模拟实例详情持仓成交",
+          "route": "/live",
+          "title": "模拟实例详情持仓成交"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "024-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/12-live-instance-detail-top.png",
+          "caption": "图12 - 模拟实例详情顶部",
+          "route": "/live",
+          "title": "模拟实例详情顶部"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "025-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/07-backtest-console.png",
+          "caption": "图07 - 回测控制台",
+          "route": "/backtest",
+          "title": "回测控制台"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "026-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/08-backtest-create-wizard.png",
+          "caption": "图08 - 回测创建向导",
+          "route": "/backtest",
+          "title": "回测创建向导"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "027-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/08-backtest-create-wizard.png",
+          "caption": "图08 - 回测创建向导",
+          "route": "/backtest",
+          "title": "回测创建向导"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "028-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/09-backtest-history-detail.png",
+          "caption": "图09 - 回测历史详情",
+          "route": "/backtest",
+          "title": "回测历史详情"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "029-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/09-backtest-history-detail.png",
+          "caption": "图09 - 回测历史详情",
+          "route": "/backtest",
+          "title": "回测历史详情"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "030-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/07-backtest-console.png",
+          "caption": "图07 - 回测控制台",
+          "route": "/backtest",
+          "title": "回测控制台"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "031-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/10-live-console.png",
+          "caption": "图10 - 模拟实例控制台",
+          "route": "/live",
+          "title": "模拟实例控制台"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "032-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/11-live-create-wizard.png",
+          "caption": "图11 - 模拟创建向导",
+          "route": "/live",
+          "title": "模拟创建向导"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "033-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/12-live-instance-detail-top.png",
+          "caption": "图12 - 模拟实例详情顶部",
+          "route": "/live",
+          "title": "模拟实例详情顶部"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "034-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/13-live-instance-detail-lower.png",
+          "caption": "图13 - 模拟实例详情持仓成交",
+          "route": "/live",
+          "title": "模拟实例详情持仓成交"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "035-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/13-live-instance-detail-lower.png",
+          "caption": "图13 - 模拟实例详情持仓成交",
+          "route": "/live",
+          "title": "模拟实例详情持仓成交"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "036-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/14-monitor-overview.png",
+          "caption": "图14 - 监控中心总览",
+          "route": "/monitor",
+          "title": "监控中心总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "037-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/14-monitor-overview.png",
+          "caption": "图14 - 监控中心总览",
+          "route": "/monitor",
+          "title": "监控中心总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "038-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/14-monitor-overview.png",
+          "caption": "图14 - 监控中心总览",
+          "route": "/monitor",
+          "title": "监控中心总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "039-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/15-monitor-alert-modal.png",
+          "caption": "图15 - 监控告警创建弹窗",
+          "route": "/monitor",
+          "title": "监控告警创建弹窗"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "040-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/16-signals-overview.png",
+          "caption": "图16 - 信号中心总览",
+          "route": "/signals",
+          "title": "信号中心总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "041-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/17-signals-channel-edit.png",
+          "caption": "图17 - 信号通道编辑",
+          "route": "/signals",
+          "title": "信号通道编辑"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "042-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/16-signals-overview.png",
+          "caption": "图16 - 信号中心总览",
+          "route": "/signals",
+          "title": "信号中心总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "043-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/18-signals-signal-detail.png",
+          "caption": "图18 - 信号 Payload 区域",
+          "route": "/signals",
+          "title": "信号 Payload 区域"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "044-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/18-signals-signal-detail.png",
+          "caption": "图18 - 信号 Payload 区域",
+          "route": "/signals",
+          "title": "信号 Payload 区域"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "045-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/19-live-real-overview.png",
+          "caption": "图19 - 实盘工作台总览",
+          "route": "/live-real",
+          "title": "实盘工作台总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "046-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/20-live-real-add-account.png",
+          "caption": "图20 - 实盘新增账户弹窗",
+          "route": "/live-real",
+          "title": "实盘新增账户弹窗"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "047-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/21-live-real-strategy-binding.png",
+          "caption": "图21 - 实盘策略绑定区",
+          "route": "/live-real",
+          "title": "实盘策略绑定区"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "048-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/21-live-real-strategy-binding.png",
+          "caption": "图21 - 实盘策略绑定区",
+          "route": "/live-real",
+          "title": "实盘策略绑定区"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "049-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/19-live-real-overview.png",
+          "caption": "图19 - 实盘工作台总览",
+          "route": "/live-real",
+          "title": "实盘工作台总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "050-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/19-live-real-overview.png",
+          "caption": "图19 - 实盘工作台总览",
+          "route": "/live-real",
+          "title": "实盘工作台总览"
+        },
+        {
+          "file": "docs/product_manual/screenshots/20-live-real-add-account.png",
+          "caption": "图20 - 实盘新增账户弹窗",
+          "route": "/live-real",
+          "title": "实盘新增账户弹窗"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "051-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/25-ai-autonomous.png",
+          "caption": "图25 - AI 自主交易",
+          "route": "/ai-lab?tab=autonomous",
+          "title": "AI 自主交易"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "052-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/25-ai-autonomous.png",
+          "caption": "图25 - AI 自主交易",
+          "route": "/ai-lab?tab=autonomous",
+          "title": "AI 自主交易"
+        },
+        {
+          "file": "docs/product_manual/screenshots/26-ai-autonomous-config.png",
+          "caption": "图26 - AI 自主交易编辑配置",
+          "route": "/ai-lab?tab=autonomous",
+          "title": "AI 自主交易编辑配置"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "053-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/26-ai-autonomous-config.png",
+          "caption": "图26 - AI 自主交易编辑配置",
+          "route": "/ai-lab?tab=autonomous",
+          "title": "AI 自主交易编辑配置"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "054-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/27-ai-research.png",
+          "caption": "图27 - AI 新策略研发",
+          "route": "/ai-lab?tab=research",
+          "title": "AI 新策略研发"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "055-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/27-ai-research.png",
+          "caption": "图27 - AI 新策略研发",
+          "route": "/ai-lab?tab=research",
+          "title": "AI 新策略研发"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "056-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/28-ai-optimizer.png",
+          "caption": "图28 - AI 现有策略优化",
+          "route": "/ai-lab?tab=optimizer",
+          "title": "AI 现有策略优化"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "057-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/25-ai-autonomous.png",
+          "caption": "图25 - AI 自主交易",
+          "route": "/ai-lab?tab=autonomous",
+          "title": "AI 自主交易"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "058-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/01-home-overview.png",
+          "caption": "图01 - 首页行情总览",
+          "route": "/",
+          "title": "首页行情总览"
+        },
+        {
+          "file": "docs/product_manual/screenshots/04-strategy-center.png",
+          "caption": "图04 - 策略中心列表",
+          "route": "/strategy",
+          "title": "策略中心列表"
+        },
+        {
+          "file": "docs/product_manual/screenshots/10-live-console.png",
+          "caption": "图10 - 模拟实例控制台",
+          "route": "/live",
+          "title": "模拟实例控制台"
+        },
+        {
+          "file": "docs/product_manual/screenshots/14-monitor-overview.png",
+          "caption": "图14 - 监控中心总览",
+          "route": "/monitor",
+          "title": "监控中心总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "059-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/14-monitor-overview.png",
+          "caption": "图14 - 监控中心总览",
+          "route": "/monitor",
+          "title": "监控中心总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "060-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/13-live-instance-detail-lower.png",
+          "caption": "图13 - 模拟实例详情持仓成交",
+          "route": "/live",
+          "title": "模拟实例详情持仓成交"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "061-产品说明书分段.md",
+      "images": [
+        {
+          "file": "docs/product_manual/screenshots/01-home-overview.png",
+          "caption": "图01 - 首页行情总览",
+          "route": "/",
+          "title": "首页行情总览"
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "file": "999-附录.md",
+      "images": []
+    }
+  ],
+  "url": "https://www.feishu.cn/docx/FVO0d8NHeoG8kNxCAV6c6vSdnxh"
+}

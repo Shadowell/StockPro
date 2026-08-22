@@ -1,850 +1,1500 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Activity, AlertCircle, BarChart3, BookOpen, CalendarDays, CheckCircle2, Code2, Filter, FlaskConical, Layers, Play, Plus, RefreshCw, Save, Search, ShieldCheck, Sparkles, TrendingUp, Zap, X } from 'lucide-react';
-import clsx from 'clsx';
-import { autoDevelopStrategy, getAICapabilities, getFactorSnapshots, getLatestStrategyVersion, getStrategies, quickRunStrategyVersion, saveStrategy, updateStrategy } from '../api/client';
-import { AshareGuardrailStrip } from '../components/AshareGuardrailStrip';
-import { StrategyAIPanel } from '../components/StrategyAIPanel';
-import { StrategyDetailPanel } from '../components/BitProDetailPanels';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  CatalogueCard,
-  FilterChipGroup,
-  OperatorFilterBar,
-  OperatorPageHeader,
-  OperatorSearchField,
-  OperatorStatePanel,
-  SegmentedControl,
-} from '../components/OperatorShell';
-import type { AICapabilities, Strategy as StrategyType, StrategyReplayResult, StrategyValidationReport, StrategyVersion } from '../types';
-import { MULTI_FACTOR_RISK_BUDGET_CODE } from '../lib/strategyTemplates';
-import { PIPELINE_STRATEGY_NAME } from '../lib/pipeline';
-import { WorkspacePipelineNote } from '../components/WorkspacePipelineNote';
-import { StrategyResearchInputs } from '../components/StrategyResearchInputs';
-import { useResearchDesk } from '../components/ResearchDeskContext';
+  Trash2, Plus, Code2, Save, X, FileCode, Copy, Search,
+  ChevronDown, ChevronRight, Edit3, Zap, TrendingUp,
+  BarChart3, Layers, BookOpen, Loader2, CheckCircle2,
+  XCircle, ArrowLeft, Clock, Activity,
+} from 'lucide-react';
+import { strategyApi, agentApi } from '../api/client';
+import type { Strategy as StrategyType } from '../types';
+import clsx from 'clsx';
+import CryptoSelect from '../components/CryptoSelect';
+import ThemeDialog from '../components/ThemeDialog';
+import StrategyParameterSections from '../components/StrategyParameterSections';
+import { getStrategyParameterSections } from '../utils/strategyConfigDisplay';
+import { formatTimeframeLabel } from '../utils/timeframe';
+import { useAuth } from '../auth/AuthProvider';
 
-type ListTab = 'my' | 'inputs' | 'plaza' | 'audit' | 'ai';
-type StatusFilter = 'all' | 'running' | 'not_started';
-type AssetFilter = 'all' | 'ashare' | 'strategy_v1';
+function isStrategyRunningOrPaused(status: string | undefined): boolean {
+  return status === 'running' || status === 'paused';
+}
 
-/** 2026-08-18 形态决策：核心链恢复完整策略目录（我的策略/策略广场/审计证据/AI 研发）。 */
-const SHOW_STRATEGY_EXTRAS = true;
-
-const statusFilters: { value: StatusFilter; label: string; dot: string }[] = [
-  { value: 'all', label: '全部', dot: 'bg-blue-400' },
-  { value: 'running', label: '运行中', dot: 'bg-emerald-400' },
-  { value: 'not_started', label: '未启动', dot: 'bg-gray-500' },
-];
-
-const assetFilters: { value: AssetFilter; label: string }[] = [
-  { value: 'all', label: '全部' },
-  { value: 'ashare', label: 'A股' },
-  { value: 'strategy_v1', label: '标准策略' },
-];
-
-const plazaTemplates: Array<{
-  key: string;
-  name: string;
-  category: string;
-  difficulty: string;
-  description: string;
-  tags: string[];
-  icon: typeof TrendingUp;
-  tone: string;
-  code?: string;
-}> = [
+// ============================================
+// 策略模板 — 基于 BaseStrategy 异步架构
+// ============================================
+const STRATEGY_TEMPLATES = [
   {
-    key: 'multifactor',
-    name: '多因子风险预算',
-    category: '多因子选股',
-    difficulty: '资深',
-    description: '动量 + 短反转 + 低波 + 非流动性截面加权，周度再平衡，日度中位收益熔断，单票上限 12%。',
-    tags: ['A股', '多因子', '风控'],
-    icon: Layers,
-    tone: 'bg-cyan-500/15 text-cyan-300',
-    code: MULTI_FACTOR_RISK_BUDGET_CODE,
+    key: 'kairos_30m_horizon_dca',
+    name: 'Kairos 30分钟视界 DCA（1m）',
+    category: '预测 / DCA',
+    difficulty: '进阶',
+    description:
+      '与后端 Kairos30mHorizonDcaStrategy 一致：1m 执行、预测约 T+30m、信号通过则固定 USDT 买入、30 根 1m 后 FIFO 卖出。请优先使用种子导入。',
+    tags: ['Kairos', 'DCA', '1m'],
+    code: `"""使用内置类：config 设 strategy_key=kairos_30m_horizon_dca（见种子）。勿粘贴完整策略源码。"""
+
+from app.core.execution.base_strategy import BaseStrategy, BarData
+
+class _UseSeedKairosDca(BaseStrategy):
+    async def on_bar(self, bar: BarData):
+        raise RuntimeError("请通过种子/DB 使用 kairos_30m_horizon_dca，勿执行本占位")
+`,
+    defaultConfig: {
+      strategy_key: 'kairos_30m_horizon_dca',
+      timeframe: '1m',
+      quote_per_order: 10,
+      confidence_threshold: 0.24,
+      hold_bars: 30,
+      window_size: 256,
+      warmup_bars: 300,
+    },
   },
   {
-    key: 'breakout',
-    name: '首板突破模板',
-    category: '趋势跟踪',
+    key: 'beginner_guide',
+    name: '新手入门：如何写自己的策略',
+    category: '教程',
     difficulty: '入门',
-    description: '基于涨停首板、板块热度与日线突破的 A 股组合策略模板。',
-    tags: ['A股', '1D', '突破'],
-    icon: TrendingUp,
-    tone: 'bg-blue-500/15 text-blue-400',
+    description:
+      '写给小白：K 线与 on_bar 是干什么的、config 怎么配、何时下单/平仓。内含双均线示例，默认仅日志，可自行打开真实下单行做回测。',
+    tags: ['教程', 'BaseStrategy', '双均线'],
+    code: `"""
+===============================================================================
+新手必读 — 用自己的方式写 BitPro 策略（BaseStrategy）
+===============================================================================
+
+【1】策略在系统里怎么跑？
+  - 回测：引擎按时间顺序喂给你一根根 K 线；每根 K 线会调用一次下面的 on_bar。
+  - 实盘：逻辑相同，只是 K 线来自交易所实时推送。你写的这一套代码两种环境共用。
+
+【2】K 线（Bar）里有什么？
+  - bar.open / high / low / close / volume：这根 K 线的开高低收、成交量
+  - bar.symbol：交易对，如 BTC/USDT（与左侧配置里的交易对一致）
+  - bar.timeframe：周期，如 1h、15m（与实例/回测选用的周期一致）
+
+【3】你必须实现的核心：async def on_bar(self, bar)
+  - 在这里写「看到当前这根 K 线时，我要不要买/卖」。
+  - 用 async/await：下单要写 await self.buy(...) / await self.sell(...)。
+
+【4】配置 self.config（左侧「策略参数 JSON」会注入到这里）
+  - 在 on_init 里用 self.config.get("键", 默认值) 读取，方便改参数而不改代码。
+
+【5】怎么查看持仓？
+  - pos = self.broker.get_position_size(bar.symbol)  # 正数多仓数量，大概为 0 表示空仓（取决于 broker）
+
+【6】下单金额单位
+  - self.buy(symbol, amount) 里的 amount 是币的数量（如 BTC 个数），不是 USDT。
+  - 建议先用很小 amount + 回测验证，再考虑实盘。
+
+【7】常见错误
+  - 前 N 根 K 线数据不够算指标时：先 return，等窗口攒够（「预热」）。
+  - 每根 K 线不要「从头循环整段历史」，只处理当前 bar。
+
+下面是一个「双均线交叉」示例：慢线上穿快线视为简单买入信号，反之为卖出。
+默认全部用 logger 打印，真实下单语句已注释 —— 你确认逻辑后再去掉注释。
+"""
+import logging
+import numpy as np
+from collections import deque
+
+from app.core.execution.base_strategy import BaseStrategy, BarData
+from app.services.indicators import EMA
+
+logger = logging.getLogger(__name__)
+
+
+class BeginnerMaCrossStrategy(BaseStrategy):
+    """双均线教程策略：类名可改，但必须继承 BaseStrategy 且只保留一个策略类。"""
+
+    async def on_init(self):
+        # 从配置里读参数；左侧 JSON 里没有的话就用第二个参数的默认值
+        self.fast = int(self.config.get("fast_period", 12))
+        self.slow = int(self.config.get("slow_period", 26))
+        self.order_amount = float(self.config.get("order_amount", 0.001))
+        # 只保留最近 slow+5 根收盘价就够了
+        self.closes = deque(maxlen=max(self.slow + 5, 32))
+
+        logger.info(
+            "策略初始化: fast=%s slow=%s order_amount=%s",
+            self.fast,
+            self.slow,
+            self.order_amount,
+        )
+
+    async def on_bar(self, bar: BarData):
+        # 把当前收盘价放进滑动窗口
+        self.closes.append(float(bar.close))
+
+        # 预热：数据不够算两条 EMA 时直接跳过
+        if len(self.closes) < self.slow + 2:
+            return
+
+        close_arr = np.array(self.closes, dtype=np.float64)
+        fast_series = EMA(close_arr, self.fast)
+        slow_series = EMA(close_arr, self.slow)
+
+        f_prev, f_now = float(fast_series[-2]), float(fast_series[-1])
+        s_prev, s_now = float(slow_series[-2]), float(slow_series[-1])
+
+        # 金叉：前一天快线在慢线下方，今天在上方
+        golden = f_prev <= s_prev and f_now > s_now
+        # 死叉：前一天快线在慢线上方，今天在下方
+        death = f_prev >= s_prev and f_now < s_now
+
+        pos = self.broker.get_position_size(bar.symbol)
+
+        if golden and pos <= 0:
+            logger.info("[信号] 金叉 | bar=%s close=%s", bar.timestamp, bar.close)
+            # 确认逻辑后再取消注释，先在回测里试：
+            # await self.buy(bar.symbol, self.order_amount)
+
+        elif death and pos > 0:
+            logger.info("[信号] 死叉 | 当前持仓=%s", pos)
+            # await self.sell(bar.symbol, pos)
+            # 或者一键平仓：await self.close_position(bar.symbol)
+`,
+    defaultConfig: {
+      fast_period: 12,
+      slow_period: 26,
+      order_amount: 0.001,
+      timeframe: '1h',
+    },
   },
   {
-    key: 'ma',
-    name: '双均线动量模板',
-    category: '趋势跟踪',
-    difficulty: '进阶',
-    description: '用快慢均线过滤趋势方向，适合多股组合回测与模拟盘验证。',
-    tags: ['A股', '均线', '动量'],
-    icon: BarChart3,
-    tone: 'bg-emerald-500/15 text-emerald-400',
-  },
-  {
-    key: 'research',
-    name: '板块轮动模板',
-    category: '研究',
-    difficulty: '进阶',
-    description: '从热门板块和资金强度中筛选候选池，按日线信号调仓。',
-    tags: ['板块', '轮动', '风控'],
-    icon: BookOpen,
-    tone: 'bg-amber-500/15 text-amber-400',
+    key: 'empty',
+    name: '空白策略模板',
+    category: '自定义',
+    difficulty: '自定义',
+    description: '从零开始编写策略。继承 BaseStrategy，实现 on_bar 即可，支持回测和实盘。',
+    tags: ['自定义', '灵活', 'BaseStrategy'],
+    code: `"""自定义策略 — BaseStrategy 架构"""
+import logging
+from collections import deque
+from app.core.execution.base_strategy import BaseStrategy, BarData
+
+logger = logging.getLogger(__name__)
+
+
+class MyStrategy(BaseStrategy):
+    async def on_init(self):
+        \"\"\"初始化：从 self.config 读取参数，创建 deque 容器。\"\"\"
+        self.trade_amount = self.config.get("trade_amount", 0.001)
+        self.closes = deque(maxlen=50)
+
+    async def on_bar(self, bar: BarData):
+        \"\"\"每根 K 线触发，在此编写交易逻辑。\"\"\"
+        self.closes.append(bar.close)
+        if len(self.closes) < 20:
+            return
+
+        # 示例：获取当前持仓
+        pos = self.broker.get_position_size(bar.symbol)
+
+        # 在此编写你的信号逻辑
+        # await self.buy(bar.symbol, self.trade_amount)
+        # await self.sell(bar.symbol, self.trade_amount)
+        # await self.close_position(bar.symbol)
+`,
+    defaultConfig: { trade_amount: 0.001, timeframe: '1h' },
   },
 ];
 
-const emptyCode = `def initialize(context):
-    context.security = "SH_600000"
-    set_benchmark("000300.SH")
-    set_option("avoid_future_data", True)
+const EMPTY_STRATEGY_TEMPLATE = STRATEGY_TEMPLATES.find(t => t.key === 'empty')!;
+const STRATEGY_PAGE_SIZE = 18;
 
+type PageView = 'list' | 'editor' | 'detail';
+type ListTab = 'my' | 'plaza';
+type StrategyStatusFilter = 'all' | 'running' | 'paused' | 'not_started';
+type StrategyAssetClass = 'spot' | 'contract';
+type StrategyAssetFilter = 'all' | StrategyAssetClass;
+type StrategyTypeFilter = 'all' | 'cta' | 'martingale' | 'ai' | 'market_making';
+type StrategyTimeframeFilter = 'all' | '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '12h' | '1d';
+type StrategyCapitalFilter = 'all' | '100U' | '1000U';
 
-def handle_data(context, data):
-    if context.security not in data:
-        return
-    closes = history(context.security, 20, "1d", "close")
-    if len(closes) < 20:
-        return
-    target = 1.0 if data[context.security].close > closes.mean() else 0.0
-    order_target_percent(context.security, target)
-    record(ma20=closes.mean(), target=target)
-`;
+const STATUS_FILTERS: Array<{
+  value: StrategyStatusFilter;
+  label: string;
+}> = [
+  { value: 'all', label: '全部' },
+  { value: 'running', label: '运行中' },
+  { value: 'paused', label: '暂停' },
+  { value: 'not_started', label: '未启动' },
+];
 
-const formatDate = (value?: string) => {
-  if (!value) return '--';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '--';
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
-};
+const ASSET_FILTERS: Array<{
+  value: StrategyAssetFilter;
+  label: string;
+}> = [
+  { value: 'all', label: '全部' },
+  { value: 'spot', label: '现货' },
+  { value: 'contract', label: '合约' },
+];
 
-const normalizeText = (value: string) => value.toLowerCase().replace(/[\s:_\-，。,.]+/g, '');
+const STRATEGY_TYPE_FILTERS: Array<{
+  value: StrategyTypeFilter;
+  label: string;
+}> = [
+  { value: 'all', label: '全部' },
+  { value: 'cta', label: 'CTA' },
+  { value: 'martingale', label: '马丁' },
+  { value: 'ai', label: 'AI' },
+  { value: 'market_making', label: '做市' },
+];
 
-const productStrategyCopy = (strategy: StrategyType): StrategyType => {
-  const name = strategy.name === 'StockPro Strategy API v1 示例' ? 'A股标准策略示例' : strategy.name;
-  const description = strategy.description === '纯 Python 生命周期参考策略；保存新版本不需要修改框架、路由或重启服务。'
-    ? 'A股多标的动量参考策略，可用于回测与模拟验证。'
-    : strategy.description.startsWith('StockPro Strategy API v1 生命周期策略')
-      || strategy.description.startsWith('Backtrader 注册策略')
-      ? 'A股多标的策略，遵循 100 股整数手、T+1 与只做多约束。'
-      : strategy.description;
-  return { ...strategy, name, description };
-};
+const STRATEGY_TIMEFRAME_FILTERS: Array<{
+  value: StrategyTimeframeFilter;
+  label: string;
+}> = [
+  { value: 'all', label: '全部' },
+  { value: '1m', label: '1M' },
+  { value: '5m', label: '5M' },
+  { value: '15m', label: '15M' },
+  { value: '30m', label: '30M' },
+  { value: '1h', label: '1H' },
+  { value: '4h', label: '4H' },
+  { value: '12h', label: '12H' },
+  { value: '1d', label: '1D' },
+];
 
-const inferTags = (strategy: StrategyType) => {
-  const text = `${strategy.name} ${strategy.description} ${strategy.script_content}`;
-  const tags = ['A股', '1D'];
-  if (/打板|涨停|连板|封板/.test(text)) tags.push('打板');
-  if (/隔日T|做T|低开|高开/.test(text)) tags.push('隔日T');
-  if (/break|突破|首板/.test(text)) tags.push('突破');
-  if (/ema|ma|均线/i.test(text)) tags.push('均线');
-  if (/momentum|动量|趋势/i.test(text)) tags.push('动量');
-  if (/多因子|风险预算|zscore|因子/.test(text)) tags.push('多因子');
-  return [...new Set(tags)].slice(0, 6);
-};
+const STRATEGY_CAPITAL_FILTERS: Array<{
+  value: StrategyCapitalFilter;
+  label: string;
+}> = [
+  { value: 'all', label: '全部' },
+  { value: '100U', label: '100U' },
+  { value: '1000U', label: '1000U' },
+];
 
-export function Strategy() {
-  const navigate = useNavigate();
-  const { desk } = useResearchDesk();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const requestedStrategyId = Number(searchParams.get('strategy')) || null;
-  const detailRequested = searchParams.get('view') === 'detail';
-  const [strategies, setStrategies] = useState<StrategyType[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [script, setScript] = useState(emptyCode);
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [listError, setListError] = useState('');
-  const [view, setView] = useState<'editor' | 'detail'>(detailRequested ? 'detail' : 'editor');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showEditor, setShowEditor] = useState(false);
-  const [listTab, setListTab] = useState<ListTab>('my');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [assetFilter, setAssetFilter] = useState<AssetFilter>('all');
-  const [activeVersion, setActiveVersion] = useState<StrategyVersion | null>(null);
-  const [validation, setValidation] = useState<StrategyValidationReport | null>(null);
-  const [replayResult, setReplayResult] = useState<StrategyReplayResult | null>(null);
-  const [aiCapabilities, setAiCapabilities] = useState<AICapabilities | null>(null);
+const MISSING_SELECTION_LOGIC = '该策略尚未补充核心标的说明。';
+const MISSING_TRADING_LOGIC = '该策略尚未补充交易逻辑说明。';
 
-  const selected = useMemo(() => strategies.find((item) => item.id === selectedId) || null, [selectedId, strategies]);
-  const businessStrategies = useMemo(
-    () => strategies.filter((item) => !item.data_purpose || item.data_purpose === 'user'),
-    [strategies],
-  );
-  const referenceStrategies = useMemo(
-    () => strategies.filter((item) => item.data_purpose === 'seed'),
-    [strategies],
-  );
-  const auditStrategies = useMemo(
-    () => strategies.filter((item) => item.data_purpose === 'acceptance'),
-    [strategies],
-  );
-  const statusCounts = useMemo(
-    () => ({
-      all: businessStrategies.length,
-      running: businessStrategies.filter((item) => item.is_running).length,
-      not_started: businessStrategies.filter((item) => !item.is_running).length,
-    }),
-    [businessStrategies],
-  );
-  const assetCounts = useMemo(
-    () => ({
-      all: businessStrategies.length,
-      ashare: businessStrategies.length,
-      strategy_v1: businessStrategies.filter((item) => /def\s+initialize\s*\(|def\s+handle_data\s*\(/.test(item.script_content || '')).length,
-    }),
-    [businessStrategies],
-  );
-  const visibleStrategies = useMemo(() => {
-    const tokens = searchQuery
-      .split(/\s+/)
-      .map(normalizeText)
-      .filter(Boolean);
-    return businessStrategies.filter((strategy) => {
-      if (statusFilter === 'running' && !strategy.is_running) return false;
-      if (statusFilter === 'not_started' && strategy.is_running) return false;
-      if (assetFilter === 'strategy_v1' && !/def\s+initialize\s*\(|def\s+handle_data\s*\(/.test(strategy.script_content || '')) return false;
-      const haystack = normalizeText(`${strategy.name} ${strategy.description} ${strategy.script_content} ${inferTags(strategy).join(' ')}`);
-      if (tokens.length === 0) return true;
-      return tokens.every((token) => haystack.includes(token));
-    });
-  }, [assetFilter, businessStrategies, searchQuery, statusFilter]);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
 
-  const load = useCallback(async () => {
-    setListState('loading');
-    setListError('');
-    try {
-      const [data, capabilities] = await Promise.all([
-        getStrategies('audit'),
-        getAICapabilities().catch(() => null),
-      ]);
-      setStrategies(data);
-      setAiCapabilities(capabilities);
-      const firstBusiness = data.find((item) =>
-        item.name.includes(PIPELINE_STRATEGY_NAME) && (!item.data_purpose || item.data_purpose === 'user'),
-      ) || data.find(
-        (item) => !item.data_purpose || item.data_purpose === 'user',
-      );
-      setSelectedId((current) =>
-        current &&
-        data.some(
-          (item) =>
-            item.id === current &&
-            (!item.data_purpose || item.data_purpose === 'user'),
-        )
-          ? current
-          : firstBusiness?.id ?? null,
-      );
-      setListState('ready');
-    } catch (error) {
-      setListState('error');
-      setListError(error instanceof Error ? error.message : '策略记录加载失败');
+function readTextField(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
     }
+  }
+  return '';
+}
+
+function getStrategyLogicSummary(strategy: StrategyType | null): {
+  selectionLogic: string;
+  tradingLogic: string;
+} {
+  const config = isRecord(strategy?.config) ? strategy.config : {};
+  const nested = isRecord(config.logicSummary) ? config.logicSummary : {};
+
+  return {
+    selectionLogic:
+      readTextField(config, ['selectionLogic', 'selection_logic']) ||
+      readTextField(nested, ['selection', 'selectionLogic', 'selection_logic']) ||
+      MISSING_SELECTION_LOGIC,
+    tradingLogic:
+      readTextField(config, ['tradingLogic', 'trading_logic']) ||
+      readTextField(nested, ['trading', 'tradingLogic', 'trading_logic']) ||
+      MISSING_TRADING_LOGIC,
+  };
+}
+
+function getStrategyConfigArray(config: Record<string, unknown>, keys: string[]): string[] {
+  for (const key of keys) {
+    const value = config[key];
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+    }
+  }
+  return [];
+}
+
+function isContractStrategySymbol(symbol: string): boolean {
+  const normalized = symbol.trim().toUpperCase();
+  return normalized.includes(':') || normalized.endsWith('-USDT-SWAP') || normalized.endsWith('-SWAP');
+}
+
+function inferStrategyAssetClass(strategy: StrategyType): StrategyAssetClass {
+  const config = isRecord(strategy.config) ? strategy.config : {};
+  const marketType = readTextField(config, ['marketType', 'market_type']).toLowerCase();
+  const instType = readTextField(config, ['instType', 'inst_type']).toUpperCase();
+  if (['swap', 'future', 'futures', 'contract'].includes(marketType) || instType === 'SWAP') {
+    return 'contract';
+  }
+
+  const name = strategy.name.trim();
+  if (name.startsWith('[合约]')) return 'contract';
+  if (name.startsWith('[现货]')) return 'spot';
+
+  const symbols = [
+    ...(strategy.symbols || []),
+    ...getStrategyConfigArray(config, [
+      'symbol',
+      'symbols',
+      'tradeSymbols',
+      'trade_symbols',
+      'contractTradeSymbols',
+      'contract_trade_symbols',
+    ]),
+  ];
+  return symbols.some(isContractStrategySymbol) ? 'contract' : 'spot';
+}
+
+function strategyNameColorClass(assetClass: StrategyAssetClass): string {
+  return assetClass === 'contract' ? 'text-[#FFAB73]' : 'text-yellow-300';
+}
+
+// ============================================
+// 主组件
+// ============================================
+export default function Strategy() {
+  const navigate = useNavigate();
+  const { isGuest } = useAuth();
+  const canWriteStrategy = !isGuest;
+  const [strategies, setStrategies] = useState<StrategyType[]>([]);
+  const [isLoadingStrategies, setIsLoadingStrategies] = useState(false);
+  const [strategyListError, setStrategyListError] = useState<string | null>(null);
+  const [strategyPage, setStrategyPage] = useState(1);
+  const [strategyTotal, setStrategyTotal] = useState(0);
+  const [strategyPages, setStrategyPages] = useState(1);
+  const [strategyRefreshToken, setStrategyRefreshToken] = useState(0);
+  const [strategyStatusCounts, setStrategyStatusCounts] = useState<Record<StrategyStatusFilter, number>>({
+    all: 0,
+    running: 0,
+    paused: 0,
+    not_started: 0,
+  });
+  const [strategyAssetCounts, setStrategyAssetCounts] = useState<Record<StrategyAssetFilter, number>>({
+    all: 0,
+    spot: 0,
+    contract: 0,
+  });
+  const [strategyTypeCounts, setStrategyTypeCounts] = useState<Record<StrategyTypeFilter, number>>({
+    all: 0,
+    cta: 0,
+    martingale: 0,
+    ai: 0,
+    market_making: 0,
+  });
+  const [strategyTimeframeCounts, setStrategyTimeframeCounts] = useState<Record<StrategyTimeframeFilter, number>>({
+    all: 0,
+    '1m': 0,
+    '5m': 0,
+    '15m': 0,
+    '30m': 0,
+    '1h': 0,
+    '4h': 0,
+    '12h': 0,
+    '1d': 0,
+  });
+  const [strategyCapitalCounts, setStrategyCapitalCounts] = useState<Record<StrategyCapitalFilter, number>>({
+    all: 0,
+    '100U': 0,
+    '1000U': 0,
+  });
+  const [selectedStrategy, setSelectedStrategy] = useState<StrategyType | null>(null);
+
+  // 页面视图
+  const [view, setView] = useState<PageView>('list');
+  const [listTab, setListTab] = useState<ListTab>('my');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StrategyStatusFilter>('all');
+  const [assetFilter, setAssetFilter] = useState<StrategyAssetFilter>('all');
+  const [strategyTypeFilter, setStrategyTypeFilter] = useState<StrategyTypeFilter>('all');
+  const [strategyTimeframeFilter, setStrategyTimeframeFilter] = useState<StrategyTimeframeFilter>('all');
+  const [strategyCapitalFilter, setStrategyCapitalFilter] = useState<StrategyCapitalFilter>('all');
+
+  // 创建/编辑模式
+  const [editMode, setEditMode] = useState<'create' | 'edit'>('create');
+  const [editingStrategy, setEditingStrategy] = useState<StrategyType | null>(null);
+
+  // 编辑器表单
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    scriptContent: EMPTY_STRATEGY_TEMPLATE.code,
+    exchange: 'okx',
+    symbols: 'BTC/USDT',
+    config: JSON.stringify(EMPTY_STRATEGY_TEMPLATE.defaultConfig, null, 2),
+  });
+
+  // 状态
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // AI 写策略
+  const [showAiGen, setShowAiGen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiSymbol, setAiSymbol] = useState('BTC/USDT');
+  const [aiTimeframe, setAiTimeframe] = useState('1h');
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
+  const [logicSummaryOpen, setLogicSummaryOpen] = useState(false);
+
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
+  const refreshStrategyPage = useCallback(() => {
+    setStrategyRefreshToken((value) => value + 1);
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    setStrategyPage(1);
+  }, [
+    statusFilter,
+    assetFilter,
+    strategyTypeFilter,
+    strategyTimeframeFilter,
+    strategyCapitalFilter,
+    normalizedSearchQuery,
+  ]);
 
   useEffect(() => {
-    if (detailRequested && requestedStrategyId) {
-      const requested = businessStrategies.find((item) => item.id === requestedStrategyId);
-      if (requested) {
-        setSelectedId(requested.id);
-        setView('detail');
-      }
-      return;
-    }
-    setView('editor');
-  }, [businessStrategies, detailRequested, requestedStrategyId]);
-
-  useEffect(() => {
-    if (!selected) return;
-    const copy = productStrategyCopy(selected);
-    setName(copy.name);
-    setDescription(copy.description || '');
-    setScript(selected.script_content || emptyCode);
-    setReplayResult(null);
-    getLatestStrategyVersion(selected.id)
-      .then((version) => {
-        if (!version) {
-          setActiveVersion(null);
-          setValidation(null);
-          return;
-        }
-        setActiveVersion(version);
-        setValidation(version.validation_report);
-        if (version.script_content) setScript(version.script_content);
+    if (listTab !== 'my') return;
+    let cancelled = false;
+    setIsLoadingStrategies(true);
+    setStrategyListError(null);
+    strategyApi.getPage({
+      page: strategyPage,
+      perPage: STRATEGY_PAGE_SIZE,
+      status: statusFilter,
+      assetClass: assetFilter,
+      strategyType: strategyTypeFilter,
+      timeframe: strategyTimeframeFilter,
+      capital: strategyCapitalFilter,
+      search: normalizedSearchQuery,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setStrategies(result.items);
+        setStrategyTotal(result.total);
+        setStrategyPage(result.page);
+        setStrategyPages(result.pages);
+        setStrategyStatusCounts({
+          all: result.statusCounts?.all ?? 0,
+          running: result.statusCounts?.running ?? 0,
+          paused: result.statusCounts?.paused ?? 0,
+          not_started: result.statusCounts?.not_started ?? result.statusCounts?.notStarted ?? 0,
+        });
+        setStrategyAssetCounts({
+          all: result.assetCounts?.all ?? 0,
+          spot: result.assetCounts?.spot ?? 0,
+          contract: result.assetCounts?.contract ?? 0,
+        });
+        setStrategyTypeCounts({
+          all: result.typeCounts?.all ?? 0,
+          cta: result.typeCounts?.cta ?? 0,
+          martingale: result.typeCounts?.martingale ?? 0,
+          ai: result.typeCounts?.ai ?? 0,
+          market_making: result.typeCounts?.market_making ?? 0,
+        });
+        setStrategyTimeframeCounts({
+          all: result.timeframeCounts?.all ?? 0,
+          '1m': result.timeframeCounts?.['1m'] ?? 0,
+          '5m': result.timeframeCounts?.['5m'] ?? 0,
+          '15m': result.timeframeCounts?.['15m'] ?? 0,
+          '30m': result.timeframeCounts?.['30m'] ?? 0,
+          '1h': result.timeframeCounts?.['1h'] ?? 0,
+          '4h': result.timeframeCounts?.['4h'] ?? 0,
+          '12h': result.timeframeCounts?.['12h'] ?? 0,
+          '1d': result.timeframeCounts?.['1d'] ?? 0,
+        });
+        setStrategyCapitalCounts({
+          all: result.capitalCounts?.all ?? 0,
+          '100U': result.capitalCounts?.['100U'] ?? 0,
+          '1000U': result.capitalCounts?.['1000U'] ?? 0,
+        });
       })
-      .catch(() => {
-        setActiveVersion(null);
-        setValidation(null);
+      .catch((err: any) => {
+        if (cancelled) return;
+        console.error('Failed to fetch paginated strategies:', err);
+        setStrategyListError(err?.response?.data?.detail || err?.message || '策略列表加载失败');
+        setStrategies([]);
+        setStrategyTotal(0);
+        setStrategyPages(1);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingStrategies(false);
       });
-  }, [selected]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    assetFilter,
+    listTab,
+    normalizedSearchQuery,
+    statusFilter,
+    strategyCapitalFilter,
+    strategyPage,
+    strategyRefreshToken,
+    strategyTypeFilter,
+    strategyTimeframeFilter,
+  ]);
 
-  const handleGenerate = async () => {
-    if (!aiCapabilities?.configured) {
-      setMessage(aiCapabilities?.reason || 'AI 能力状态未知，当前禁止生成');
+  useEffect(() => {
+    setLogicSummaryOpen(false);
+  }, [selectedStrategy?.id]);
+
+  // 消息自动关闭
+  useEffect(() => {
+    if (message) {
+      const t = setTimeout(() => setMessage(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [message]);
+
+  // ============================================
+  // AI 写策略
+  // ============================================
+  const handleAiGenerate = async () => {
+    if (!canWriteStrategy) {
+      setMessage({ type: 'error', text: '访客只能查看策略，不能生成或修改策略' });
       return;
     }
-    setLoading(true);
-    setMessage('');
+    if (!aiPrompt.trim()) return;
+    setAiGenerating(true);
     try {
-      const result = await autoDevelopStrategy({
-        objective: '首板突破',
-        symbols: ['SH_600000', 'SZ_000001'],
-        risk_level: 'balanced',
+      const res = await agentApi.generateStrategy({
+        prompt: aiPrompt,
+        symbol: aiSymbol,
+        timeframe: aiTimeframe,
       });
-      setMessage('自动开发完成');
-      setStrategies((prev) => [result.strategy, ...prev.filter((item) => item.id !== result.strategy.id)]);
-      setSelectedId(result.strategy.id);
-      setName(result.strategy.name);
-      setDescription(result.strategy.description);
-      setScript(result.strategy.script_content);
-      setShowEditor(true);
-    } catch (error) {
-      setMessage(error instanceof Error ? `AI 写策略失败：${error.message}` : 'AI 写策略失败');
+      setMessage({ type: 'success', text: `策略 [${res.className}] 已生成！刷新列表可见` });
+      setShowAiGen(false);
+      setAiPrompt('');
+      refreshStrategyPage();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: 'AI 生成失败: ' + (err?.response?.data?.detail || err.message) });
     } finally {
-      setLoading(false);
+      setAiGenerating(false);
     }
   };
 
-  const handleSave = async (closeEditor = true): Promise<string | undefined> => {
-    setLoading(true);
-    setMessage('');
+  // ============================================
+  // 操作函数
+  // ============================================
+  const handleCreateFromTemplate = (template: typeof STRATEGY_TEMPLATES[0]) => {
+    if (!canWriteStrategy) {
+      setMessage({ type: 'error', text: '访客只能查看策略，不能新建策略' });
+      return;
+    }
+    setEditMode('create');
+    setEditingStrategy(null);
+    setFormData({
+      name: template.name,
+      description: template.description,
+      scriptContent: template.code,
+      exchange: 'okx',
+      symbols: 'BTC/USDT',
+      config: JSON.stringify(template.defaultConfig, null, 2),
+    });
+    setView('editor');
+  };
+
+  const handleEditStrategy = (strategy: StrategyType) => {
+    if (!canWriteStrategy) {
+      setMessage({ type: 'error', text: '访客只能查看策略，不能编辑策略' });
+      return;
+    }
+    setEditMode('edit');
+    setEditingStrategy(strategy);
+    setFormData({
+      name: strategy.name,
+      description: strategy.description || '',
+      scriptContent: strategy.scriptContent || '',
+      exchange: strategy.exchange || 'okx',
+      symbols: strategy.symbols?.join(', ') || 'BTC/USDT',
+      config: JSON.stringify(strategy.config || {}, null, 2),
+    });
+    setView('editor');
+  };
+
+  const handleViewStrategyDetails = (strategy: StrategyType) => {
+    setSelectedStrategy(strategy);
+    setView('detail');
+  };
+
+  const handleSave = async () => {
+    if (!canWriteStrategy) {
+      setMessage({ type: 'error', text: '访客只能查看策略，不能保存策略' });
+      return;
+    }
+    if (!formData.name.trim()) { setMessage({ type: 'error', text: '请输入策略名称' }); return; }
+    if (!formData.scriptContent.trim()) { setMessage({ type: 'error', text: '请输入策略代码' }); return; }
+
+    let configObj = {};
+    try { configObj = JSON.parse(formData.config); } catch {
+      setMessage({ type: 'error', text: '配置 JSON 格式错误' }); return;
+    }
+
+    setSaving(true);
     try {
-      if (selectedId) {
-        const saved = await updateStrategy(selectedId, { name, description, script_content: script, interval_seconds: 60, data_purpose: selected?.data_purpose });
-        setStrategies((prev) => prev.map((item) => (item.id === saved.id ? ({ ...item, ...saved } as StrategyType) : item)));
-        setActiveVersion(saved.strategy_version ?? null);
-        setValidation(saved.validation ?? null);
-        setMessage(saved.validation?.valid ? '策略版本已保存并通过校验' : '策略版本已保存，但校验未通过');
-        if (closeEditor) setShowEditor(false);
-        return saved.strategy_version?.id;
+      if (editMode === 'edit' && editingStrategy) {
+        await strategyApi.update(editingStrategy.id, {
+          name: formData.name,
+          description: formData.description,
+          scriptContent: formData.scriptContent,
+          exchange: formData.exchange,
+          symbols: formData.symbols.split(',').map(s => s.trim()).filter(Boolean),
+          config: configObj,
+        });
+        setMessage({ type: 'success', text: '策略保存成功' });
       } else {
-        const result = await saveStrategy({ name, description, script_content: script, interval_seconds: 60 });
-        if (result.id) {
-          setSelectedId(result.id);
-          await load();
-        }
-        setActiveVersion(result.strategy_version ?? null);
-        setValidation(result.validation ?? null);
-        setMessage(result.validation?.valid ? '策略版本已保存并通过校验' : '策略版本已保存，但校验未通过');
-        if (closeEditor) setShowEditor(false);
-        return result.strategy_version?.id;
+        await strategyApi.create({
+          name: formData.name,
+          description: formData.description,
+          scriptContent: formData.scriptContent,
+          exchange: formData.exchange,
+          symbols: formData.symbols.split(',').map(s => s.trim()).filter(Boolean),
+          config: configObj,
+        });
+        setMessage({ type: 'success', text: '策略创建成功' });
       }
+      refreshStrategyPage();
+      setView('list');
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.detail || '操作失败' });
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleQuickRun = async () => {
-    setLoading(true);
-    setReplayResult(null);
+  const runDeleteStrategy = async () => {
+    if (!canWriteStrategy) {
+      setDeleteTarget(null);
+      setMessage({ type: 'error', text: '访客只能查看策略，不能删除策略' });
+      return;
+    }
+    if (!deleteTarget) return;
+    const { id, name } = deleteTarget;
+    const cur = strategies.find((x) => x.id === id);
+    if (cur && isStrategyRunningOrPaused(cur.status)) {
+      setDeleteTarget(null);
+      setDeleteBlockedOpen(true);
+      return;
+    }
+    setDeleteTarget(null);
     try {
-      const versionId = await handleSave(false);
-      if (!versionId) return;
-      const snapshots = await getFactorSnapshots();
-      const snapshot = snapshots.items.find((item) => item.status === 'sealed');
-      if (!snapshot) throw new Error('尚无已封存因子/数据快照');
-      const result = await quickRunStrategyVersion(versionId, {
-        dataset_snapshot_id: snapshot.dataset_snapshot_id,
-        factor_snapshot_id: snapshot.id,
-        event_limit: 30,
-      });
-      setReplayResult(result);
-      setMessage(result.status === 'success' ? `快速运行完成：${result.intent_count ?? '--'} 条委托意图` : `快速运行失败：${result.error_code ?? 'runtime'}`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '快速运行失败');
-    } finally {
-      setLoading(false);
+      await strategyApi.delete(id);
+      setMessage({ type: 'success', text: `策略「${name}」已删除` });
+      refreshStrategyPage();
+    } catch (err: unknown) {
+      const e = err as {
+        response?: { data?: { error?: { message?: string }; detail?: string } };
+      };
+      const msg =
+        e?.response?.data?.error?.message ||
+        (typeof e?.response?.data?.detail === 'string' ? e.response.data.detail : null) ||
+        '删除失败';
+      setMessage({ type: 'error', text: msg });
     }
   };
 
-  if (view === 'detail' && selected) {
-    return (
-      <div className="min-h-full bg-crypto-bg p-6" data-operator-page="strategy-detail">
-        <WorkspacePipelineNote stageId="strategy" />
-        <StrategyDetailPanel
-          strategy={productStrategyCopy(selected)}
-          version={activeVersion}
-          validation={validation}
-          onBack={() => {
-            setSearchParams({});
-            setView('editor');
-          }}
-          onEdit={() => setShowEditor(true)}
-          onBacktest={() => {
-            const params = new URLSearchParams();
-            if (activeVersion?.id) params.set('strategyVersionId', String(activeVersion.id));
-            if (desk?.bindings?.pool_snapshot_id) params.set('poolSnapshotId', String(desk.bindings.pool_snapshot_id));
-            navigate(`/backtest?${params.toString()}`);
-          }}
-          onPaper={() => navigate('/paper')}
-        />
-      </div>
-    );
-  }
+  const visibleStrategies = strategies;
 
-  return (
-    <div className="min-h-full bg-crypto-bg p-6" data-operator-page="strategy">
-      <OperatorPageHeader
-        icon={Code2}
-        title="策略中心"
-        subtitle="策略目录、版本与校验。保存后可提交回测或开模拟。"
-        actions={
-          <>
-            {SHOW_STRATEGY_EXTRAS ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setListTab('ai')}
-                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-4 text-sm font-semibold text-purple-100 transition-colors hover:border-purple-500/55 hover:bg-purple-500/20"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  AI 写策略
-                </button>
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={loading || !aiCapabilities?.configured}
-                  title={
-                    aiCapabilities?.configured
-                      ? `Qwen ${aiCapabilities.model || ''}`
-                      : aiCapabilities?.reason || 'AI 能力状态读取中'
-                  }
-                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/[0.12] px-4 text-sm font-semibold text-purple-200 transition-colors hover:border-purple-500/45 hover:bg-purple-500/[0.18] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Zap className="h-4 w-4" />
-                  {aiCapabilities?.configured ? '规则生成' : 'AI 未配置'}
-                </button>
-              </>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => {
-                const params = new URLSearchParams();
-                if (activeVersion?.id) params.set('strategyVersionId', String(activeVersion.id));
-                else if (desk?.bindings?.strategy_version_id) params.set('strategyVersionId', desk.bindings.strategy_version_id);
-                if (desk?.bindings?.pool_snapshot_id) params.set('poolSnapshotId', String(desk.bindings.pool_snapshot_id));
-                navigate(`/backtest?${params.toString()}`);
-              }}
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-4 text-sm font-semibold text-purple-100 hover:bg-purple-500/20"
-            >
-              <FlaskConical className="h-4 w-4" />
-              提交完整回测
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedId(null);
-                setName('');
-                setDescription('');
-                setScript(emptyCode);
-                setActiveVersion(null);
-                setValidation(null);
-                setReplayResult(null);
-                setShowEditor(true);
-              }}
-              className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4" />
-              新建策略
-            </button>
-          </>
-        }
-      />
-      <WorkspacePipelineNote stageId="strategy" />
+  const filteredTemplates = STRATEGY_TEMPLATES.filter(t =>
+    t.name.toLowerCase().includes(normalizedSearchQuery) ||
+    t.description.toLowerCase().includes(normalizedSearchQuery) ||
+    t.tags.some(tag => tag.includes(normalizedSearchQuery))
+  );
+  const shouldShowBlockingLoading = isLoadingStrategies && visibleStrategies.length === 0;
 
-      <div className="mb-6 space-y-3">
-        <AshareGuardrailStrip
-          title="A股策略约束"
-          description="策略进入回测或模拟前，必须把 A 股交易制度写入信号生成和下单尺寸。"
-          items={[
-            { label: '100股整数手', detail: '买入数量按一手取整，避免生成不可成交委托。' },
-            { label: 'T+1持仓规则', detail: '当日买入默认不可当日卖出，回测和模拟保持一致。' },
-            { label: '涨跌停 / 停牌过滤', detail: '信号池需剔除不可交易和接近涨跌停的标的。' },
-          ]}
-        />
-        {SHOW_STRATEGY_EXTRAS ? (
-          <SegmentedControl<ListTab>
-            aria-label="策略目录"
-            value={listTab}
-            onChange={setListTab}
-            options={[
-              { value: 'my', label: '我的策略', icon: Layers, tone: 'blue', count: businessStrategies.length },
-              { value: 'inputs', label: '选股与输入', icon: Filter, tone: 'blue' },
-              { value: 'plaza', label: '策略广场', icon: BookOpen, tone: 'purple', count: plazaTemplates.length + referenceStrategies.length },
-              { value: 'audit', label: '审计证据', icon: ShieldCheck, tone: 'amber', count: auditStrategies.length },
-              { value: 'ai', label: 'AI 研发', icon: Zap, tone: 'purple' },
-            ]}
-          />
-        ) : null}
-        {listTab === 'my' && (
-          <OperatorFilterBar>
-            <FilterChipGroup<AssetFilter>
-              aria-label="资产筛选"
-              value={assetFilter}
-              onChange={setAssetFilter}
-              options={assetFilters.map((option) => ({
-                value: option.value,
-                label: option.label,
-                count: assetCounts[option.value],
-              }))}
-            />
-            <FilterChipGroup<StatusFilter>
-              aria-label="状态筛选"
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={statusFilters.map((option) => ({
-                value: option.value,
-                label: (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className={clsx('h-1.5 w-1.5 rounded-full', option.dot)} />
-                    {option.label}
-                  </span>
-                ),
-                count: statusCounts[option.value],
-              }))}
-            />
-            <OperatorSearchField
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder="搜索策略..."
-              icon={<Search className="h-4 w-4" />}
-            />
-          </OperatorFilterBar>
+  // ============================================
+  // 渲染：策略列表页
+  // ============================================
+  const renderListView = () => (
+    <div className="space-y-6">
+      {/* 顶部标题 + 操作 */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Code2 className="w-6 h-6 text-blue-400" />
+          <h1 className="text-2xl font-bold text-white">策略中心</h1>
+        </div>
+        {canWriteStrategy && (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowAiGen(!showAiGen)}
+              className={clsx(
+                'inline-flex h-11 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition-colors',
+                showAiGen
+                  ? 'border-purple-500/45 bg-purple-500/25 text-purple-200'
+                  : 'border-purple-500/30 bg-purple-500/[0.12] text-purple-200 hover:border-purple-500/45 hover:bg-purple-500/[0.18] hover:text-purple-100'
+              )}>
+              <Zap className="w-4 h-4" />AI 写策略
+            </button>
+            <button onClick={() => handleCreateFromTemplate(EMPTY_STRATEGY_TEMPLATE)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-colors">
+              <Plus className="w-4 h-4" />新建策略
+            </button>
+          </div>
         )}
       </div>
 
-      {message && <div className="mb-4 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm font-semibold text-blue-300">{message}</div>}
-      {listState === 'error' && (
-        <OperatorStatePanel
-          kind="error"
-          title="策略目录加载失败"
-          description={listError}
-          action={
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-semibold text-red-100"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              重试
+      {/* AI 写策略面板 */}
+      {showAiGen && canWriteStrategy && (
+        <div className="bg-gradient-to-r from-purple-500/5 to-blue-500/5 border border-purple-500/20 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Zap className="w-4 h-4 text-purple-400" />
+            <span className="text-sm font-semibold text-white">用自然语言描述你的策略</span>
+            <span className="text-[10px] text-gray-500 ml-auto">AI 将自动生成合规的 BaseStrategy 代码</span>
+          </div>
+          <textarea
+            value={aiPrompt}
+            onChange={e => setAiPrompt(e.target.value)}
+            placeholder="例: 写一个均值回归策略，当 RSI 跌破 30 且价格跌破布林带下轨时买入，RSI 超过 70 时卖出。加上 2% 止损。"
+            rows={3}
+            className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-4 py-3 text-sm text-white placeholder-gray-600 focus:border-purple-500 focus:outline-none resize-none"
+          />
+          <div className="flex items-center gap-3 mt-3">
+            <CryptoSelect value={aiSymbol} onChange={e => setAiSymbol(e.target.value)} controlSize="xs" fullWidth={false}>
+              {['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'DOGE/USDT'].map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </CryptoSelect>
+            <CryptoSelect value={aiTimeframe} onChange={e => setAiTimeframe(e.target.value)} controlSize="xs" fullWidth={false}>
+              {['1m', '5m', '15m', '1h', '4h', '1d'].map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </CryptoSelect>
+            <div className="flex-1" />
+            <button onClick={() => setShowAiGen(false)}
+              className="px-4 py-2 text-xs text-gray-400 hover:text-white transition-colors">
+              取消
             </button>
-          }
-        />
-      )}
-      {listState === 'loading' && (
-        <OperatorStatePanel kind="loading" title="正在读取策略与版本…" description="只读加载本地 PostgreSQL 策略目录，不触发同步。" />
+            <button onClick={handleAiGenerate} disabled={aiGenerating || !aiPrompt.trim()}
+              className="flex items-center gap-2 px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg text-sm font-medium transition-colors">
+              {aiGenerating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />生成中...</> : <><Zap className="w-3.5 h-3.5" />生成策略</>}
+            </button>
+          </div>
+        </div>
       )}
 
-      {listTab === 'my' && listState === 'ready' && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {visibleStrategies.map((item) => {
-            const active = selectedId === item.id;
-            const tags = inferTags(item);
-            const copy = productStrategyCopy(item);
-            return (
-              <CatalogueCard
-                key={item.id}
-                testId="strategy-card"
-                active={active}
-                onClick={() => setSelectedId(item.id)}
-              >
-                <div className="p-5 pb-3">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <span className={clsx('mt-1 h-2 w-2 shrink-0 rounded-full', item.is_running ? 'animate-pulse bg-emerald-400' : 'bg-gray-600')} />
-                      <h2 className="truncate text-sm font-semibold text-[#FFAB73]">{copy.name}</h2>
-                    </div>
-                  </div>
-                  <p className="ml-[18px] line-clamp-2 min-h-[2.25rem] text-xs leading-relaxed text-gray-500">
-                    {copy.description || '暂无策略说明'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 px-5 pb-3">
-                  {tags.map((tag, index) => (
-                    <span
-                      key={tag}
+      {/* Tab + 搜索 */}
+      <div className="space-y-3">
+        <div className="inline-flex w-fit items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card p-1">
+          <button onClick={() => setListTab('my')}
+            className={clsx('px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              listTab === 'my' ? 'bg-blue-500/20 text-blue-400' : 'text-gray-500 hover:text-gray-300')}>
+            <span className="flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" />我的策略</span>
+          </button>
+          <button onClick={() => setListTab('plaza')}
+            className={clsx('px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              listTab === 'plaza' ? 'bg-purple-500/20 text-purple-400' : 'text-gray-500 hover:text-gray-300')}>
+            <span className="flex items-center gap-1.5"><BookOpen className="w-3.5 h-3.5" />策略广场</span>
+          </button>
+        </div>
+        {listTab === 'my' && (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex h-11 items-center rounded-xl border border-crypto-border bg-crypto-card p-1">
+                {ASSET_FILTERS.map((option) => {
+                  const active = assetFilter === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setAssetFilter(option.value)}
+                      aria-pressed={active}
                       className={clsx(
-                        'rounded border px-1.5 py-0.5 text-[10px]',
-                        index === 0
-                          ? 'border-blue-500/10 bg-blue-500/10 text-blue-400/80'
-                          : index === 1
-                            ? 'border-purple-500/10 bg-purple-500/10 text-purple-400/80'
-                            : 'border-crypto-border bg-crypto-bg text-gray-500',
+                        'inline-flex h-9 min-w-20 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors',
+                        active
+                          ? 'bg-blue-500/20 text-blue-300'
+                          : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
                       )}
                     >
-                      {tag}
-                    </span>
-                  ))}
-                  <span className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-gray-600">
-                    <CalendarDays className="h-3 w-3" />
-                    {formatDate(item.updated_at || item.created_at)}
-                  </span>
+                      <span>{option.label}</span>
+                      <span
+                        className={clsx(
+                          'rounded-md px-1.5 py-0.5 text-[10px]',
+                          active ? 'bg-blue-400/15 text-blue-200' : 'bg-crypto-bg text-gray-500',
+                        )}
+                      >
+                        {strategyAssetCounts[option.value] ?? 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="inline-flex h-11 items-center rounded-xl border border-crypto-border bg-crypto-card/80 p-1">
+                {STATUS_FILTERS.map((option) => {
+                  const active = statusFilter === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setStatusFilter(option.value)}
+                      aria-pressed={active}
+                      className={clsx(
+                        'inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors',
+                        active
+                          ? 'bg-blue-500/20 text-blue-300'
+                          : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
+                      )}
+                    >
+                      <span>{option.label}</span>
+                      <span
+                        className={clsx(
+                          'rounded-md px-1.5 py-0.5 text-[10px]',
+                          active ? 'bg-blue-400/15 text-blue-200' : 'bg-crypto-bg text-gray-500',
+                        )}
+                      >
+                        {strategyStatusCounts[option.value] ?? 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="inline-flex h-11 items-center rounded-xl border border-crypto-border bg-crypto-card/80 p-1">
+                {STRATEGY_TYPE_FILTERS.map((option) => {
+                  const active = strategyTypeFilter === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setStrategyTypeFilter(option.value)}
+                      aria-pressed={active}
+                      className={clsx(
+                        'inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors',
+                        active
+                          ? 'bg-blue-500/20 text-blue-300'
+                          : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
+                      )}
+                    >
+                      <span>{option.label}</span>
+                      <span
+                        className={clsx(
+                          'rounded-md px-1.5 py-0.5 text-[10px]',
+                          active ? 'bg-blue-400/15 text-blue-200' : 'bg-crypto-bg text-gray-500',
+                        )}
+                      >
+                        {strategyTypeCounts[option.value] ?? 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {isLoadingStrategies && visibleStrategies.length > 0 && (
+                <div className="inline-flex h-11 items-center gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 px-3 text-xs font-semibold text-blue-300">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  正在刷新
                 </div>
-                <div className="grid h-11 grid-cols-2 overflow-hidden border-t border-crypto-border">
+              )}
+              <label className="relative flex h-11 w-full min-w-[260px] max-w-md items-center rounded-xl border border-crypto-border bg-crypto-card px-3 text-sm text-gray-400 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20 sm:w-[360px]">
+                <Search className="mr-2 h-4 w-4 shrink-0 text-gray-500" />
+                <span className="sr-only">搜索策略</span>
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="搜索策略、标的、周期..."
+                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-gray-200 placeholder:text-gray-600 focus:outline-none"
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex min-h-11 max-w-full flex-wrap items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card/80 p-1">
+                {STRATEGY_TIMEFRAME_FILTERS.map((option) => {
+                  const active = strategyTimeframeFilter === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setStrategyTimeframeFilter(option.value)}
+                      aria-pressed={active}
+                      className={clsx(
+                        'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors',
+                        active
+                          ? 'bg-blue-500/20 text-blue-300'
+                          : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
+                      )}
+                    >
+                      <span>{option.label}</span>
+                      <span
+                        className={clsx(
+                          'rounded-md px-1.5 py-0.5 text-[10px]',
+                          active ? 'bg-blue-400/15 text-blue-200' : 'bg-crypto-bg text-gray-500',
+                        )}
+                      >
+                        {strategyTimeframeCounts[option.value] ?? 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card/80 p-1">
+                {STRATEGY_CAPITAL_FILTERS.map((option) => {
+                  const active = strategyCapitalFilter === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setStrategyCapitalFilter(option.value)}
+                      aria-pressed={active}
+                      className={clsx(
+                        'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors',
+                        active
+                          ? 'bg-blue-500/20 text-blue-300'
+                          : 'text-gray-500 hover:bg-white/5 hover:text-gray-300',
+                      )}
+                    >
+                      <span>{option.label}</span>
+                      <span
+                        className={clsx(
+                          'rounded-md px-1.5 py-0.5 text-[10px]',
+                          active ? 'bg-blue-400/15 text-blue-200' : 'bg-crypto-bg text-gray-500',
+                        )}
+                      >
+                        {strategyCapitalCounts[option.value] ?? 0}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 我的策略 Tab */}
+      {listTab === 'my' && (
+        <div>
+          {shouldShowBlockingLoading ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div key={idx} className="h-48 animate-pulse rounded-xl border border-crypto-border bg-crypto-card">
+                  <div className="space-y-4 p-5">
+                    <div className="h-4 w-2/3 rounded bg-gray-700/60" />
+                    <div className="space-y-2">
+                      <div className="h-3 rounded bg-gray-800" />
+                      <div className="h-3 w-5/6 rounded bg-gray-800" />
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="h-5 w-12 rounded bg-gray-800" />
+                      <div className="h-5 w-14 rounded bg-gray-800" />
+                      <div className="h-5 w-10 rounded bg-gray-800" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : strategyListError ? (
+            <div className="bg-crypto-card border border-red-500/20 rounded-xl flex flex-col items-center justify-center py-20">
+              <XCircle className="w-16 h-16 text-red-400/60 mb-4" />
+              <p className="text-red-200 text-sm mb-1">{strategyListError}</p>
+              <button
+                type="button"
+                onClick={refreshStrategyPage}
+                className="mt-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-semibold text-blue-300 transition-colors hover:bg-blue-500/15"
+              >
+                重新加载
+              </button>
+            </div>
+          ) : visibleStrategies.length === 0 ? (
+            <div className="bg-crypto-card border border-crypto-border rounded-xl flex flex-col items-center justify-center py-20">
+              <Code2 className="w-16 h-16 text-gray-700 mb-4" />
+              <p className="text-gray-500 text-sm mb-1">当前筛选下无策略</p>
+              <p className="text-gray-600 text-xs">切换状态筛选，或从策略广场选择模板开始</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {visibleStrategies.map(s => {
+                  const updatedAt = (s as any).updatedAt || (s as any).createdAt;
+                  const cfg = s.config || {} as any;
+                  const assetClass = inferStrategyAssetClass(s);
+                  const riskLevel = cfg.risk_level || cfg.riskLevel;
+                  const timeframe = cfg.timeframe;
+                  const suitableFor = cfg.suitable_for || cfg.suitableFor;
+                  const isRecommended = cfg.recommended;
+                  const riskColor = riskLevel === '低' ? 'text-green-400 bg-green-500/10 border-green-500/10'
+                    : riskLevel === '中' ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/10'
+                    : riskLevel === '中低' ? 'text-green-300 bg-green-500/10 border-green-500/10'
+                    : riskLevel === '中高' ? 'text-orange-400 bg-orange-500/10 border-orange-500/10'
+                    : 'text-gray-400 bg-gray-500/10 border-gray-500/10';
+                  return (
+                    <div key={s.id} className="self-start bg-crypto-card border border-crypto-border rounded-xl overflow-hidden hover:border-gray-600 transition-all group">
+                      {/* 卡片头部 */}
+                      <div className="p-5 pb-3">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={clsx('w-2 h-2 rounded-full flex-shrink-0 mt-1',
+                              s.status === 'running' ? 'bg-green-400 animate-pulse'
+                                : s.status === 'paused' ? 'bg-yellow-400'
+                                  : s.status === 'error' ? 'bg-red-400' : 'bg-gray-600'
+                            )} />
+                            <h3 className={clsx('text-sm font-semibold truncate', strategyNameColorClass(assetClass))}>{s.name}</h3>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {isRecommended && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-green-500/20 text-green-400 rounded-full">推荐</span>
+                            )}
+                            {canWriteStrategy && (
+                              <button
+                                onClick={() => {
+                                  if (isStrategyRunningOrPaused(s.status)) {
+                                    setDeleteBlockedOpen(true);
+                                    return;
+                                  }
+                                  setDeleteTarget({ id: s.id, name: s.name });
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 text-gray-600 hover:text-red-400 transition-all"
+                                title="删除策略">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed ml-[18px] min-h-[2.25rem]">
+                          {s.description || '暂无描述'}
+                        </p>
+                      </div>
+
+                      {/* 标签区域 */}
+                      <div className="px-5 pb-3 flex items-center gap-1.5 flex-wrap">
+                        {s.exchange && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400/80 border border-blue-500/10">
+                            {s.exchange.toUpperCase()}
+                          </span>
+                        )}
+                        {riskLevel && (
+                          <span className={clsx('text-[10px] px-1.5 py-0.5 rounded border', riskColor)}>
+                            {riskLevel}风险
+                          </span>
+                        )}
+                        {timeframe && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400/80 border border-purple-500/10">
+                            {formatTimeframeLabel(timeframe)}
+                          </span>
+                        )}
+                        {s.symbols?.map(sym => (
+                          <span key={sym} className="text-[10px] px-1.5 py-0.5 rounded bg-crypto-bg text-gray-500 border border-crypto-border">
+                            {sym.split('/')[0]}
+                          </span>
+                        ))}
+                        {updatedAt && (
+                          <span className="text-[10px] text-gray-600 flex items-center gap-0.5 ml-auto">
+                            <Clock className="w-3 h-3" />
+                            {new Date(updatedAt).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                      {suitableFor && (
+                        <div className="px-5 pb-3">
+                          <span className="text-[10px] text-gray-600 flex items-center gap-1">
+                            <Zap className="w-3 h-3" />适合: {suitableFor}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* 底部操作 */}
+                      <div className="h-11 border-t border-crypto-border grid grid-cols-2 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isStrategyRunningOrPaused(s.status)) {
+                              navigate(`/live?strategyId=${encodeURIComponent(String(s.id))}`);
+                            }
+                          }}
+                          disabled={!isStrategyRunningOrPaused(s.status)}
+                          className={clsx(
+                            'h-11 min-w-0 flex items-center justify-center gap-1.5 px-3 text-xs border-r border-crypto-border transition-colors',
+                            isStrategyRunningOrPaused(s.status)
+                              ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10'
+                              : 'text-gray-700 cursor-not-allowed',
+                          )}
+                        >
+                          <Activity className="w-3 h-3 shrink-0" />
+                          <span className="truncate">实例控制台</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleViewStrategyDetails(s)}
+                          className={clsx(
+                            'h-11 min-w-0 flex items-center justify-center gap-1.5 px-3 text-xs text-gray-400 hover:text-blue-400 hover:bg-blue-500/5 transition-colors',
+                          )}
+                        >
+                          <BookOpen className="w-3 h-3 shrink-0" />
+                          <span className="truncate">详情</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div
+                aria-label="策略分页"
+                className="flex flex-col gap-3 rounded-xl border border-crypto-border bg-crypto-card/70 px-4 py-3 text-sm text-gray-400 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <span>
+                  共 <span className="font-semibold text-gray-200">{strategyTotal}</span> 个策略 · 第{' '}
+                  <span className="font-semibold text-gray-200">{strategyPage}</span> / {strategyPages} 页 · 每页{' '}
+                  {STRATEGY_PAGE_SIZE}
+                </span>
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedId(item.id);
-                      navigate('/paper');
-                    }}
-                    className="flex h-11 min-w-0 items-center justify-center gap-1.5 border-r border-crypto-border px-3 text-xs text-emerald-400 transition-colors hover:bg-emerald-500/10 hover:text-emerald-300"
+                    onClick={() => setStrategyPage((page) => Math.max(1, page - 1))}
+                    disabled={strategyPage <= 1 || isLoadingStrategies}
+                    className="rounded-lg border border-crypto-border px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:border-blue-500/40 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    <Activity className="h-3 w-3 shrink-0" />
-                    <span className="truncate">实例控制台</span>
+                    上一页
                   </button>
                   <button
                     type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedId(item.id);
-                      setSearchParams({ strategy: String(item.id), view: 'detail' });
-                      setView('detail');
-                    }}
-                    className="flex h-11 min-w-0 items-center justify-center gap-1.5 px-3 text-xs text-gray-400 transition-colors hover:bg-blue-500/5 hover:text-blue-400"
+                    onClick={() => setStrategyPage((page) => Math.min(strategyPages, page + 1))}
+                    disabled={strategyPage >= strategyPages || isLoadingStrategies}
+                    className="rounded-lg border border-crypto-border px-3 py-1.5 text-xs font-semibold text-gray-300 transition-colors hover:border-blue-500/40 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    <BookOpen className="h-3 w-3 shrink-0" />
-                    <span className="truncate">详情</span>
+                    下一页
                   </button>
                 </div>
-              </CatalogueCard>
-            );
-          })}
-          {visibleStrategies.length === 0 && (
-            <div className="col-span-full">
-              <OperatorStatePanel
-                kind="empty"
-                title="当前筛选下无策略"
-                description="调整筛选条件，或新建策略。"
-              />
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {listTab === 'plaza' && listState === 'ready' && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {referenceStrategies.map((strategy) => {
-            const copy = productStrategyCopy(strategy);
-            return (
-              <article
-                key={`reference-${strategy.id}`}
-                className="group cursor-pointer overflow-hidden rounded-xl border border-crypto-border bg-crypto-card transition-all hover:border-blue-500/40"
-                onClick={() => {
-                  setSelectedId(null);
-                  setName(copy.name.replace('示例', '策略'));
-                  setDescription(copy.description);
-                  setScript(strategy.script_content || emptyCode);
-                  setActiveVersion(null);
-                  setValidation(null);
-                  setReplayResult(null);
-                  setShowEditor(true);
-                }}
-              >
-                <div className="p-5 pb-3">
-                  <div className="mb-2.5 flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-400">
-                        <Code2 className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold text-white">{copy.name}</h3>
-                        <span className="text-[10px] text-gray-500">内置参考模板</span>
-                      </div>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] text-blue-300">
-                      模板
-                    </span>
-                  </div>
-                  <p className="line-clamp-2 min-h-[2.25rem] text-xs leading-relaxed text-gray-400">
-                    {copy.description || 'A 股策略参考模板'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 px-5 pb-3">
-                  {inferTags(strategy).map((tag) => (
-                    <span key={tag} className="rounded border border-crypto-border bg-crypto-bg px-2 py-0.5 text-[10px] text-gray-500">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                <div className="border-t border-crypto-border px-5 py-3 text-center text-xs font-semibold text-blue-300">
-                  基于模板新建策略
-                </div>
-              </article>
-            );
-          })}
-          {plazaTemplates.map((template) => {
-            const Icon = template.icon;
-            return (
-              <article
-                key={template.key}
-                className="group cursor-pointer overflow-hidden rounded-xl border border-crypto-border bg-crypto-card transition-all hover:border-purple-500/40"
-                onClick={() => {
-                  setSelectedId(null);
-                  setName(template.name.replace('模板', '策略'));
-                  setDescription(template.description);
-                  setScript(template.code || emptyCode);
-                  setActiveVersion(null);
-                  setValidation(null);
-                  setReplayResult(null);
-                  setShowEditor(true);
-                }}
-              >
-                <div className="p-5 pb-3">
-                  <div className="mb-2.5 flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <div className={clsx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', template.tone)}>
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold text-white">{template.name}</h3>
-                        <span className="text-[10px] text-gray-500">{template.category}</span>
-                      </div>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] text-green-400">{template.difficulty}</span>
-                  </div>
-                  <p className="line-clamp-2 min-h-[2.25rem] text-xs leading-relaxed text-gray-400">{template.description}</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 px-5 pb-3">
-                  {template.tags.map((tag) => (
-                    <span key={tag} className="rounded border border-crypto-border bg-crypto-bg px-2 py-0.5 text-[10px] text-gray-500">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                <div className="border-t border-crypto-border px-5 py-2.5 text-[10px] text-gray-600 group-hover:text-purple-400">
-                  点击使用此模板
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
-
-      {listTab === 'inputs' && <StrategyResearchInputs />}
-
-      {listTab === 'audit' && listState === 'ready' && (
-        <section className="space-y-4" data-testid="strategy-audit-scope">
-          <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3 text-xs text-amber-200">
-            此处仅展示验收对象，业务策略数量、运行状态和默认选择均不包含这些记录；原始证据不会被删除。
-          </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {auditStrategies.map((strategy) => (
-              <article key={`audit-${strategy.id}`} className="rounded-xl border border-amber-500/20 bg-crypto-card p-5" data-testid="strategy-audit-card">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold text-white">{strategy.name}</h3>
-                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-500">{strategy.description || '验收策略证据'}</p>
-                  </div>
-                  <span className="shrink-0 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">验收</span>
-                </div>
-                <dl className="mt-4 grid grid-cols-2 gap-2 text-[10px]">
-                  <div className="rounded-lg border border-crypto-border bg-crypto-bg p-2"><dt className="text-slate-600">记录 ID</dt><dd className="mt-1 text-slate-400">{strategy.id}</dd></div>
-                  <div className="rounded-lg border border-crypto-border bg-crypto-bg p-2"><dt className="text-slate-600">运行状态</dt><dd className="mt-1 text-slate-400">{strategy.is_running ? '运行中' : '未运行'}</dd></div>
-                </dl>
-              </article>
-            ))}
-            {auditStrategies.length === 0 ? (
-              <OperatorStatePanel kind="empty" title="暂无验收对象" description="业务视图保持干净，后续验收记录会在此保留审计证据。" />
-            ) : null}
-          </div>
-        </section>
-      )}
-
-      {listTab === 'ai' && (
-        <StrategyAIPanel />
-      )}
-
-      {showEditor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <section className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-crypto-border bg-crypto-card shadow-2xl shadow-black/40">
-            <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-crypto-border bg-crypto-card/95 px-6 py-5 backdrop-blur">
-              <div>
-                <h2 className="flex items-center gap-2 text-lg font-bold text-white">
-                  <Code2 className="h-5 w-5 text-blue-400" />
-                  Python 生命周期策略
-                </h2>
-                <p className="mt-1 text-xs text-gray-500">编写初始化与交易逻辑，保存后可校验并运行预检。</p>
-                <p className="mt-1 text-[11px] text-amber-300/70">A股运行边界：日线 1D · 收盘信号次日成交 · 100股整手 · T+1 · 涨跌停与停牌拦截。</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowEditor(false)}
-                className="rounded-lg border border-crypto-border p-2 text-gray-500 hover:text-gray-300"
-                aria-label="关闭策略编辑"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="max-h-[calc(90vh-136px)] space-y-4 overflow-y-auto px-6 py-5">
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-xs font-medium text-gray-500">策略名称</span>
-                  <input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    className="w-full rounded-lg border border-crypto-border bg-[#0D1117] px-3 py-3 text-sm text-white outline-none focus:border-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-xs font-medium text-gray-500">策略说明</span>
-                  <input
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    className="w-full rounded-lg border border-crypto-border bg-[#0D1117] px-3 py-3 text-sm text-white outline-none focus:border-blue-500"
-                  />
-                </label>
-              </div>
-
-              <label className="block">
-                <span className="mb-2 block text-xs font-medium text-gray-500">策略代码</span>
-                <textarea
-                  value={script}
-                  onChange={(event) => setScript(event.target.value)}
-                  spellCheck={false}
-                  className="h-[460px] w-full resize-none rounded-xl border border-crypto-border bg-[#0D1117] p-4 font-mono text-sm leading-6 text-gray-200 outline-none focus:border-blue-500"
-                />
-              </label>
-              {(validation || replayResult || activeVersion) && (
-                <div className="rounded-lg border border-crypto-border bg-crypto-bg p-3 text-xs">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {validation?.valid ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <AlertCircle className="h-4 w-4 text-amber-400" />}
-                    <span className={validation?.valid ? 'text-emerald-300' : 'text-amber-300'}>{validation?.valid ? '策略校验通过' : '等待校验或存在问题'}</span>
-                    {activeVersion && <span className="text-gray-500">当前版本 v{activeVersion.version}</span>}
-                  </div>
-                  {validation && !validation.valid && <div className="mt-2 text-amber-200/70">{validation.issues.map((item) => `${item.code}: ${item.message}`).join('；')}</div>}
-                  {replayResult?.status === 'success' && <div className="mt-2 text-gray-400">预检通过 · {replayResult.event_count} 个交易日 · {replayResult.intent_count} 个委托意图 · {replayResult.record_count} 条指标</div>}
-                </div>
+      {/* 策略广场 Tab - 模板列表 */}
+      {listTab === 'plaza' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {filteredTemplates.map(t => (
+            <div
+              key={t.key}
+              className={clsx(
+                'bg-crypto-card border border-crypto-border rounded-xl overflow-hidden transition-all group',
+                canWriteStrategy ? 'cursor-pointer hover:border-purple-500/40' : 'cursor-default opacity-80',
               )}
-            </div>
-
-            <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-crypto-border bg-crypto-card/95 px-6 py-4 backdrop-blur">
-              <button
-                type="button"
-                onClick={() => setShowEditor(false)}
-                className="rounded-xl border border-crypto-border px-4 py-2 text-sm font-semibold text-gray-400 hover:text-gray-200"
-              >
-                取消
-              </button>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => void handleSave(true)} disabled={loading || !name.trim()} className="inline-flex items-center gap-2 rounded-xl border border-blue-500/40 px-4 py-2 text-sm font-semibold text-blue-300 disabled:opacity-50"><Save className="h-4 w-4" />验证并保存版本</button>
-                <button type="button" onClick={() => void handleQuickRun()} disabled={loading || !name.trim()} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"><Play className="h-4 w-4" />保存并快速运行</button>
+              onClick={() => {
+                if (canWriteStrategy) handleCreateFromTemplate(t);
+              }}
+            >
+              <div className="p-5 pb-3">
+                <div className="flex items-start justify-between mb-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
+                      t.category === '趋势跟踪' ? 'bg-blue-500/15 text-blue-400' :
+                      t.category === '套利' ? 'bg-green-500/15 text-green-400' :
+                      t.category === '震荡' ? 'bg-yellow-500/15 text-yellow-400' :
+                      t.category === '教程' ? 'bg-amber-500/15 text-amber-400' :
+                      'bg-gray-500/15 text-gray-400'
+                    )}>
+                      {t.category === '趋势跟踪' ? <TrendingUp className="w-4 h-4" /> :
+                       t.category === '套利' ? <Zap className="w-4 h-4" /> :
+                       t.category === '震荡' ? <BarChart3 className="w-4 h-4" /> :
+                       t.category === '教程' ? <BookOpen className="w-4 h-4" /> :
+                       <Code2 className="w-4 h-4" />}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">{t.name}</h3>
+                      <span className="text-[10px] text-gray-500">{t.category}</span>
+                    </div>
+                  </div>
+                  <span className={clsx('text-[10px] px-2 py-0.5 rounded-full flex-shrink-0',
+                    t.difficulty === '入门' ? 'bg-green-500/15 text-green-400' :
+                    t.difficulty === '进阶' ? 'bg-yellow-500/15 text-yellow-400' :
+                    'bg-gray-500/15 text-gray-400'
+                  )}>
+                    {t.difficulty}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 leading-relaxed min-h-[2.25rem] line-clamp-2">{t.description}</p>
+              </div>
+              <div className="px-5 pb-3 flex items-center gap-1.5 flex-wrap">
+                {t.tags.map(tag => (
+                  <span key={tag} className="text-[10px] px-2 py-0.5 bg-crypto-bg text-gray-500 rounded border border-crypto-border">{tag}</span>
+                ))}
+              </div>
+              <div className="border-t border-crypto-border px-5 py-2.5 flex items-center justify-between">
+                <span className="text-[10px] text-gray-600">点击使用此模板</span>
+                <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-purple-400 transition-colors" />
               </div>
             </div>
-          </section>
+          ))}
         </div>
       )}
     </div>
   );
-}
 
-export default Strategy;
+  // ============================================
+  // 渲染：策略详情
+  // ============================================
+  const renderDetailView = () => {
+    if (!selectedStrategy) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center text-sm text-gray-500">
+          <Code2 className="mb-3 h-10 w-10 text-gray-700" />
+          <p>未选择策略</p>
+          <button
+            type="button"
+            onClick={() => setView('list')}
+            className="mt-4 text-blue-400 hover:text-blue-300"
+          >
+            返回策略列表
+          </button>
+        </div>
+      );
+    }
+
+    const config = isRecord(selectedStrategy.config) ? selectedStrategy.config : {};
+    const logic = getStrategyLogicSummary(selectedStrategy);
+    const tradeSymbols = getStrategyConfigArray(config, ['tradeSymbols', 'trade_symbols']);
+    const displaySymbols = tradeSymbols.length > 0 ? tradeSymbols : selectedStrategy.symbols || [];
+    const timeframe = readTextField(config, ['timeframe']);
+    const assetClass = inferStrategyAssetClass(selectedStrategy);
+    const assetClassLabel = assetClass === 'contract' ? '合约' : '现货';
+    const parameterSections = getStrategyParameterSections(config);
+
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              className="flex items-center gap-1.5 rounded-lg border border-crypto-border bg-crypto-card px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              返回
+            </button>
+            <div className="min-w-0">
+              <div className="mb-1 flex items-center gap-2">
+                <span className={clsx(
+                  'rounded-md px-2 py-0.5 text-xs font-semibold',
+                  assetClass === 'contract'
+                    ? 'bg-purple-500/15 text-purple-300'
+                    : 'bg-amber-500/15 text-amber-300',
+                )}>
+                  {assetClassLabel}
+                </span>
+                {timeframe && <span className="text-xs text-gray-500">{formatTimeframeLabel(timeframe)}</span>}
+              </div>
+              <h1 className={clsx('truncate text-2xl font-bold', strategyNameColorClass(assetClass))}>{selectedStrategy.name}</h1>
+            </div>
+          </div>
+          {canWriteStrategy && (
+            <button
+              type="button"
+              onClick={() => handleEditStrategy(selectedStrategy)}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+            >
+              <Edit3 className="h-4 w-4" />
+              编辑策略
+            </button>
+          )}
+        </div>
+
+        <section className="rounded-xl border border-crypto-border bg-crypto-card/80">
+          <button
+            type="button"
+            aria-expanded={logicSummaryOpen}
+            onClick={() => setLogicSummaryOpen((value) => !value)}
+            className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <BookOpen className="h-4 w-4 shrink-0 text-blue-400" />
+              <h2 className="truncate text-base font-semibold text-white">核心标的与交易逻辑</h2>
+            </span>
+            <ChevronDown
+              className={clsx('h-4 w-4 shrink-0 text-gray-500 transition-transform', logicSummaryOpen && 'rotate-180 text-gray-300')}
+            />
+          </button>
+          {logicSummaryOpen && (
+            <div className="grid gap-5 border-t border-crypto-border px-4 py-4 lg:grid-cols-2">
+              <div className="border-l border-blue-500/40 pl-4">
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-300">
+                  <Layers className="h-4 w-4" />
+                  核心标的
+                </div>
+                <p className="text-sm leading-6 text-gray-300">{logic.selectionLogic}</p>
+              </div>
+              <div className="border-l border-emerald-500/40 pl-4">
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-emerald-300">
+                  <BarChart3 className="h-4 w-4" />
+                  交易逻辑
+                </div>
+                <p className="text-sm leading-6 text-gray-300">{logic.tradingLogic}</p>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <StrategyParameterSections sections={parameterSections} />
+
+        <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+          <div className="rounded-xl border border-crypto-border bg-crypto-card p-5">
+            <h2 className="mb-3 text-sm font-semibold text-white">策略描述</h2>
+            <p className="text-sm leading-6 text-gray-400">
+              {selectedStrategy.description || '暂无描述'}
+            </p>
+          </div>
+          <div className="rounded-xl border border-crypto-border bg-crypto-card p-5">
+            <h2 className="mb-3 text-sm font-semibold text-white">交易范围</h2>
+            {displaySymbols.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {displaySymbols.map((symbol) => (
+                  <span
+                    key={symbol}
+                    className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-xs text-gray-300"
+                  >
+                    {symbol}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">暂无交易范围</p>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  };
+
+  // ============================================
+  // 渲染：策略编辑器
+  // ============================================
+  const renderEditorView = () => (
+    <div className="h-full flex flex-col">
+      {/* 编辑器顶部工具栏 */}
+      <div className="flex items-center justify-between px-2 py-3 border-b border-crypto-border shrink-0">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setView('list')}
+            className="flex items-center gap-1 text-gray-400 hover:text-white text-sm transition-colors">
+            <ArrowLeft className="w-4 h-4" />返回
+          </button>
+          <div className="w-px h-5 bg-crypto-border" />
+          <FileCode className="w-4 h-4 text-blue-400" />
+          <span className="text-sm font-medium text-white">{editMode === 'edit' ? '编辑策略' : '新建策略'}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { navigator.clipboard.writeText(formData.scriptContent); setMessage({ type: 'success', text: '代码已复制' }); }}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-white bg-crypto-bg rounded-lg transition-colors">
+            <Copy className="w-3 h-3" />复制
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex items-center gap-1.5 px-5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {saving ? '保存中...' : '保存'}
+          </button>
+        </div>
+      </div>
+
+      {/* 编辑器主体 */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-0 min-h-0 overflow-hidden">
+        {/* 左侧：配置面板 */}
+        <div className="lg:col-span-1 border-r border-crypto-border overflow-y-auto p-4 space-y-4 bg-crypto-card/50">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5">策略名称 <span className="text-red-400">*</span></label>
+            <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
+              placeholder="输入策略名称"
+              className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5">策略描述</label>
+            <textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })}
+              placeholder="简要描述策略逻辑..." rows={3}
+              className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none resize-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5">交易所</label>
+            <CryptoSelect value={formData.exchange} onChange={e => setFormData({ ...formData, exchange: e.target.value })}>
+              <option value="okx">OKX</option>
+            </CryptoSelect>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5">交易对（逗号分隔）</label>
+            <input type="text" value={formData.symbols} onChange={e => setFormData({ ...formData, symbols: e.target.value })}
+              placeholder="BTC/USDT, ETH/USDT"
+              className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5">策略参数 (JSON)</label>
+            <textarea value={formData.config} onChange={e => setFormData({ ...formData, config: e.target.value })}
+              rows={6}
+              className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-3 py-2 text-sm text-white font-mono focus:border-blue-500 focus:outline-none resize-none" />
+          </div>
+
+          {/* API 提示 */}
+          <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <div className="text-[10px] text-blue-400 font-semibold mb-1.5">可用 API</div>
+            <div className="text-[10px] text-gray-400 space-y-1 font-mono">
+              <div><span className="text-green-400">buy</span>(symbol, amount)</div>
+              <div><span className="text-red-400">sell</span>(symbol, amount)</div>
+              <div><span className="text-blue-400">get_klines</span>(symbol, tf, n)</div>
+              <div><span className="text-blue-400">get_ticker</span>(symbol)</div>
+              <div><span className="text-yellow-400">log</span>(message)</div>
+              <div><span className="text-gray-500">config</span> · <span className="text-gray-500">symbols</span></div>
+            </div>
+          </div>
+        </div>
+
+        {/* 右侧：代码编辑器 */}
+        <div className="lg:col-span-3 flex flex-col min-h-0">
+          <div className="flex items-center justify-between px-4 py-2 bg-gray-900/50 border-b border-crypto-border shrink-0">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <FileCode className="w-3.5 h-3.5" />
+              <span>strategy.py</span>
+            </div>
+            <span className="text-[10px] text-gray-600">Python</span>
+          </div>
+          <textarea
+            value={formData.scriptContent}
+            onChange={e => setFormData({ ...formData, scriptContent: e.target.value })}
+            className="flex-1 w-full bg-gray-950 text-gray-300 font-mono text-sm leading-relaxed px-4 py-3 focus:outline-none resize-none"
+            spellCheck={false}
+            style={{ tabSize: 4 }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  // ============================================
+  // 主渲染
+  // ============================================
+  return (
+    <div className={clsx('h-full flex flex-col', view === 'editor' ? '' : 'p-6')}>
+      {/* 消息提示 */}
+      {message && (
+        <div className={clsx('fixed top-4 right-4 z-50 px-4 py-3 rounded-xl flex items-center gap-2 shadow-lg',
+          message.type === 'success' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'
+        )}>
+          {message.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+          <span className="text-sm">{message.text}</span>
+          <button onClick={() => setMessage(null)} className="ml-2"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+
+      {view === 'list' && renderListView()}
+      {view === 'editor' && renderEditorView()}
+      {view === 'detail' && renderDetailView()}
+
+      <ThemeDialog
+        open={deleteBlockedOpen}
+        variant="alert"
+        title="无法删除"
+        content="该策略正在运行或已暂停。请前往「模拟/实盘」页面停止策略后再删除。"
+        tone="warning"
+        confirmText="我知道了"
+        onClose={() => setDeleteBlockedOpen(false)}
+      />
+
+      <ThemeDialog
+        open={deleteTarget !== null}
+        variant="confirm"
+        title="删除策略"
+        content={
+          deleteTarget
+            ? `确定要删除策略「${deleteTarget.name}」吗？删除后不可恢复。`
+            : ''
+        }
+        tone="danger"
+        confirmText="删除"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void runDeleteStrategy()}
+      />
+
+      {/* 启动策略请前往「模拟/实盘」模块 */}
+    </div>
+  );
+}

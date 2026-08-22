@@ -1,19 +1,8 @@
-fastapi>=0.104.0
-uvicorn>=0.24.0
-akshare>=1.12.0
-tushare>=1.4.0
-pandas>=2.1.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
-python-dotenv>=1.0.0
-requests>=2.31.0
-httpx>=0.25.0
-mcp>=1.13.0,<2
-dashscope>=1.14.0
-python-multipart>=0.0.6
-backtrader>=1.9.78.123
-apscheduler>=3.10.0
-SQLAlchemy>=2.0.0
-psycopg[binary]>=3.1.0
-psycopg2-binary>=2.9.9
-psutil>=7.0.0
+-r requirements-base.txt
+
+# AI 时序预测模型 (Shadowell/Kairos)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.3.1+cpu
+git+https://github.com/Shadowell/Kairos.git
+
+# AI Agent (通义千问 — 通过 OpenAI 兼容接口调用，无需额外 SDK)
