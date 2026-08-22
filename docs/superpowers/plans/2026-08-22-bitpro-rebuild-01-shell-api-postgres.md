@@ -127,7 +127,7 @@ git commit -m "build(rebuild): enforce A-share PostgreSQL runtime"
 - Consumes: `Settings`、后续 `AppContext`。
 - Produces: `create_api_router(context: AppContext) -> APIRouter`、`GET /api/health`、`GET /api/health/storage`。
 
-- [ ] **Step 1: 写当前 API 失败测试**
+- [x] **Step 1: 写当前 API 失败测试**
 
 ```python
 def test_only_current_api_is_registered(client):
@@ -141,13 +141,13 @@ def test_openapi_has_no_versioned_paths(client):
     assert all("/api/v" not in path for path in paths)
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_current_api_router.py -q`
 
 Expected: FAIL，BitPro Router 仍注册带版本号路径。
 
-- [ ] **Step 3: 实现唯一 Router**
+- [x] **Step 3: 实现唯一 Router**
 
 ```python
 def create_api_router(context: AppContext) -> APIRouter:
@@ -162,18 +162,18 @@ def create_app(context: AppContext | None = None) -> FastAPI:
     return app
 ```
 
-- [ ] **Step 4: 删除旧 Router 并静态扫描消费者**
+- [x] **Step 4: 删除旧 Router 并静态扫描消费者**
 
 先用 `rg -n '/api/v|app\.api\.v2|api_router_v2' backend frontend tests` 列出消费者，
 在同一提交中迁移健康消费者后删除 `backend/app/api/v2/`。不得添加 redirect。
 
-- [ ] **Step 5: 运行 Router 与安全测试**
+- [x] **Step 5: 运行 Router 与安全测试**
 
 Run: `python -m pytest backend/tests/test_current_api_router.py rebuild/tests/test_safety.py -q && python rebuild/assert_safety.py --root . --format json`
 
 Expected: PASS；`active_versioned_api_routes=0`。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/app/api backend/app/main.py backend/tests/test_current_api_router.py frontend/src/api/client.ts

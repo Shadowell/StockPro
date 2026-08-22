@@ -96,7 +96,7 @@ def test_current_api_registers_only_unversioned_rebuild_routes(
         sys.path.remove(str(backend_root))
 
     assert "/api/health" in paths
-    assert "/api/auth/me" in paths
+    assert "/api/health/storage" in paths
     assert not any(path.startswith(("/api/v1", "/api/v2")) for path in paths)
 
 

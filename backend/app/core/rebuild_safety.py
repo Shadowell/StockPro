@@ -98,7 +98,7 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
     for path in _source_files(repository_root):
         relative = path.relative_to(repository_root).as_posix()
         text = path.read_text(encoding="utf-8", errors="replace")
-        active = relative in ACTIVE_RUNTIME_FILES
+        active = relative in ACTIVE_RUNTIME_FILES or relative.startswith("backend/app/api/")
         for category, pattern in CATEGORY_PATTERNS.items():
             match = pattern.search(text)
             if match is None:

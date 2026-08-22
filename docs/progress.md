@@ -24,6 +24,17 @@
   凭据。当前 21 项 rebuild 测试、类型检查、零 warning lint、生产构建、bundle budget
   和五类安全扫描通过；没有启动长运行服务。
 
+## BitPro-first Wave 1：唯一当前 API Router（2026-08-22）
+
+- 后端已建立 `create_api_router(context)`，当前只注册 `/api/health` 与
+  `/api/health/storage`；OpenAPI 恢复标准 `/openapi.json`，所有路径均无版本号。
+- `/api/health/storage` 支持注入 Repository context；Repository 尚未接入时诚实返回
+  PostgreSQL `unconfigured`，不尝试连接、不执行迁移、不回退 SQLite。
+- 已删除导入的 `backend/app/api/v2/` 26 个 Router 文件和直接依赖 SQLite 的旧
+  `backend/app/api/public.py`。没有 redirect、alias 或兼容入口；旧路径测试明确返回 404。
+- 当前 API Router 与安全门禁 12 项测试通过，当前入口/API/client/App 静态扫描没有
+  `app.api.v2`、`api_router_v2` 或版本化 API 字符串，五类安全计数继续全 0。
+
 ## BitPro-first Wave 0：隔离基线门禁完成（2026-08-22）
 
 - 已从计划提交 `27f53ce` 创建独立 worktree
