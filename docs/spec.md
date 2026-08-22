@@ -1,7 +1,7 @@
 # StockPro 产品规格
 
 > 文档角色：当前产品级事实入口
-> 更新日期：2026-08-20
+> 更新日期：2026-08-22
 > 当前交付边界：B/S、PostgreSQL、研究优先、仅 Paper 模拟交易（实盘仅预检与留痕）
 
 ## 1. 产品定义
@@ -248,3 +248,15 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 6. 已知缺口在 `docs/progress.md` 或对应合同中明确记录。
 
 具体实现与历史验收见 [开发进度](progress.md) 和 [Sprint 合同](contracts/)。
+
+## 16. 已批准的 BitPro-first 重建方向
+
+2026-08-22 已批准在隔离分支中以 BitPro 固定提交
+`00517963e90f463e608289b0277fe598bd82d9bf` 为完整应用底座重建 StockPro。
+当前 `main` 与生产仍以本规格前 15 节为事实；新方向在完成全部验收并获得最终切换确认前，
+不得被描述为已上线。
+
+目标系统直接继承 BitPro 的完整页面与交互标准，使用 PostgreSQL 和 A股领域服务替换
+SQLite 与数字资产运行时。公共及新开发 API 只保留当前 `/api/*`，不保留带版本号路径或
+旧入口。历史版本字段只作为只读审计证据。完整设计、数据连续性、期货预留和切换门禁见
+[BitPro-first A股整仓重建设计合同](contracts/active-bitpro-first-a-share-rebuild.md)。

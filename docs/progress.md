@@ -1,5 +1,21 @@
 # Progress Log
 
+## BitPro-first A股整仓重建设计获批（2026-08-22）
+
+- 用户批准采用 BitPro-first B2 路线：从 BitPro 固定提交
+  `00517963e90f463e608289b0277fe598bd82d9bf` 导入完整应用底座，在任何服务启动前隔离
+  数字资产实盘、私有 API、策略 seed、SQLite 和后台任务，再接入 StockPro PostgreSQL
+  与 A股领域。
+- 用户批准恢复 BitPro 完整操作台导航：行情、股票池、因子、策略、回测、模拟、盯盘、
+  信号、监控、复盘、数据和 AI研发；期货与套利预留但隐藏，链上和 ARC 不进入产品。
+- 用户批准唯一当前 API 原则：只提供 `/api/*`，不保留带版本号路径、旧入口、兼容
+  Router 或长期双合同；历史版本字段只作为旧记录审计元数据。
+- 当前 PostgreSQL 对账基线为 37 个迁移、67 个策略版本、79 个回测、15 个 Paper 实例、
+  61 个 Paper 订单、47 个 Paper 成交、23 个持仓、428 个权益快照、681 个运行事件和
+  1 份复盘。任何迁移切片无法证明这些记录连续时必须停止。
+- 正式设计写入 `docs/contracts/active-bitpro-first-a-share-rebuild.md`。当前仅完成设计，
+  尚未创建重建 worktree、复制 BitPro 源码、修改数据库或触发部署。
+
 ## Operator capability fusion final acceptance (2026-08-20)
 
 - Completed all eight contract phases while preserving Strategy → Backtest →

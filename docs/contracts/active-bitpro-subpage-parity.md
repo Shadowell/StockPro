@@ -1,6 +1,14 @@
-# Active Contract: BitPro UI Density Parity (All Subpages)
+# 当前合同入口
 
-Status: Active from 2026-07-27.
+当前活跃合同为 [BitPro-first A股整仓重建设计合同](active-bitpro-first-a-share-rebuild.md)，状态为“设计已批准，等待用户复核正式文档后进入实施计划”。
+
+以下内容是已完成并被新方向取代的历史合同。它继续保留作为旧 StockPro UI 改造的决策记录；其中“不得复制 BitPro 业务页面源码”的约束不再适用于已获用户明确批准的整仓重建。
+
+---
+
+# 历史合同：BitPro UI Density Parity（全部子页面）
+
+状态：自 2026-07-27 起实施，现已完成并被 BitPro-first 整仓重建合同取代。
 
 ## Sprint Name
 
@@ -22,7 +30,7 @@ PostgreSQL evidence and paper-only safety boundary.
 - Shared primitives: `@bitpro/ui` from `BitPro/packages/bitpro-ui`
 - Visual skill: `~/.codex/skills/financial-operator-ui/SKILL.md`
 
-Do not copy BitPro business-page source into StockPro.
+历史执行约束：Do not copy BitPro business-page source into StockPro.
 
 ## Subpage Inventory (must all pass)
 
