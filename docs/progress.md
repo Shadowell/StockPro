@@ -15,6 +15,10 @@
   1 份复盘。任何迁移切片无法证明这些记录连续时必须停止。
 - 正式设计写入 `docs/contracts/active-bitpro-first-a-share-rebuild.md`。当前仅完成设计，
   尚未创建重建 worktree、复制 BitPro 源码、修改数据库或触发部署。
+- 实施工作拆分为总控计划和 Wave 0–6 七个详细计划，位于
+  `docs/superpowers/plans/2026-08-22-bitpro-*.md`。每个任务包含明确文件、接口、
+  失败测试、通过条件和提交边界；由于 BitPro 规则禁止子代理，执行方式固定为当前会话
+  使用 `executing-plans` 内联推进。
 
 ## Operator capability fusion final acceptance (2026-08-20)
 

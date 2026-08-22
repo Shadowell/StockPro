@@ -1,6 +1,6 @@
 # BitPro-first A股整仓重建设计合同
 
-- 状态：设计已批准，实现尚未开始
+- 状态：设计已批准，实施计划已编制，实现尚未开始
 - 批准日期：2026-08-22
 - StockPro 基线：`bff8e05a69faa9aef1adf8391abb73843ad3c7d7`
 - BitPro 固定来源：`00517963e90f463e608289b0277fe598bd82d9bf`
@@ -342,3 +342,14 @@ BitPro 页面使用其成熟 ViewModel；适配层从现有 PostgreSQL 对象生
 - 同时维护旧 StockPro UI 和新 BitPro UI。
 - 为兼容旧消费者保留旧 API 入口。
 - 用 mock、seed 或合成行情填充最终生产截图。
+
+## 16. 实施计划索引
+
+- [总控计划](../superpowers/plans/2026-08-22-bitpro-first-a-share-rebuild.md)
+- [Wave 0：隔离导入与安全封锁](../superpowers/plans/2026-08-22-bitpro-rebuild-00-foundation-import.md)
+- [Wave 1：Shell、当前 API 与 PostgreSQL](../superpowers/plans/2026-08-22-bitpro-rebuild-01-shell-api-postgres.md)
+- [Wave 2：研究工作区](../superpowers/plans/2026-08-22-bitpro-rebuild-02-research-workspaces.md)
+- [Wave 3：策略、回测、模拟](../superpowers/plans/2026-08-22-bitpro-rebuild-03-mainline.md)
+- [Wave 4：盯盘、信号、监控、复盘](../superpowers/plans/2026-08-22-bitpro-rebuild-04-operations.md)
+- [Wave 5：数据、AI研发、期货预留](../superpowers/plans/2026-08-22-bitpro-rebuild-05-data-ai-futures.md)
+- [Wave 6：最终验收、切换与回滚](../superpowers/plans/2026-08-22-bitpro-rebuild-06-acceptance-cutover.md)
