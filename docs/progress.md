@@ -10,6 +10,20 @@
   `e204e9f41a9df26a0aefd77a7a6079a86265a234` 和
   `27f53cead43557760f5ce74ffc2a598078f9fcfa`。本修正不涉及代码、数据库或运行服务。
 
+## BitPro-first Wave 1：A股 PostgreSQL 运行依赖收敛（2026-08-22）
+
+- 后端运行依赖已从 BitPro 的 requirements-base/Kairos 链脱离，移除 ccxt、aiosqlite、
+  Kairos 与 torch；保留 FastAPI、PostgreSQL、TuShare、AKShare、Backtrader、APScheduler、
+  HTTP、Agent 和验证依赖。隔离 venv 安装通过。
+- `Settings` 现在强制 `DATABASE_URL` 存在且为 PostgreSQL，运行模式固定为
+  `ashare_paper`；Provider fetch、scheduler、Paper recovery、私有交易所、币圈后台任务
+  和实盘默认全部关闭。缺失 URL 或 SQLite URL 的配置测试均硬失败。
+- 前端保留导入的 React/Vite/Router 版本与根目录 `@bitpro/ui` 包，新增 TypeScript 检查、
+  Playwright mock/real 脚本和 bundle budget；lockfile 不包含工作区外绝对路径。
+- `app.core` 不再在包导入时实例化配置或加载 BitPro error 模块，静态安全扫描无需数据库
+  凭据。当前 21 项 rebuild 测试、类型检查、零 warning lint、生产构建、bundle budget
+  和五类安全扫描通过；没有启动长运行服务。
+
 ## BitPro-first Wave 0：隔离基线门禁完成（2026-08-22）
 
 - 已从计划提交 `27f53ce` 创建独立 worktree

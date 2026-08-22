@@ -35,7 +35,7 @@
 - Consumes: Wave 0 导入的 BitPro manifests。
 - Produces: `Settings.DATABASE_URL: str`、`Settings.RUNTIME_MODE == "ashare_paper"`、无数字资产私有 SDK 的安装集合。
 
-- [ ] **Step 1: 写依赖与配置失败测试**
+- [x] **Step 1: 写依赖与配置失败测试**
 
 ```python
 def test_runtime_dependencies_exclude_private_exchange_and_sqlite():
@@ -50,13 +50,13 @@ def test_settings_require_postgres(monkeypatch):
         Settings()
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest rebuild/tests/test_runtime_dependencies.py -q`
 
 Expected: FAIL，导入的 BitPro 依赖仍包含数字资产/SQLite 运行项或配置未拒绝 SQLite。
 
-- [ ] **Step 3: 实现当前运行配置**
+- [x] **Step 3: 实现当前运行配置**
 
 ```python
 class Settings(BaseSettings):
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
 `backend/requirements.txt` 保留 FastAPI、uvicorn、pydantic、psycopg、pandas、
 TuShare、AKShare、Backtrader、APScheduler、httpx 和测试依赖；移除只服务数字资产私有执行的 SDK。
 
-- [ ] **Step 4: 固定前端 BitPro 基线并补 StockPro 测试依赖**
+- [x] **Step 4: 固定前端 BitPro 基线并补 StockPro 测试依赖**
 
 保留 BitPro React/Router/状态管理版本和 `packages/bitpro-ui`，补入 Playwright 与 StockPro bundle-budget 脚本所需开发依赖。运行：
 
@@ -100,13 +100,13 @@ Run: `npm --prefix frontend install --package-lock-only --ignore-scripts`
 
 Expected: lockfile 更新；没有从绝对路径或工作区外引用依赖。
 
-- [ ] **Step 5: 运行测试和依赖安装检查**
+- [x] **Step 5: 运行测试和依赖安装检查**
 
 Run: `python -m pytest rebuild/tests/test_runtime_dependencies.py -q && npm --prefix frontend ci --ignore-scripts --no-audit --no-fund`
 
 Expected: PASS；安装完成。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/requirements.txt backend/app/core/config.py frontend/package.json frontend/package-lock.json frontend/playwright.config.ts rebuild/tests/test_runtime_dependencies.py

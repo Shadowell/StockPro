@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -22,8 +22,12 @@ class Settings(BaseSettings):
     ]
     LOG_LEVEL: str = "INFO"
 
-    DATABASE_BACKEND: str = "postgresql"
-    DATABASE_URL: Optional[str] = None
+    DATABASE_BACKEND: Literal["postgresql"] = "postgresql"
+    DATABASE_URL: str
+    RUNTIME_MODE: Literal["ashare_paper"] = "ashare_paper"
+    ENABLE_PROVIDER_FETCH: bool = False
+    ENABLE_SCHEDULER: bool = False
+    ENABLE_PAPER_RECOVERY: bool = False
     ENABLE_PRIVATE_EXCHANGE_API: bool = False
     ENABLE_CRYPTO_BACKGROUND_JOBS: bool = False
     ENABLE_LIVE_TRADING: bool = False
@@ -49,6 +53,13 @@ class Settings(BaseSettings):
             if value.startswith("["):
                 return json.loads(value)
             return [item.strip() for item in value.split(",")]
+        return value
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def postgres_only(cls, value: str) -> str:
+        if not value.startswith(("postgresql://", "postgresql+psycopg://")):
+            raise ValueError("StockPro rebuild requires PostgreSQL")
         return value
 
 

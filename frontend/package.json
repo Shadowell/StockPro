@@ -6,10 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "check": "tsc --noEmit",
+    "check:bundle-budget": "node scripts/check-bundle-budget.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:mock": "cross-env MOCK_API=true playwright test",
+    "test:e2e:real": "cross-env MOCK_API=false E2E_REAL_BACKEND=1 playwright test",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@bitpro/ui": "file:../packages/bitpro-ui",
     "@number-flow/react": "^0.6.2",
     "axios": "^1.6.2",
     "clsx": "^2.0.0",
@@ -24,12 +30,14 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
+    "cross-env": "^10.1.0",
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",

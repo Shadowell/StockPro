@@ -82,7 +82,10 @@ def test_imported_repository_has_no_active_unsafe_surface() -> None:
     assert report.quarantined_source_findings > 0
 
 
-def test_current_api_registers_only_unversioned_rebuild_routes() -> None:
+def test_current_api_registers_only_unversioned_rebuild_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://stockpro@127.0.0.1/stockpro")
     backend_root = PROJECT_ROOT / "backend"
     sys.path.insert(0, str(backend_root))
     try:
@@ -97,7 +100,10 @@ def test_current_api_registers_only_unversioned_rebuild_routes() -> None:
     assert not any(path.startswith(("/api/v1", "/api/v2")) for path in paths)
 
 
-def test_current_health_is_truthful_and_write_free() -> None:
+def test_current_health_is_truthful_and_write_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://stockpro@127.0.0.1/stockpro")
     backend_root = PROJECT_ROOT / "backend"
     sys.path.insert(0, str(backend_root))
     try:

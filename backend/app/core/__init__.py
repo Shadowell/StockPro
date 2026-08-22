@@ -1,25 +1,7 @@
-from .config import settings
-from .contracts import ok, fail, page_meta
-from .errors import (
-    AppError,
-    BadRequestError,
-    NotFoundError,
-    DependencyError,
-    ExchangeUnavailableError,
-    UpstreamError,
-    InternalError,
-)
+"""StockPro core package.
 
-__all__ = [
-    "settings",
-    "ok",
-    "fail",
-    "page_meta",
-    "AppError",
-    "BadRequestError",
-    "NotFoundError",
-    "DependencyError",
-    "ExchangeUnavailableError",
-    "UpstreamError",
-    "InternalError",
-]
+Core modules are imported explicitly so static safety checks never instantiate
+runtime settings or legacy services as a package-import side effect.
+"""
+
+__all__: list[str] = []
