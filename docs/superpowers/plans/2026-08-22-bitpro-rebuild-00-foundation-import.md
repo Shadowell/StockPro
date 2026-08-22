@@ -195,7 +195,7 @@ git commit -m "build(rebuild): pin BitPro source snapshot"
 - Consumes: `BITPRO_SOURCE_REPO`, `BITPRO_SOURCE_SHA`, validated target worktree.
 - Produces: application directories whose tracked content matches the fixed BitPro archive, plus StockPro governance files.
 
-- [ ] **Step 1: 写导入 allowlist/denylist 失败测试**
+- [x] **Step 1: 写导入 allowlist/denylist 失败测试**
 
 ```python
 def test_import_contract_keeps_governance_and_excludes_runtime_data(import_manifest):
@@ -207,13 +207,13 @@ def test_import_contract_keeps_governance_and_excludes_runtime_data(import_manif
     assert import_manifest["reference_paths"] == ["docs/pages", "docs/screenshots", "docs/product_manual"]
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest rebuild/tests/test_import_contract.py -q`
 
 Expected: FAIL，导入脚本/manifest 不存在。
 
-- [ ] **Step 3: 实现机械导入脚本**
+- [x] **Step 3: 实现机械导入脚本**
 
 脚本必须先验证 `pwd` 精确等于目标 worktree，再创建 `mktemp -d`，使用：
 
@@ -243,19 +243,19 @@ rsync -a --delete "$IMPORT_TEMP_DIR/docs/product_manual/" "$TARGET_ROOT/docs/ref
 
 脚本不得同步 `.github`、`deploy`、`data`、根文档、环境文件或 BitPro 工作区文件。
 
-- [ ] **Step 4: 运行导入测试和 dry-run manifest**
+- [x] **Step 4: 运行导入测试和 dry-run manifest**
 
 Run: `python -m pytest rebuild/tests/test_import_contract.py -q && ./rebuild/import_bitpro_baseline.sh --dry-run --manifest .codex-artifacts/rebuild/import.json`
 
 Expected: PASS；manifest 的 source SHA 精确匹配，写入范围仅为五个应用根。
 
-- [ ] **Step 5: 执行机械导入并检查范围**
+- [x] **Step 5: 执行机械导入并检查范围**
 
 Run: `./rebuild/import_bitpro_baseline.sh --apply --manifest .codex-artifacts/rebuild/import.json && git status --short`
 
 Expected: 只有五个应用根发生大规模变更并新增 `docs/reference/bitpro-baseline`；`AGENTS.md`、`LICENSE`、`.github/`、`deploy/` 和设计合同未变化。
 
-- [ ] **Step 6: 提交纯导入快照**
+- [x] **Step 6: 提交纯导入快照**
 
 ```bash
 git add backend frontend packages scripts tests docs/reference/bitpro-baseline

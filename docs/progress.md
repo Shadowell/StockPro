@@ -20,6 +20,15 @@
   `00517963e90f463e608289b0277fe598bd82d9bf`，并确认该提交包含 frontend、backend、
   packages、scripts 和 tests 五个应用根。当前 BitPro 脏工作区、`.env` 和根治理文件
   均不属于导入来源；来源验证 2 项测试通过。
+- 已通过 allowlist 导入工具把固定 BitPro 提交的 backend、frontend、packages、scripts
+  和 tests 五个应用根机械同步到隔离分支，并把页面设计、截图和产品手册复制到
+  `docs/reference/bitpro-baseline/`；共形成 888 个固定来源路径的纯导入快照。
+- 导入前后的 AGENTS、LICENSE、`.github`、deploy、StockPro 合同、规格与进度文件保持
+  不变；暂存检查未发现 `.env`、虚拟环境、node_modules、数据库或日志。BitPro 来源本身
+  的既有行尾空格保留在纯导入提交中，后续只在实际适配文件上清理。
+- 导入工具提交为 `4a07b41`，固定应用快照提交为 `f84fc53`。截至此处没有启动
+  uvicorn、Vite、scheduler、Provider、Paper recovery 或策略 worker；应用尚不具备
+  安全启动条件，下一步必须先完成数字资产、SQLite 和带版本号 API 静态封锁。
 
 ## BitPro-first A股整仓重建设计获批（2026-08-22）
 
