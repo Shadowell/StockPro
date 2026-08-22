@@ -22,11 +22,9 @@ import {
   Palette,
   PlugZap,
   Plus,
-  Rocket,
   ScanLine,
   LogOut,
   KeyRound,
-  Network,
   Trash2,
   ShieldCheck,
   ClipboardList,
@@ -48,7 +46,6 @@ import {
 import { useAuth } from '../auth/AuthProvider';
 import { useSettingsStore, type ColorScheme } from '../stores/useSettingsStore';
 import CryptoSelect from './CryptoSelect';
-import { BitProLogo } from './BitProLogo';
 import { PageErrorBoundary } from './PageErrorBoundary';
 
 type NavRole = 'admin' | 'guest';
@@ -67,16 +64,14 @@ const navItems = [
   { path: '/market', icon: TrendingUp, label: '行情', allowedRoles: ['admin', 'guest'] },
   { path: '/strategy', icon: Code2, label: '策略', allowedRoles: ['admin', 'guest'] },
   { path: '/backtest', icon: FlaskConical, label: '回测', allowedRoles: ['admin', 'guest'] },
-  { path: '/live', icon: Activity, label: '模拟', allowedRoles: ['admin', 'guest'] },
-  { path: '/live-real', icon: Rocket, label: '实盘', allowedRoles: ['admin', 'guest'] },
+  { path: '/paper', icon: Activity, label: '模拟', allowedRoles: ['admin', 'guest'] },
   { path: '/watch', icon: ScanLine, label: '盯盘', allowedRoles: ['admin', 'guest'] },
+  { path: '/signals', icon: Bell, label: '信号', allowedRoles: ['admin', 'guest'] },
   { path: '/monitor', icon: Eye, label: '监控', allowedRoles: ['admin', 'guest'] },
   { path: '/review', icon: ClipboardList, label: '复盘', allowedRoles: ['admin', 'guest'] },
   { path: '/data', icon: Database, label: '数据', allowedRoles: ['admin', 'guest'] },
   { path: '/factorlab', icon: LibraryBig, label: '因子', allowedRoles: ['admin', 'guest'] },
-  { path: '/onchain', icon: Network, label: '链上', allowedRoles: ['admin', 'guest'] },
   { path: '/ai-lab', icon: Sparkles, label: 'AI研发', allowedRoles: ['admin', 'guest'] },
-  { path: '/arc', icon: Bot, label: '自主研究', allowedRoles: ['admin'] },
 ];
 
 const createEmptyLLMProviderForm = (): LLMProviderFormState => ({
@@ -1003,7 +998,13 @@ export default function MainLayout() {
       <aside className="w-16 shrink-0 bg-crypto-card border-r border-crypto-border flex flex-col overflow-hidden">
         {/* Logo */}
         <div className="h-16 flex items-center justify-center border-b border-crypto-border">
-          <BitProLogo className="h-11 w-11" />
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-300"
+            title="StockPro"
+          >
+            <TrendingUp className="h-5 w-5" />
+            <span className="sr-only">StockPro</span>
+          </div>
         </div>
 
         {/* 导航 */}
@@ -1070,7 +1071,7 @@ export default function MainLayout() {
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
               <p className="min-w-0">
                 <span className="font-semibold text-cyan-200">访客模式：</span>
-                部分页面功能不可用，仅支持查看和受限回测；策略启停、实盘控制、配置修改、数据/AI 写入需管理员权限。
+                部分页面功能不可用，仅支持查看和受限回测；策略运行控制、配置修改、数据/AI 写入需管理员权限。
               </p>
             </div>
           </div>

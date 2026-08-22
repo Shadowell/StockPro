@@ -1,3 +1,8 @@
-from .v2 import api_router_v2
+"""Current StockPro API package.
 
-__all__ = ["api_router_v2"]
+Imported BitPro routers remain quarantined under ``app.api.v2`` and are not
+exported or registered. Wave 1 replaces them with unversioned PostgreSQL-backed
+StockPro routers.
+"""
+
+__all__: list[str] = []

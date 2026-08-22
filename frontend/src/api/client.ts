@@ -9,7 +9,7 @@ import type {
   Strategy,
 } from '../types';
 
-const API_BASE = '/api/v2';
+const API_BASE = '/api';
 
 /** 默认 REST 超时（秒） */
 const DEFAULT_TIMEOUT_MS = 30_000;

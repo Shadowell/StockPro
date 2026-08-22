@@ -279,7 +279,7 @@ git commit -m "chore(rebuild): import pinned BitPro application baseline"
 - Consumes: BitPro 导入后的路由、配置和模块树。
 - Produces: `RebuildSafetyReport`、`assert_safe_to_start(root: Path) -> None`；后续启动脚本必须调用。
 
-- [ ] **Step 1: 写 fail-closed 测试**
+- [x] **Step 1: 写 fail-closed 测试**
 
 ```python
 def test_safety_report_blocks_registered_private_exchange_and_sqlite_runtime(tmp_path):
@@ -296,13 +296,13 @@ def test_safety_report_blocks_active_versioned_api_paths(tmp_path):
     assert scan_rebuild_safety(tmp_path).active_versioned_api_routes == 1
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest rebuild/tests/test_safety.py -q`
 
 Expected: FAIL，安全扫描器不存在。
 
-- [ ] **Step 3: 实现扫描报告**
+- [x] **Step 3: 实现扫描报告**
 
 ```python
 @dataclass(frozen=True)
@@ -321,7 +321,7 @@ class RebuildSafetyReport:
 私有账户/下单客户端、`sqlite3.connect`、BitPro local DB import、带版本号 API、
 `/live-real` 注册、资金费率/清算/链上/跨所 scheduler 注册。
 
-- [ ] **Step 4: 在启动前调用安全门禁**
+- [x] **Step 4: 在启动前调用安全门禁**
 
 ```python
 def create_app() -> FastAPI:
@@ -340,18 +340,18 @@ ENABLE_LIVE_TRADING = False
 DATABASE_BACKEND = "postgresql"
 ```
 
-- [ ] **Step 5: 移除不可注册路由和导航**
+- [x] **Step 5: 移除不可注册路由和导航**
 
 `frontend/src/App.tsx` 不得注册数字资产实盘、链上、ARC 和套利页面；
 `MainLayout` 不得显示这些入口。保留 `/paper`、`/watch`、`/signals`、`/monitor`、`/review` 的占位路由，内容明确为 A股适配未完成。
 
-- [ ] **Step 6: 运行安全测试与全树扫描**
+- [x] **Step 6: 运行安全测试与全树扫描**
 
 Run: `python -m pytest rebuild/tests/test_safety.py -q && python rebuild/assert_safety.py --root . --format json`
 
 Expected: 测试 PASS；五类可达阻断计数全部为 0。BitPro 未注册来源文件可计入 `quarantined_source_findings`，但 `passed` 仍须基于应用可达面为 true。
 
-- [ ] **Step 7: 提交安全封锁**
+- [x] **Step 7: 提交安全封锁**
 
 ```bash
 git add rebuild/assert_safety.py rebuild/tests/test_safety.py backend/app/core/rebuild_safety.py backend/app/core/config.py backend/app/main.py frontend/src/App.tsx frontend/src/components/MainLayout.tsx

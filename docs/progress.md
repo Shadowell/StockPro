@@ -29,6 +29,17 @@
 - 导入工具提交为 `4a07b41`，固定应用快照提交为 `f84fc53`。截至此处没有启动
   uvicorn、Vite、scheduler、Provider、Paper recovery 或策略 worker；应用尚不具备
   安全启动条件，下一步必须先完成数字资产、SQLite 和带版本号 API 静态封锁。
+- 第一启动前安全封锁已完成。当前后端入口只注册 `/api/health` 与 `/api/auth/me`，
+  OpenAPI 位于 `/api/openapi.json`；前端 API 与 WebSocket 基址均已切换到唯一当前
+  `/api/*` 合同，不保留 `/api/v1`、`/api/v2` 或公共版本化入口。
+- 配置默认关闭私有交易所、币圈后台任务和实盘，数据库后端固定为 PostgreSQL。
+  启动入口不导入 SQLite、交易所、策略引擎、scheduler、实时行情或 BitPro Router。
+- 前端保留首页、行情、策略、回测、模拟、盯盘、信号、监控、复盘、数据、因子和
+  AI研发导航；实盘、链上、套利和 ARC 不注册。所有当前页面均为真实的 A股适配空态，
+  不读取旧币圈模块、不显示 mock 行情，也不暗示 Paper 已恢复运行。
+- 安全门禁 8 项测试通过；全树扫描五类可达阻断计数均为 0，69 个 BitPro 遗留文件
+  仅计为不可达来源。前端生产构建与零 warning lint 通过，17 项 rebuild 测试、Python
+  编译和真实 PostgreSQL 连续性回验通过；整个 Wave 仍未启动任何长运行服务。
 
 ## BitPro-first A股整仓重建设计获批（2026-08-22）
 
