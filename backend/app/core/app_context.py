@@ -12,6 +12,7 @@ from app.repositories.factor_repository import PostgresFactorRepository
 from app.repositories.strategy_repository import PostgresStrategyRepository
 from app.repositories.backtest_repository import PostgresBacktestRepository
 from app.repositories.paper_repository import PostgresPaperRepository
+from app.repositories.operations_repository import PostgresOperationsRepository
 from app.repositories.protocols import Repositories
 
 
@@ -39,6 +40,7 @@ def build_app_context(
     strategy_repository = PostgresStrategyRepository(database)
     backtest_repository = PostgresBacktestRepository(database)
     paper_repository = PostgresPaperRepository(database)
+    operations_repository = PostgresOperationsRepository(database)
     return AppContext(
         settings=runtime_settings,
         repositories=Repositories(
@@ -50,6 +52,7 @@ def build_app_context(
             strategies=strategy_repository,
             backtests=backtest_repository,
             paper=paper_repository,
+            operations=operations_repository,
         ),
         clock=clock,
     )

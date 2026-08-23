@@ -34,7 +34,7 @@
 **Interfaces:**
 - Produces: `SignalView`, `AlertView`, `WatchContextView`, `MonitorView`, `ReviewView`；所有对象携带 source ID、Paper ID、时间和 data purpose。
 
-- [ ] **Step 1: 写同源证据失败测试**
+- [x] **Step 1: 写同源证据失败测试**
 
 ```python
 def test_operations_objects_link_same_paper_instance(service):
@@ -46,13 +46,13 @@ def test_operations_objects_link_same_paper_instance(service):
     assert all(item.paper_instance_id == paper_id for item in context.positions)
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_operations_evidence_chain.py -q`
 
 Expected: FAIL，Operations Service 不存在。
 
-- [ ] **Step 3: 定义不可变 ViewModel**
+- [x] **Step 3: 定义不可变 ViewModel**
 
 ```python
 @dataclass(frozen=True)
@@ -80,17 +80,17 @@ class AlertView:
     status: str
 ```
 
-- [ ] **Step 4: 实现 Repository 聚合查询**
+- [x] **Step 4: 实现 Repository 聚合查询**
 
 使用现有 `strategy_signals`、orders、trades、positions、risk events、Paper events、alerts 和 notification deliveries；业务 scope 排除 acceptance/seed，audit scope 保留。
 
-- [ ] **Step 5: 运行测试和只读检查**
+- [x] **Step 5: 运行测试和只读检查**
 
 Run: `python -m pytest backend/tests/test_operations_evidence_chain.py -q`
 
 Expected: PASS；构造 Watch/Monitor/Review read model 没有写入。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/app/domain/operations backend/app/services/operations_application_service.py backend/app/repositories backend/tests/test_operations_evidence_chain.py

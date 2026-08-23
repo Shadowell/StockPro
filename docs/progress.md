@@ -1,5 +1,15 @@
 # Progress Log
 
+## BitPro-first Wave 4：统一 PostgreSQL 运行证据模型（2026-08-23）
+
+- 新增 Operations domain、`PostgresOperationsRepository` 和 `OperationsApplicationService`，
+  直接复用 Paper 账本聚合，统一 signal/order/trade/position/risk/runtime event/alert 的
+  `paper_instance_id` 与 source ID，不建立第二套运行事实。
+- 真实隔离库 audit 视图读取 15 实例、79 信号、61 订单、47 成交、23 持仓，以及各最多
+  200 条风险/运行事件和 97 条告警；scope=business 继续排除 acceptance/seed 证据。
+- 公共 Signal/Alert ViewModel 删除历史 API/迁移字段；读取不恢复、不推进、不确认、不写告警。
+  同源链回归测试、安全扫描和 Paper 15/61/47/23/428/681 连续性通过。
+
 ## BitPro-first Wave 3：策略 → 回测 → 模拟主线验收（2026-08-23）
 
 - 新增跨页 E2E 固定“策略卡 → 回测控制台 → 仅模拟 Paper”为唯一执行主线；导航继续不注册
