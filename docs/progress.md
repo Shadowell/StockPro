@@ -82,6 +82,25 @@
 - Shell E2E 在桌面与 390×844 窄屏各通过一项：侧栏跨路由保持同一 DOM、批准导航可见、
   禁止入口不存在、窄屏无横向溢出。实际截图已人工检查，保持 BitPro 紧凑暗色层级与诚实空态。
 
+## BitPro-first Wave 1：完整验收（2026-08-23）
+
+- `scripts/check.sh` 现在强制拒绝非 `stockpro_bitpro_rebase_dev` URL，并按固定顺序执行
+  安全扫描、Python 编译、当前后端/rebuild 测试、前端冻结安装、类型、lint、生产构建、
+  bundle budget、生产依赖审计、Mock Shell E2E 和 whitespace 检查。
+- 全量入口通过：34 项 Python 测试、前端 0 lint warning/error、生产构建、首屏 306.6 KiB
+  raw / 97.4 KiB gzip、0 dependency vulnerabilities、2 项桌面/窄屏 E2E 全绿；五类
+  安全阻断计数全部为 0，56 个遗留文件保持不可达隔离。
+- 修复旧环境 CORS 的非 JSON 列表兼容：使用 Pydantic `NoDecode` 后由字段 allowlist 解析，
+  仍只接受配置的明确 origin；缺失/非 PostgreSQL DATABASE_URL 继续 fail-fast。
+- 4444/4445 已完成隔离 worktree 的干净重启：前端 cwd 指向 worktree frontend，后端 cwd
+  指向 worktree backend，后端只连接隔离库；健康为 rebuild-safe，存储为 PostgreSQL 37/37。
+- 真实浏览器链路通过管理员登录 → HttpOnly session → MainLayout → 退出，console errors 为 0；
+  登录页和 HTML title 已全部改为 StockPro/A股文案。桌面登录页与真实 shell 截图已人工检查。
+- Paper manifest 再次通过，策略版本、回测、15 个 Paper 实例、订单、成交、持仓、权益
+  曲线和事件均未回退。Wave 1 没有启动 Provider、scheduler、Paper recovery 或策略 worker。
+- 新建长期页面事实入口 `docs/pages/登录门禁.md` 和 `docs/pages/首页.md`；二者明确区分
+  Wave 1 shell 证据与 Wave 2 尚未完成的真实首页业务。
+
 ## BitPro-first Wave 0：隔离基线门禁完成（2026-08-22）
 
 - 已从计划提交 `27f53ce` 创建独立 worktree

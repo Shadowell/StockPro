@@ -3,36 +3,61 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHON="$ROOT_DIR/backend/venv/bin/python"
+
+if [ ! -x "$PYTHON" ]; then
+  echo "[check] backend virtual environment is missing: $PYTHON" >&2
+  exit 1
+fi
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "[check] DATABASE_URL must point to stockpro_bitpro_rebase_dev" >&2
+  exit 1
+fi
+case "$DATABASE_URL" in
+  *"/stockpro_bitpro_rebase_dev") ;;
+  *)
+    echo "[check] refusing non-isolated DATABASE_URL" >&2
+    exit 1
+    ;;
+esac
 
 echo "[check] repository root: $ROOT_DIR"
 
-run_if_present() {
-  local description="$1"
-  local path="$2"
-  shift 2
+echo "[check] rebuild safety"
+"$PYTHON" "$ROOT_DIR/rebuild/assert_safety.py" --root "$ROOT_DIR" --format json \
+  > "$ROOT_DIR/.codex-artifacts/rebuild/safety.json"
 
-  if [ -e "$path" ]; then
-    echo "[check] $description"
-    (
-      cd "$(dirname "$path")"
-      "$@"
-    )
-  fi
-}
+echo "[check] python compile"
+"$PYTHON" -m compileall -q "$ROOT_DIR/backend/app" "$ROOT_DIR/backend/tests" "$ROOT_DIR/rebuild"
 
-run_if_present "frontend build" "$ROOT_DIR/frontend/package.json" npm run build
-run_if_present "frontend lint" "$ROOT_DIR/frontend/package.json" npm run lint
+echo "[check] current backend and rebuild tests"
+(
+  cd "$ROOT_DIR"
+  "$PYTHON" -m pytest backend/tests rebuild/tests -q
+)
 
-if [ -f "$ROOT_DIR/pyproject.toml" ]; then
-  echo "[check] python project detected via pyproject.toml"
-elif [ -d "$ROOT_DIR/backend" ]; then
-  echo "[check] compiling backend python sources"
-  python3 -m compileall -q "$ROOT_DIR/backend/app"
-fi
+echo "[check] frontend frozen install"
+npm --prefix "$ROOT_DIR/frontend" ci --ignore-scripts --no-audit --no-fund
 
-if [ -f "$ROOT_DIR/voice_gen.py" ]; then
-  echo "[check] compiling standalone python entrypoints"
-  python3 -m compileall "$ROOT_DIR/voice_gen.py"
-fi
+echo "[check] frontend type check"
+npm --prefix "$ROOT_DIR/frontend" run check
+
+echo "[check] frontend lint"
+npm --prefix "$ROOT_DIR/frontend" run lint
+
+echo "[check] frontend production build"
+npm --prefix "$ROOT_DIR/frontend" run build
+
+echo "[check] frontend bundle budget"
+npm --prefix "$ROOT_DIR/frontend" run check:bundle-budget
+
+echo "[check] frontend production dependency audit"
+npm --prefix "$ROOT_DIR/frontend" audit --audit-level=moderate --omit=dev
+
+echo "[check] mock operator shell E2E"
+npm --prefix "$ROOT_DIR/frontend" run test:e2e:mock -- --grep "shell"
+
+echo "[check] diff whitespace"
+git -C "$ROOT_DIR" diff --check
 
 echo "[check] done"

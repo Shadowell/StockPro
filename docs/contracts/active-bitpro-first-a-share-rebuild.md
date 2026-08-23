@@ -1,6 +1,6 @@
 # BitPro-first A股整仓重建设计合同
 
-- 状态：设计已批准；Wave 0 固定底座导入与第一启动前安全封锁已验收
+- 状态：设计已批准；Wave 0 与 Wave 1 已验收，进入 Wave 2 研究工作区适配
 - 批准日期：2026-08-22
 - StockPro 基线：`99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`
 - BitPro 固定来源：`00517963e90f463e608289b0277fe598bd82d9bf`

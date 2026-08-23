@@ -446,28 +446,28 @@ git commit -m "feat(ui): establish BitPro A-share operator shell"
 - Consumes: Wave 1 当前 API、认证、Repository 和 shell。
 - Produces: 后续页面可依赖的稳定应用骨架与验证入口。
 
-- [ ] **Step 1: 把 Wave 1 检查加入统一入口**
+- [x] **Step 1: 把 Wave 1 检查加入统一入口**
 
 `scripts/check.sh` 顺序固定为：安全扫描、Python编译、后端测试、前端依赖检查、类型检查、lint、构建、bundle预算、Mock shell E2E。
 
-- [ ] **Step 2: 更新页面合同**
+- [x] **Step 2: 更新页面合同**
 
 登录与首页文档记录 BitPro 首屏结构、当前数据源、未适配状态、错误状态和截图合同；
 不宣称首页业务模块已完成。
 
-- [ ] **Step 3: 运行完整 Wave 1 验证**
+- [x] **Step 3: 运行完整 Wave 1 验证**
 
 Run: `./scripts/check.sh`
 
 Expected: 全绿；lint 零错误；安全扫描全 0；未启动 Provider、scheduler、Paper recovery。
 
-- [ ] **Step 4: 记录 Paper 基线复核**
+- [x] **Step 4: 记录 Paper 基线复核**
 
 Run: `python rebuild/verify_baseline.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL" --read-only`
 
 Expected: PASS；Wave 1 没有业务表计数变化。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add scripts/check.sh docs/pages/登录门禁.md docs/pages/首页.md docs/progress.md
