@@ -18,6 +18,8 @@ class FakePaperRepository:
     def continuity_manifest(self): return dict(self.manifest)
     def list_instances(self):
         return [{"id": f"paper-{index}", "name": f"Paper {index}", "status": "running", "initial_cash": 1000000, "equity": 1100000, "trade_count": 3, "position_count": 2, "heartbeat_at": None} for index in range(15)]
+    def create_instance(self, payload): return {**self.list_instances()[0], "strategy_version": {"strategy_api_version": "historical"}}
+    def pause(self, instance_id): return {**self.list_instances()[0], "id": instance_id, "status": "paused"}
 
 
 def test_paper_view_model_does_not_change_ledger() -> None:
@@ -31,3 +33,14 @@ def test_paper_view_model_does_not_change_ledger() -> None:
     assert repository.continuity_manifest() == before
     assert view["items"][0]["id"] == "paper-0"
     assert view["items"][0]["total_pnl"] == 100000
+
+
+def test_create_and_transition_return_current_detail_view() -> None:
+    service = PaperApplicationService(FakePaperRepository())
+
+    created = service.create_instance({"name": "Paper 0"})
+    paused = service.transition("paper-0", "pause")
+
+    assert created["view"]["total_pnl"] == 100000
+    assert "strategy_api_version" not in created["strategy_version"]
+    assert paused["view"]["lifecycle_status"] == "paused"

@@ -62,6 +62,10 @@ class PaperApplicationService:
             heartbeat_at=item.get("heartbeat_at"),
         ).to_dict()
 
+    @classmethod
+    def _detail(cls, item: dict[str, Any]) -> dict[str, Any]:
+        return _public({**item, "view": cls._view(item)})
+
     def list_instances(self, scope: str = "business") -> dict[str, Any]:
         rows = self.repository.list_instances()
         normalized = [
@@ -76,17 +80,16 @@ class PaperApplicationService:
         return {"items": items, "total": len(items), "scope": scope}
 
     def get_instance(self, instance_id: str) -> dict[str, Any]:
-        item = self.repository.get_instance(instance_id)
-        return _public({**item, "view": self._view(item)})
+        return self._detail(self.repository.get_instance(instance_id))
 
     def create_instance(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return _public(self.repository.create_instance(payload))
+        return self._detail(self.repository.create_instance(payload))
 
     def transition(self, instance_id: str, action: str) -> dict[str, Any]:
         handler = getattr(self.repository, action, None)
         if handler is None or action not in {"start", "pause", "resume", "stop"}:
             raise ValueError("不支持的 Paper 生命周期操作")
-        return _public(handler(instance_id))
+        return self._detail(handler(instance_id))
 
     def advance(self, instance_id: str, max_dates: int) -> dict[str, Any]:
         return _public(self.repository.advance(instance_id, max_dates))

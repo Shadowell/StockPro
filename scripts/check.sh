@@ -54,8 +54,8 @@ npm --prefix "$ROOT_DIR/frontend" run check:bundle-budget
 echo "[check] frontend production dependency audit"
 npm --prefix "$ROOT_DIR/frontend" audit --audit-level=moderate --omit=dev
 
-echo "[check] mock operator shell and research E2E"
-npm --prefix "$ROOT_DIR/frontend" run test:e2e:mock -- --grep "shell|home|market switches|stock pool|factor lab"
+echo "[check] mock operator shell, research, and mainline E2E"
+npm --prefix "$ROOT_DIR/frontend" run test:e2e:mock -- --grep "shell|home|market switches|stock pool|factor lab|strategy center|backtest console|paper dashboard|only execution mainline"
 
 echo "[check] diff whitespace"
 git -C "$ROOT_DIR" diff --check

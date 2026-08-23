@@ -1,5 +1,20 @@
 # Progress Log
 
+## BitPro-first Wave 3：策略 → 回测 → 模拟主线验收（2026-08-23）
+
+- 新增跨页 E2E 固定“策略卡 → 回测控制台 → 仅模拟 Paper”为唯一执行主线；导航继续不注册
+  实盘、链上、ARC、套利或期货，公共路由继续只使用当前 `/api/*`。
+- `scripts/check.sh` 纳入策略、回测、Paper 和主线测试。最终全量通过 53 个 Python 测试、
+  11 个 Shell/研究/主线 Playwright、TypeScript、零告警 lint、生产构建、bundle budget、
+  0 个生产依赖漏洞、diff whitespace 和五类安全扫描。
+- 内联完成提交前审阅并修复两个重要边界：create/lifecycle 响应统一补充当前 Paper ViewModel，
+  避免操作成功后详情崩溃；回测晋级候选读取失败时不再阻断历史 Paper 账本展示。新增后端
+  回归测试和前端降级 E2E，最终门禁重新全量通过。
+- 真实隔离库只读打开策略、回测、Paper 列表与详情，截图索引写入
+  `docs/screenshots/rebuild-wave-3-capture.json`；15/61/47/23/428/681 连续性最终无差异。
+- Wave 3 没有执行 Paper advance/recover/reset，没有生命周期写操作，没有 Provider 调用，
+  没有合并、推送或部署。下一步进入 Wave 4 的盯盘、信号、监控、复盘辅助工作区。
+
 ## BitPro-first Wave 3：A股模拟盘控制台（2026-08-23）
 
 - `/paper` 已从适配空态切换为 BitPro 高密度 InstanceDashboard：15 个历史实例卡片、状态

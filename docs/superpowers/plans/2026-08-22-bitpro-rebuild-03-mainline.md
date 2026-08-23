@@ -500,7 +500,7 @@ git commit -m "feat(paper-ui): use BitPro instance dashboard for A-share Paper"
 - Consumes: 策略、回测、Paper 全部 API/页面。
 - Produces: Wave 4 可依赖的标准信号、订单、成交、风险和事件链。
 
-- [ ] **Step 1: 写端到端主线 E2E**
+- [x] **Step 1: 写端到端主线 E2E**
 
 ```typescript
 test('strategy backtest paper is the only execution mainline', async ({ page }) => {
@@ -515,19 +515,19 @@ test('strategy backtest paper is the only execution mainline', async ({ page }) 
 })
 ```
 
-- [ ] **Step 2: 运行主线 E2E、后端和全仓检查**
+- [x] **Step 2: 运行主线 E2E、后端和全仓检查**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "only execution mainline" && python -m pytest backend/tests/test_strategy_current_contract.py backend/tests/test_backtest_current_contract.py backend/tests/test_paper_current_contract.py -q && ./scripts/check.sh`
 
 Expected: 全绿。
 
-- [ ] **Step 3: 运行真实隔离库页面和 continuity 验收**
+- [x] **Step 3: 运行真实隔离库页面和 continuity 验收**
 
 真实浏览器只读打开 Strategy、Backtest、Paper 和实例详情；随后运行 verifier。
 
 Expected: 无 console error；历史对象可见；continuity PASS。
 
-- [ ] **Step 4: 更新进度、截图索引并提交**
+- [x] **Step 4: 更新进度、截图索引并提交**
 
 ```bash
 git add frontend/tests/e2e/rebuild-mainline.spec.ts scripts/check.sh docs/progress.md docs/screenshots/rebuild-wave-3-capture.json

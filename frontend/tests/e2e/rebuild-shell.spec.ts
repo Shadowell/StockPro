@@ -24,6 +24,9 @@ test.beforeEach(async ({ page }) => {
       }),
     })
   })
+  await page.route('**/api/strategies', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) }))
+  await page.route('**/api/paper/instances?*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [], total: 0, scope: 'audit' }) }))
+  await page.route('**/api/backtest/runs*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) }))
 })
 
 
@@ -59,7 +62,7 @@ test('shell remains mounted and only approved A-share routes are visible', async
   await expect(page).toHaveURL(/\/strategy$/)
   await expect(shell).toBeVisible()
   await expect(shell).toHaveAttribute('data-shell-probe', 'mounted')
-  await expect(page.getByText('正在接入 A股 PostgreSQL 数据')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '策略中心' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('shell-desktop.png'), fullPage: true })
 })
 
@@ -69,8 +72,8 @@ test('shell keeps the workspace readable at a narrow viewport', async ({ page },
   await page.goto('/paper')
 
   await expect(page.getByTestId('main-layout')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '模拟' })).toBeVisible()
-  await expect(page.getByText('正在接入 A股 PostgreSQL 数据')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '模拟盘' })).toBeVisible()
+  await expect(page.getByText('仅模拟', { exact: true })).toBeVisible()
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
   ).toBe(true)
