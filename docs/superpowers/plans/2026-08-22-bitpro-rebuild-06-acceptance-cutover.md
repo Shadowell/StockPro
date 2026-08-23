@@ -278,7 +278,7 @@ git commit -m "docs(ui): capture real BitPro A-share page evidence"
 - Consumes: 最新源数据库只读备份、新系统迁移、旧 StockPro checkout。
 - Produces: 独立恢复数据库、迁移前后 manifest、旧应用兼容证据。
 
-- [ ] **Step 1: 写跨环境 manifest 隔离测试**
+- [x] **Step 1: 写跨环境 manifest 隔离测试**
 
 ```python
 def test_manifests_are_compared_only_with_same_environment():
@@ -286,31 +286,31 @@ def test_manifests_are_compared_only_with_same_environment():
         compare_manifest(local_manifest(environment="dev"), production_manifest(environment="production"))
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest rebuild/tests/test_restore_rehearsal.py -q`
 
 Expected: FAIL，恢复演练工具不存在。
 
-- [ ] **Step 3: 实现最新快照演练**
+- [x] **Step 3: 实现最新快照演练**
 
 工具执行：只读 capture source manifest → 现有备份服务生成备份 → 恢复到显式临时数据库 → 应用全部 additive migrations → capture rebuild manifest → 同环境比较。
 
 禁止使用生产数据库名、`DROP DATABASE` 未验证变量、宽泛 glob 或默认连接；临时数据库名称必须以 `stockpro_rebuild_rehearsal_` 开头并显式校验。
 
-- [ ] **Step 4: 启动新应用只读 smoke**
+- [x] **Step 4: 启动新应用只读 smoke**
 
 在标准本地端口启动新前后端，禁用 scheduler/provider/recovery/worker；运行 route matrix 和 continuity。
 
-- [ ] **Step 5: 启动旧 StockPro 只读 smoke**
+- [x] **Step 5: 启动旧 StockPro 只读 smoke**
 
 从 `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440` 创建临时只读 checkout，指向同一恢复数据库，禁用全部写服务；验证健康、策略列表、回测列表和 Paper 列表可读。
 
-- [ ] **Step 6: 销毁显式临时数据库并保留 manifest**
+- [x] **Step 6: 销毁显式临时数据库并保留 manifest**
 
 只删除已验证前缀的 rehearsal 数据库；备份、manifest 和日志保留在 `.codex-artifacts/rebuild/`。
 
-- [ ] **Step 7: 运行测试并提交工具**
+- [x] **Step 7: 运行测试并提交工具**
 
 ```bash
 python -m pytest rebuild/tests/test_restore_rehearsal.py -q
