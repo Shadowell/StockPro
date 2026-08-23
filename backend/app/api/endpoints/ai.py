@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any
 from fastapi import APIRouter,Depends,HTTPException,Query
 from pydantic import BaseModel,ConfigDict
+from starlette.concurrency import run_in_threadpool
 from app.core.admin_auth import create_auth_dependency
 from app.core.app_context import AppContext
 from app.domain.auth.models import AuthProfile
@@ -23,7 +24,10 @@ def create_ai_router(context:AppContext)->APIRouter:
     @router.get('/tasks/{task_id}')
     async def task(task_id:str,_profile:AuthProfile=Depends(auth)):return call(service.get_task,task_id)
     @router.post('/tasks/{task_id}/start')
-    async def start(task_id:str,profile:AuthProfile=Depends(auth)):admin(profile);return call(service.start_task,task_id)
+    async def start(task_id:str,profile:AuthProfile=Depends(auth)):
+        admin(profile)
+        try:return await run_in_threadpool(service.start_task,task_id)
+        except ValueError as error:raise HTTPException(status_code=422,detail=str(error))from error
     @router.post('/tasks/{task_id}/stop')
     async def stop(task_id:str,profile:AuthProfile=Depends(auth)):admin(profile);return call(service.stop_task,task_id)
     @router.post('/iterations/{iteration_id}/promote-candidate')

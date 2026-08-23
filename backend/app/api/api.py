@@ -18,12 +18,14 @@ from app.api.endpoints.monitor import create_monitor_router
 from app.api.endpoints.review import create_review_router
 from app.api.endpoints.data import create_data_router
 from app.api.endpoints.ai import create_ai_router
+from app.api.endpoints.capabilities import create_capabilities_router
 
 
 def create_api_router(context: Any | None = None) -> APIRouter:
     router = APIRouter()
     router.include_router(create_health_router(context), prefix="/health", tags=["health"])
     if context is not None:
+        router.include_router(create_capabilities_router(context), prefix="/capabilities", tags=["capabilities"])
         router.include_router(create_auth_router(context), prefix="/auth", tags=["auth"])
         if hasattr(context.repositories, "market"):
             router.include_router(create_market_router(context), prefix="/market", tags=["market"])

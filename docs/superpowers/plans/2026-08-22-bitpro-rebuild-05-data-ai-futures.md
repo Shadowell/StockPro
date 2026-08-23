@@ -381,7 +381,7 @@ git commit -m "feat(instruments): reserve hidden futures domain contract"
 - Consumes: Data、AI、instrument reservation。
 - Produces: Wave 6 使用的最终功能集合和 capability manifest。
 
-- [ ] **Step 1: 写 capability manifest 测试**
+- [x] **Step 1: 写 capability manifest 测试**
 
 ```python
 def test_capabilities_report_enabled_and_hidden_domains(client):
@@ -392,19 +392,19 @@ def test_capabilities_report_enabled_and_hidden_domains(client):
     assert payload["database"] == "postgresql"
 ```
 
-- [ ] **Step 2: 运行全量 Data/AI/Futures 测试**
+- [x] **Step 2: 运行全量 Data/AI/Futures 测试**
 
 Run: `python -m pytest backend/tests/test_data_current_contract.py backend/tests/test_data_readonly_contract.py backend/tests/test_ai_current_contract.py backend/tests/test_futures_reservation.py backend/tests/test_data_ai_current_contract.py -q`
 
 Expected: PASS。
 
-- [ ] **Step 3: 运行页面、build、安全和 continuity**
+- [x] **Step 3: 运行页面、build、安全和 continuity**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "data center|AI lab|futures remains hidden" && npm --prefix frontend run build && python rebuild/assert_safety.py --root . --format json && python rebuild/verify_paper_continuity.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL"`
 
 Expected: 全绿；Paper 连续；期货隐藏。
 
-- [ ] **Step 4: 更新截图、进度并提交**
+- [x] **Step 4: 更新截图、进度并提交**
 
 ```bash
 git add backend/tests/test_data_ai_current_contract.py frontend/tests/e2e/rebuild-capabilities.spec.ts scripts/check.sh docs/progress.md docs/screenshots/rebuild-wave-5-capture.json

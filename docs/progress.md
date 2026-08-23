@@ -1,5 +1,18 @@
 # Progress Log
 
+## BitPro-first Wave 5：数据、AI 与 Instrument 能力验收（2026-08-23）
+
+- 新增 `/api/capabilities`：enabled stock/ETF/index、reserved future、PostgreSQL、A股 Paper
+  runtime、live=false、futures routes=false、private broker=false；全部为当前无版本 API。
+- `scripts/check.sh` 纳入 DataManager、AI Lab、期货隐藏和 capability shell。最终通过 67 个
+  Python 测试、19 个 Shell/研究/主线/运行/能力 E2E、类型、零告警 lint、生产构建、bundle
+  budget、0 dependency vulnerabilities、diff whitespace 和五类安全扫描。
+- 内联审阅把 AI 模型 HTTP 调用移入线程池，避免阻塞 FastAPI 事件循环；配置模型路径仍只
+  创建验证策略 + quick replay，不创建完整回测或 Paper。
+- 真实 Data/AI 页面 desktop/390px：GET 写入 0、Provider/模型调用 0、console errors 0、
+  页面级溢出 0。隔离库 38 migrations、5,550 stock、0 ETF、4 index、0 future；Paper
+  15/61/47/23/428/681 连续性最终通过。Wave 5 未合并、推送或部署。
+
 ## BitPro-first Wave 5：隐藏期货领域预留（2026-08-23）
 
 - 新增第 38 个 additive migration `instrument_definitions`，唯一键为 market/exchange/symbol，
