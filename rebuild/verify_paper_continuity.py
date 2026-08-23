@@ -81,13 +81,18 @@ def main() -> int:
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--database", default=os.environ.get("DATABASE_URL", ""))
     parser.add_argument("--read-only", action="store_true")
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
     args = parser.parse_args()
     baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
     verify_manifest_integrity(baseline)
     current = capture_baseline(args.database, args.repo_root)
     result = compare_continuity(baseline, current)
-    print(json.dumps({"passed": result.passed, "differences": [asdict(item) for item in result.differences]}, ensure_ascii=False, indent=2))
+    payload={"passed": result.passed, "differences": [asdict(item) for item in result.differences]}
+    if args.output:
+        args.output.parent.mkdir(parents=True,exist_ok=True)
+        args.output.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0 if result.passed else 1
 
 

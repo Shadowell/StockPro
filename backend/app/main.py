@@ -31,7 +31,7 @@ def create_app(context: AppContext | None = None) -> FastAPI:
     )
     application.include_router(create_api_router(app_context), prefix="/api")
 
-    @application.get("/")
+    @application.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:
         return {
             "message": "StockPro rebuild safety boundary is active",

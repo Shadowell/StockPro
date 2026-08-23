@@ -107,7 +107,7 @@ git commit -m "test(rebuild): require evidence-backed completion audit"
 **Interfaces:**
 - Produces: API/DB/A股/safety evidence JSON，供 completion audit 使用。
 
-- [ ] **Step 1: 写唯一 API 全树测试**
+- [x] **Step 1: 写唯一 API 全树测试**
 
 ```python
 def test_openapi_contains_only_current_api(client):
@@ -117,7 +117,7 @@ def test_openapi_contains_only_current_api(client):
     assert all("/api/v" not in path for path in paths)
 ```
 
-- [ ] **Step 2: 写 PostgreSQL 唯一事实测试**
+- [x] **Step 2: 写 PostgreSQL 唯一事实测试**
 
 ```python
 def test_runtime_tree_has_no_sqlite_business_repository():
@@ -127,24 +127,24 @@ def test_runtime_tree_has_no_sqlite_business_repository():
     assert health().database == "postgresql"
 ```
 
-- [ ] **Step 3: 写 A股语义矩阵测试**
+- [x] **Step 3: 写 A股语义矩阵测试**
 
 覆盖交易日/午休、T+1、整手、清仓零股、涨跌停、停牌、ST、费用、无未来数据、
 次日最早成交和容量；每项包含一个接受和一个拒绝样例。
 
-- [ ] **Step 4: 运行完整后端与静态安全审计**
+- [x] **Step 4: 运行完整后端与静态安全审计**
 
 Run: `python -m pytest backend/tests -q && python rebuild/assert_safety.py --root . --format json`
 
 Expected: 全部 PASS；安全阻断计数全 0。
 
-- [ ] **Step 5: 运行隔离库 continuity**
+- [x] **Step 5: 运行隔离库 continuity**
 
 Run: `python rebuild/verify_paper_continuity.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL" --output .codex-artifacts/rebuild/local-continuity.json`
 
 Expected: 15/61/47/23/428/681 及每实例字段 PASS。
 
-- [ ] **Step 6: 将证据喂给 completion audit 并提交测试**
+- [x] **Step 6: 将证据喂给 completion audit 并提交测试**
 
 ```bash
 python rebuild/audit_completion.py --mode pre-deploy --output .codex-artifacts/rebuild/completion-audit.json

@@ -37,7 +37,7 @@ def audit(requirements:list[dict[str,object]],evidence:Mapping[str,Mapping[str,o
 def _sha(path:Path)->str:return hashlib.sha256(path.read_bytes()).hexdigest()
 def _pytest_evidence(path:Path)->dict[str,object]:
     if not path.exists():return {"status":"missing","reason":"backend junit missing"}
-    root=ET.parse(path).getroot();tests=int(root.attrib.get("tests",0));failures=int(root.attrib.get("failures",0))+int(root.attrib.get("errors",0))
+    root=ET.parse(path).getroot();suites=[root]if root.tag=="testsuite"else list(root.findall("testsuite"));tests=sum(int(suite.attrib.get("tests",0))for suite in suites);failures=sum(int(suite.attrib.get("failures",0))+int(suite.attrib.get("errors",0))for suite in suites)
     return {"status":"passed"if tests>0 and failures==0 else"failed","tests":tests,"failures":failures,"sha256":_sha(path)}
 def _e2e_evidence(path:Path)->dict[str,object]:
     if not path.exists():return {"status":"missing","reason":"Playwright JSON missing"}
@@ -47,8 +47,9 @@ def _e2e_evidence(path:Path)->dict[str,object]:
 def collect(root:Path,mode:str)->dict[str,dict[str,object]]:
     artifacts=root/".codex-artifacts/rebuild";safety_path=artifacts/"safety.json";junit=artifacts/"backend-tests.xml";e2e=root/"frontend/test-results/e2e-results.json"
     safety=json.loads(safety_path.read_text())if safety_path.exists()else{};pytest_ev=_pytest_evidence(junit);e2e_ev=_e2e_evidence(e2e)
-    try:subprocess.run(["git","cat-file","-e",f"{BITPRO_SOURCE_SHA}^{{commit}}"],cwd=root,check=True,capture_output=True);base_status="passed"
-    except subprocess.CalledProcessError:base_status="failed"
+    source_manifest_path=root/"docs/reference/bitpro-baseline/source.json";source_manifest=json.loads(source_manifest_path.read_text())if source_manifest_path.exists()else{};source_repo=Path(str(source_manifest.get("source_repo")or""));source_fields_ok=source_manifest.get("source_sha")==BITPRO_SOURCE_SHA and set(source_manifest.get("copied_roots")or[])=={"backend","frontend","packages","scripts","tests"}
+    try:subprocess.run(["git","cat-file","-e",f"{BITPRO_SOURCE_SHA}^{{commit}}"],cwd=source_repo,check=True,capture_output=True);base_status="passed"if source_fields_ok else"failed"
+    except (subprocess.CalledProcessError,OSError):base_status="failed"
     database_url=os.environ.get("DATABASE_URL","");db_ok=database_url.startswith("postgresql://")and database_url.endswith("/stockpro_bitpro_rebase_dev")
     db_evidence:dict[str,object]={"status":"failed"if not db_ok else"passed","target":"stockpro_bitpro_rebase_dev"if db_ok else"invalid"}
     paper_ev:dict[str,object]={"status":"missing"}
@@ -67,7 +68,7 @@ def collect(root:Path,mode:str)->dict[str,dict[str,object]]:
     routes={str(item.get("route")or"").split("?",1)[0]for item in captures};ui_ok=REQUIRED_ROUTES.issubset(routes)and e2e_ev["status"]=="passed"
     active_total=sum(int(safety.get(key,0))for key in("registered_private_exchange_routes","active_sqlite_repository","active_versioned_api_routes","registered_live_routes","registered_crypto_jobs"))
     return {
-        "BASE-001":{"status":base_status,"source_sha":BITPRO_SOURCE_SHA},
+        "BASE-001":{"status":base_status,"source_sha":BITPRO_SOURCE_SHA,"manifest_sha256":_sha(source_manifest_path)if source_manifest_path.exists()else None},
         "API-001":{"status":"passed"if safety.get("passed")and int(safety.get("active_versioned_api_routes",1))==0 else"failed","safety_sha256":_sha(safety_path)if safety_path.exists()else None},
         "DB-001":db_evidence,
         "PAPER-001":paper_ev,
