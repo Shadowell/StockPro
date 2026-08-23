@@ -18,6 +18,8 @@ import type {
   StockPoolMember,
   StockPoolRecord,
   StockPoolSnapshot,
+  FactorLibraryRecord,
+  FactorMetricRecord,
 } from '../types/research';
 
 const API_BASE = '/api';
@@ -80,6 +82,20 @@ export const researchApi = {
     apiClient.post(`/pools/${encodeURIComponent(poolId)}/generate`, payload),
   sealPoolSnapshot: async (poolId: string, generationId: string): Promise<StockPoolSnapshot> =>
     apiClient.post(`/pools/${encodeURIComponent(poolId)}/snapshots`, { generation_id: generationId }),
+  factors: async (): Promise<{ items: FactorLibraryRecord[] }> =>
+    apiClient.get('/factors'),
+  factorMetrics: async (factorCode: string): Promise<{ factor: FactorLibraryRecord; items: FactorMetricRecord[] }> =>
+    apiClient.get(`/factors/${encodeURIComponent(factorCode)}/metrics`),
+  factorValues: async (factorCode: string, limit = 500, offset = 0): Promise<{ items: Record<string, unknown>[] }> =>
+    apiClient.get(`/factors/${encodeURIComponent(factorCode)}/values`, { params: { limit, offset } }),
+  factorRuns: async (limit = 100): Promise<{ items: Record<string, any>[] }> =>
+    apiClient.get('/factor-runs', { params: { limit } }),
+  factorCorrelations: async (limit = 500): Promise<{ items: Record<string, any>[] }> =>
+    apiClient.get('/factor-correlations', { params: { limit } }),
+  factorSnapshots: async (limit = 50): Promise<{ items: Record<string, any>[] }> =>
+    apiClient.get('/factor-snapshots', { params: { limit } }),
+  computeFactor: async (versionId: number, payload: { trade_date: string; dataset_snapshot_id: number; universe_snapshot_id: number }): Promise<Record<string, unknown>> =>
+    apiClient.post(`/factor-versions/${versionId}/compute`, payload),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

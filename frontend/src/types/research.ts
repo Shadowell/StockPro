@@ -168,3 +168,38 @@ export type StockPoolSnapshot = {
   trade_date: string
   sealed_at?: string | null
 }
+
+export type FactorLibraryRecord = {
+  id: number
+  factor_code: string
+  factor_name: string
+  category: string
+  description?: string
+  direction?: number
+  research_status: string
+  validation_status?: string | null
+  active_version_id?: number | null
+  version_no?: number | null
+  content_hash?: string | null
+  last_trade_date?: string | null
+  publication_state?: string | null
+  dataset_snapshot_id?: number | null
+  universe_snapshot_id?: number | null
+  knowledge_cutoff_at?: string | null
+  coverage?: number | null
+  rank_ic?: number | null
+  icir?: number | null
+  long_short_return?: number | null
+  turnover?: number | null
+  decay?: number | null
+}
+
+export type FactorMetricRecord = {
+  compute_run_id?: number
+  trade_date?: string
+  metric_code: string
+  horizon?: number | null
+  metric_value: number | null
+  metric_payload?: Record<string, unknown> | null
+  pending_reason?: string | null
+}

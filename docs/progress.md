@@ -62,6 +62,20 @@
 - API/安全聚焦测试、Mock E2E、类型/lint/build通过；真实桌面/390px console errors 0、
   业务写入 0，截图人工检查通过。
 
+## BitPro-first Wave 2：PostgreSQL 因子库（2026-08-23）
+
+- 新增 `PostgresFactorRepository` 和当前 factors API，覆盖目录、版本/校验/计算、metrics、
+  values、runs、correlations、snapshots 与 snapshot values；写动作管理员限定。
+- 重构 `FactorResearchService`：证券代码与交易日规范化留在因子模块，Reference service 仅在
+  明确封存输入动作时延迟加载；读取目录/指标不导入 TuShare/AKShare。旧 provider/SQLite
+  `factor_sync_service` 未进入当前运行面。
+- FactorLab 页面保留 BitPro 目录/详情、KPI、指标诊断、运行、相关性、快照和值浏览，计算
+  表单要求显式 dataset/universe snapshot；exploratory 与代码 valid 不显示为“已验证”。
+- 真实隔离库读取 100 因子、100 runs、3 snapshots、55 correlations；选中
+  `dollar_volume_20d`，pending metrics 224。八张因子表前后计数不变、Provider imports 0。
+- API/只读/安全测试、Mock E2E、类型/lint/build通过；真实桌面/390px console errors 0、
+  业务写入 0，截图人工检查通过。
+
 ## 重建基线 SHA 现场纠正（2026-08-22）
 
 - Wave 1 开始前验证发现设计草稿中的 `bff8e05…` 不是当前仓库的 Git 对象，不能作为

@@ -6,15 +6,10 @@ import UnavailableWorkspace, { type WorkspaceState } from './pages/rebuild/Unava
 import Home from './pages/Home'
 import Market from './pages/Market'
 import StockPools from './pages/StockPools'
+import FactorLab from './pages/FactorLab'
 
 
 const workspaces: Record<string, WorkspaceState> = {
-  factors: {
-    title: '因子',
-    description: '因子目录、计算、诊断与快照将统一读取 PostgreSQL。',
-    ownerRoute: '/factors',
-    status: 'adapting',
-  },
   strategy: {
     title: '策略',
     description: '策略版本与研究证据将在主线 Wave 恢复。',
@@ -90,7 +85,7 @@ function AppRoutes() {
         <Route index element={<Home />} />
         <Route path="market" element={<Market />} />
         <Route path="pools" element={<StockPools />} />
-        <Route path="factors" element={<UnavailableWorkspace state={workspaces.factors} />} />
+        <Route path="factors" element={<FactorLab />} />
         <Route path="strategy" element={<UnavailableWorkspace state={workspaces.strategy} />} />
         <Route path="backtest" element={<UnavailableWorkspace state={workspaces.backtest} />} />
         <Route path="paper" element={<UnavailableWorkspace state={workspaces.paper} />} />

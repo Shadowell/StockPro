@@ -352,7 +352,7 @@ git commit -m "feat(pools): restore immutable A-share stock pools"
 **Interfaces:**
 - Produces: `/api/factors`、versions、runs、metrics、correlations、snapshots、values；`FactorSnapshotView` 供 Wave 3 使用。
 
-- [ ] **Step 1: 写不可变版本与缺失指标失败测试**
+- [x] **Step 1: 写不可变版本与缺失指标失败测试**
 
 ```python
 def test_factor_metrics_keep_pending_values_null(client):
@@ -362,29 +362,29 @@ def test_factor_metrics_keep_pending_values_null(client):
     assert pending["pending_reason"]
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_factor_current_api.py -q`
 
 Expected: FAIL，Factor 当前 API 不存在。
 
-- [ ] **Step 3: 恢复 PostgreSQL Factor Service**
+- [x] **Step 3: 恢复 PostgreSQL Factor Service**
 
 保留定义、版本、计算、诊断、成熟指标、相关性、快照和封存边界；
 BitPro SQLite FactorLab repository 不作为运行实现。
 
-- [ ] **Step 4: 适配 BitPro FactorLab 页面**
+- [x] **Step 4: 适配 BitPro FactorLab 页面**
 
 保留目录、详情、运行记录、单因子、多因子、相关性和值浏览；绑定当前 API，
 页面不得把目录存在表述成因子已验证。
 
-- [ ] **Step 5: 运行 API、页面和只读测试**
+- [x] **Step 5: 运行 API、页面和只读测试**
 
 Run: `python -m pytest backend/tests/test_factor_current_api.py backend/tests/test_research_pages_readonly.py -q && npm --prefix frontend run test:e2e -- --grep "factor lab"`
 
 Expected: PASS；GET 不写库，pending 保持 null。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/app/services/factor_research_service.py backend/app/services/factor_sync_service.py backend/app/api/endpoints/factors.py backend/app/repositories frontend/src/pages/FactorLab.tsx backend/tests/test_factor_current_api.py frontend/tests/e2e/rebuild-factors.spec.ts docs/pages/因子库.md

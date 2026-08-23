@@ -8,6 +8,7 @@ from app.core.config import Settings, settings
 from app.db.postgres_db import PostgresDatabase
 from app.repositories.postgres_repository import PostgresRepository
 from app.repositories.pool_repository import PostgresPoolRepository
+from app.repositories.factor_repository import PostgresFactorRepository
 from app.repositories.protocols import Repositories
 
 
@@ -31,6 +32,7 @@ def build_app_context(
     database = PostgresDatabase(runtime_settings.DATABASE_URL)
     repository = PostgresRepository(database)
     pool_repository = PostgresPoolRepository(database)
+    factor_repository = PostgresFactorRepository(database)
     return AppContext(
         settings=runtime_settings,
         repositories=Repositories(
@@ -38,6 +40,7 @@ def build_app_context(
             auth=repository,
             market=repository,
             pools=pool_repository,
+            factors=factor_repository,
         ),
         clock=clock,
     )
