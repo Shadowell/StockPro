@@ -16,6 +16,7 @@ from app.api.endpoints.signals import create_signals_router
 from app.api.endpoints.watch import create_watch_router
 from app.api.endpoints.monitor import create_monitor_router
 from app.api.endpoints.review import create_review_router
+from app.api.endpoints.data import create_data_router
 
 
 def create_api_router(context: Any | None = None) -> APIRouter:
@@ -41,4 +42,6 @@ def create_api_router(context: Any | None = None) -> APIRouter:
             router.include_router(create_monitor_router(context), prefix="/monitor", tags=["monitor"])
         if hasattr(context.repositories, "review"):
             router.include_router(create_review_router(context), prefix="/review", tags=["review"])
+        if hasattr(context.repositories, "data"):
+            router.include_router(create_data_router(context), prefix="/data", tags=["data"])
     return router

@@ -41,7 +41,7 @@
 **Interfaces:**
 - Produces: `/api/data/status`、datasets、snapshots、providers、schedules、jobs、quality、exchange imports/exports/http imports。
 
-- [ ] **Step 1: 写读取/来源/扩展隔离失败测试**
+- [x] **Step 1: 写读取/来源/扩展隔离失败测试**
 
 ```python
 def test_data_gets_are_readonly_and_report_source_state(client, repositories):
@@ -58,33 +58,33 @@ def test_extension_import_is_staged_only(client):
     assert response["mapping_state"] == "staged_only"
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_data_current_contract.py backend/tests/test_data_readonly_contract.py -q`
 
 Expected: FAIL，当前 Data Service/Router 不存在。
 
-- [ ] **Step 3: 恢复 PostgreSQL 数据服务**
+- [x] **Step 3: 恢复 PostgreSQL 数据服务**
 
 保留数据定义、分区、封存快照、来源、watermark、调度、sync job/items、质量报告和迁移健康；
 删除 BitPro 文件 Kline store 和 SQLite sync metadata 运行依赖。
 
-- [ ] **Step 4: 实现显式写操作**
+- [x] **Step 4: 实现显式写操作**
 
 同步、质量、封存、计划更新和扩展上传均为管理员 POST/PUT；每次写入 job/audit 证据；
 相同范围并发任务返回 409。
 
-- [ ] **Step 5: 恢复安全扩展交换**
+- [x] **Step 5: 恢复安全扩展交换**
 
 CSV/JSON/XLSX 限制 5MB/10000行/200列，公式拒绝，导出防公式注入；HTTPS 精确 allowlist、公共 DNS、禁止重定向。运行表保持独立 staged-only。
 
-- [ ] **Step 6: 运行 API、只读和安全测试**
+- [x] **Step 6: 运行 API、只读和安全测试**
 
 Run: `python -m pytest backend/tests/test_data_current_contract.py backend/tests/test_data_readonly_contract.py -q && python rebuild/assert_safety.py --root . --format json`
 
 Expected: PASS；GET 写入/Provider 调用为 0。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add backend/app/services/dataset_snapshot_service.py backend/app/services/data_hub_service.py backend/app/services/daily_reference_sync_service.py backend/app/services/tushare_catalog_service.py backend/app/services/extension_data_exchange_service.py backend/app/services/data_application_service.py backend/app/api/endpoints/data.py backend/app/repositories backend/app/api/api.py backend/tests/test_data_current_contract.py backend/tests/test_data_readonly_contract.py

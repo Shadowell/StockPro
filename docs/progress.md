@@ -1,5 +1,19 @@
 # Progress Log
 
+## BitPro-first Wave 5：PostgreSQL 数据可信度 API（2026-08-23）
+
+- 新增当前 `/api/data/*` status/datasets/snapshots/providers/schedules/jobs/quality/exchange；GET
+  只读 PostgreSQL，不调用 Provider。隔离运行时 Provider 状态明确为 restricted。
+- 真实状态为 10 datasets、211 published partitions、686,840 rows、28 sealed snapshots、
+  42 sync jobs、47 quality issues、21 source entitlements、0 staged imports；读取写入/Provider
+  调用均为 0。
+- 扩展 CSV/JSON/XLSX 限制 5MB/10,000 行/200 列，拒绝公式前缀，只写独立 staged
+  imports/records 并返回 `mapping_state=staged_only`、`execution_eligible=false`；导出防公式
+  注入。HTTPS 仅允许精确 allowlist + 公共 DNS + 禁止重定向。没有真实导入验收数据。
+- 同步/质量 POST 只创建 pending 审计 job，受控 worker 未启用时不暗示任务已执行；同范围
+  pending/running 返回 409。计划更新、扩展上传、HTTP 导入均管理员限定；访客只读。
+  数据只读/暂存/XLSX/公式与 HTTPS 安全测试、编译和安全扫描通过。
+
 ## BitPro-first Wave 4：运行证据链完整验收（2026-08-23）
 
 - Signal → order/trade/risk/alert → Monitor → Review 全部使用同一 `paper_instance_id` 与 source

@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     ENABLE_PRIVATE_EXCHANGE_API: bool = False
     ENABLE_CRYPTO_BACKGROUND_JOBS: bool = False
     ENABLE_LIVE_TRADING: bool = False
+    EXTENSION_HTTP_ALLOWLIST: str = ""
 
     AUTH_ENABLED: bool = True
     ADMIN_USERNAME: str = "admin"
