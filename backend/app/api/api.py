@@ -11,6 +11,7 @@ from app.api.endpoints.pools import create_pools_router
 from app.api.endpoints.factors import create_factors_router
 from app.api.endpoints.strategy import create_strategy_router
 from app.api.endpoints.backtest import create_backtest_router
+from app.api.endpoints.paper import create_paper_router
 
 
 def create_api_router(context: Any | None = None) -> APIRouter:
@@ -28,4 +29,6 @@ def create_api_router(context: Any | None = None) -> APIRouter:
             router.include_router(create_strategy_router(context), tags=["strategies"])
         if hasattr(context.repositories, "backtests"):
             router.include_router(create_backtest_router(context), prefix="/backtest", tags=["backtest"])
+        if hasattr(context.repositories, "paper"):
+            router.include_router(create_paper_router(context), prefix="/paper", tags=["paper"])
     return router

@@ -345,7 +345,7 @@ git commit -m "feat(backtest-ui): adapt BitPro console to A-share evidence"
 **Interfaces:**
 - Produces: `GET/POST /api/paper/instances`、detail、start/pause/resume/stop、cycles、advance、events、klines；BitPro `PaperInstanceView`。
 
-- [ ] **Step 1: 写只读 ViewModel 不变性测试**
+- [x] **Step 1: 写只读 ViewModel 不变性测试**
 
 ```python
 def test_paper_view_model_does_not_change_ledger(service, repository):
@@ -357,7 +357,7 @@ def test_paper_view_model_does_not_change_ledger(service, repository):
     assert view.items[0].id == before["instances"][0]["instance_id"]
 ```
 
-- [ ] **Step 2: 写 continuity verifier 失败测试**
+- [x] **Step 2: 写 continuity verifier 失败测试**
 
 ```python
 def test_continuity_verifier_detects_equity_or_event_loss():
@@ -368,18 +368,18 @@ def test_continuity_verifier_detects_equity_or_event_loss():
     assert result.differences[0].field == "paper.equity_sample_count"
 ```
 
-- [ ] **Step 3: 运行失败测试**
+- [x] **Step 3: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_paper_current_contract.py rebuild/tests/test_paper_continuity.py -q`
 
 Expected: FAIL，Service/verifier 不存在。
 
-- [ ] **Step 4: 恢复 Paper 状态机和账本**
+- [x] **Step 4: 恢复 Paper 状态机和账本**
 
 保留固定输入、exactly-once cycle、signal→risk→order→trade、T+1、成本、
 cash ledger、positions、equity snapshots、events 和 stale-feed 门禁。
 
-- [ ] **Step 5: 实现 BitPro ViewModel 适配**
+- [x] **Step 5: 实现 BitPro ViewModel 适配**
 
 ```python
 @dataclass(frozen=True)
@@ -399,12 +399,12 @@ class PaperInstanceView:
 
 缺少 equity 时保持 `None`，不得换成 `-100%` 或初始资金，除非 Portfolio 账本明确提供当前现金。
 
-- [ ] **Step 6: 注册写操作并保护现有实例**
+- [x] **Step 6: 注册写操作并保护现有实例**
 
 生命周期 action 只作用明确 ID；列表/详情 GET 不恢复、不推进。创建 Paper 必须绑定完整晋级回测；
 现有实例禁止自动 configure、clear、archive。
 
-- [ ] **Step 7: 运行 API 与完整连续性测试**
+- [x] **Step 7: 运行 API 与完整连续性测试**
 
 Run: `python -m pytest backend/tests/test_paper_current_contract.py rebuild/tests/test_paper_continuity.py -q && python rebuild/verify_paper_continuity.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL"`
 

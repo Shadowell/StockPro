@@ -128,6 +128,8 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                 "backend/app/services/tushare_provider.py",
                 "backend/app/services/walk_forward_plan_service.py",
                 "backend/app/services/guest_access_service.py",
+                "backend/app/services/paper_application_service.py",
+                "backend/app/services/paper_runtime_service.py",
             }
             or relative.startswith(
                 (
@@ -135,6 +137,7 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                     "backend/app/domain/auth/",
                     "backend/app/domain/backtest/",
                     "backend/app/domain/instruments/",
+                    "backend/app/domain/paper/",
                     "backend/app/domain/research/",
                     "backend/app/domain/strategy/",
                     "backend/app/repositories/",

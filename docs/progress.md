@@ -1,5 +1,20 @@
 # Progress Log
 
+## BitPro-first Wave 3：PostgreSQL Paper 当前 API（2026-08-23）
+
+- 恢复现有 Paper 状态机、固定输入、exactly-once cycle、风险、订单、成交、现金账本、持仓、
+  净值与事件语义；新增 `PostgresPaperRepository`、`PaperApplicationService` 和唯一当前
+  `/api/paper/*`，没有旧版本入口或实盘路由。
+- GET 列表、详情、事件和 K 线只读，不隐式 recover/advance；创建、推进和 start/pause/resume/
+  stop 都要求管理员且只作用显式实例 ID。公共 ViewModel 删除旧 API/迁移字段，缺失指标保持
+  null；没有净值快照时只使用 Portfolio 账本明确记录的现金。
+- 完整审计视图显示全部 15 个历史实例；`scope=business` 过滤 3 条 acceptance 记录后显示
+  12 个用户实例。真实详情读取成功，当前状态为 14 running / 1 stopped。
+- 连续性校验在真实读取前后均通过：15 实例、61 订单、47 成交、23 持仓、428 净值点、
+  681 事件及逐实例 lineage/首尾权益均未回退。安全扫描五类活动风险保持 0，聚焦测试通过。
+- 隔离库补齐既有 `stockpro_app` 角色对 `stockpro_bitpro_rebase_dev` 的表/序列权限，解决只读
+  manifest 无权访问 `schema_migrations`；源库和生产库未修改。本地通过 SSH 隧道连接隔离库。
+
 ## BitPro-first Wave 3：当前不可变策略合同（2026-08-23）
 
 - 恢复 StockPro AST allowlist、隔离 worker、运行限额、validation/replay/intents/custom records
