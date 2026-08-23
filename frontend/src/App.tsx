@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import MainLayout from './components/MainLayout'
 import Login from './pages/Login'
@@ -15,15 +15,19 @@ import Monitor from './pages/Monitor'
 import ReviewDashboard from './pages/ReviewDashboard'
 import DataManager from './pages/DataManager'
 import AILab from './pages/AILab'
+import UnknownWorkspace from './pages/UnknownWorkspace'
+import { WorkspaceStatePanel } from './shell/WorkspaceState'
 
 function AppRoutes() {
   const { authEnabled, authenticated, loading } = useAuth()
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-crypto-bg text-sm text-gray-500">
-        正在检查登录态…
-      </div>
+      <WorkspaceStatePanel
+        kind="loading"
+        title="正在检查登录态"
+        description="只读取本地会话，不发起业务写入。"
+      />
     )
   }
   if (authEnabled && !authenticated) return <Login />
@@ -44,7 +48,7 @@ function AppRoutes() {
         <Route path="review" element={<ReviewDashboard />} />
         <Route path="data" element={<DataManager />} />
         <Route path="ai-lab" element={<AILab />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<UnknownWorkspace />} />
       </Route>
     </Routes>
   )
