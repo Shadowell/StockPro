@@ -76,6 +76,23 @@
 - API/只读/安全测试、Mock E2E、类型/lint/build通过；真实桌面/390px console errors 0、
   业务写入 0，截图人工检查通过。
 
+## BitPro-first Wave 2：研究工作区完整验收（2026-08-23）
+
+- 首页、行情、股票池和因子全部从 `UnavailableWorkspace` 替换为 BitPro 高密度操作台，
+  统一经当前 `/api/*` → Application/Repository → `stockpro_bitpro_rebase_dev`；GET 不写库、
+  不调用 Provider，不存在币圈入口或版本化 API。
+- 统一 `scripts/check.sh` 已加入 shell + home + market + stock pool + factor lab Mock 矩阵；
+  页面各自覆盖桌面和 390px，无横向溢出、console error 或 mock/真实形状漂移。
+- 真实只读验收覆盖 market 9 张、pool 6 张、factor 8 张业务表，页面/API 前后计数不变；
+  sealed pool trigger 保持不可变，因子 pending 保持 null，分时/盘口/板块证据缺失保持 empty。
+- 截图索引写入 `docs/screenshots/rebuild-wave-2-capture.json`，明确这些是本地隔离证据、
+  不是生产截图；图片本身留在 Git 忽略目录。
+- 安全扫描五类计数全 0，Paper manifest 继续通过。Wave 2 未启动 Provider、scheduler、
+  Paper recovery 或策略 worker，未创建验收业务记录。
+- 最终统一入口通过 45 项 Python 测试、前端类型、0 lint warning/error、生产构建、bundle
+  budget、0 dependency vulnerabilities 和 7/7 Shell/研究 E2E；安全隔离遗留文件 56 个，
+  全部不在当前可达面。
+
 ## 重建基线 SHA 现场纠正（2026-08-22）
 
 - Wave 1 开始前验证发现设计草稿中的 `bff8e05…` 不是当前仓库的 Git 对象，不能作为

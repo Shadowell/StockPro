@@ -402,29 +402,29 @@ git commit -m "feat(factors): connect BitPro FactorLab to PostgreSQL"
 - Consumes: 首页、行情、股票池、因子全部当前 API 和页面。
 - Produces: Wave 3 可使用的封存数据/因子/股票池合同与页面验收证据。
 
-- [ ] **Step 1: 运行全量研究 API 测试**
+- [x] **Step 1: 运行全量研究 API 测试**
 
 Run: `python -m pytest backend/tests/test_market_current_api.py backend/tests/test_pool_current_api.py backend/tests/test_factor_current_api.py backend/tests/test_research_pages_readonly.py -q`
 
 Expected: PASS。
 
-- [ ] **Step 2: 运行桌面和移动端页面矩阵**
+- [x] **Step 2: 运行桌面和移动端页面矩阵**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "home|market|stock pool|factor lab"`
 
 Expected: 所有页面 1440px/390px PASS，无横向溢出、无币圈文案、无 console error。
 
-- [ ] **Step 3: 真实隔离数据库浏览器验收**
+- [x] **Step 3: 真实隔离数据库浏览器验收**
 
 使用 `MOCK_API=false`，检查真实 source/trade_date/freshness/empty/error，不执行同步、生成或封存。
 
-- [ ] **Step 4: 运行安全与 Paper 对账**
+- [x] **Step 4: 运行安全与 Paper 对账**
 
 Run: `python rebuild/assert_safety.py --root . --format json && python rebuild/verify_baseline.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL" --read-only`
 
 Expected: 安全计数全 0；Paper 基线无变化。
 
-- [ ] **Step 5: 更新截图索引与进度并提交**
+- [x] **Step 5: 更新截图索引与进度并提交**
 
 ```bash
 git add scripts/check.sh docs/progress.md docs/screenshots/rebuild-wave-2-capture.json

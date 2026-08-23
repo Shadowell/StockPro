@@ -14,6 +14,16 @@ test.beforeEach(async ({ page }) => {
       }),
     })
   })
+  await page.route('**/api/market/overview', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        indices: [], breadth: null, turnover: null, limit_ecology: null, sector_flows: [],
+        source_label: 'PostgreSQL market cache', source_updated_at: null, trade_date: null, data_status: 'empty',
+      }),
+    })
+  })
 })
 
 

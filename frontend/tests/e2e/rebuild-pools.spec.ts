@@ -14,7 +14,7 @@ test('stock pool page keeps directory members evidence and sealed snapshots', as
 
   await page.goto('/pools')
 
-  await expect(page.getByRole('heading', { name: '股票池' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '股票池', exact: true })).toBeVisible()
   await expect(page.getByText('质量股票池', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('heading', { name: '成员与证据' })).toBeVisible()
   await expect(page.getByText('贵州茅台')).toBeVisible()

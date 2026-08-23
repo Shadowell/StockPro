@@ -1,0 +1,49 @@
+{
+  "schema_version": "stockpro.rebuild-screenshot-capture.v1",
+  "captured_at": "2026-08-23T17:34:20+08:00",
+  "environment": {
+    "kind": "local-isolated-worktree",
+    "branch": "codex/bitpro-a-share-rebase",
+    "database": "stockpro_bitpro_rebase_dev",
+    "frontend_url": "http://127.0.0.1:4444",
+    "backend_url": "http://127.0.0.1:4445",
+    "production_evidence": false
+  },
+  "pages": [
+    {
+      "route": "/",
+      "desktop_artifact": "frontend/output/playwright/wave2-home-real-desktop.png",
+      "narrow_artifact": "frontend/output/playwright/wave2-home-real-narrow.png",
+      "evidence": "4 indices; rise 2505; fall 2860; limit-up 54; trade date 2026-08-21; partial sector state",
+      "console_errors": 0
+    },
+    {
+      "route": "/market?symbol=600519.SH&tab=chart",
+      "desktop_artifact": "frontend/output/playwright/wave2-market-real-desktop.png",
+      "narrow_artifact": "frontend/output/playwright/wave2-market-real-narrow.png",
+      "evidence": "600519.SH; price 1272.96; 3 cached daily bars; stale quote; empty order book; PostgreSQL provenance",
+      "console_errors": 0
+    },
+    {
+      "route": "/pools",
+      "desktop_artifact": "frontend/output/playwright/wave2-pools-real-desktop.png",
+      "narrow_artifact": "frontend/output/playwright/wave2-pools-real-narrow.png",
+      "evidence": "6 pools; 6 generations; 68 members; 5 sealed snapshots; page-load mutations 0",
+      "console_errors": 0
+    },
+    {
+      "route": "/factors",
+      "desktop_artifact": "frontend/output/playwright/wave2-factors-real-desktop.png",
+      "narrow_artifact": "frontend/output/playwright/wave2-factors-real-narrow.png",
+      "evidence": "100 factors; 100 recent runs; 3 factor snapshots; 55 correlations; pending metrics remain null",
+      "console_errors": 0
+    }
+  ],
+  "guards": {
+    "provider_calls_on_get": 0,
+    "business_writes_during_capture": 0,
+    "horizontal_overflow_failures": 0,
+    "crypto_navigation_entries": 0,
+    "paper_manifest_hash": "3646d2181a72907520e5b7ba820b39c2fe62a8cb2a5e2e3fd8158073a7a110f2"
+  }
+}

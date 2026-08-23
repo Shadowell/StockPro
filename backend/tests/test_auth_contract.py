@@ -82,7 +82,7 @@ def _client(monkeypatch, repository: FakeAuthRepository | None = None) -> tuple[
         )
         context = SimpleNamespace(
             settings=settings,
-            repositories=SimpleNamespace(health=repo, auth=repo),
+            repositories=SimpleNamespace(health=repo, auth=repo, market=repo),
             clock=lambda: datetime(2026, 8, 23, tzinfo=timezone.utc),
         )
         return TestClient(module.create_app(context)), repo
