@@ -119,7 +119,7 @@ git commit -m "feat(strategy): restore current immutable A-share contract"
 - Consumes: `/api/strategies*` 当前合同、Wave 2 因子/股票池。
 - Produces: BitPro 策略目录、筛选、详情、编辑/新版本、验证和输入证据页面。
 
-- [ ] **Step 1: 写目录、详情和创建失败 E2E**
+- [x] **Step 1: 写目录、详情和创建失败 E2E**
 
 ```typescript
 test('strategy center keeps BitPro catalogue and A-share lineage', async ({ page }) => {
@@ -133,32 +133,32 @@ test('strategy center keeps BitPro catalogue and A-share lineage', async ({ page
 })
 ```
 
-- [ ] **Step 2: 运行失败 E2E**
+- [x] **Step 2: 运行失败 E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "strategy center keeps BitPro"`
 
 Expected: FAIL，页面仍未适配或显示数字资产字段。
 
-- [ ] **Step 3: 绑定当前 Strategy client**
+- [x] **Step 3: 绑定当前 Strategy client**
 
 删除多版本 API client；目录、详情、验证、创建和子版本全部调用 `/api/strategies`。
 
-- [ ] **Step 4: 替换领域筛选与参数**
+- [x] **Step 4: 替换领域筛选与参数**
 
 资产筛选改为股票/ETF/指数，状态/策略类型/周期/资金筛选保留 BitPro 交互；
 参数面板显示 A股交易日、股票池、因子、成本、T+1 和持仓限制。
 
-- [ ] **Step 5: 保留 BitPro 列表/详情性能合同**
+- [x] **Step 5: 保留 BitPro 列表/详情性能合同**
 
 目录分页，详情按标签懒加载；编辑器与 Monaco 仅在编辑时加载；返回路径保持 URL 深链。
 
-- [ ] **Step 6: 更新页面合同并运行 1440px/390px**
+- [x] **Step 6: 更新页面合同并运行 1440px/390px**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "strategy center keeps BitPro" && npm --prefix frontend run build`
 
 Expected: PASS，无横向溢出、无旧合同文案。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add frontend/src/pages/Strategy.tsx frontend/src/components/StrategyParameterSections.tsx frontend/src/api/client.ts frontend/src/types/strategy.ts frontend/tests/e2e/rebuild-strategy.spec.ts docs/pages/策略中心.md

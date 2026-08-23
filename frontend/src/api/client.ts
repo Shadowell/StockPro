@@ -21,6 +21,7 @@ import type {
   FactorLibraryRecord,
   FactorMetricRecord,
 } from '../types/research';
+import type { StrategyValidationResult, StrategyVersionRecord } from '../types/strategy';
 
 const API_BASE = '/api';
 
@@ -96,6 +97,15 @@ export const researchApi = {
     apiClient.get('/factor-snapshots', { params: { limit } }),
   computeFactor: async (versionId: number, payload: { trade_date: string; dataset_snapshot_id: number; universe_snapshot_id: number }): Promise<Record<string, unknown>> =>
     apiClient.post(`/factor-versions/${versionId}/compute`, payload),
+};
+
+export const strategyCurrentApi = {
+  list: async (): Promise<{ items: StrategyVersionRecord[] }> => apiClient.get('/strategies'),
+  detail: async (versionId: string): Promise<StrategyVersionRecord> => apiClient.get(`/strategies/${encodeURIComponent(versionId)}`),
+  create: async (payload: { name: string; description: string; script_content: string }): Promise<{ strategy_version: StrategyVersionRecord; validation: StrategyValidationResult }> => apiClient.post('/strategies', payload),
+  createVersion: async (parentId: string, payload: { description?: string; script_content: string }): Promise<{ strategy_version: StrategyVersionRecord; validation: StrategyValidationResult }> => apiClient.post(`/strategies/${encodeURIComponent(parentId)}/versions`, payload),
+  validate: async (scriptContent: string): Promise<StrategyValidationResult> => apiClient.post('/strategies/validate', { script_content: scriptContent }),
+  quickRun: async (versionId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> => apiClient.post(`/strategies/${encodeURIComponent(versionId)}/quick-run`, payload),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

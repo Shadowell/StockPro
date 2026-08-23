@@ -1,94 +1,58 @@
-import { useState } from 'react';
-import { ChevronDown, Settings2, ShieldCheck } from 'lucide-react';
-import clsx from 'clsx';
-import type { StrategyParameterItem, StrategyParameterSections as StrategyParameterSectionsData } from '../utils/strategyConfigDisplay';
+import { CalendarDays, Database, ShieldCheck, SlidersHorizontal } from 'lucide-react'
+import type { StrategyParameterSections as LegacyParameterSections } from '../utils/strategyConfigDisplay'
 
-interface ParameterPanelProps {
-  title: string;
-  subtitle: string;
-  items: StrategyParameterItem[];
-  tone: 'logic' | 'risk';
-}
-
-function joinParameterSummary(items: StrategyParameterItem[]): string {
-  if (items.length === 0) return '暂无核心参数。';
-  return `${items.map((item) => `${item.label}：${item.value}`).join('；')}。`;
-}
-
-function ParameterPanel({ title, subtitle, items, tone }: ParameterPanelProps) {
-  const logicTone = tone === 'logic';
-  const Icon = logicTone ? Settings2 : ShieldCheck;
-  return (
-    <div className={clsx('min-w-0 pl-4', logicTone ? 'border-l border-blue-500/40' : 'border-l border-emerald-500/40')}>
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div className={clsx('flex items-center gap-2 text-sm font-semibold', logicTone ? 'text-blue-300' : 'text-emerald-300')}>
-          <Icon className="h-4 w-4 shrink-0" />
-          {title}
-        </div>
-        <span className="shrink-0 text-xs font-semibold text-gray-500">{items.length} 项</span>
-      </div>
-      <p className="text-sm leading-7 text-gray-300" aria-label={`${title}参数摘要`}>
-        {joinParameterSummary(items)}
-      </p>
-      <p className="mt-1 text-xs leading-relaxed text-gray-500">{subtitle}</p>
-    </div>
-  );
-}
 
 export default function StrategyParameterSections({
+  parameterSchema,
+  dependencyManifest,
   sections,
-  className,
 }: {
-  sections: StrategyParameterSectionsData;
-  className?: string;
+  parameterSchema?: Record<string, unknown>
+  dependencyManifest?: Record<string, unknown>
+  sections?: LegacyParameterSections
 }) {
-  const [open, setOpen] = useState(false);
-  const tradingCount = sections.trading.length;
-  const riskCount = sections.risk.length;
-
+  if (sections) {
+    return (
+      <div className="grid gap-3 lg:grid-cols-2">
+        {[['交易参数', sections.trading], ['风险参数', sections.risk]].map(([title, items]) => (
+          <section key={String(title)} className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-3">
+            <div className="text-xs font-semibold text-gray-200">{String(title)}</div>
+            <div className="mt-3 space-y-2">{(items as LegacyParameterSections['trading']).map((item) => <div key={item.key} className="flex justify-between gap-3 text-[11px]"><span className="text-gray-600">{item.label}</span><span className="font-mono text-gray-300">{item.value}</span></div>)}</div>
+          </section>
+        ))}
+      </div>
+    )
+  }
+  const manifest = dependencyManifest || {}
   return (
-    <section className={clsx('rounded-xl border border-crypto-border bg-crypto-card/80', className)}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <Settings2 className="h-4 w-4 shrink-0 text-cyan-300" />
-          <span className="truncate text-base font-semibold text-white">策略参数配置</span>
-        </span>
-        <span className="flex shrink-0 items-center gap-2">
-          <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-200">
-            交易逻辑 {tradingCount}
-          </span>
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
-            风控 {riskCount}
-          </span>
-          <ChevronDown
-            className={clsx('h-4 w-4 text-gray-500 transition-transform', open && 'rotate-180 text-gray-300')}
-          />
-        </span>
-      </button>
-
-      {open && (
-        <div className="border-t border-crypto-border px-4 pb-4 pt-4">
-          <div className="grid gap-5 lg:grid-cols-2">
-            <ParameterPanel
-              title="交易逻辑参数配置"
-              subtitle="仅展示影响信号、交易池与触发条件的核心配置"
-              items={sections.trading}
-              tone="logic"
-            />
-            <ParameterPanel
-              title="风控参数配置"
-              subtitle="仅展示影响资金、杠杆、仓位与止盈止损的核心配置"
-              items={sections.risk}
-              tone="risk"
-            />
-          </div>
+    <div className="grid gap-3 lg:grid-cols-2">
+      <section className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-200"><CalendarDays className="h-4 w-4 text-blue-300" />A股执行语义</div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+          {[
+            ['交易日历', 'CN_A_SHARE'],
+            ['可卖规则', 'T+1'],
+            ['最小委托', '100股'],
+            ['方向', '只做多'],
+          ].map(([label, value]) => <div key={label} className="rounded border border-crypto-border p-2"><div className="text-gray-600">{label}</div><div className="mt-1 font-mono text-gray-300">{value}</div></div>)}
         </div>
-      )}
-    </section>
-  );
+      </section>
+      <section className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-200"><Database className="h-4 w-4 text-cyan-300" />封存输入</div>
+        <div className="mt-3 space-y-2 text-[11px]">
+          {[
+            ['股票池快照', manifest.pool_snapshot_id],
+            ['因子快照', manifest.factor_snapshot_id],
+            ['数据快照', manifest.dataset_snapshot_id],
+            ['成本模型', manifest.cost_model_id],
+          ].map(([label, value]) => <div key={String(label)} className="flex items-center justify-between rounded border border-crypto-border px-2.5 py-2"><span className="text-gray-600">{String(label)}</span><span className="font-mono text-gray-300">{value == null ? '未绑定' : String(value)}</span></div>)}
+        </div>
+      </section>
+      <section className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-3 lg:col-span-2">
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-200"><SlidersHorizontal className="h-4 w-4 text-purple-300" />参数 Schema</div>
+        <pre className="mt-3 max-h-56 overflow-auto rounded border border-crypto-border bg-black/15 p-3 text-[11px] leading-5 text-gray-400">{JSON.stringify(parameterSchema || {}, null, 2)}</pre>
+      </section>
+      <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] leading-5 text-amber-100 lg:col-span-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />目录、代码校验或 quick-run 不产生 Paper 晋级资格；必须进入完整回测协议。</div>
+    </div>
+  )
 }

@@ -13,6 +13,16 @@
   可读，当前代码验证通过且不返回 api_version。六张策略/Paper 表前后计数不变，Provider
   imports 0；15 项合同/安全测试通过。
 
+## BitPro-first Wave 3：策略中心（2026-08-23）
+
+- 用当前 PostgreSQL 策略目录替换导入 Crypto Strategy 页面，保留 BitPro 卡片密度、搜索、
+  状态筛选、12 条分页、详情抽屉、代码验证、子版本和回测入口。
+- 详情明确 CN_A_SHARE、T+1、100股、只做多，以及 pool/factor/dataset/cost 封存输入；
+  未绑定显示“未绑定”，不从当前页面补写 lineage。quick-run/代码有效不可晋级提示常驻。
+- Mock E2E、类型/lint/build通过。真实隔离库首屏 12 卡、63 个目录项，抽屉展示实际
+  `A股多股动量模板` 与当前代码状态；桌面/390px console errors 0、六张策略/Paper 表
+  业务写入 0，截图人工检查通过。
+
 ## BitPro-first Wave 2：传统金融研究模型（2026-08-23）
 
 - 新增不可变 `InstrumentContract`，当前支持 stock/ETF/index，并为 future 保留乘数、保证金、

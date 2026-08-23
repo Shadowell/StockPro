@@ -7,15 +7,10 @@ import Home from './pages/Home'
 import Market from './pages/Market'
 import StockPools from './pages/StockPools'
 import FactorLab from './pages/FactorLab'
+import Strategy from './pages/Strategy'
 
 
 const workspaces: Record<string, WorkspaceState> = {
-  strategy: {
-    title: '策略',
-    description: '策略版本与研究证据将在主线 Wave 恢复。',
-    ownerRoute: '/strategy',
-    status: 'adapting',
-  },
   backtest: {
     title: '回测',
     description: 'A股交易日历、费用与撮合语义冻结后恢复回测。',
@@ -86,7 +81,7 @@ function AppRoutes() {
         <Route path="market" element={<Market />} />
         <Route path="pools" element={<StockPools />} />
         <Route path="factors" element={<FactorLab />} />
-        <Route path="strategy" element={<UnavailableWorkspace state={workspaces.strategy} />} />
+        <Route path="strategy" element={<Strategy />} />
         <Route path="backtest" element={<UnavailableWorkspace state={workspaces.backtest} />} />
         <Route path="paper" element={<UnavailableWorkspace state={workspaces.paper} />} />
         <Route path="watch" element={<UnavailableWorkspace state={workspaces.watch} />} />
