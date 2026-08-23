@@ -8,6 +8,7 @@ import type {
   FundingOpportunity,
   Strategy,
 } from '../types';
+import type { MarketOverviewView } from '../types/research';
 
 const API_BASE = '/api';
 
@@ -33,6 +34,11 @@ export const apiClient = axios.create({
 });
 
 const api = apiClient;
+
+export const researchApi = {
+  marketOverview: async (): Promise<MarketOverviewView> =>
+    apiClient.get<MarketOverviewView, MarketOverviewView>('/market/overview'),
+};
 
 function extractApiErrorDetail(data: unknown): unknown {
   if (!data) return undefined;

@@ -24,6 +24,18 @@
   PostgreSQL，分时/盘口诚实空态，自选为空。九张市场/Paper 表前后计数一致，业务写入 0，
   进程未导入 TuShare/AKShare。聚焦 API/只读/安全测试 18 项与前端类型检查通过。
 
+## BitPro-first Wave 2：真实 A股首页（2026-08-23）
+
+- 直接保留 BitPro Home 的 `Market Command` 操作台节奏，把 Crypto 市场面板替换为五个
+  A股模块：主要指数、市场宽度、涨停生态、板块资金和策略→回测→模拟主线状态。
+- 首页只调用 `/api/market/overview`；Loading/error/empty/partial/stale/fresh 独立呈现，
+  Decimal 使用字符串合同并由展示层显式验证转换，null 显示 `—`。真实环境曾暴露 Mock
+  number 掩盖的 `toFixed` 错误，现已用字符串 fixture 锁定真实 API 形状。
+- 真实隔离库桌面/390px 验收展示 4 个指数、上涨 2,505、下跌 2,860、涨停 54、跌停 13、
+  最高板 3、交易日 2026-08-21 和 `partial`；sector evidence 为空时保持板块资金不可用。
+- Mock 首页 2 项 E2E、类型、lint、构建通过；真实桌面/窄屏无横向溢出、console errors 0，
+  页面无 BTC、ETH、资金费率、永续或数字资产控制。
+
 ## 重建基线 SHA 现场纠正（2026-08-22）
 
 - Wave 1 开始前验证发现设计草稿中的 `bff8e05…` 不是当前仓库的 Git 对象，不能作为

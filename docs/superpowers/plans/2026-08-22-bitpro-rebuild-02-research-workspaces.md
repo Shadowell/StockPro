@@ -180,7 +180,7 @@ git commit -m "feat(market): expose current A-share research API"
 - Consumes: `GET /api/market/overview`。
 - Produces: BitPro 首页布局的 A股首页。
 
-- [ ] **Step 1: 写首页 E2E 失败测试**
+- [x] **Step 1: 写首页 E2E 失败测试**
 
 ```typescript
 test('home keeps BitPro density with A-share facts', async ({ page }) => {
@@ -193,28 +193,28 @@ test('home keeps BitPro density with A-share facts', async ({ page }) => {
 })
 ```
 
-- [ ] **Step 2: 运行失败 E2E**
+- [x] **Step 2: 运行失败 E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "home keeps BitPro density"`
 
 Expected: FAIL，页面仍为未适配状态。
 
-- [ ] **Step 3: 保留 BitPro Home 结构并替换数据绑定**
+- [x] **Step 3: 保留 BitPro Home 结构并替换数据绑定**
 
 保留首屏模块顺序、卡片尺寸、榜单、loading/error skeleton 和移动端折叠；
 移除资金费率、新币、加密涨幅榜，替换成 API 已提供的 A股模块。
 
-- [ ] **Step 4: 实现每块独立状态**
+- [x] **Step 4: 实现每块独立状态**
 
 核心 overview 失败时首页显示错误；可选 sector/limit 数据缺失只影响自身模块，不能把 null 显示为 0。
 
-- [ ] **Step 5: 更新页面合同并运行桌面/移动端**
+- [x] **Step 5: 更新页面合同并运行桌面/移动端**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "home keeps BitPro density"`
 
 Expected: 1440px 与 390px PASS，无横向溢出。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add frontend/src/pages/Home.tsx frontend/src/api/client.ts frontend/tests/e2e/rebuild-home.spec.ts docs/pages/首页.md

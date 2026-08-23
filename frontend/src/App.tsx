@@ -3,15 +3,10 @@ import { AuthProvider, useAuth } from './auth/AuthProvider'
 import MainLayout from './components/MainLayout'
 import Login from './pages/Login'
 import UnavailableWorkspace, { type WorkspaceState } from './pages/rebuild/UnavailableWorkspace'
+import Home from './pages/Home'
 
 
 const workspaces: Record<string, WorkspaceState> = {
-  home: {
-    title: '首页',
-    description: 'A股总览与主线状态将在基础数据 API 验收后接入。',
-    ownerRoute: '/',
-    status: 'adapting',
-  },
   market: {
     title: '行情',
     description: 'A股、ETF 与指数行情将在数据源合同完成后接入。',
@@ -102,7 +97,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<MainLayout />}>
-        <Route index element={<UnavailableWorkspace state={workspaces.home} />} />
+        <Route index element={<Home />} />
         <Route path="market" element={<UnavailableWorkspace state={workspaces.market} />} />
         <Route path="pools" element={<UnavailableWorkspace state={workspaces.pools} />} />
         <Route path="factors" element={<UnavailableWorkspace state={workspaces.factors} />} />
