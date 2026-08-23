@@ -169,7 +169,7 @@ git commit -m "feat(signals): restore alert-only A-share signal audit"
 - Consumes: `/api/signals*`、`/api/watch/*`。
 - Produces: 独立信号审计页和盯盘工作台。
 
-- [ ] **Step 1: 写信号/盯盘职责失败 E2E**
+- [x] **Step 1: 写信号/盯盘职责失败 E2E**
 
 ```typescript
 test('signal center audits and watch observes without order actions', async ({ page }) => {
@@ -183,31 +183,31 @@ test('signal center audits and watch observes without order actions', async ({ p
 })
 ```
 
-- [ ] **Step 2: 运行失败 E2E**
+- [x] **Step 2: 运行失败 E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "signal center audits"`
 
 Expected: FAIL，页面仍为未适配或含币圈账户/下单动作。
 
-- [ ] **Step 3: 适配 SignalCenter**
+- [x] **Step 3: 适配 SignalCenter**
 
 保留 BitPro 筛选、信号详情、payload preview、通道和投递记录；替换为 A股 symbol、策略/Paper lineage、站内/log通知。真实 Bot 通道不在本合同启用。
 
-- [ ] **Step 4: 适配 WatchMarket**
+- [x] **Step 4: 适配 WatchMarket**
 
 保留 BitPro K线、买卖点、对象切换和高密度表格；账户选择改为 Paper 实例/股票，移除交易所私有账户和执行按钮。
 
-- [ ] **Step 5: 接入规则工作台**
+- [x] **Step 5: 接入规则工作台**
 
 预览和显式评估分离；确认弹窗写明“只生成告警，不下单、不改 Paper”。访客评估按钮禁用。
 
-- [ ] **Step 6: 文档与桌面/移动端验收**
+- [x] **Step 6: 文档与桌面/移动端验收**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "signal center audits" && npm --prefix frontend run build`
 
 Expected: PASS；390px 可操作，无币圈字段。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add frontend/src/pages/SignalCenter.tsx frontend/src/pages/WatchMarket.tsx frontend/src/components/WatchDataCharts.tsx frontend/src/components/WatchKlineChart.tsx frontend/src/api/client.ts frontend/src/types/operations.ts frontend/tests/e2e/rebuild-signals-watch.spec.ts docs/pages/信号中心.md docs/pages/盯盘.md

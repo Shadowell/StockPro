@@ -1,5 +1,16 @@
 # Progress Log
 
+## BitPro-first Wave 4：信号中心与证据盯盘（2026-08-23）
+
+- `/signals` 已接入 79 条真实信号和 97 条 alert/投递证据，保留 BitPro 高密度 KPI、筛选、
+  审计表和详情抽屉；每行携带 signal/strategy/Paper ID，管理员只可确认 new 信号。
+- `/watch` 已接入 15 个 Paper、79 信号、61 订单、47 成交和 93 个活动告警，按策略信号、
+  订单与成交、图表联动、规则、告警五个标签组织；没有买入、卖出或下单按钮。
+- 规则 preview 与 evaluate 分离，评估确认文案明确“只生成告警，不下单、不改 Paper”；真实
+  验收没有点击评估。访客不显示评估入口。
+- Mock 职责 E2E、类型、零告警 lint、生产构建通过。真实桌面/390px 页面 API 200、console
+  errors 0、无横向溢出，截图人工检查通过；最终 Paper continuity 无差异。
+
 ## BitPro-first Wave 4：当前信号与 Alert-only 盯盘 API（2026-08-23）
 
 - 新增唯一当前 `/api/signals*` 与 `/api/watch/*`，覆盖信号目录/详情/确认、统一运行上下文、

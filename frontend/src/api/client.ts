@@ -24,6 +24,7 @@ import type {
 import type { StrategyValidationResult, StrategyVersionRecord } from '../types/strategy';
 import type { BacktestConfiguration, BacktestJobRecord, BacktestRunRecord } from '../types/backtest';
 import type { PaperInstanceDetail, PaperInstanceList } from '../types/paper';
+import type { OperationAlert, OperationSignal, WatchContext, WatchRule } from '../types/operations';
 
 const API_BASE = '/api';
 
@@ -136,6 +137,18 @@ export const paperCurrentApi = {
     apiClient.post(`/paper/instances/${encodeURIComponent(instanceId)}/${action}`),
   advance: async (instanceId: string, maxDates = 1): Promise<Record<string, unknown>> =>
     apiClient.post(`/paper/instances/${encodeURIComponent(instanceId)}/advance`, { max_dates: maxDates }),
+};
+
+export const operationsCurrentApi = {
+  signals: async (scope: 'business' | 'audit' = 'business'): Promise<{ items: OperationSignal[]; total: number; scope: string }> => apiClient.get('/signals', { params: { scope } }),
+  signal: async (signalId: string): Promise<OperationSignal> => apiClient.get(`/signals/${encodeURIComponent(signalId)}`),
+  acknowledgeSignal: async (signalId: string): Promise<OperationSignal> => apiClient.post(`/signals/${encodeURIComponent(signalId)}/acknowledge`),
+  context: async (scope: 'business' | 'audit' = 'business'): Promise<WatchContext> => apiClient.get('/watch/context', { params: { scope } }),
+  alerts: async (status?: string): Promise<{ items: OperationAlert[]; total: number }> => apiClient.get('/watch/alerts', { params: { status } }),
+  acknowledgeAlert: async (alertId: string): Promise<OperationAlert> => apiClient.post(`/watch/alerts/${encodeURIComponent(alertId)}/acknowledge`),
+  rules: async (scope: 'business' | 'audit' = 'business'): Promise<{ items: WatchRule[]; total: number; scope: string }> => apiClient.get('/watch/rules', { params: { scope } }),
+  previewRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/preview`),
+  evaluateRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/evaluate`),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

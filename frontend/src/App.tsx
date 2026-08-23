@@ -10,21 +10,11 @@ import FactorLab from './pages/FactorLab'
 import Strategy from './pages/Strategy'
 import Backtest from './pages/Backtest'
 import Paper from './pages/Paper'
+import SignalCenter from './pages/SignalCenter'
+import Watch from './pages/Watch'
 
 
 const workspaces: Record<string, WorkspaceState> = {
-  watch: {
-    title: '盯盘',
-    description: '只在 A股行情与告警数据源可证明时启用。',
-    ownerRoute: '/watch',
-    status: 'adapting',
-  },
-  signals: {
-    title: '信号',
-    description: '信号审计将在策略与 Paper 合同对齐后恢复。',
-    ownerRoute: '/signals',
-    status: 'adapting',
-  },
   monitor: {
     title: '监控',
     description: '运行健康、数据新鲜度与 Paper 状态将在运行 Wave 恢复。',
@@ -74,8 +64,8 @@ function AppRoutes() {
         <Route path="strategy" element={<Strategy />} />
         <Route path="backtest" element={<Backtest />} />
         <Route path="paper" element={<Paper />} />
-        <Route path="watch" element={<UnavailableWorkspace state={workspaces.watch} />} />
-        <Route path="signals" element={<UnavailableWorkspace state={workspaces.signals} />} />
+        <Route path="watch" element={<Watch />} />
+        <Route path="signals" element={<SignalCenter />} />
         <Route path="monitor" element={<UnavailableWorkspace state={workspaces.monitor} />} />
         <Route path="review" element={<UnavailableWorkspace state={workspaces.review} />} />
         <Route path="data" element={<UnavailableWorkspace state={workspaces.data} />} />
