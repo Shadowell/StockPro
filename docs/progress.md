@@ -1,5 +1,14 @@
 # Progress Log
 
+## 生产切换：数据库凭据无中断轮换（2026-08-23）
+
+- 获得最终迁移授权后，创建 `stockpro_rebuild_app` 并继承旧对象所有者权限；服务器 `.env`
+  原子切换到新角色，真实连接验证为 `stockpro_rebuild_app|stockpro_prod`。
+- GitHub Actions workflow_dispatch run `32646230741` 强制重部署当前 main/旧 SHA，2 分钟成功；
+  systemd、Nginx、内外健康通过，`pg_stat_activity` 只见新角色活动连接。
+- 旧 `stockpro_app` 已设为 `NOLOGIN` 并更换随机密码，早期暴露凭据失效；没有把密码写入
+  仓库、日志或报告。生产业务代码仍是旧基线，下一步推送重建分支并创建 PR。
+
 ## BitPro-first Wave 6：Pre-deploy 最终验收完成（2026-08-23）
 
 - 机器 completion audit 的 BASE/API/DB/PAPER/SAFE/UI/ASHARE/FUTURE 全部 passed；唯一 pending

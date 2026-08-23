@@ -14,8 +14,9 @@ ASHARE/FUTURE 八项必需能力均为 passed；`DEPLOY-001` 是唯一
 - BitPro 固定来源：`00517963e90f463e608289b0277fe598bd82d9bf`
 - StockPro/回滚基线：`99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`
 - 验收分支：`codex/bitpro-a-share-rebase`
-- 验收代码 SHA：`9dad95c77dc2a6e0ffd0b189072e00a60b9212ff`
-- 从 StockPro 基线起共 50 个可审计提交；核心阶段提交见 `docs/progress.md` 和各 Wave 计划。
+- Pre-deploy 代码验收 SHA：`9dad95c77dc2a6e0ffd0b189072e00a60b9212ff`
+- 切换就绪提交：`5ed617471d3cdd87f29f35dae66f15e554c1ba41`
+- 从 StockPro 基线起包含 50+ 个可审计提交；核心阶段提交见 `docs/progress.md` 和各 Wave 计划。
 
 ## 功能与页面
 
@@ -72,18 +73,19 @@ additive migrations 后：67 strategy versions、79 backtests、15 Paper、61/47
 2. 分时、盘口、板块或 Provider 证据在本地无缓存时显示 empty/stale，不合成数据。
 3. Watch 冷读在 SSH 环境双请求约 16.6 秒，Signals 约 1.6 秒；已使用 single-flight 和专用
    查询，低于 30 秒客户端上限。
-4. 早期诊断输出曾暴露数据库连接凭据。**任何 push/PR/deploy 前必须协调轮换该数据库角色
-   密码并同步 GitHub Actions/服务器环境**，不得把旧凭据继续带入生产切换。
+4. 早期诊断暴露的数据库角色已在获批后完成无中断轮换：创建继承旧对象权限的
+   `stockpro_rebuild_app`，更新服务器环境，并由 Actions run `32646230741` 重部署当前 main；
+   生产活动连接已切换，新旧健康均通过，旧 `stockpro_app` 已设为 `NOLOGIN` 并更换随机密码。
 
 ## 获批后的生产流程
 
-1. 轮换并验证数据库凭据。
-2. 只读采集 production pre-cutover manifest；不得拿本地 15 实例基线跨环境比较。
-3. 推送 `codex/bitpro-a-share-rebase` 并创建 PR。
-4. 等待 required checks，通过 PR 合并 `main`。
-5. 仅由 GitHub Actions 部署并应用 additive migration；禁止 SSH/rsync 手工修补。
-6. 采集同环境 post-cutover manifest，核对服务、部署 SHA、内外健康和真实页面。
-7. post-deploy audit 全项通过后关闭合同；失败则回滚应用 release，不回滚/清空数据库。
+1. 只读 production pre-cutover manifest 已采集；生产当前 37 migrations、业务对象均为 0，
+   部署 SHA 为旧基线，不与本地 15 个 Paper 跨环境比较。
+2. 推送 `codex/bitpro-a-share-rebase` 并创建 PR。
+3. 等待 required checks，通过 PR 合并 `main`。
+4. 仅由 GitHub Actions 部署并应用 additive migration；禁止 SSH/rsync 手工修补。
+5. 采集同环境 post-cutover manifest，核对服务、部署 SHA、内外健康和真实页面。
+6. post-deploy audit 全项通过后关闭合同；失败则回滚应用 release，不回滚/清空数据库。
 
 生产 pre-cutover 采集必须在最终确认后执行，建议命令入口：
 
