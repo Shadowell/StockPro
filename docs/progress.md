@@ -1,5 +1,18 @@
 # Progress Log
 
+## BitPro-first Wave 3：当前不可变策略合同（2026-08-23）
+
+- 恢复 StockPro AST allowlist、隔离 worker、运行限额、validation/replay/intents/custom records
+  与不可变 `strategy_versions`；`app.domain.strategy` 改为显式无副作用入口，不加载 SQLite。
+- 新增 `PostgresStrategyRepository`、`StrategyApplicationService` 和当前 `/api/strategies*`，
+  覆盖目录、详情、子版本、代码验证和 quick-run。公共 response 删除 API 版本/迁移命名；
+  历史合同字段仅在 `include_audit=true` 的只读 metadata 中出现，禁止更新。
+- quick-run 强制 `promotion_status=not_evaluated`，不能生成 Paper 晋级资格；创建/子版本/quick
+  run 管理员限定，验证使用同一 AST 语义。
+- 真实隔离库读取 63 个策略目录项、67 个不可变版本；默认详情无历史合同字段，审计详情
+  可读，当前代码验证通过且不返回 api_version。六张策略/Paper 表前后计数不变，Provider
+  imports 0；15 项合同/安全测试通过。
+
 ## BitPro-first Wave 2：传统金融研究模型（2026-08-23）
 
 - 新增不可变 `InstrumentContract`，当前支持 stock/ETF/index，并为 future 保留乘数、保证金、

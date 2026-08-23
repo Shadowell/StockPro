@@ -116,6 +116,9 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                 "backend/app/services/reference_dataset_sync_service.py",
                 "backend/app/services/reference_factor_catalog.py",
                 "backend/app/services/stock_pool_service.py",
+                "backend/app/services/strategy_application_service.py",
+                "backend/app/services/strategy_runtime_service.py",
+                "backend/app/services/strategy_runtime_worker.py",
                 "backend/app/services/tushare_catalog_service.py",
                 "backend/app/services/tushare_provider.py",
             }
@@ -125,6 +128,7 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                     "backend/app/domain/auth/",
                     "backend/app/domain/instruments/",
                     "backend/app/domain/research/",
+                    "backend/app/domain/strategy/",
                     "backend/app/repositories/",
                     "frontend/src/pages/rebuild/",
                 )

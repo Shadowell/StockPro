@@ -69,10 +69,6 @@ class MarketRepository(Protocol):
     def delete_watchlist(self, owner: str, entry_id: int) -> bool: ...
 
 
-class StrategyRepository(Protocol):
-    """Strategy persistence contract; methods are added in Wave 3."""
-
-
 class BacktestRepository(Protocol):
     """Backtest persistence contract; methods are added in Wave 3."""
 
@@ -107,6 +103,16 @@ class FactorRepository(Protocol):
     def snapshot_values(self, snapshot_id: int, factor_code: str | None, limit: int) -> dict[str, Any]: ...
 
 
+class StrategyRepository(Protocol):
+    def list_strategies(self) -> list[dict[str, Any]]: ...
+    def get_strategy_version(self, version_id: str) -> dict[str, Any] | None: ...
+    def create_strategy(self, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def create_version(self, parent_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def validate(self, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def quick_run(self, version_id: str, payload: dict[str, Any]) -> dict[str, Any]: ...
+    def update_contract_metadata(self, version_id: str, metadata: dict[str, object]) -> None: ...
+
+
 @dataclass(frozen=True)
 class Repositories:
     health: HealthRepository
@@ -114,3 +120,4 @@ class Repositories:
     market: MarketRepository
     pools: PoolRepository
     factors: FactorRepository
+    strategies: StrategyRepository

@@ -39,7 +39,7 @@
 - Produces: `GET/POST /api/strategies`、`GET /api/strategies/{id}`、`POST /api/strategies/{id}/versions`、`POST /api/strategies/validate`、`POST /api/strategies/{id}/quick-run`。
 - Produces: `StrategyDefinitionView`, `StrategyVersionView`, `ValidationResult`, `ReplayResult`。
 
-- [ ] **Step 1: 写当前合同与历史元数据失败测试**
+- [x] **Step 1: 写当前合同与历史元数据失败测试**
 
 ```python
 def test_new_strategy_uses_current_contract_without_public_version_name(client):
@@ -59,13 +59,13 @@ def test_historical_contract_metadata_is_readonly(repository):
         repository.update_contract_metadata(historical.id, {})
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_strategy_current_contract.py -q`
 
 Expected: FAIL，当前 Strategy Service/Router 不存在或仍公开版本名称。
 
-- [ ] **Step 3: 定义当前策略模型**
+- [x] **Step 3: 定义当前策略模型**
 
 ```python
 @dataclass(frozen=True)
@@ -83,22 +83,22 @@ class StrategyVersionView:
 
 公共 response 不返回产品 API 版本名；历史 metadata 只在审计详情中按需展示。
 
-- [ ] **Step 4: 恢复 AST 沙箱和隔离 worker**
+- [x] **Step 4: 恢复 AST 沙箱和隔离 worker**
 
 保留 `initialize(context)` / `handle_data(context, data)` 当前语义、禁止模块/网络/文件/数据库访问、CPU/内存/时长/输出限制。代码验证与 quick-run 使用同一 worker。
 
-- [ ] **Step 5: 实现 Repository 和 Router**
+- [x] **Step 5: 实现 Repository 和 Router**
 
 Repository 只读写 `strategy_versions`、validation runs、replay runs/intents/custom records；
 创建子版本，不原地更新已使用版本。
 
-- [ ] **Step 6: 运行测试、安全扫描和基线对账**
+- [x] **Step 6: 运行测试、安全扫描和基线对账**
 
 Run: `python -m pytest backend/tests/test_strategy_current_contract.py -q && python rebuild/assert_safety.py --root . --format json && python rebuild/verify_baseline.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL" --read-only`
 
 Expected: PASS；现有策略数和 Paper lineage 未变化。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add backend/app/domain/strategy backend/app/services/strategy_runtime_service.py backend/app/services/strategy_runtime_worker.py backend/app/services/strategy_application_service.py backend/app/api/endpoints/strategy.py backend/app/repositories backend/app/api/api.py backend/tests/test_strategy_current_contract.py
