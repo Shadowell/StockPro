@@ -50,6 +50,25 @@
 - Repository/Router/安全门禁 14 项聚焦测试通过；安全扫描把 AppContext、Repository 和
   PostgreSQL 文件纳入真实可达面后，五类阻断计数仍为 0。
 
+## BitPro-first Wave 1：PostgreSQL 当前认证合同（2026-08-23）
+
+- 新增唯一 `/api/auth/admin/login`、`/api/auth/guest/login`、`/api/auth/me` 和
+  `/api/auth/logout`。管理员使用环境密钥与常量时间比较；Bearer token 使用 HMAC-SHA256
+  签名、有效期和随机 session ID，同时下发 HttpOnly、SameSite=Strict Cookie。
+- 访客邀请码只以 SHA-256 查询 PostgreSQL，token 不包含明文邀请码；每次解析按 code ID
+  复核未撤销和有效期。登录成功/失败写 `auth_audit_events`，事件不包含密码、邀请码或 token。
+- 当前业务 Router 统一使用 `require_authenticated`；未登录访问
+  `/api/market/overview` 返回 401。登录按来源 IP 在进程内限制为 15 分钟 10 次失败，超过
+  返回 429；API 输入有明确长度上限，错误信息不区分账号或密码。
+- 修复 `app.domain` 与 `app.services` 根包的 BitPro 隐式导入副作用，认证加载不再触发
+  funding、交易所、ccxt 或 SQLite。对应 auth domain/service/core 全部加入安全可达面扫描。
+- 真实隔离库管理员登录、Cookie 会话、`/api/auth/me`、退出与一条审计追加通过；前端
+  AuthProvider 显式丢弃响应 token，不写 localStorage/sessionStorage。聚焦测试 20 项通过。
+- 供应链非强制升级到 Axios 1.19、ECharts 6.1 和 React Router 7.18 后，生产依赖
+  `npm audit --omit=dev` 为 0 vulnerability；TypeScript、构建和 lint 通过。
+- 安全待办：此前终端诊断曾暴露数据库连接串，相关数据库账号必须在任何 push、部署或
+  对外共享前轮换；本切片未擅自修改原 StockPro/生产凭据。
+
 ## BitPro-first Wave 0：隔离基线门禁完成（2026-08-22）
 
 - 已从计划提交 `27f53ce` 创建独立 worktree

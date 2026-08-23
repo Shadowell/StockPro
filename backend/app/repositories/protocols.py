@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from datetime import datetime
+from typing import Any, Literal, Protocol
 
 
 @dataclass(frozen=True)
@@ -17,7 +18,31 @@ class HealthRepository(Protocol):
 
 
 class AuthRepository(Protocol):
-    """Authentication persistence contract; methods are added in Wave 1 Task 4."""
+    def get_active_guest_code(
+        self,
+        code_hash: str,
+        now: datetime,
+    ) -> dict[str, Any] | None: ...
+
+    def get_active_guest_code_by_id(
+        self,
+        code_id: int,
+        now: datetime,
+    ) -> dict[str, Any] | None: ...
+
+    def touch_guest_code(self, code_id: int, now: datetime) -> None: ...
+
+    def record_auth_event(
+        self,
+        *,
+        event_type: str,
+        role: str,
+        subject_id: str | None,
+        guest_code_id: int | None,
+        success: bool,
+        reason: str | None,
+        metadata: dict[str, object],
+    ) -> None: ...
 
 
 class MarketRepository(Protocol):

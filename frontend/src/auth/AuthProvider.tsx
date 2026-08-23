@@ -24,10 +24,16 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 function normalizeSession(session: AuthSession | null | undefined): AuthSession {
   if (!session) return DEFAULT_SESSION;
   return {
-    ...DEFAULT_SESSION,
-    ...session,
+    authEnabled: session.authEnabled ?? DEFAULT_SESSION.authEnabled,
+    authenticated: session.authenticated ?? DEFAULT_SESSION.authenticated,
     permissions: session.permissions || [],
     role: (session.role || null) as AuthRole,
+    expiresAt: session.expiresAt,
+    sessionId: session.sessionId,
+    guestCodeId: session.guestCodeId,
+    maxBacktestsPerDay: session.maxBacktestsPerDay,
+    maxConcurrentBacktests: session.maxConcurrentBacktests,
+    maxBacktestDays: session.maxBacktestDays,
   };
 }
 

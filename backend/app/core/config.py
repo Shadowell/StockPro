@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     ENABLE_CRYPTO_BACKGROUND_JOBS: bool = False
     ENABLE_LIVE_TRADING: bool = False
 
+    AUTH_ENABLED: bool = True
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: Optional[str] = None
+    ADMIN_TOKEN_SECRET: Optional[str] = None
+    AUTH_TOKEN_TTL_SECONDS: int = 86_400
+    AUTH_COOKIE_NAME: str = "stockpro_session"
+    AUTH_COOKIE_SECURE: bool = False
+
     BITPRO_AUTH_ENABLED: bool = False
     BITPRO_ADMIN_USERNAME: Optional[str] = None
     BITPRO_ADMIN_PASSWORD_HASH: Optional[str] = None

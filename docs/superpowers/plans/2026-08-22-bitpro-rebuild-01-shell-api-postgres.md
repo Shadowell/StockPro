@@ -292,7 +292,7 @@ git commit -m "feat(storage): restore PostgreSQL repository foundation"
 - Produces: `POST /api/auth/admin/login`、`POST /api/auth/guest/login`、`GET /api/auth/me`、`AuthProfile`。
 - Consumes: 现有 PostgreSQL auth sessions、guest codes、MCP token scopes。
 
-- [ ] **Step 1: 写管理员/访客/未登录失败测试**
+- [x] **Step 1: 写管理员/访客/未登录失败测试**
 
 ```python
 def test_current_auth_contract(client):
@@ -303,13 +303,13 @@ def test_current_auth_contract(client):
     assert client.get("/api/market/overview").status_code == 401
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_auth_contract.py -q`
 
 Expected: FAIL，认证路由尚未注册或仍依赖 SQLite。
 
-- [ ] **Step 3: 实现 AuthService 与 Repository 方法**
+- [x] **Step 3: 实现 AuthService 与 Repository 方法**
 
 ```python
 @dataclass(frozen=True)
@@ -333,22 +333,22 @@ class AuthService:
 
 Token、session 和 guest quota 只读写现有 PostgreSQL 表；明文邀请码和 token 不落库。
 
-- [ ] **Step 4: 注册受保护 Router**
+- [x] **Step 4: 注册受保护 Router**
 
 `create_api_router()` 建立一个带 `require_authenticated` dependency 的业务 Router；健康和登录保持公共。
 
-- [ ] **Step 5: 迁移 BitPro AuthProvider**
+- [x] **Step 5: 迁移 BitPro AuthProvider**
 
 前端只调用 `/api/auth/admin/login`、`/api/auth/guest/login`、`/api/auth/me`；
 访客写操作继续由 DOM 守卫和 Axios interceptor 双重拒绝。
 
-- [ ] **Step 6: 运行后端和前端认证测试**
+- [x] **Step 6: 运行后端和前端认证测试**
 
 Run: `python -m pytest backend/tests/test_auth_contract.py -q && npm --prefix frontend run build`
 
 Expected: PASS；构建中无旧 API 字符串。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add backend/app/core/admin_auth.py backend/app/domain/auth/models.py backend/app/api/endpoints/auth.py backend/app/services/auth_service.py backend/app/repositories frontend/src/auth frontend/src/pages/Login.tsx backend/tests/test_auth_contract.py

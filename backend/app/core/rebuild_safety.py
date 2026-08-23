@@ -104,10 +104,16 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
             or relative
             in {
                 "backend/app/core/app_context.py",
+                "backend/app/core/admin_auth.py",
                 "backend/app/db/postgres_db.py",
                 "backend/app/db/postgres_migrations.py",
+                "backend/app/domain/__init__.py",
+                "backend/app/services/auth_service.py",
+                "backend/app/services/__init__.py",
             }
-            or relative.startswith(("backend/app/api/", "backend/app/repositories/"))
+            or relative.startswith(
+                ("backend/app/api/", "backend/app/domain/auth/", "backend/app/repositories/")
+            )
         )
         for category, pattern in CATEGORY_PATTERNS.items():
             match = pattern.search(text)

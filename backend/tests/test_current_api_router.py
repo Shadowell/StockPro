@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -71,7 +72,16 @@ def test_storage_health_uses_injected_current_context(monkeypatch) -> None:
         from app.main import create_app
 
         context = SimpleNamespace(
-            repositories=SimpleNamespace(health=FakeHealthRepository())
+            settings=SimpleNamespace(
+                AUTH_ENABLED=False,
+                ADMIN_USERNAME="admin",
+                BACKEND_CORS_ORIGINS=["http://localhost:4444"],
+            ),
+            repositories=SimpleNamespace(
+                health=FakeHealthRepository(),
+                auth=FakeHealthRepository(),
+            ),
+            clock=lambda: datetime.now(timezone.utc),
         )
         response = TestClient(create_app(context)).get("/api/health/storage")
     finally:
