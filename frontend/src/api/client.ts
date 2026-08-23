@@ -15,6 +15,9 @@ import type {
   MarketOverviewView,
   MarketWatchlistEntry,
   OrderBookView,
+  StockPoolMember,
+  StockPoolRecord,
+  StockPoolSnapshot,
 } from '../types/research';
 
 const API_BASE = '/api';
@@ -63,6 +66,20 @@ export const researchApi = {
     apiClient.post('/market/watchlist', { symbol, note }),
   deleteWatchlist: async (entryId: number): Promise<{ deleted: boolean; id: number }> =>
     apiClient.delete(`/market/watchlist/${entryId}`),
+  pools: async (): Promise<{ items: StockPoolRecord[] }> =>
+    apiClient.get('/pools'),
+  pool: async (poolId: string): Promise<StockPoolRecord> =>
+    apiClient.get(`/pools/${encodeURIComponent(poolId)}`),
+  poolMembers: async (poolId: string, generationId?: string): Promise<{ items: StockPoolMember[] }> =>
+    apiClient.get(`/pools/${encodeURIComponent(poolId)}/members`, { params: { generation_id: generationId } }),
+  poolSnapshots: async (poolId: string): Promise<{ items: StockPoolSnapshot[] }> =>
+    apiClient.get(`/pools/${encodeURIComponent(poolId)}/snapshots`),
+  createPool: async (payload: Record<string, unknown>): Promise<StockPoolRecord> =>
+    apiClient.post('/pools', payload),
+  generatePool: async (poolId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> =>
+    apiClient.post(`/pools/${encodeURIComponent(poolId)}/generate`, payload),
+  sealPoolSnapshot: async (poolId: string, generationId: string): Promise<StockPoolSnapshot> =>
+    apiClient.post(`/pools/${encodeURIComponent(poolId)}/snapshots`, { generation_id: generationId }),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

@@ -48,6 +48,20 @@
 - Mock E2E 与构建通过。真实隔离库 `600519.SH` 显示贵州茅台、1,272.96、3 根真实日线、
   stale 行情、盘口 empty 和 PostgreSQL 证据；桌面/390px、console errors 0，截图人工检查通过。
 
+## BitPro-first Wave 2：不可变股票池（2026-08-23）
+
+- 恢复 StockPro `StockPoolService` 的规则版本、封存输入绑定、成员 evidence/hash、generation
+  与 snapshot 语义；Factor/Reference/Provider 依赖改为显式生成动作时延迟加载，应用启动和
+  页面 GET 不导入 TuShare/AKShare。
+- 新增当前 pools API 和 `PostgresPoolRepository`；创建、生成、封存要求管理员，目录、详情、
+  members 与 snapshots 可读。不存在 v2 路径或旧 Router。
+- 股票池页面保留 BitPro 目录/详情双栏与高密度证据表，包含规则 config、显式生成绑定表单、
+  成员与 evidence hash、sealed manifest；页面加载不自动生成或封存。
+- 真实隔离库读取 6 个池、6 个 generation、68 个成员和 5 个 sealed snapshot，六张表前后
+  计数不变、Provider imports 0。真实 immutability trigger 拒绝 sealed snapshot 更新并回滚。
+- API/安全聚焦测试、Mock E2E、类型/lint/build通过；真实桌面/390px console errors 0、
+  业务写入 0，截图人工检查通过。
+
 ## 重建基线 SHA 现场纠正（2026-08-22）
 
 - Wave 1 开始前验证发现设计草稿中的 `bff8e05…` 不是当前仓库的 Git 对象，不能作为

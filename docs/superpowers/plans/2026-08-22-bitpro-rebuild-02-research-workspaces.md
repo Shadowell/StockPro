@@ -297,7 +297,7 @@ git commit -m "feat(market): adapt BitPro terminal to A-share instruments"
 **Interfaces:**
 - Produces: `/api/pools`、`/api/pools/{id}/generate`、`/api/pools/{id}/snapshots`、`/api/pool-snapshots`；`StockPoolSnapshotView` 供 Wave 3 回测使用。
 
-- [ ] **Step 1: 写版本化规则与封存失败测试**
+- [x] **Step 1: 写版本化规则与封存失败测试**
 
 ```python
 def test_pool_snapshot_never_copies_unsealed_members(client):
@@ -308,28 +308,28 @@ def test_pool_snapshot_never_copies_unsealed_members(client):
     assert sealed["manifest_hash"]
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_pool_current_api.py -q`
 
 Expected: FAIL，当前 pools API 不存在。
 
-- [ ] **Step 3: 恢复 StockPoolService 并注册当前路径**
+- [x] **Step 3: 恢复 StockPoolService 并注册当前路径**
 
 保留 PostgreSQL 规则版本、生成记录、成员 evidence/hash、快照不可变和 AND/OR 筛选；
 删除旧路径/旧 Router。
 
-- [ ] **Step 4: 用 BitPro Strategy/Data 节奏构建股票池页面**
+- [x] **Step 4: 用 BitPro Strategy/Data 节奏构建股票池页面**
 
 页面必须包含目录、筛选器、生成、成员、证据和封存，不简化为跳转卡片。
 
-- [ ] **Step 5: 运行 API/E2E 并更新文档**
+- [x] **Step 5: 运行 API/E2E 并更新文档**
 
 Run: `python -m pytest backend/tests/test_pool_current_api.py -q && npm --prefix frontend run test:e2e -- --grep "stock pool"`
 
 Expected: PASS；页面读取不生成成员或快照。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/app/services/stock_pool_service.py backend/app/api/endpoints/pools.py backend/app/repositories frontend/src/pages/StockPools.tsx backend/tests/test_pool_current_api.py frontend/tests/e2e/rebuild-pools.spec.ts docs/pages/股票池.md

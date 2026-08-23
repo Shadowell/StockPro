@@ -110,6 +110,14 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                 "backend/app/domain/__init__.py",
                 "backend/app/services/auth_service.py",
                 "backend/app/services/__init__.py",
+                "backend/app/services/data_purpose.py",
+                "backend/app/services/dataset_snapshot_service.py",
+                "backend/app/services/factor_research_service.py",
+                "backend/app/services/reference_dataset_sync_service.py",
+                "backend/app/services/reference_factor_catalog.py",
+                "backend/app/services/stock_pool_service.py",
+                "backend/app/services/tushare_catalog_service.py",
+                "backend/app/services/tushare_provider.py",
             }
             or relative.startswith(
                 (

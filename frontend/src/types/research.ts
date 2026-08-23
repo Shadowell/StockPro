@@ -127,3 +127,44 @@ export type MarketWatchlistEntry = {
   change_percent?: number | null
   quote_updated_at?: string | null
 }
+
+export type StockPoolRecord = {
+  id: string
+  name: string
+  pool_type: 'screener' | 'factor' | 'sector' | 'event' | 'manual'
+  description?: string
+  status: string
+  data_purpose?: string
+  rule_type?: string
+  rule_version?: number
+  rule_hash?: string
+  config?: Record<string, unknown>
+  snapshot_count?: number
+  current_member_count?: number | null
+  latest_generation_id?: string | null
+  latest_trade_date?: string | null
+}
+
+export type StockPoolMember = {
+  id: number
+  ordinal: number
+  symbol: string
+  name?: string
+  score: number | null
+  reason: string
+  evidence?: Record<string, unknown>
+  evidence_hash: string
+  valid_from: string
+  valid_until?: string | null
+}
+
+export type StockPoolSnapshot = {
+  id: number
+  pool_id?: string
+  generation_id?: string
+  status: string
+  manifest_hash: string
+  member_count: number
+  trade_date: string
+  sealed_at?: string | null
+}
