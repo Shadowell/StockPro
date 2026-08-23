@@ -11,3 +11,4 @@ def test_deploy_health_probe_uses_the_only_current_endpoint() -> None:
     assert '"https://${PUBLIC_DOMAIN}/api/health"' in deploy
     assert "workflow_dispatch:" in workflow
     assert "branches:\n      - main" in workflow
+    assert "check-local-dependencies.mjs" not in workflow
