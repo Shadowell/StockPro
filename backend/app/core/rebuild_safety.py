@@ -36,7 +36,8 @@ SKIPPED_PARTS = frozenset(
 )
 CATEGORY_PATTERNS = {
     "registered_private_exchange_routes": re.compile(
-        r"\b(get_account|create_order|place_order)\s*\(|\bexchange_manager\b|from\s+app\.exchange",
+        r"\b(?:client|exchange|broker)\s*\.\s*(?:get_account|create_order|place_order)\s*\(|"
+        r"\bexchange_manager\b|from\s+app\.exchange",
         re.IGNORECASE,
     ),
     "active_sqlite_repository": re.compile(
@@ -98,7 +99,16 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
     for path in _source_files(repository_root):
         relative = path.relative_to(repository_root).as_posix()
         text = path.read_text(encoding="utf-8", errors="replace")
-        active = relative in ACTIVE_RUNTIME_FILES or relative.startswith("backend/app/api/")
+        active = (
+            relative in ACTIVE_RUNTIME_FILES
+            or relative
+            in {
+                "backend/app/core/app_context.py",
+                "backend/app/db/postgres_db.py",
+                "backend/app/db/postgres_migrations.py",
+            }
+            or relative.startswith(("backend/app/api/", "backend/app/repositories/"))
+        )
         for category, pattern in CATEGORY_PATTERNS.items():
             match = pattern.search(text)
             if match is None:

@@ -35,6 +35,21 @@
 - 当前 API Router 与安全门禁 12 项测试通过，当前入口/API/client/App 静态扫描没有
   `app.api.v2`、`api_router_v2` 或版本化 API 字符串，五类安全计数继续全 0。
 
+## BitPro-first Wave 1：PostgreSQL Repository 与隔离数据库（2026-08-23）
+
+- 已从真实 StockPro 基线 `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440` 精确恢复
+  `PostgresDatabase`、migration runner 和 37 个迁移文件；未恢复旧 API、Service 或页面。
+- 新增分域 Repository Protocol、`PostgresRepository.storage_health()` 与 `AppContext`。
+  当前 Repository 只用 `SELECT` 读取迁移数，不向页面暴露通用 SQL，也不自动运行迁移。
+- 经用户继续授权后，通过 `ssh stockpro` 的 PostgreSQL 管理员路径创建专用数据库
+  `stockpro_bitpro_rebase_dev`，从 `stockpro_dev` 做服务器本机一致性逻辑复制。源库未写入，
+  目标业务表、分区、索引、序列和非扩展函数已归现有应用账号管理。
+- 隔离库对账为 37 个迁移、67 个策略版本、79 个回测、15 个 Paper 实例、61 个订单、
+  47 个成交、23 个持仓、428 个权益快照、681 个事件和 1 份复盘；Paper manifest 连续性
+  回验通过。真实 `/api/health/storage` 返回 PostgreSQL `healthy`、37/37、无写入。
+- Repository/Router/安全门禁 14 项聚焦测试通过；安全扫描把 AppContext、Repository 和
+  PostgreSQL 文件纳入真实可达面后，五类阻断计数仍为 0。
+
 ## BitPro-first Wave 0：隔离基线门禁完成（2026-08-22）
 
 - 已从计划提交 `27f53ce` 创建独立 worktree

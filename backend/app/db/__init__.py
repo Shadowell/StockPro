@@ -1,3 +1,5 @@
-from .local_db import LocalDatabase, db_instance
+"""PostgreSQL-only runtime database package."""
 
-__all__ = ["LocalDatabase", "db_instance"]
+from app.db.postgres_db import PostgresDatabase
+
+__all__ = ["PostgresDatabase"]

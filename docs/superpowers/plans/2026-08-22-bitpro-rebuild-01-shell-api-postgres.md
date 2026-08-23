@@ -195,7 +195,7 @@ git commit -m "feat(api): expose one current StockPro contract"
 - Produces: `HealthRepository.storage_health() -> StorageHealth`、`AuthRepository`、`MarketRepository`、`StrategyRepository`、`BacktestRepository`、`PaperRepository` 等分域 Protocol；本 Wave 只实现健康与认证所需方法。
 - Produces: `Repositories(health, auth)` 与 `AppContext(settings, repositories, clock)`；后续 Wave 在 `Repositories` 上增加领域接口。
 
-- [ ] **Step 1: 写 Repository 合同失败测试**
+- [x] **Step 1: 写 Repository 合同失败测试**
 
 ```python
 def test_storage_health_reads_postgres_migrations(repository):
@@ -206,13 +206,13 @@ def test_storage_health_reads_postgres_migrations(repository):
     assert health.status == "healthy"
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_postgres_repository_contract.py -q`
 
 Expected: FAIL，Repository 不存在。
 
-- [ ] **Step 3: 从基线恢复明确文件**
+- [x] **Step 3: 从基线恢复明确文件**
 
 在隔离 worktree 中执行：
 
@@ -225,7 +225,7 @@ git restore --source=99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440 -- \
 
 不得恢复旧 API Router、页面或 Service。
 
-- [ ] **Step 4: 定义小而明确的 Protocol**
+- [x] **Step 4: 定义小而明确的 Protocol**
 
 ```python
 @dataclass(frozen=True)
@@ -241,7 +241,7 @@ class HealthRepository(Protocol):
 
 后续领域 Protocol 放在同一文件但按对象分组；不得提供通用 `execute_sql()` 给页面 Service。
 
-- [ ] **Step 5: 实现 AppContext**
+- [x] **Step 5: 实现 AppContext**
 
 ```python
 @dataclass(frozen=True)
@@ -262,13 +262,13 @@ def build_app_context() -> AppContext:
     return AppContext(settings=settings, repositories=repositories, clock=utc_now)
 ```
 
-- [ ] **Step 6: 运行测试与存储健康**
+- [x] **Step 6: 运行测试与存储健康**
 
 Run: `python -m pytest backend/tests/test_postgres_repository_contract.py backend/tests/test_current_api_router.py -q`
 
 Expected: PASS；隔离数据库迁移数为 37。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add backend/app/db backend/app/repositories backend/app/core/app_context.py backend/postgres/migrations backend/tests/test_postgres_repository_contract.py
