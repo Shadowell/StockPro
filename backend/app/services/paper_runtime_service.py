@@ -396,6 +396,7 @@ class PaperRuntimeService:
                    (SELECT COUNT(*) FROM strategy_signals s WHERE s.paper_instance_id=i.id)::INTEGER AS signal_count,
                    (SELECT COUNT(*) FROM orders o WHERE o.paper_instance_id=i.id)::INTEGER AS order_count,
                    (SELECT COUNT(*) FROM trades t WHERE t.paper_instance_id=i.id)::INTEGER AS trade_count,
+                   (SELECT COUNT(*) FROM positions pos WHERE pos.portfolio_id=i.portfolio_id)::INTEGER AS position_count,
                    e.equity,e.nav,e.drawdown,e.trade_date AS latest_equity_trade_date,
                    c.id AS latest_cycle_id,c.status AS latest_cycle_status,c.trade_date AS latest_cycle_trade_date,
                    c.finished_at AS latest_cycle_finished_at,c.error_message AS latest_cycle_error,
@@ -539,6 +540,7 @@ class PaperRuntimeService:
                 instance["signal_count"] = len(instance["signals"])
                 instance["order_count"] = len(instance["orders"])
                 instance["trade_count"] = len(instance["trades"])
+                instance["position_count"] = len(instance["positions"])
                 latest_equity = instance["equity_snapshots"][-1] if instance["equity_snapshots"] else None
                 if latest_equity:
                     instance["equity"] = latest_equity.get("equity")

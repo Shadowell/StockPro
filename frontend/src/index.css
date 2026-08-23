@@ -3,52 +3,39 @@
 @tailwind utilities;
 
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, "PingFang SC", "HarmonyOS Sans SC",
-    "Microsoft YaHei", "Noto Sans CJK SC", "SF Pro Text", -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
   color: #e6edf3;
   background-color: #0d1117;
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --shell-bg: #0d1117;
-  --shell-sidebar: #161b22;
-  --shell-panel: #111820;
-  --shell-card: #161b22;
-  --shell-border: #30363d;
-  --shell-border-soft: rgba(48, 54, 61, 0.74);
-  --shell-muted: #8b949e;
-  --shell-subtle: #8793a3;
-  --shell-accent: #58a6ff;
-  --shell-accent-soft: rgba(88, 166, 255, 0.14);
-  --color-up: #ff1744;
-  --color-down: #00c853;
-  --color-up-bg: rgb(255 23 68 / 10%);
-  --color-down-bg: rgb(0 200 83 / 10%);
+
+  /* 涨跌颜色 — 通过 CSS 变量动态切换，由 useSettingsStore 注入 */
+  --color-up: #FF1744;
+  --color-down: #00C853;
+  --color-up-bg: #FF17441A;
+  --color-down-bg: #00C8531A;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: var(--shell-bg);
-  overflow: hidden;
-  font-weight: 400;
-  letter-spacing: 0.005em;
 }
 
-* {
-  box-sizing: border-box;
-}
-
+/* 自定义滚动条 */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0d1117;
+  background: #161b22;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -60,25 +47,13 @@ body {
   background: #484f58;
 }
 
+/* 涨跌颜色工具类 */
 .text-up {
   color: var(--color-up);
 }
 
 .text-down {
   color: var(--color-down);
-}
-
-/* BitPro-aligned operator buttons */
-.btn-primary {
-  @apply inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50;
-}
-
-.btn-secondary {
-  @apply inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-crypto-border bg-crypto-card px-4 text-sm font-semibold text-slate-300 transition-colors hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
-}
-
-.btn-danger {
-  @apply inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-600/15 px-4 text-sm font-semibold text-red-300 transition-colors hover:bg-red-600/25 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .bg-up {
@@ -89,372 +64,20 @@ body {
   background-color: var(--color-down-bg);
 }
 
-.border-up {
-  border-color: color-mix(in srgb, var(--color-up) 34%, transparent);
-}
-
-.border-down {
-  border-color: color-mix(in srgb, var(--color-down) 34%, transparent);
-}
-
-.rounded-2xl {
-  border-radius: 12px;
-}
-
-.rounded-xl {
-  border-radius: 10px;
-}
-
-.shadow-2xl {
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.26);
-}
-
-.bg-purple-600,
-.hover\:bg-purple-500:hover {
-  background-color: #2563eb !important;
-}
-
-.text-purple-400,
-.text-purple-300,
-.text-purple-200 {
-  color: #60a5fa !important;
-}
-
-.border-purple-500\/45,
-.border-purple-500\/40,
-.border-purple-500\/35,
-.border-purple-500\/30 {
-  border-color: rgba(96, 165, 250, 0.45) !important;
-}
-
-.bg-purple-500\/20,
-.bg-purple-500\/15,
-.bg-purple-500\/10 {
-  background-color: rgba(37, 99, 235, 0.16) !important;
-}
-
-/* StockPro financial operator contract. The selectors intentionally normalize
-   legacy route markup while business pages migrate toward @bitpro/ui primitives. */
-.stockpro-financial-workspace {
-  --bp-bg: var(--shell-bg);
-  --bp-card: var(--shell-card);
-  --bp-card-muted: var(--shell-panel);
-  --bp-border: var(--shell-border);
-  --bp-text: #edf2f8;
-  --bp-muted: var(--shell-muted);
-  --bp-accent: var(--shell-accent);
-  --bp-up: var(--color-up);
-  --bp-down: var(--color-down);
-  --bp-up-bg: var(--color-up-bg);
-  --bp-down-bg: var(--color-down-bg);
-  min-height: 100vh;
-  background: var(--shell-bg);
+.crypto-select-native {
   color-scheme: dark;
-  font-size: 13px;
+  background-color: #0b1220;
 }
 
-/* High-contrast operator typography. Legacy pages use Tailwind's default gray
-   scales, whose 500/600 steps are too dim on the near-black workspace. Keep
-   semantic hierarchy while lifting every readable text tier consistently. */
-.stockpro-financial-workspace .text-slate-100,
-.stockpro-financial-workspace .text-gray-100 {
-  color: #f4f7fb;
-}
-
-.stockpro-financial-workspace .text-slate-200,
-.stockpro-financial-workspace .text-gray-200 {
-  color: #e4eaf1;
-}
-
-.stockpro-financial-workspace .text-slate-300,
-.stockpro-financial-workspace .text-gray-300 {
-  color: #d0d8e2;
-}
-
-.stockpro-financial-workspace .text-slate-400,
-.stockpro-financial-workspace .text-gray-400 {
-  color: #b9c3cf;
-}
-
-.stockpro-financial-workspace .text-slate-500,
-.stockpro-financial-workspace .text-gray-500 {
-  color: #a3afbd;
-}
-
-.stockpro-financial-workspace .text-slate-600,
-.stockpro-financial-workspace .text-gray-600 {
-  color: #8793a3;
-}
-
-.stockpro-financial-workspace .text-slate-700,
-.stockpro-financial-workspace .text-gray-700 {
-  color: #748092;
-}
-
-.stockpro-financial-workspace h1,
-.stockpro-financial-workspace h2,
-.stockpro-financial-workspace h3,
-.stockpro-financial-workspace h4,
-.stockpro-financial-workspace strong,
-.stockpro-financial-workspace th {
-  font-family: "SF Pro Display", "PingFang SC", "HarmonyOS Sans SC",
-    "Microsoft YaHei", "Noto Sans CJK SC", Inter, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.stockpro-financial-workspace h1,
-.stockpro-financial-workspace h2,
-.stockpro-financial-workspace h3 {
-  font-weight: 700;
-}
-
-.stockpro-financial-workspace[data-bitpro-color-scheme='green-up-red-down'] {
-  --color-up: #00c853;
-  --color-down: #ff1744;
-  --color-up-bg: rgb(0 200 83 / 10%);
-  --color-down-bg: rgb(255 23 68 / 10%);
-}
-
-.stockpro-financial-workspace button,
-.stockpro-financial-workspace input,
-.stockpro-financial-workspace select,
-.stockpro-financial-workspace textarea {
-  font: inherit;
-}
-
-.stockpro-financial-workspace button,
-.stockpro-financial-workspace a,
-.stockpro-financial-workspace input,
-.stockpro-financial-workspace select,
-.stockpro-financial-workspace textarea {
-  outline: none;
-}
-
-.stockpro-financial-workspace button:focus-visible,
-.stockpro-financial-workspace a:focus-visible,
-.stockpro-financial-workspace input:focus-visible,
-.stockpro-financial-workspace select:focus-visible,
-.stockpro-financial-workspace textarea:focus-visible {
-  box-shadow: 0 0 0 2px rgb(13 17 23), 0 0 0 4px rgb(88 166 255 / 70%);
-}
-
-.stockpro-financial-workspace button:not(.rounded-full),
-.stockpro-financial-workspace input:not([type='checkbox']):not([type='radio']),
-.stockpro-financial-workspace select,
-.stockpro-financial-workspace textarea {
-  border-radius: 6px;
-}
-
-.stockpro-financial-workspace input,
-.stockpro-financial-workspace select,
-.stockpro-financial-workspace textarea {
-  border-color: var(--shell-border);
-  background-color: #0d1117;
+.crypto-select-native option,
+.crypto-select-native optgroup {
+  background: #111827;
   color: #e6edf3;
 }
 
-.stockpro-financial-workspace input::placeholder,
-.stockpro-financial-workspace textarea::placeholder {
-  color: #8793a3;
-  opacity: 1;
-}
-
-.stockpro-page-viewport {
-  min-height: 100%;
-  background: var(--shell-bg);
-  scrollbar-gutter: stable;
-}
-
-.stockpro-page-viewport > * {
-  min-width: 0;
-}
-
-.stockpro-page-viewport h1 {
-  letter-spacing: -0.02em;
-}
-
-.stockpro-page-viewport h2,
-.stockpro-page-viewport h3 {
-  letter-spacing: -0.01em;
-}
-
-.stockpro-page-viewport table {
-  border-collapse: collapse;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.stockpro-page-viewport thead {
-  background: #111820;
-}
-
-.stockpro-page-viewport th {
-  height: 34px;
-  color: #a3afbd;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.stockpro-page-viewport td {
-  height: 38px;
-}
-
-.stockpro-page-viewport tbody tr {
-  transition: background-color 120ms ease;
-}
-
-.stockpro-page-viewport tbody tr:hover {
-  background: rgb(88 166 255 / 4%);
-}
-
-.stockpro-page-viewport pre,
-.stockpro-page-viewport code,
-.stockpro-page-viewport .font-mono,
-.stockpro-page-viewport .tabular-nums {
-  font-variant-numeric: tabular-nums slashed-zero;
-}
-
-.stockpro-page-viewport .font-mono:not(pre):not(code):not(textarea) {
-  font-family: inherit;
-}
-
-.stockpro-page-viewport .space-y-5 > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 14px;
-}
-
-.stockpro-page-viewport .gap-5 {
-  gap: 14px;
-}
-
-.stockpro-page-viewport .p-5 {
-  padding: 16px;
-}
-
-.stockpro-page-viewport .py-6 {
-  padding-top: 18px;
-  padding-bottom: 18px;
-}
-
-.stockpro-page-viewport .bp-panel,
-.stockpro-page-viewport .bp-metric-card {
-  box-shadow: 0 1px 0 rgb(255 255 255 / 2%);
-}
-
-.stockpro-page-viewport .bp-panel__header {
-  min-height: 42px;
-  padding: 10px 14px;
-}
-
-.stockpro-page-viewport .bp-metric-card {
-  min-height: 98px;
-  padding: 12px;
-}
-
-.stockpro-page-viewport .bp-metric-card__value {
-  font-size: 19px;
-}
-
-/* Tremor operator rhythm: small, factual surfaces with a clear header / body
-   split. These rules intentionally decorate existing route markup so every
-   routed page, including L2/L3 panels, shares the same system while keeping
-   each workflow's real data contract intact. */
-.stockpro-page-viewport [data-operator-page] {
-  min-width: 0;
-}
-
-.stockpro-page-viewport [data-operator-page] > header {
-  padding-bottom: 2px;
-}
-
-.stockpro-page-viewport [data-operator-page] > header h1 {
-  font-size: 22px;
-  letter-spacing: -0.025em;
-}
-
-.stockpro-page-viewport [data-operator-page] :is(section, article).border-crypto-border.bg-crypto-card {
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 2%);
-}
-
-.stockpro-page-viewport [data-operator-page] :is(button, [role='button']).bg-blue-600 {
-  box-shadow: 0 1px 0 rgb(255 255 255 / 12%) inset, 0 6px 14px rgb(37 99 235 / 18%);
-}
-
-.stockpro-page-viewport [data-operator-page] :is(input, select, textarea):focus {
-  border-color: rgb(96 165 250 / 70%);
-  box-shadow: 0 0 0 3px rgb(59 130 246 / 12%);
-}
-
-.stockpro-page-viewport [data-operator-workspace-tabs='true'] {
-  scrollbar-width: thin;
-  scrollbar-color: #374151 transparent;
-}
-
-/* KPI values must never render as flat near-white. Map @bitpro/ui neutral/gray
-   tones onto blue accent; keep semantic up/down/amber from package tokens. */
-.stockpro-financial-workspace .bp-metric-card__value.bp-tone-neutral,
-.stockpro-financial-workspace .bp-metric-card__value.bp-tone-gray {
-  color: #93c5fd;
-}
-
-@media (max-width: 1279px) {
-  .stockpro-financial-workspace [data-testid='stockpro-ai-topbar'] [aria-label='A股指数快照'] > div {
-    min-width: 104px;
-    padding-inline: 8px;
-  }
-}
-
-@media (max-width: 1023px) {
-  .stockpro-page-viewport > div,
-  .stockpro-page-viewport > main {
-    padding-inline: 14px;
-  }
-}
-
-@media (max-width: 640px) {
-  .stockpro-page-viewport { scrollbar-gutter: auto; }
-
-  .stockpro-page-viewport > div,
-  .stockpro-page-viewport > main {
-    padding: 14px 12px 24px;
-  }
-
-  .stockpro-page-viewport header h1 {
-    font-size: 19px;
-  }
-
-  .stockpro-page-viewport .p-5,
-  .stockpro-page-viewport .p-6 {
-    padding: 14px;
-  }
-
-  .stockpro-page-viewport td,
-  .stockpro-page-viewport th {
-    padding-inline: 10px;
-  }
-}
-
-/* Tremor Smooth Animations & Micro-Interactions */
-@keyframes tremorFadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fade-in-up {
-  animation: tremorFadeInUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* Tactile button press animation */
-button:active:not(:disabled),
-.btn-primary:active:not(:disabled),
-.btn-secondary:active:not(:disabled) {
-  transform: scale(0.98);
+.crypto-select-native option:checked,
+.crypto-select-native option:hover,
+.crypto-select-native option:focus {
+  background: #1d4ed8;
+  color: #ffffff;
 }

@@ -1,0 +1,530 @@
+{
+  "capturedAt": "2026-05-09T06:55:37.818Z",
+  "viewport": "2560x1440",
+  "deviceScaleFactor": 2,
+  "source": "http://47.79.36.92:8888",
+  "dataReadyPolicy": "本轮重采要求每张截图先等待页面核心业务数据文本出现，并额外稳定等待；详情页、弹窗和配置页在交互后继续等待自身关键字段出现，避免截到空状态或未加载状态。",
+  "redaction": "仅在浏览器截图层轻度替换实盘余额、API Key、Webhook、token、账户标识等敏感值，不修改生产数据。",
+  "captures": [
+    {
+      "id": "01-home-overview",
+      "title": "首页行情总览",
+      "route": "/",
+      "file": "screenshots/01-home-overview.png",
+      "note": "首页行情表、左侧导航和 OKX 实时行情入口。",
+      "readyEvidence": [
+        "首页",
+        "行情",
+        "OKX"
+      ],
+      "finalEvidence": [
+        "首页",
+        "行情",
+        "OKX"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 597062
+    },
+    {
+      "id": "02-market-kline-orderbook",
+      "title": "行情 K 线与订单簿",
+      "route": "/market",
+      "file": "screenshots/02-market-kline-orderbook.png",
+      "note": "BTC/USDT K 线、AI 预测和订单簿。",
+      "readyEvidence": [
+        "BTC/USDT",
+        "订单簿"
+      ],
+      "finalEvidence": [
+        "BTC/USDT",
+        "订单簿"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 723736
+    },
+    {
+      "id": "03-market-timeframes",
+      "title": "行情周期切换区",
+      "route": "/market",
+      "file": "screenshots/03-market-timeframes.png",
+      "note": "1m/5m/15m/1h/4h/1d 周期入口和 AI 预测说明。",
+      "readyEvidence": [
+        "BTC/USDT",
+        "订单簿"
+      ],
+      "finalEvidence": [
+        "BTC/USDT",
+        "订单簿"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 682381
+    },
+    {
+      "id": "04-strategy-center",
+      "title": "策略中心列表",
+      "route": "/strategy",
+      "file": "screenshots/04-strategy-center.png",
+      "note": "策略筛选、运行状态、资产类型和策略卡片。",
+      "readyEvidence": [
+        "策略中心",
+        "运行中",
+        "详情"
+      ],
+      "finalEvidence": [
+        "策略中心",
+        "运行中",
+        "详情"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 1265777
+    },
+    {
+      "id": "05-strategy-detail",
+      "title": "策略详情页",
+      "route": "/strategy",
+      "file": "screenshots/05-strategy-detail.png",
+      "note": "策略核心选股与交易逻辑详情。",
+      "readyEvidence": [
+        "策略中心",
+        "详情"
+      ],
+      "finalEvidence": [
+        "核心选股",
+        "交易逻辑"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 264617
+    },
+    {
+      "id": "06-strategy-create-modal",
+      "title": "新建策略弹窗",
+      "route": "/strategy",
+      "file": "screenshots/06-strategy-create-modal.png",
+      "note": "策略名称、描述、交易所、交易对和参数 JSON 输入。",
+      "readyEvidence": [
+        "策略中心",
+        "新建策略"
+      ],
+      "finalEvidence": [
+        "策略名称"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 410270
+    },
+    {
+      "id": "07-backtest-console",
+      "title": "回测控制台",
+      "route": "/backtest",
+      "file": "screenshots/07-backtest-console.png",
+      "note": "回测历史、筛选、排序和结果入口。",
+      "readyEvidence": [
+        "回测实例控制台",
+        "回测历史",
+        "查看"
+      ],
+      "finalEvidence": [
+        "回测实例控制台",
+        "回测历史",
+        "查看"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 294694
+    },
+    {
+      "id": "08-backtest-create-wizard",
+      "title": "回测创建向导",
+      "route": "/backtest",
+      "file": "screenshots/08-backtest-create-wizard.png",
+      "note": "创建回测实例的策略选择与配置向导。",
+      "readyEvidence": [
+        "创建回测实例",
+        "回测历史"
+      ],
+      "finalEvidence": [
+        "选择策略"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 361399
+    },
+    {
+      "id": "09-backtest-history-detail",
+      "title": "回测历史详情",
+      "route": "/backtest",
+      "file": "screenshots/09-backtest-history-detail.png",
+      "note": "历史回测详情中的绩效、曲线和成交记录。",
+      "readyEvidence": [
+        "回测历史",
+        "查看"
+      ],
+      "finalEvidence": [
+        "返回控制台"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 217047
+    },
+    {
+      "id": "10-live-console",
+      "title": "模拟实例控制台",
+      "route": "/live",
+      "file": "screenshots/10-live-console.png",
+      "note": "多策略模拟实例列表、资产类型筛选和收益排序。",
+      "readyEvidence": [
+        "策略实例控制台",
+        "详情",
+        "收益率"
+      ],
+      "finalEvidence": [
+        "策略实例控制台",
+        "详情",
+        "收益率"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 717852
+    },
+    {
+      "id": "11-live-create-wizard",
+      "title": "模拟创建向导",
+      "route": "/live",
+      "file": "screenshots/11-live-create-wizard.png",
+      "note": "创建模拟实例的策略选择、运行参数与预检入口。",
+      "readyEvidence": [
+        "创建新模拟实例",
+        "策略实例控制台"
+      ],
+      "finalEvidence": [
+        "选择策略"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 1311149
+    },
+    {
+      "id": "12-live-instance-detail-top",
+      "title": "模拟实例详情顶部",
+      "route": "/live?strategyId=54",
+      "file": "screenshots/12-live-instance-detail-top.png",
+      "note": "数据加载完成后的运行中模拟实例，包含账户 KPI、核心逻辑、持仓和成交入口。",
+      "readyEvidence": [
+        "[合约] Top20 共享资金池 ATR 马丁网格",
+        "账户总额",
+        "总交易"
+      ],
+      "finalEvidence": [
+        "账户总额",
+        "当前持仓",
+        "成交明细"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 898361
+    },
+    {
+      "id": "13-live-instance-detail-lower",
+      "title": "模拟实例详情持仓成交",
+      "route": "/live?strategyId=54",
+      "file": "screenshots/13-live-instance-detail-lower.png",
+      "note": "数据加载完成后的运行中模拟实例，展示非空持仓、成交明细、诊断日志和账户曲线。",
+      "readyEvidence": [
+        "[合约] Top20 共享资金池 ATR 马丁网格",
+        "当前持仓",
+        "PEPE/USDT:USDT"
+      ],
+      "finalEvidence": [
+        "当前持仓",
+        "成交明细",
+        "DOT/USDT:USDT"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 898359
+    },
+    {
+      "id": "14-monitor-overview",
+      "title": "监控中心总览",
+      "route": "/monitor",
+      "file": "screenshots/14-monitor-overview.png",
+      "note": "组合 KPI、收益推送、运行策略和告警配置。",
+      "readyEvidence": [
+        "监控中心",
+        "持仓总金额",
+        "运行中的策略"
+      ],
+      "finalEvidence": [
+        "监控中心",
+        "持仓总金额",
+        "运行中的策略"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 637169
+    },
+    {
+      "id": "15-monitor-alert-modal",
+      "title": "监控告警创建弹窗",
+      "route": "/monitor",
+      "file": "screenshots/15-monitor-alert-modal.png",
+      "note": "策略收益回撤、爆仓距离、价格和资金费率告警配置。",
+      "readyEvidence": [
+        "监控中心",
+        "活跃告警"
+      ],
+      "finalEvidence": [
+        "告警"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 627999
+    },
+    {
+      "id": "16-signals-overview",
+      "title": "信号中心总览",
+      "route": "/signals",
+      "file": "screenshots/16-signals-overview.png",
+      "note": "通道配置、策略选择、信号策略列表和策略信号。",
+      "readyEvidence": [
+        "信号中心",
+        "通道配置",
+        "策略信号"
+      ],
+      "finalEvidence": [
+        "信号中心",
+        "通道配置",
+        "策略信号"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 555247
+    },
+    {
+      "id": "17-signals-channel-edit",
+      "title": "信号通道编辑",
+      "route": "/signals",
+      "file": "screenshots/17-signals-channel-edit.png",
+      "note": "OKX Signal Bot 通道编辑表单和敏感字段脱敏。",
+      "readyEvidence": [
+        "信号中心",
+        "修改"
+      ],
+      "finalEvidence": [
+        "保存通道",
+        "信号令牌"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 570939
+    },
+    {
+      "id": "18-signals-signal-detail",
+      "title": "信号 Payload 区域",
+      "route": "/signals",
+      "file": "screenshots/18-signals-signal-detail.png",
+      "note": "策略信号状态、动作、过期时间和 Payload 说明。",
+      "readyEvidence": [
+        "策略信号",
+        "开多"
+      ],
+      "finalEvidence": [
+        "策略信号"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 555156
+    },
+    {
+      "id": "19-live-real-overview",
+      "title": "实盘工作台总览",
+      "route": "/live-real",
+      "file": "screenshots/19-live-real-overview.png",
+      "note": "实盘账户摘要、策略选择、实盘策略列表和部署面板。",
+      "readyEvidence": [
+        "实盘交易",
+        "策略选择",
+        "真实资金"
+      ],
+      "finalEvidence": [
+        "实盘交易",
+        "策略选择",
+        "真实资金"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 527325
+    },
+    {
+      "id": "20-live-real-add-account",
+      "title": "实盘新增账户弹窗",
+      "route": "/live-real",
+      "file": "screenshots/20-live-real-add-account.png",
+      "note": "新增 OKX 实盘账户表单，密钥字段只说明不暴露。",
+      "readyEvidence": [
+        "实盘交易",
+        "增加账户"
+      ],
+      "finalEvidence": [
+        "API Key",
+        "Passphrase"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 548608
+    },
+    {
+      "id": "21-live-real-strategy-binding",
+      "title": "实盘策略绑定区",
+      "route": "/live-real",
+      "file": "screenshots/21-live-real-strategy-binding.png",
+      "note": "策略加入、账户绑定和实盘列表视角。",
+      "readyEvidence": [
+        "实盘交易",
+        "实盘策略列表",
+        "已加入"
+      ],
+      "finalEvidence": [
+        "实盘交易",
+        "实盘策略列表",
+        "已加入"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 527343
+    },
+    {
+      "id": "22-data-overview",
+      "title": "数据管理中心",
+      "route": "/data",
+      "file": "screenshots/22-data-overview.png",
+      "note": "数据总量、同步状态、同步任务和交易对周期覆盖。",
+      "readyEvidence": [
+        "数据管理中心",
+        "总记录数",
+        "同步进度明细"
+      ],
+      "finalEvidence": [
+        "数据管理中心",
+        "总记录数",
+        "同步进度明细"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 2806815
+    },
+    {
+      "id": "23-data-sync-modal",
+      "title": "同步配置弹窗",
+      "route": "/data",
+      "file": "screenshots/23-data-sync-modal.png",
+      "note": "增量/自定义/全量同步共用配置弹窗。",
+      "readyEvidence": [
+        "数据管理中心",
+        "增量更新"
+      ],
+      "finalEvidence": [
+        "交易对"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 968554
+    },
+    {
+      "id": "24-data-add-symbol-modal",
+      "title": "增加交易对弹窗",
+      "route": "/data",
+      "file": "screenshots/24-data-add-symbol-modal.png",
+      "note": "自定义 USDT 交易对添加入口。",
+      "readyEvidence": [
+        "数据管理中心",
+        "增加交易对"
+      ],
+      "finalEvidence": [
+        "交易对"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 923269
+    },
+    {
+      "id": "25-ai-autonomous",
+      "title": "AI 自主交易",
+      "route": "/ai-lab?tab=autonomous",
+      "file": "screenshots/25-ai-autonomous.png",
+      "note": "AI 自主交易模拟盘、硬性风控、实例操作台。",
+      "readyEvidence": [
+        "AI自主交易控制台",
+        "当前查看",
+        "权益"
+      ],
+      "finalEvidence": [
+        "AI自主交易控制台",
+        "当前查看",
+        "权益"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 461263
+    },
+    {
+      "id": "26-ai-autonomous-config",
+      "title": "AI 自主交易编辑配置",
+      "route": "/ai-lab?tab=autonomous",
+      "file": "screenshots/26-ai-autonomous-config.png",
+      "note": "AI 模型、杠杆、仓位、等待时间和交易频率配置。",
+      "readyEvidence": [
+        "AI自主交易控制台",
+        "编辑配置"
+      ],
+      "finalEvidence": [
+        "AI模型",
+        "最大杠杆"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 732191
+    },
+    {
+      "id": "27-ai-research",
+      "title": "AI 新策略研发",
+      "route": "/ai-lab?tab=research",
+      "file": "screenshots/27-ai-research.png",
+      "note": "AI 策略猎手、研发市场、模型、提示词和绩效目标。",
+      "readyEvidence": [
+        "新策略研发",
+        "AI 策略猎手"
+      ],
+      "finalEvidence": [
+        "新策略研发",
+        "AI 策略猎手"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 670714
+    },
+    {
+      "id": "28-ai-optimizer",
+      "title": "AI 现有策略优化",
+      "route": "/ai-lab?tab=optimizer",
+      "file": "screenshots/28-ai-optimizer.png",
+      "note": "自动优化扫描、AI 诊断、回测验证和试运行流程。",
+      "readyEvidence": [
+        "现有策略优化",
+        "自动优化"
+      ],
+      "finalEvidence": [
+        "现有策略优化",
+        "自动优化"
+      ],
+      "width": 5120,
+      "height": 2880,
+      "bytes": 376501
+    }
+  ]
+}

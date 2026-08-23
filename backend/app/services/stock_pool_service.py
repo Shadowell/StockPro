@@ -9,8 +9,6 @@ import psycopg2.extras
 
 from app.services.dataset_snapshot_service import DatasetSnapshotService, canonical_hash
 from app.services.data_purpose import resolve_data_purpose
-from app.services.factor_research_service import FactorResearchService
-from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService
 
 
 GENERATOR_VERSION = "stock-pool-generator.v1"
@@ -20,8 +18,27 @@ class StockPoolService:
     def __init__(self, database):
         self.database = database
         self.datasets = DatasetSnapshotService(database)
-        self.factors = FactorResearchService(database)
-        self.references = ReferenceDatasetSyncService(database, snapshot_service=self.datasets)
+        self._factors = None
+        self._references = None
+
+    @property
+    def factors(self):
+        if self._factors is None:
+            from app.services.factor_research_service import FactorResearchService
+
+            self._factors = FactorResearchService(self.database)
+        return self._factors
+
+    @property
+    def references(self):
+        if self._references is None:
+            from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService
+
+            self._references = ReferenceDatasetSyncService(
+                self.database,
+                snapshot_service=self.datasets,
+            )
+        return self._references
 
     def create_pool(self, payload: Mapping[str, Any]) -> Dict[str, Any]:
         name = str(payload.get("name") or "").strip()

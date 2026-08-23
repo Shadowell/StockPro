@@ -1,0 +1,45 @@
+{
+  "schema_version": "stockpro.rebuild-screenshot-capture.current",
+  "captured_at": "2026-08-23T18:42:26+08:00",
+  "environment": {
+    "kind": "local-isolated-worktree",
+    "branch": "codex/bitpro-a-share-rebase",
+    "database": "stockpro_bitpro_rebase_dev",
+    "frontend_url": "http://127.0.0.1:4444",
+    "backend_url": "http://127.0.0.1:4445",
+    "production_evidence": false
+  },
+  "pages": [
+    {
+      "route": "/strategy",
+      "desktop_artifact": "frontend/output/playwright/wave3-strategy-real-desktop.png",
+      "narrow_artifact": "frontend/output/playwright/wave3-strategy-real-narrow.png",
+      "evidence": "63 strategy catalogue items; 67 immutable versions; current contract; sealed A-share inputs",
+      "console_errors": 0
+    },
+    {
+      "route": "/backtest",
+      "desktop_artifact": "frontend/output/playwright/wave3-backtest-real-desktop.png",
+      "narrow_artifact": "frontend/output/playwright/wave3-backtest-real-narrow.png",
+      "evidence": "79 runs; 35 jobs; full/quick evidence separation; T+1 and 100-share rules",
+      "console_errors": 0
+    },
+    {
+      "route": "/paper",
+      "desktop_artifact": "frontend/output/rebuild-paper-real/list-desktop.png",
+      "narrow_artifact": "frontend/output/rebuild-paper-real/detail-mobile.png",
+      "detail_artifact": "frontend/output/rebuild-paper-real/detail-desktop.png",
+      "evidence": "15 instances; 14 running; 1 stopped; 47 trades; 23 positions; five detail evidence sections",
+      "console_errors": 0
+    }
+  ],
+  "guards": {
+    "paper_business_writes_during_capture": 0,
+    "paper_recovery_calls": 0,
+    "paper_advance_calls": 0,
+    "horizontal_overflow_failures": 0,
+    "crypto_execution_entries": 0,
+    "versioned_api_entries": 0,
+    "paper_manifest_hash": "3646d2181a72907520e5b7ba820b39c2fe62a8cb2a5e2e3fd8158073a7a110f2"
+  }
+}

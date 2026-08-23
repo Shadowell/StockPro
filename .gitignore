@@ -82,3 +82,6 @@ frontend/test-results/
 .playwright-cli/
 output/
 .gstack/
+
+# Local rebuild manifests (may contain environment-specific continuity metadata)
+.codex-artifacts/rebuild/

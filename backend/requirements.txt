@@ -1,19 +1,36 @@
-fastapi>=0.104.0
-uvicorn>=0.24.0
-akshare>=1.12.0
-tushare>=1.4.0
-pandas>=2.1.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
-python-dotenv>=1.0.0
-requests>=2.31.0
-httpx>=0.25.0
-mcp>=1.13.0,<2
-dashscope>=1.14.0
+# API runtime
+fastapi>=0.104.0,<1
+uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
-backtrader>=1.9.78.123
-apscheduler>=3.10.0
+pydantic>=2.5.0,<3
+pydantic-settings>=2.1.0,<3
+python-dotenv>=1.0.0
+
+# PostgreSQL sole runtime storage
 SQLAlchemy>=2.0.0
 psycopg[binary]>=3.1.0
 psycopg2-binary>=2.9.9
+
+# A-share data and research
+akshare>=1.12.0
+tushare>=1.4.0
+pandas>=2.1.0
+numpy>=1.24.0
+pyarrow>=15.0.0
+openpyxl>=3.1.0
+backtrader>=1.9.78.123
+apscheduler>=3.10.0
+
+# Current HTTP, agent and operations dependencies
+requests>=2.31.0
+httpx>=0.25.0
+websockets>=12.0
+mcp>=1.13.0,<2
+dashscope>=1.14.0
 psutil>=7.0.0
+cryptography>=41.0.0
+argon2-cffi>=23.1.0
+
+# Verification
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

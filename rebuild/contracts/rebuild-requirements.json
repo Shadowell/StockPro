@@ -1,0 +1,11 @@
+[
+  {"id":"BASE-001","required":true,"description":"BitPro fixed source provenance"},
+  {"id":"API-001","required":true,"description":"Only current /api contract"},
+  {"id":"DB-001","required":true,"description":"PostgreSQL sole runtime truth"},
+  {"id":"PAPER-001","required":true,"description":"Per-environment Paper continuity"},
+  {"id":"SAFE-001","required":true,"description":"Zero private digital-asset execution"},
+  {"id":"UI-001","required":true,"description":"BitPro page contracts desktop and mobile"},
+  {"id":"ASHARE-001","required":true,"description":"A-share execution semantics"},
+  {"id":"FUTURE-001","required":true,"description":"Futures reserved and hidden"},
+  {"id":"DEPLOY-001","required":true,"description":"Actions SHA and production health"}
+]

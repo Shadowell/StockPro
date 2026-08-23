@@ -1,123 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Activity, Bell, Database, HeartPulse, RefreshCw, ShieldAlert } from 'lucide-react';
-import { getMonitorHealth } from '../api/client';
-import { WorkspaceTabs } from '../components/WorkspaceTabs';
-import { DiagnosticDetails } from '../components/DiagnosticDetails';
-import { DataScopeControl } from '../components/DataScopeControl';
-import { EvidenceStrip, MetricValue, OperatorPageHeader } from '../components/OperatorShell';
-import { WorkspacePipelineNote } from '../components/WorkspacePipelineNote';
-import type { DataScope, MonitorHealth } from '../types';
-import { categoryLabel, sourceLabel, statusLabel } from '../utils/presentation';
-import { countMetricColor, type MetricTone } from '../utils/marketColors';
+import { useEffect, useMemo, useState } from 'react'
+import { Activity, AlertTriangle, BellRing, Clock3, Database, HeartPulse, RefreshCw, ServerCog, ShieldAlert } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { monitorCurrentApi } from '../api/client'
+import type { MonitorSummary } from '../types/operations'
 
-const TABS = [['overview', '总览'], ['strategy', '策略健康'], ['data', '数据健康'], ['risk', '风险'], ['notifications', '通知']] as const;
-type Tab = (typeof TABS)[number][0];
-const panel = 'rounded-xl border border-crypto-border bg-crypto-card';
-const text = (value: unknown) => value === null || value === undefined || value === '' ? '--' : String(value);
-const tone = (status: string) => status === 'healthy' || status === 'running' ? 'text-emerald-300' : status === 'critical' || status === 'failed' ? 'text-red-300' : 'text-amber-300';
-const serviceLabels: Record<string, string> = {
-  paper_feed: '模拟行情服务',
-  paper_runtime: '模拟运行服务',
-};
-const snapshotLabels: Record<string, string> = {
-  status: '封存状态',
-  knowledge_cutoff_at: '知识截止',
-  trade_date: '交易日',
-  available_at: '可用时间',
-  manifest_hash: '清单校验',
-  content_hash: '内容校验',
-};
+const dt = (value: unknown) => value ? String(value).replace('T',' ').slice(0,19) : '—'
+const healthTone = (value: string) => value === 'healthy' || value === 'fresh' ? 'text-emerald-300' : value === 'critical' || value === 'failed' ? 'text-red-300' : value === 'stopped' || value === 'draft' ? 'text-gray-500' : 'text-amber-200'
 
-function SnapshotPanel({
-  title,
-  toneClass,
-  snapshot,
-}: {
-  title: string;
-  toneClass: string;
-  snapshot?: Record<string, unknown> | null;
-}) {
-  const entries = Object.entries(snapshot ?? {})
-    .filter(([key]) => key !== 'id')
-    .map(([key, value]) => [
-      snapshotLabels[key] ?? key,
-      key.endsWith('_hash') ? (value ? '已校验' : '未校验') : key === 'status' ? statusLabel(value) : text(value),
-    ]);
-  return <section className={`${panel} p-5`}>
-    <div className="flex items-center gap-2"><Database className={`h-5 w-5 ${toneClass}`} /><h2 className="font-semibold text-white">{title}</h2></div>
-    {entries.length ? <dl className="mt-4 space-y-2">{entries.map(([label, value]) => <div key={String(label)} className="flex items-center justify-between gap-4 rounded-lg border border-crypto-border bg-crypto-bg px-4 py-3 text-xs"><dt className="text-slate-500">{String(label)}</dt><dd className="text-right font-medium text-slate-300">{String(value)}</dd></div>)}</dl> : <div className="mt-4 rounded-lg border border-dashed border-crypto-border px-4 py-10 text-center text-sm text-slate-600">暂无可用快照</div>}
-  </section>;
+export default function Monitor() {
+  const [view,setView]=useState<MonitorSummary|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState('')
+  const load=async()=>{setLoading(true);try{setView(await monitorCurrentApi.summary('audit'));setError('')}catch(requestError:any){setError(requestError?.response?.data?.detail||requestError?.message||'监控证据读取失败')}finally{setLoading(false)}}
+  useEffect(()=>{void load()},[])
+  const running=useMemo(()=>view?.strategy_health.filter((item)=>item.lifecycle_status==='running').length??null,[view]); const unhealthy=useMemo(()=>view?.strategy_health.filter((item)=>['stale','missing','failed'].includes(item.health_state)).length??null,[view])
+  const metrics:Array<[string,string|number,LucideIcon]>=[['整体状态',view?.overall_status||'—',HeartPulse],['运行实例',running??'—',Activity],['健康异常',unhealthy??'—',AlertTriangle],['活动告警',view?.active_alerts.length??'—',ShieldAlert]]
+  return <div className="h-full overflow-y-auto bg-crypto-bg px-4 py-4 text-gray-100 sm:px-6"><header className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg border border-blue-500/25 bg-blue-500/10"><HeartPulse className="h-5 w-5 text-blue-300" /></div><div><div className="text-[10px] font-semibold uppercase tracking-[.18em] text-blue-300/80">Runtime Health</div><h1 className="text-xl font-bold">监控</h1></div></div><button type="button" onClick={()=>void load()} className="inline-flex items-center gap-1.5 rounded border border-crypto-border px-3 py-2 text-xs text-gray-400"><RefreshCw className={`h-3.5 w-3.5 ${loading?'animate-spin':''}`} />刷新</button></header>
+    {error&&<div className="mb-4 rounded border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</div>}
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label,value,Icon])=><div key={label} className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="flex items-center justify-between text-[11px] text-gray-500"><span>{label}</span><Icon className="h-4 w-4 text-blue-400/70" /></div><div className={`mt-2 truncate font-mono text-2xl font-semibold ${label==='整体状态'?healthTone(String(value)):'text-gray-100'}`}>{value}</div></div>)}</div>
+    <div className="mt-4 grid gap-4 xl:grid-cols-[.75fr_1.25fr]"><section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="mb-3 flex items-center gap-2"><ServerCog className="h-4 w-4 text-blue-300" /><h2 className="text-sm font-semibold">服务健康</h2></div><div className="space-y-2">{(view?.services||[]).map((item)=><div key={String(item.service_code)} className="rounded border border-crypto-border bg-crypto-bg/50 p-3"><div className="flex justify-between gap-2"><span className="text-xs text-gray-200">{item.service_code}</span><span className={`text-[10px] ${healthTone(item.status)}`}>{item.status} · {item.freshness}</span></div><div className="mt-1 text-[10px] text-gray-600">证据 {dt(item.observed_at)} · 延迟 {item.latency_ms??'—'}ms</div></div>)}{!view?.services?.length&&<div className="text-xs text-gray-500">服务健康证据为空</div>}</div></section>
+      <section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><Activity className="h-4 w-4 text-blue-300" /><h2 className="text-sm font-semibold">策略健康</h2></div><span className="text-[10px] text-gray-600">生命周期与健康分离</span></div><div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-xs"><thead className="text-[10px] text-gray-600"><tr>{['实例','生命周期','健康','心跳年龄','最近周期','权益日期','账本差异'].map((item)=><th key={item} className="border-b border-crypto-border px-3 py-2 font-medium">{item}</th>)}</tr></thead><tbody>{(view?.strategy_health||[]).map((item)=><tr data-paper-instance-id={item.id} key={item.id} className="border-b border-crypto-border/60"><td className="px-3 py-2.5"><div className="max-w-52 truncate">{item.name}</div><div className="font-mono text-[10px] text-gray-700">{item.id}</div></td><td className="px-3 py-2.5 text-gray-300">{item.lifecycle_status}</td><td className={`px-3 py-2.5 ${healthTone(item.health_state)}`}>{item.health_state}</td><td className="px-3 py-2.5 font-mono text-gray-500">{item.heartbeat_age_seconds??'—'}</td><td className="px-3 py-2.5 text-gray-500">{dt(item.latest_cycle_finished_at)}</td><td className="px-3 py-2.5 text-gray-500">{String(item.latest_equity_trade_date||'—').slice(0,10)}</td><td className="px-3 py-2.5 font-mono text-gray-400">{item.latest_cycle_ledger_difference??'—'}</td></tr>)}</tbody></table></div></section></div>
+    <div className="mt-4 grid gap-4 xl:grid-cols-3"><section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="mb-3 flex items-center gap-2"><Database className="h-4 w-4 text-blue-300" /><h2 className="text-sm font-semibold">数据状态</h2></div>{[['Dataset',view?.data?.dataset],['市场证据',view?.data?.market]].map(([label,item])=><div key={String(label)} className="mb-2 rounded border border-crypto-border bg-crypto-bg/50 p-3"><div className="flex justify-between text-xs"><span>{label as string}</span><span className={healthTone(String((item as any)?.status||'missing'))}>{(item as any)?.status||'missing'}</span></div><div className="mt-1 font-mono text-[10px] text-gray-600">{(item as any)?.knowledge_cutoff_at||(item as any)?.available_at||'—'}</div></div>)}</section><section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="mb-3 flex items-center gap-2"><ShieldAlert className="h-4 w-4 text-blue-300" /><h2 className="text-sm font-semibold">风险告警</h2></div><div className="max-h-64 space-y-2 overflow-y-auto">{(view?.active_alerts||[]).slice(0,12).map((item)=><div key={item.id} className="rounded border border-crypto-border bg-crypto-bg/50 p-3"><div className="flex justify-between gap-2 text-xs"><span>{item.title}</span><span className={healthTone(item.severity)}>{item.severity}</span></div><div className="mt-1 truncate text-[10px] text-gray-600">{item.message}</div></div>)}</div></section><section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="mb-3 flex items-center gap-2"><BellRing className="h-4 w-4 text-blue-300" /><h2 className="text-sm font-semibold">通知</h2></div><div className="space-y-2">{(view?.notifications||[]).map((item)=><div key={String(item.status)} className="flex justify-between rounded border border-crypto-border bg-crypto-bg/50 p-3 text-xs"><span>{item.status}</span><span className="font-mono text-gray-400">{item.count}</span></div>)}</div></section></div>
+    <div className="mt-4 flex items-center gap-2 text-[10px] text-gray-700"><Clock3 className="h-3 w-3" />证据更新时间 {dt(view?.source_updated_at)}；响应生成时间不覆盖证据时间。</div>
+  </div>
 }
-
-function Rows({ rows, keys, diagnosticsLabel }: { rows: Array<Record<string, unknown>>; keys: Array<[string, string]>; diagnosticsLabel?: string }) {
-  const displayValue = (key: string, current: unknown) => {
-    if (current === null || current === undefined || current === '') return '--';
-    if (key === 'service_code') return serviceLabels[String(current)] ?? String(current);
-    if (key === 'status' || key === 'severity' || key === 'freshness') return statusLabel(current);
-    if (key === 'category') return categoryLabel(current);
-    return typeof current === 'object' ? JSON.stringify(current) : text(current);
-  };
-  return <div className={`${panel} overflow-hidden`}><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b border-crypto-border text-left text-xs text-slate-500">{keys.map(([key, label]) => <th key={key} className="px-4 py-3">{label}</th>)}{diagnosticsLabel ? <th className="px-4 py-3">诊断</th> : null}</tr></thead><tbody>{rows.map((row, index) => <tr key={text(row.id ?? `${row.status}-${index}`)} className="border-b border-white/[0.04]">{keys.map(([key]) => <td key={key} className={`px-4 py-3 ${key === 'status' || key === 'freshness' ? tone(text(row[key])) : 'text-slate-300'}`}>{displayValue(key, row[key])}</td>)}{diagnosticsLabel ? <td className="px-4 py-3"><DiagnosticDetails ariaLabel={diagnosticsLabel} fields={keys.map(([key]) => [key, row[key]])} /></td> : null}</tr>)}</tbody></table></div>{rows.length === 0 ? <div className="p-12 text-center text-sm text-slate-600">暂无健康记录</div> : null}</div>;
-}
-
-export function Monitor() {
-  const [params, setParams] = useSearchParams();
-  const requested = params.get('tab') as Tab | null;
-  const tab: Tab = TABS.some(([key]) => key === requested) ? requested! : 'overview';
-  const [health, setHealth] = useState<MonitorHealth | null>(null);
-  const [scope, setScope] = useState<DataScope>('business');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const load = useCallback(async () => { setBusy(true); setError(''); try { setHealth(await getMonitorHealth(scope)); } catch (reason) { setError(reason instanceof Error ? reason.message : '监控上下文加载失败'); } finally { setBusy(false); } }, [scope]);
-  useEffect(() => { void load(); }, [load]);
-  const scopedStrategyHealth = health?.strategy_health ?? [];
-  const excludedCount = Object.values(health?.excluded_counts ?? {}).reduce((sum, count) => sum + Number(count || 0), 0);
-  const activeStrategies = health ? scopedStrategyHealth.length : '--';
-  const activeRisks = health ? health.risk_alerts.reduce((sum, item) => sum + Number(item.count ?? 0), 0) : '--';
-  const delivered = health ? health.notifications.reduce((sum, item) => sum + Number(item.count ?? 0), 0) : '--';
-  return <div className="min-h-full bg-crypto-bg px-5 py-6 2xl:px-8" data-testid="monitor-workbench" data-operator-page="monitor">
-    <OperatorPageHeader
-      icon={HeartPulse}
-      title="监控中心"
-      subtitle="同一策略实例的运行风控：总览 / 策略健康 / 数据健康 / 风险 / 通知。"
-      actions={
-        <button type="button" onClick={() => void load()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-4 text-sm text-slate-400">
-          <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />刷新健康快照
-        </button>
-      }
-    />
-    <WorkspacePipelineNote stageId="monitor" />
-    <EvidenceStrip
-      items={[
-        { label: '状态', value: statusLabel(health?.status), tone: health?.status === 'healthy' ? 'green' : health?.status === 'critical' ? 'red' : 'amber' },
-        { label: '来源', value: sourceLabel(health?.source_label, '本地运行证据') },
-        { label: '最新证据', value: health?.source_updated_at ?? '--' },
-        { label: '响应生成', value: health?.response_generated_at ?? '--' },
-      ]}
-    />
-    <DataScopeControl value={scope} onChange={setScope} excludedCount={excludedCount} />
-    <WorkspaceTabs ariaLabel="监控中心二级导航" items={TABS.map(([id, label]) => ({ id, label, testId: `monitor-tab-${id}` }))} value={tab} onChange={(id) => setParams({ tab: id })} />
-    {error ? <div className="mb-5 rounded-lg border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{error}</div> : null}
-    {tab === 'overview' ? <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[[Activity, '服务状态', health ? statusLabel(health.status) : '--', (health?.status === 'healthy' ? 'green' : health?.status === 'critical' ? 'red' : 'amber') as MetricTone], [HeartPulse, '策略实例', activeStrategies, countMetricColor(typeof activeStrategies === 'number' ? activeStrategies : Number(activeStrategies))], [ShieldAlert, '活动风险告警', activeRisks, (Number(activeRisks) > 0 ? 'red' : 'neutral') as MetricTone], [Bell, '通知投递', delivered, countMetricColor(typeof delivered === 'number' ? delivered : Number(delivered))]].map(([Icon, label, current, tone]) => { const Component = Icon as typeof Activity; return <div key={String(label)} className={`${panel} p-4`}><Component className={`h-5 w-5 ${tone === 'green' ? 'text-emerald-400' : tone === 'red' ? 'text-red-400' : tone === 'amber' ? 'text-amber-400' : 'text-blue-400'}`} /><div className="mt-3 text-xs text-slate-500">{String(label)}</div><div className="mt-2"><MetricValue tone={tone as MetricTone} size="xl">{String(current)}</MetricValue></div></div>; })}</div><section className={`${panel} p-5`}><h2 className="font-semibold text-white">健康边界</h2><div className="mt-4 grid gap-3 md:grid-cols-3"><div className="rounded-lg border border-crypto-border bg-crypto-bg p-4 text-sm text-slate-400">数据陈旧 ≠ 策略失败</div><div className="rounded-lg border border-crypto-border bg-crypto-bg p-4 text-sm text-slate-400">风险拒单保留规则版本</div><div className="rounded-lg border border-crypto-border bg-crypto-bg p-4 text-sm text-slate-400">通知确认不删除原始告警</div></div><p className="mt-4 text-xs text-slate-600">涨跌停风险、停牌、T+1 与参与率均在执行证据链中保留。</p></section></div> : null}
-    {tab === 'strategy' ? <div className="space-y-4">
-      {scopedStrategyHealth.map((item) => <article key={item.id} className={`${panel} p-5`}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold text-white">{item.name}</h2><span className={`rounded border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] ${tone(item.health_state)}`}>{statusLabel(item.health_state)}</span></div><div className="mt-2 text-[10px] text-slate-500">最近交易日 {text(item.last_processed_trade_date)}</div></div>
-          <Link to={`/paper?instance=${item.id}`} className="rounded-lg border border-crypto-border px-3 py-2 text-xs text-blue-300">Paper 证据链</Link>
-        </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[['运行状态', item.status], ['最后心跳', item.heartbeat_at], ['最后交易日', item.last_processed_trade_date], ['最后周期', item.latest_cycle_status], ['周期完成', item.latest_cycle_finished_at], ['最新权益', item.latest_equity], ['最新回撤', item.latest_drawdown], ['账本差额', item.latest_cycle_ledger_difference]].map(([label, current]) => { const isLifecycle = String(label) === '运行状态'; const isState = isLifecycle || String(label) === '最后周期'; const stateTone = isLifecycle && item.health_state !== 'fresh' ? item.health_state : text(current); return <div key={String(label)} className="rounded-lg border border-crypto-border bg-crypto-bg p-3"><div className="text-[10px] text-slate-600">{String(label)}</div><div className={`mt-1 break-all text-xs ${isState ? tone(stateTone) : 'text-slate-300'}`}>{isLifecycle ? `${statusLabel(current)}（生命周期）` : isState ? statusLabel(current) : text(current)}</div></div>; })}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500"><span>订单 <strong className="text-slate-300">{item.order_count}</strong></span><span>成交 <strong className="text-slate-300">{item.trade_count}</strong></span><span>风险决策 <strong className="text-slate-300">{item.risk_event_count}</strong></span><span>拒绝 <strong className={item.rejected_count ? 'text-red-300' : 'text-slate-300'}>{item.rejected_count}</strong></span></div>
-        {item.latest_cycle_error ? <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-200">{item.latest_cycle_error}</div> : null}
-      </article>)}
-      {!scopedStrategyHealth.length ? <div className={`${panel} p-12 text-center text-sm text-slate-600`}>{busy ? '正在读取实例健康…' : '没有 Paper 实例健康证据'}</div> : null}
-    </div> : null}
-    {tab === 'data' ? <div className="grid gap-5 xl:grid-cols-2"><SnapshotPanel title="研究数据快照" toneClass="text-blue-400" snapshot={health?.data.dataset} /><SnapshotPanel title="市场证据快照" toneClass="text-violet-400" snapshot={health?.data.market} /><div className="xl:col-span-2"><Rows rows={health?.services ?? []} keys={[["service_code","服务"],["status","最近周期结果"],["freshness","当前新鲜度"],["last_success_at","最近成功"],["error_code","错误码"],["message","消息"],["observed_at","观察时间"]]} diagnosticsLabel="服务诊断原值" /></div></div> : null}
-    {tab === 'risk' ? <div className="space-y-4"><Rows rows={health?.risk_alerts ?? []} keys={[["severity","级别"],["count","活动告警"]]} /><Rows rows={(health?.active_alerts ?? []) as unknown as Array<Record<string, unknown>>} keys={[["triggered_at","触发时间"],["severity","级别"],["category","类别"],["title","告警"],["instance_name","关联策略"]]} /><div className={`${panel} flex items-center justify-between p-5`}><div><h2 className="font-semibold text-white">风险告警证据</h2><p className="mt-1 text-xs text-slate-500">在观察台确认告警，在模拟盘查看对应实例、订单与规则链。</p></div><Link to="/watch?tab=alerts" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">打开观察台</Link></div></div> : null}
-    {tab === 'notifications' ? <Rows rows={health?.notifications ?? []} keys={[["status","投递状态"],["count","数量"]]} /> : null}
-  </div>;
-}
-
-export default Monitor;

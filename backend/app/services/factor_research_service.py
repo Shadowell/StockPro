@@ -15,7 +15,6 @@ import psycopg2.extras
 
 from app.services.dataset_snapshot_service import DatasetSnapshotService, canonical_hash
 from app.services.data_purpose import infer_data_purpose
-from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService, normalise_trade_date, provider_ts_code
 from app.services.reference_factor_catalog import REFERENCE_FACTORS
 
 
@@ -49,6 +48,33 @@ SAFE_BUILTINS = {
     "tuple": tuple,
     "zip": zip,
 }
+
+
+def normalise_trade_date(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value or "").strip()
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+    try:
+        return date.fromisoformat(text[:10]).isoformat()
+    except (TypeError, ValueError) as error:
+        raise ValueError("trade_date 必须为 YYYY-MM-DD 或 YYYYMMDD") from error
+
+
+def provider_ts_code(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if "_" in text:
+        exchange, symbol = text.split("_", 1)
+        if exchange in {"SH", "SZ", "BJ"} and symbol.isdigit():
+            return f"{symbol}.{exchange}"
+    if "." in text:
+        symbol, exchange = text.rsplit(".", 1)
+        if exchange in {"SH", "SZ", "BJ"} and symbol.isdigit():
+            return f"{symbol}.{exchange}"
+    raise ValueError("无法规范化证券代码")
 
 
 def _jsonable(value: Any) -> Any:
@@ -249,7 +275,15 @@ class FactorResearchService:
     def __init__(self, database):
         self.database = database
         self.snapshot_service = DatasetSnapshotService(database)
-        self.reference_service = ReferenceDatasetSyncService(database)
+        self._reference_service = None
+
+    @property
+    def reference_service(self):
+        if self._reference_service is None:
+            from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService
+
+            self._reference_service = ReferenceDatasetSyncService(self.database)
+        return self._reference_service
 
     def install_reference_factors(self) -> List[int]:
         version_ids: List[int] = []

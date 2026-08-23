@@ -1,1494 +1,1933 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import type { LivePreflightResult } from '../types';
-import { AgentIteration, AgentResearchConfig, AgentTaskCreateRequest, AgentTaskDetail, AgentTaskSummary, LiveAuditEvent, LiveDeploymentRequest, LiveDeploymentResult, LivePreflightRequest, LivePromotionCandidate, LiveTradingStatus, DailyChartData, IntradayChartData, TaskStatus, HotConceptItem, SectorFundFlowResponse, LimitBoardResponse, ThsHotItem, LianbanLadderResponse, RunSentimentResponse, SentimentItem, AIStockAnalyzeResponse, ConceptIntradayKlineItem, ConceptLeaderStock, StockCandidate, MarketWatchlistEntry, MarketWatchlistResponse, ExtensionDataImport, OnboardingReadiness, StockFundamentals, OrderBookSnapshot, MessageStreamResponse, MarketCalendarEvent, TradingCalendarResponse, CalendarRefreshResponse, MarketOverview, Strategy, StrategyResult, StrategyExecutionResult, SaveStrategyRequest, StartStrategyRequest, StrategyBacktestRequest, StrategyBacktestResult, PaperRunRequest, PaperRunResult, PaperAccount, AutoDevelopStrategyRequest, AutoDevelopStrategyResult, StrategySaveResponse, StrategyVersion, StrategyReplayResult, BacktestConfiguration, BacktestRun, BacktestRunRequestV1, BacktestMetric, BacktestDailyPoint, BacktestJob, BacktestJobLog, WalkForwardPreview, MarketResearchContext, StockPool, StockPoolGeneration, StockPoolMember, StockPoolSnapshot, PaperRuntimeInstance, PaperKlineSnapshot, WatchContext, RuntimeAlert, WatchRule, WatchRulePreview, WatchRuleType, MonitorHealth, DailyReviewContext, AICapabilities, WorkflowCapabilities, ResearchDesk } from '../types';
+import axios, { type AxiosError, type AxiosRequestConfig } from 'axios';
+import type {
+  Ticker,
+  Kline,
+  TechnicalIndicators,
+  OrderBook,
+  FundingRate,
+  FundingOpportunity,
+  Strategy,
+} from '../types';
+import type {
+  DailyBarsResponse,
+  InstrumentContract,
+  InstrumentDetailView,
+  MarketOverviewView,
+  MarketWatchlistEntry,
+  OrderBookView,
+  StockPoolMember,
+  StockPoolRecord,
+  StockPoolSnapshot,
+  FactorLibraryRecord,
+  FactorMetricRecord,
+} from '../types/research';
+import type { StrategyValidationResult, StrategyVersionRecord } from '../types/strategy';
+import type { BacktestConfiguration, BacktestJobRecord, BacktestRunRecord } from '../types/backtest';
+import type { PaperInstanceDetail, PaperInstanceList } from '../types/paper';
+import type { DailyReviewView, MonitorSummary, OperationAlert, OperationSignal, WatchContext, WatchRule } from '../types/operations';
+import type { DataJob, DataStatus, DatasetRecord, ExtensionImport, SnapshotRecord } from '../types/data';
+import type { AIConfig, AITask } from '../types/ai';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
-const ADMIN_TOKEN_STORAGE_KEY = 'stockpro_admin_token';
-const AUTH_PROFILE_STORAGE_KEY = 'stockpro_auth_profile';
-export const ADMIN_AUTH_CHANGED_EVENT = 'stockpro_admin_auth_changed';
+const API_BASE = '/api';
 
-// Retry configuration
-const retryConfig = {
-  maxRetries: 3,
-  baseDelay: 1000,
-  retryableStatus: [408, 429, 500, 502, 503, 504],
+/** 默认 REST 超时（秒） */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * 批量/自定义数据同步：后端在单次 HTTP 内顺序拉取 K 线（1m + 长区间可达数万～数十万根），
+ * 必须显著大于默认 30s，否则会误报「启动失败: timeout」而任务实际仍在跑或刚失败。
+ */
+const DATA_SYNC_LONG_TIMEOUT_MS = 3_600_000; // 60 分钟
+
+/**
+ * POST /backtest/run_sync：Backtrader 整条链路跑完才返回；含 Kairos 时每根 bar 可能触发推理，
+ * 1m + 长日期区间极易超过默认 30s。
+ */
+const BACKTEST_RUN_SYNC_TIMEOUT_MS = 3_600_000; // 60 分钟
+
+export const apiClient = axios.create({
+  baseURL: API_BASE,
+  timeout: DEFAULT_TIMEOUT_MS,
+  withCredentials: true,
+});
+
+const api = apiClient;
+
+export const researchApi = {
+  marketOverview: async (): Promise<MarketOverviewView> =>
+    apiClient.get<MarketOverviewView, MarketOverviewView>('/market/overview'),
+  searchInstruments: async (
+    query: string,
+    assetClass: 'stock' | 'etf' | 'index' | null,
+    limit = 30,
+  ): Promise<{ items: InstrumentContract[]; query: string; asset_class: string | null }> =>
+    apiClient.get('/market/instruments', { params: { q: query, asset_class: assetClass || undefined, limit } }),
+  instrumentDetail: async (symbol: string): Promise<InstrumentDetailView> =>
+    apiClient.get(`/market/instruments/${encodeURIComponent(symbol)}`),
+  dailyBars: async (symbol: string, limit = 500): Promise<DailyBarsResponse> =>
+    apiClient.get(`/market/instruments/${encodeURIComponent(symbol)}/daily`, { params: { limit } }),
+  orderBook: async (symbol: string): Promise<OrderBookView> =>
+    apiClient.get(`/market/instruments/${encodeURIComponent(symbol)}/order-book`),
+  watchlist: async (): Promise<{ items: MarketWatchlistEntry[] }> =>
+    apiClient.get('/market/watchlist'),
+  addWatchlist: async (symbol: string, note = ''): Promise<MarketWatchlistEntry> =>
+    apiClient.post('/market/watchlist', { symbol, note }),
+  deleteWatchlist: async (entryId: number): Promise<{ deleted: boolean; id: number }> =>
+    apiClient.delete(`/market/watchlist/${entryId}`),
+  pools: async (): Promise<{ items: StockPoolRecord[] }> =>
+    apiClient.get('/pools'),
+  pool: async (poolId: string): Promise<StockPoolRecord> =>
+    apiClient.get(`/pools/${encodeURIComponent(poolId)}`),
+  poolMembers: async (poolId: string, generationId?: string): Promise<{ items: StockPoolMember[] }> =>
+    apiClient.get(`/pools/${encodeURIComponent(poolId)}/members`, { params: { generation_id: generationId } }),
+  poolSnapshots: async (poolId: string): Promise<{ items: StockPoolSnapshot[] }> =>
+    apiClient.get(`/pools/${encodeURIComponent(poolId)}/snapshots`),
+  createPool: async (payload: Record<string, unknown>): Promise<StockPoolRecord> =>
+    apiClient.post('/pools', payload),
+  generatePool: async (poolId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> =>
+    apiClient.post(`/pools/${encodeURIComponent(poolId)}/generate`, payload),
+  sealPoolSnapshot: async (poolId: string, generationId: string): Promise<StockPoolSnapshot> =>
+    apiClient.post(`/pools/${encodeURIComponent(poolId)}/snapshots`, { generation_id: generationId }),
+  factors: async (): Promise<{ items: FactorLibraryRecord[] }> =>
+    apiClient.get('/factors'),
+  factorMetrics: async (factorCode: string): Promise<{ factor: FactorLibraryRecord; items: FactorMetricRecord[] }> =>
+    apiClient.get(`/factors/${encodeURIComponent(factorCode)}/metrics`),
+  factorValues: async (factorCode: string, limit = 500, offset = 0): Promise<{ items: Record<string, unknown>[] }> =>
+    apiClient.get(`/factors/${encodeURIComponent(factorCode)}/values`, { params: { limit, offset } }),
+  factorRuns: async (limit = 100): Promise<{ items: Record<string, any>[] }> =>
+    apiClient.get('/factor-runs', { params: { limit } }),
+  factorCorrelations: async (limit = 500): Promise<{ items: Record<string, any>[] }> =>
+    apiClient.get('/factor-correlations', { params: { limit } }),
+  factorSnapshots: async (limit = 50): Promise<{ items: Record<string, any>[] }> =>
+    apiClient.get('/factor-snapshots', { params: { limit } }),
+  computeFactor: async (versionId: number, payload: { trade_date: string; dataset_snapshot_id: number; universe_snapshot_id: number }): Promise<Record<string, unknown>> =>
+    apiClient.post(`/factor-versions/${versionId}/compute`, payload),
 };
 
-export interface GenericApiResponse {
-  status?: string;
-  success?: boolean;
-  message?: string;
-  [key: string]: unknown;
+export const strategyCurrentApi = {
+  list: async (): Promise<{ items: StrategyVersionRecord[] }> => apiClient.get('/strategies'),
+  detail: async (versionId: string): Promise<StrategyVersionRecord> => apiClient.get(`/strategies/${encodeURIComponent(versionId)}`),
+  create: async (payload: { name: string; description: string; script_content: string }): Promise<{ strategy_version: StrategyVersionRecord; validation: StrategyValidationResult }> => apiClient.post('/strategies', payload),
+  createVersion: async (parentId: string, payload: { description?: string; script_content: string }): Promise<{ strategy_version: StrategyVersionRecord; validation: StrategyValidationResult }> => apiClient.post(`/strategies/${encodeURIComponent(parentId)}/versions`, payload),
+  validate: async (scriptContent: string): Promise<StrategyValidationResult> => apiClient.post('/strategies/validate', { script_content: scriptContent }),
+  quickRun: async (versionId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> => apiClient.post(`/strategies/${encodeURIComponent(versionId)}/quick-run`, payload),
+};
+
+export const backtestCurrentApi = {
+  configuration: async (): Promise<BacktestConfiguration> => apiClient.get('/backtest/configuration'),
+  runs: async (limit = 200): Promise<{ items: BacktestRunRecord[] }> => apiClient.get('/backtest/runs', { params: { limit } }),
+  run: async (runId: string): Promise<Record<string, any>> => apiClient.get(`/backtest/runs/${encodeURIComponent(runId)}`),
+  metrics: async (runId: string): Promise<{ items: Record<string, any>[] }> => apiClient.get(`/backtest/runs/${encodeURIComponent(runId)}/metrics`),
+  series: async (runId: string): Promise<Record<string, any>> => apiClient.get(`/backtest/runs/${encodeURIComponent(runId)}/series`),
+  detailRows: async (runId: string, kind: 'orders' | 'trades' | 'positions' | 'logs'): Promise<{ items: Record<string, any>[] }> => apiClient.get(`/backtest/runs/${encodeURIComponent(runId)}/${kind}`),
+  jobs: async (limit = 200): Promise<{ items: BacktestJobRecord[] }> => apiClient.get('/backtest/jobs', { params: { limit } }),
+  createJob: async (payload: Record<string, unknown>): Promise<BacktestJobRecord> => apiClient.post('/backtest/jobs', payload),
+  cancelJob: async (jobId: string): Promise<BacktestJobRecord> => apiClient.post(`/backtest/jobs/${encodeURIComponent(jobId)}/cancel`),
+  retryJob: async (jobId: string): Promise<BacktestJobRecord> => apiClient.post(`/backtest/jobs/${encodeURIComponent(jobId)}/retry`),
+  matrix: async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => apiClient.post('/backtest/matrix', payload),
+  walkForward: async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => apiClient.post('/backtest/walk-forward', payload),
+};
+
+export const paperCurrentApi = {
+  list: async (scope: 'business' | 'audit' = 'audit'): Promise<PaperInstanceList> =>
+    apiClient.get('/paper/instances', { params: { scope } }),
+  detail: async (instanceId: string): Promise<PaperInstanceDetail> =>
+    apiClient.get(`/paper/instances/${encodeURIComponent(instanceId)}`),
+  create: async (payload: Record<string, unknown>): Promise<PaperInstanceDetail> =>
+    apiClient.post('/paper/instances', payload),
+  transition: async (instanceId: string, action: 'start' | 'pause' | 'resume' | 'stop'): Promise<PaperInstanceDetail> =>
+    apiClient.post(`/paper/instances/${encodeURIComponent(instanceId)}/${action}`),
+  advance: async (instanceId: string, maxDates = 1): Promise<Record<string, unknown>> =>
+    apiClient.post(`/paper/instances/${encodeURIComponent(instanceId)}/advance`, { max_dates: maxDates }),
+};
+
+export const operationsCurrentApi = {
+  signals: async (scope: 'business' | 'audit' = 'business'): Promise<{ items: OperationSignal[]; total: number; scope: string }> => apiClient.get('/signals', { params: { scope } }),
+  signal: async (signalId: string): Promise<OperationSignal> => apiClient.get(`/signals/${encodeURIComponent(signalId)}`),
+  acknowledgeSignal: async (signalId: string): Promise<OperationSignal> => apiClient.post(`/signals/${encodeURIComponent(signalId)}/acknowledge`),
+  context: async (scope: 'business' | 'audit' = 'business'): Promise<WatchContext> => apiClient.get('/watch/context', { params: { scope } }),
+  alerts: async (status?: string): Promise<{ items: OperationAlert[]; total: number }> => apiClient.get('/watch/alerts', { params: { status } }),
+  acknowledgeAlert: async (alertId: string): Promise<OperationAlert> => apiClient.post(`/watch/alerts/${encodeURIComponent(alertId)}/acknowledge`),
+  rules: async (scope: 'business' | 'audit' = 'business'): Promise<{ items: WatchRule[]; total: number; scope: string }> => apiClient.get('/watch/rules', { params: { scope } }),
+  previewRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/preview`),
+  evaluateRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/evaluate`),
+};
+
+export const monitorCurrentApi = {
+  summary: async (scope: 'business' | 'audit' = 'business'): Promise<MonitorSummary> => apiClient.get('/monitor/summary', { params: { scope } }),
+};
+
+export const reviewCurrentApi = {
+  dates: async (limit = 120): Promise<{ items: string[]; total: number }> => apiClient.get('/review/dates', { params: { limit } }),
+  list: async (limit = 100): Promise<{ items: Array<Record<string, any>>; total: number }> => apiClient.get('/review', { params: { limit } }),
+  get: async (tradeDate: string): Promise<DailyReviewView> => apiClient.get(`/review/${encodeURIComponent(tradeDate)}`),
+  assemble: async (tradeDate: string): Promise<DailyReviewView> => apiClient.post(`/review/${encodeURIComponent(tradeDate)}/assemble`),
+  save: async (tradeDate: string, payload: { summary: string; next_day_plan: string }): Promise<DailyReviewView> => apiClient.put(`/review/${encodeURIComponent(tradeDate)}`, payload),
+  seal: async (tradeDate: string): Promise<DailyReviewView> => apiClient.post(`/review/${encodeURIComponent(tradeDate)}/seal`),
+};
+
+export const dataCurrentApi = {
+  status: async ():Promise<DataStatus>=>apiClient.get('/data/status'),
+  datasets: async ():Promise<{items:DatasetRecord[];total:number}>=>apiClient.get('/data/datasets'),
+  snapshots: async ():Promise<{items:SnapshotRecord[];total:number}>=>apiClient.get('/data/snapshots'),
+  providers: async ():Promise<{items:Array<Record<string,any>>;total:number;provider_calls_performed:number}>=>apiClient.get('/data/providers'),
+  schedules: async ():Promise<{items:Array<Record<string,any>>;total:number}>=>apiClient.get('/data/schedules'),
+  jobs: async ():Promise<{items:DataJob[];total:number}>=>apiClient.get('/data/jobs'),
+  quality: async ():Promise<{items:Array<Record<string,any>>;total:number}>=>apiClient.get('/data/quality'),
+  imports: async ():Promise<{items:ExtensionImport[];total:number}>=>apiClient.get('/data/exchange/imports'),
+  createJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/sync',payload),
+  createQualityJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/quality/run',payload),
+  stageImport: async (payload:Record<string,unknown>):Promise<ExtensionImport>=>apiClient.post('/data/exchange/imports',payload),
+};
+
+export const aiCurrentApi={
+  config:async():Promise<AIConfig>=>apiClient.get('/ai/config'),
+  tasks:async():Promise<{items:AITask[];total:number}>=>apiClient.get('/ai/tasks'),
+  task:async(id:string):Promise<AITask>=>apiClient.get(`/ai/tasks/${encodeURIComponent(id)}`),
+  create:async(payload:Record<string,unknown>):Promise<AITask>=>apiClient.post('/ai/tasks',payload),
+  start:async(id:string):Promise<AITask>=>apiClient.post(`/ai/tasks/${encodeURIComponent(id)}/start`),
+  stop:async(id:string):Promise<AITask>=>apiClient.post(`/ai/tasks/${encodeURIComponent(id)}/stop`),
+  promote:async(iterationId:string):Promise<Record<string,unknown>>=>apiClient.post(`/ai/iterations/${encodeURIComponent(iterationId)}/promote-candidate`),
+};
+
+function extractApiErrorDetail(data: unknown): unknown {
+  if (!data) return undefined;
+  if (typeof data === 'string') return data.slice(0, 500);
+  if (typeof data !== 'object') return data;
+
+  const record = data as Record<string, unknown>;
+  if (record.detail != null) return record.detail;
+  if (record.message != null) return record.message;
+  if (record.error && typeof record.error === 'object' && !Array.isArray(record.error)) {
+    const error = record.error as Record<string, unknown>;
+    return error.detail ?? error.message ?? error.code ?? record.error;
+  }
+  return record.error ?? data;
 }
 
-export interface AdminLoginResponse {
-  access_token: string;
-  token_type: 'bearer';
-  expires_in: number;
-  username: string;
-  role: 'admin';
+function describeApiError(error: AxiosError | Error | unknown): Record<string, unknown> {
+  if (axios.isAxiosError(error)) {
+    const method = String(error.config?.method || 'GET').toUpperCase();
+    const baseURL = error.config?.baseURL || '';
+    const url = error.config?.url || '';
+
+    return {
+      method,
+      url: `${baseURL}${url}`,
+      status: error.response?.status,
+      code: error.code,
+      message: error.message,
+      detail: extractApiErrorDetail(error.response?.data),
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      name: error.name,
+    };
+  }
+
+  return {
+    message: String(error),
+  };
+}
+
+api.interceptors.response.use(
+  (response) => response.data,
+  (error) => {
+    if (axios.isAxiosError(error) && error.response?.data) {
+      const detail = extractApiErrorDetail(error.response.data);
+      if (
+        detail != null &&
+        typeof error.response.data === 'object' &&
+        !Array.isArray(error.response.data) &&
+        (error.response.data as Record<string, unknown>).detail == null
+      ) {
+        (error.response.data as Record<string, unknown>).detail = detail;
+      }
+    }
+    console.error('API Error:', describeApiError(error));
+    return Promise.reject(error);
+  }
+);
+
+function snakeToCamel(input: string): string {
+  return input.replace(/_([a-z])/g, (_, s: string) => s.toUpperCase());
+}
+
+function camelToSnake(input: string): string {
+  return input.replace(/[A-Z]/g, (s) => `_${s.toLowerCase()}`);
+}
+
+function camelizeDeep<T = any>(value: any): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => camelizeDeep(item)) as T;
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value).reduce((acc, [key, val]) => {
+      acc[snakeToCamel(key)] = camelizeDeep(val);
+      return acc;
+    }, {} as Record<string, any>) as T;
+  }
+  return value as T;
+}
+
+function snakifyDeep<T = any>(value: any): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => snakifyDeep(item)) as T;
+  }
+  if (value && typeof value === 'object' && !(value instanceof FormData)) {
+    return Object.entries(value).reduce((acc, [key, val]) => {
+      acc[camelToSnake(key)] = snakifyDeep(val);
+      return acc;
+    }, {} as Record<string, any>) as T;
+  }
+  return value as T;
+}
+
+function unwrapEnvelope(raw: any): any {
+  if (raw && typeof raw === 'object' && 'success' in raw && 'data' in raw) {
+    return raw.data;
+  }
+  return raw;
+}
+
+export type AuthRole = 'admin' | 'guest' | null;
+
+export interface AuthSession {
+  authEnabled: boolean;
+  authenticated: boolean;
+  role: AuthRole;
   permissions: string[];
-}
-
-export interface AuthProfile {
-  role: 'admin' | 'guest';
-  username?: string;
-  permissions: string[];
-  session_id?: string;
-  guest_code_id?: number;
-  expires_at?: string;
-  max_backtests_per_day?: number;
-  max_concurrent_backtests?: number;
-  max_backtest_days?: number;
-}
-
-export interface GuestLoginResponse extends AuthProfile {
-  access_token: string;
-  token_type: 'bearer';
-  expires_in: number;
+  expiresAt?: string;
+  sessionId?: string;
+  guestCodeId?: number;
+  maxBacktestsPerDay?: number;
+  maxConcurrentBacktests?: number;
+  maxBacktestDays?: number;
 }
 
 export interface GuestAccessCode {
   id: number;
-  code?: string;
   note: string;
-  expires_at: string;
-  max_backtests_per_day: number;
-  max_concurrent_backtests: number;
-  max_backtest_days: number;
-  created_at: string;
-  last_used_at?: string | null;
-  revoked_at?: string | null;
+  expiresAt: string;
+  maxBacktestsPerDay: number;
+  maxConcurrentBacktests: number;
+  maxBacktestDays: number;
+  createdBy?: string;
+  createdAt?: string;
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
 }
 
-export interface McpAgentToken {
-  id: number;
-  name: string;
-  token?: string;
-  token_hint: string;
-  scopes: Array<'R' | 'W'>;
-  created_by: string;
-  created_at: string;
-  last_used_at?: string | null;
-  revoked_at?: string | null;
+export interface CreatedGuestAccessCode extends GuestAccessCode {
+  code: string;
 }
 
-export const getAdminToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+export interface GuestCodeCreateInput {
+  note?: string;
+  expiresInMinutes?: number;
+  maxBacktestsPerDay?: number;
+  maxConcurrentBacktests?: number;
+  maxBacktestDays?: number;
+}
+
+async function getReq<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  const normalized = config ? { ...config, params: snakifyDeep(config.params) } : undefined;
+  const raw = await api.get(url, normalized);
+  return camelizeDeep<T>(unwrapEnvelope(raw));
+}
+
+type PageMeta = { total: number; offset: number; limit: number };
+
+async function getPagedReq<T>(url: string, config?: AxiosRequestConfig): Promise<{ data: T; meta?: PageMeta }> {
+  const normalized = config ? { ...config, params: snakifyDeep(config.params) } : undefined;
+  const raw = await api.get(url, normalized);
+  const meta = raw && typeof raw === 'object' ? (raw as { meta?: PageMeta }).meta : undefined;
+  return camelizeDeep({ data: unwrapEnvelope(raw), meta });
+}
+
+async function postReq<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+  const normalized = config ? { ...config, params: snakifyDeep(config.params) } : undefined;
+  const raw = await api.post(url, snakifyDeep(data), normalized);
+  return camelizeDeep<T>(unwrapEnvelope(raw));
+}
+
+async function putReq<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+  const normalized = config ? { ...config, params: snakifyDeep(config.params) } : undefined;
+  const raw = await api.put(url, snakifyDeep(data), normalized);
+  return camelizeDeep<T>(unwrapEnvelope(raw));
+}
+
+async function deleteReq<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  const normalized = config ? { ...config, params: snakifyDeep(config.params) } : undefined;
+  const raw = await api.delete(url, normalized);
+  return camelizeDeep<T>(unwrapEnvelope(raw));
+}
+
+export type ArcConsoleConfig = {
+  configured: boolean;
+  baseUrlSet: boolean;
+  tokenSet: boolean;
+  signingSecretSet: boolean;
 };
 
-export const setAdminToken = (token: string): void => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
-  window.dispatchEvent(new Event(ADMIN_AUTH_CHANGED_EVENT));
+export type ArcPipelineBadge = {
+  currentStage: string | null;
+  currentLabel: string;
+  stageIndex: number;
+  stageTotal: number;
+  percent: number;
+  blocked: boolean;
+  finished: boolean;
 };
 
-export const setAuthProfile = (profile: AuthProfile): void => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(AUTH_PROFILE_STORAGE_KEY, JSON.stringify(profile));
-  window.dispatchEvent(new Event(ADMIN_AUTH_CHANGED_EVENT));
+export type ArcMissionSummary = {
+  missionId: string;
+  state: string;
+  objective: string;
+  symbol: string;
+  timeframe: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  progress: { candidatesUsed: number; maxCandidates: number };
+  awaitingApproval: boolean;
+  survivorCount?: number;
+  pipeline?: ArcPipelineBadge;
 };
 
-export const getStoredAuthProfile = (): AuthProfile | null => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const value = window.localStorage.getItem(AUTH_PROFILE_STORAGE_KEY);
-    return value ? JSON.parse(value) as AuthProfile : null;
-  } catch {
-    return null;
-  }
-};
+export type ArcStageStatus = 'done' | 'active' | 'blocked' | 'pending';
 
-export const clearAdminToken = (): void => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
-  window.localStorage.removeItem(AUTH_PROFILE_STORAGE_KEY);
-  window.dispatchEvent(new Event(ADMIN_AUTH_CHANGED_EVENT));
-};
-
-export const hasAdminToken = (): boolean => Boolean(getAdminToken());
-
-export const getWorkflowCapabilities = async (): Promise<WorkflowCapabilities> => {
-  const response = await apiClient.get<WorkflowCapabilities>('/workflow/capabilities');
-  return response.data;
-};
-
-export const getResearchDesk = async (): Promise<ResearchDesk> => {
-  const response = await apiClient.get<ResearchDesk>('/workflow/research-desk');
-  return response.data;
-};
-
-export const getOnboardingReadiness = async (): Promise<OnboardingReadiness> =>
-  (await apiClient.get<OnboardingReadiness>('/workflow/onboarding-readiness', { timeout: 30_000, skipRetry: true })).data;
-
-export interface PresetTaskParam {
-  name: string;
-  type: string;
-  description: string;
-}
-
-export interface PresetTaskItem {
-  id: string;
-  name: string;
-  description: string;
-  params?: PresetTaskParam[];
-}
-
-export interface PresetTaskExecuteRequest {
-  task_type: string;
-  params?: Record<string, unknown>;
-}
-
-export interface PresetTaskStatus extends GenericApiResponse {
-  is_running: boolean;
-  task_type?: string;
-  progress?: number;
-  current?: number;
-  total?: number;
-}
-
-export interface ImportHistoricalRequest {
-  date: string;
-  task_type: string;
-}
-
-export interface ImportStatus extends GenericApiResponse {
-  task_id?: string | null;
-  is_running: boolean;
-  current?: number;
-  total?: number;
-  processed?: number;
-  progress?: number;
-  current_step?: string;
-}
-
-export interface ImportTaskResponse {
-  success?: boolean;
-  message?: string;
-  status?: ImportStatus;
-  [key: string]: unknown;
-}
-
-export interface MADataStats {
-  stock_count: number;
-  record_count: number;
-  start_date: string | null;
-  end_date: string | null;
-}
-
-export interface MADataStatsResponse extends GenericApiResponse {
-  success: boolean;
-  stats: MADataStats;
-}
-
-export interface DataDevTask {
-  id: number;
-  name: string;
-  description?: string;
-  sql_content?: string;
-  cron_expression?: string;
-  enabled?: boolean;
-  created_at?: string;
-  updated_at?: string;
-  last_status?: string;
-  last_run?: string;
-  last_error?: string;
-  [key: string]: unknown;
-}
-
-export interface DataDevTaskPayload {
-  name: string;
-  description: string;
-  sql_content: string;
-  cron_expression: string;
-  enabled: boolean;
-}
-
-export interface DataDevTaskLog {
-  id: number;
-  execution_start: string;
-  execution_end?: string | null;
-  status: string;
-  error_message?: string | null;
-  affected_rows?: number;
-}
-
-export interface DatabaseTableInfo {
-  name: string;
-  columns: string[];
-  rowCount: number;
-}
-
-export interface DatabaseQueryResult {
-  columns: string[];
-  rows: Array<Record<string, unknown>>;
-  rowCount: number;
-  totalCount?: number;
-}
-
-export interface DataHubDataset {
-  id: string;
-  name: string;
-  table: string;
-  exists: boolean;
-  row_count: number;
-  fields: string[];
-  primary_keys: string[];
-  refresh_frequency: string;
-  dependencies: string[];
-  latest_snapshot: string | null;
-  freshness_status: 'green' | 'yellow' | 'red';
-}
-
-export interface DataHubDatasetFreshness {
-  dataset: DataHubDataset;
-  recent_jobs: DataHubJob[];
-}
-
-export interface DataHubJob {
-  job_key: string;
-  action: string;
-  scope?: string | null;
-  params?: Record<string, unknown>;
-  status: 'queued' | 'running' | 'success' | 'failed' | 'cancelled' | string;
-  progress: number;
-  current: number;
-  total: number;
-  message?: string | null;
-  error_message?: string | null;
-  result?: Record<string, unknown> | null;
-  logs?: DataHubJobLog[];
-  parent_job_key?: string | null;
-  created_at?: string;
-  started_at?: string | null;
-  finished_at?: string | null;
-}
-
-export interface DataHubJobLog {
-  timestamp: string;
-  level: string;
-  message: string;
-  payload?: Record<string, unknown>;
-}
-
-export interface DataHubQualityCheck {
-  dataset_id: string;
-  status: 'green' | 'yellow' | 'red';
-  title: string;
+export type ArcPipelineStage = {
+  key: string;
+  label: string;
+  status: ArcStageStatus;
   detail: string;
   metrics: Record<string, unknown>;
-}
+};
 
-export interface DataHubQualityReport {
-  report_key: string;
-  scope: string[];
-  status: 'green' | 'yellow' | 'red';
-  summary: {
-    total_checks: number;
-    green: number;
-    yellow: number;
-    red: number;
-    status: 'green' | 'yellow' | 'red';
+export type ArcActivityRow = {
+  eventId: string;
+  type: string;
+  label: string;
+  at: string;
+  detail: Record<string, string | number | boolean>;
+};
+
+export type ArcPipelineView = {
+  missionId: string;
+  state: string;
+  stages: ArcPipelineStage[];
+  currentStage: string | null;
+  blocked: boolean;
+  blockedReason: { reason: string; message: string; missing: string[]; at: string } | null;
+  finished: boolean;
+  percent: number;
+  updatedAt: string;
+  secondsSinceUpdate: number;
+  eventCount: number;
+  activity: ArcActivityRow[];
+};
+
+export type ArcRejection = { code: string; text: string };
+
+export type ArcCandidateRow = {
+  attemptId: string;
+  candidateId: string;
+  state: string;
+  family: string;
+  direction: string;
+  oosSharpe: number | null;
+  trades: number | null;
+  winRate: number | null;
+  foldsPassed: number | null;
+  foldsTotal: number | null;
+  rankingBasis: string | null;
+  rejections: ArcRejection[];
+  strategyCode?: string;
+  strategySpec?: Record<string, unknown>;
+  reflexionEvents?: Record<string, unknown>[];
+  hypothesis?: string;
+};
+
+export type ArcEvidence = {
+  mission: ArcMissionSummary;
+  candidates: ArcCandidateRow[];
+  promotion: {
+    bitproStrategyId?: string | null;
+    bitproBacktestId?: string | null;
+    validationId?: string | null;
+    paperInstanceId?: string | null;
+    selfTest?: Record<string, unknown> | null;
+    paperObservation?: Record<string, unknown>;
   };
-  checks: DataHubQualityCheck[];
-  created_at: string;
-  rule_templates?: Array<{
-    id: string;
-    name: string;
-    severity: string;
-  }>;
-}
-
-export interface DataHubScreenerSnapshot {
-  dataset_id: string;
-  as_of: string | null;
-  version: string;
-}
-
-export interface ScreenerFeatureStock {
-  symbol: string;
-  name: string;
-  price: number;
-  date: string;
-  ma5: number;
-  ma10: number;
-  ma20: number;
-  ma30: number;
-  ma_range: number;
-  ma_range_pct: number;
-  avg_range_pct: number;
-  avg_std_pct: number;
-  convergence_days: number;
-}
-
-export interface ScreenerFeatureParams {
-  days?: number;
-  max_range_pct?: number;
-  main_board_only?: boolean;
-  min_price?: number;
-  max_price?: number;
-  limit?: number;
-}
-
-export interface DataHubScreenerResponse {
-  status: string;
-  snapshot: DataHubScreenerSnapshot;
-  data: ScreenerFeatureStock[];
-  count: number;
-  total_found: number;
-  params: ScreenerFeatureParams;
-}
-
-export interface DataHubFactorFeaturesResponse {
-  status: string;
-  snapshot: {
-    dataset_id: string;
-    as_of: string | null;
-    version: string;
+  approval: {
+    status: string | null;
+    unknowns: string[];
+    recommendation?: string | null;
+    packageHash?: string | null;
   };
-  factor_definitions: Array<Record<string, unknown>>;
-  stats: {
-    factor_count: number;
-    data_count: number;
-    latest_date: string | null;
-    stock_count: number;
-    category_stats: Record<string, number>;
-  };
-  selected_factor?: Record<string, unknown> | null;
-  ranking: Array<Record<string, unknown>>;
-}
+};
 
-export interface ResearchFactor {
+/** HyperTrade ARC 只经由 BitPro 服务端代理，浏览器不持有令牌或签名密钥。 */
+export const arcApi = {
+  config: () => getReq<ArcConsoleConfig>('/arc/config'),
+  listMissions: (params?: { state?: string; limit?: number }) =>
+    getReq<{ missions: ArcMissionSummary[] }>('/arc/missions', { params }),
+  createMission: (payload: {
+    objective: string;
+    symbol: string;
+    timeframe: string;
+    maxCandidates: number;
+  }) => postReq<Record<string, unknown>>('/arc/missions', payload),
+  getProgress: (missionId: string) => getReq<ArcPipelineView>(`/arc/missions/${missionId}/progress`),
+  getEvidence: (missionId: string) => getReq<ArcEvidence>(`/arc/missions/${missionId}/evidence`),
+  getCandidate: (missionId: string, attemptId: string) =>
+    getReq<ArcCandidateRow>(`/arc/missions/${missionId}/candidates/${attemptId}`),
+  decide: (missionId: string, payload: { decision: 'approve' | 'reject'; reason: string }) =>
+    postReq<Record<string, unknown>>(`/arc/missions/${missionId}/decide`, payload),
+};
+
+/** HyperTrade 研究机构流程只经由 BitPro 服务端代理，浏览器不持有上游配置或凭据。 */
+export const researchWorkbenchApi = {
+  summary: () => getReq<Record<string, any>>('/research-workbench/summary'),
+  candidates: () => getReq<{ items: Record<string, any>[]; reportErrors?: string[] }>('/research-workbench/candidates'),
+  createMandate: (payload: Record<string, any>) => postReq<Record<string, any>>('/research-workbench/mandates', payload),
+  pauseMandate: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/pause`, payload),
+  resumeMandate: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/resume`, payload),
+  draftStrategySpec: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/strategy-specs/draft`, payload),
+  createJob: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/jobs`, payload),
+  runJob: (jobId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/jobs/${jobId}/run`, payload),
+  cancelJob: (jobId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/jobs/${jobId}/cancel`, payload),
+  requestPaperPromotion: (payload: Record<string, any>) => postReq<Record<string, any>>('/research-workbench/paper-promotions', payload),
+  approvePaperPromotion: (promotionId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/paper-promotions/${promotionId}/approve`, payload),
+  observePaperPromotion: (promotionId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/paper-promotions/${promotionId}/observe`, payload),
+  samplePaperObservations: (payload: Record<string, any>) => postReq<Record<string, any>>('/research-workbench/paper-observations/sample', payload),
+  portfolioReview: () => getReq<Record<string, any>>('/research-workbench/portfolio-review'),
+};
+
+// ============================================
+// 认证 API
+// ============================================
+
+export const authApi = {
+  me: (): Promise<AuthSession> => getReq('/auth/me'),
+
+  adminLogin: (username: string, password: string): Promise<AuthSession> =>
+    postReq('/auth/admin/login', { username, password }),
+
+  guestLogin: (code: string): Promise<AuthSession> =>
+    postReq('/auth/guest/login', { code }),
+
+  logout: (): Promise<{ loggedOut: boolean }> => postReq('/auth/logout'),
+
+  listGuestCodes: (): Promise<{ items: GuestAccessCode[] }> =>
+    getReq('/auth/guest-codes'),
+
+  createGuestCode: (data: GuestCodeCreateInput): Promise<CreatedGuestAccessCode> =>
+    postReq('/auth/guest-codes', data),
+
+  revokeGuestCode: (codeId: number): Promise<{ id: number; revokedAt: string }> =>
+    deleteReq(`/auth/guest-codes/${codeId}`),
+};
+
+// ============================================
+// 信号中心 API
+// ============================================
+
+export interface SignalDelivery {
   id: number;
-  factor_code: string;
-  factor_name: string;
-  category: string;
-  description?: string | null;
-  direction: number;
-  research_status: string;
+  signalId: number;
+  channelId: number;
+  status: 'pending' | 'approved' | 'sent' | 'failed' | 'expired' | 'canceled';
+  requestPayload?: Record<string, unknown>;
+  responseStatus?: number | null;
+  responseBody?: string | null;
+  error?: string | null;
+  attempts: number;
+  approvedAt?: string | null;
+  sentAt?: string | null;
+  updatedAt: string;
+}
+
+export interface StrategySignal {
+  id: number;
+  signalUid: string;
+  strategyId: number;
+  strategyName?: string;
+  symbol: string;
+  okxInstId: string;
+  marketType: 'swap';
+  action: 'ENTER_LONG' | 'ENTER_SHORT' | 'EXIT_LONG' | 'EXIT_SHORT';
+  price: number;
+  suggestedInvestmentType: 'margin' | 'percentage_balance' | 'percentage_position';
+  suggestedAmount: number;
+  reason?: string;
+  confidence?: string;
+  riskNote?: string;
+  status: 'pending_approval' | 'sent' | 'failed' | 'expired' | 'canceled';
+  rawContext?: Record<string, unknown>;
+  okxPayloadPreview: Record<string, unknown>;
+  deliveries?: SignalDelivery[];
+  createdAt: string;
+  expiresAt: string;
+  updatedAt: string;
+}
+
+export interface SignalChannel {
+  id: number;
+  name: string;
   enabled: boolean;
-  active_version_id: number;
-  version_no: number;
-  content_hash: string;
-  validation_status: string;
-  last_trade_date?: string | null;
-  publication_state?: string | null;
-  dataset_snapshot_id?: number | null;
-  universe_snapshot_id?: number | null;
-  knowledge_cutoff_at?: string | null;
-  coverage?: number | null;
-  rank_ic?: number | null;
-  icir?: number | null;
-  long_short_return?: number | null;
-  turnover?: number | null;
-  decay?: number | null;
+  webhookUrl?: string;
+  maskedWebhookUrl: string;
+  maskedSignalToken: string;
+  allowedStrategyIds: number[];
+  allowedSymbols: string[];
+  allowedActions: string[];
+  maxMarginUsdt?: number | null;
+  maxLagSec: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface FactorComputeRun {
-  id: number;
-  factor_version_id: number;
-  factor_code: string;
-  factor_name: string;
-  version_no: number;
-  trade_date: string;
-  dataset_snapshot_id: number;
-  universe_snapshot_id: number;
-  knowledge_cutoff_at: string;
-  status: string;
-  input_count: number;
-  output_count: number;
-  missing_count: number;
-  error_message?: string | null;
-  value_hash?: string | null;
-}
-
-export interface FactorMetricRow {
-  compute_run_id: number;
-  trade_date: string;
-  dataset_snapshot_id: number;
-  universe_snapshot_id: number;
-  knowledge_cutoff_at: string;
-  factor_version_id: number;
-  version_no: number;
-  metric_code: string;
-  horizon?: number | null;
-  metric_value?: number | null;
-  metric_payload?: Record<string, unknown>;
-  pending_reason?: string | null;
-}
-
-export interface FactorValueRow {
-  trade_date: string;
-  symbol: string;
-  name?: string | null;
-  raw_value?: number | null;
-  processed_value?: number | null;
-  rank?: number | null;
-  percentile?: number | null;
-  quantile?: number | null;
-  quality_flags: Record<string, unknown>;
-  compute_run_id: number;
-  factor_version_id: number;
-  dataset_snapshot_id: number;
-  universe_snapshot_id: number;
-  knowledge_cutoff_at: string;
-}
-
-export interface FactorCorrelationRow {
-  trade_date: string;
-  factor_version_id_a: number;
-  factor_code_a: string;
-  factor_version_id_b: number;
-  factor_code_b: string;
-  correlation?: number | null;
-  universe_snapshot_id: number;
-}
-
-declare module 'axios' {
-  interface AxiosRequestConfig {
-    skipRetry?: boolean;
-  }
-}
-
-// Extend axios config type to include retry count
-interface RetryableRequestConfig extends InternalAxiosRequestConfig {
-  __retryCount?: number;
-  skipRetry?: boolean;
-}
-
-export const PAGE_READ_TIMEOUT_MS = 8_000;
-// The first Data Center read may establish the SSH-tunnel-backed PostgreSQL
-// connection. Keep ordinary page reads fast, but do not turn a cold data
-// connection into a false "no data" state.
-const pageRead = { timeout: PAGE_READ_TIMEOUT_MS, skipRetry: true as const };
-
-export const apiClient = axios.create({
-  baseURL: API_URL,
-  timeout: 60000, // 60 seconds timeout
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-apiClient.interceptors.request.use((config) => {
-  const token = getAdminToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  const profile = getStoredAuthProfile();
-  const method = (config.method || 'get').toLowerCase();
-  const path = config.url || '';
-  const guestBacktestPaths = ['/backtest/quick-runs', '/backtest/runs', '/backtest/run'];
-  const guestJobPath = /^\/backtest\/jobs(?:\/[0-9a-f-]+\/(?:cancel|retry))?$/;
-  if (
-    profile?.role === 'guest'
-    && !['get', 'head', 'options'].includes(method)
-    && !guestBacktestPaths.includes(path)
-    && !guestJobPath.test(path)
-    && path !== '/auth/guest/login'
-  ) {
-    return Promise.reject(new Error('访客账号为只读权限，仅允许在配额内运行回测。'));
-  }
-  return config;
-});
-
-// Response interceptor for automatic retry with exponential backoff
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    // Only drop the session on explicit auth rejection. Network blips / 5xx during
-    // local uvicorn --reload must not force a login loop.
-    if (error.response?.status === 401) {
-      const url = String(error.config?.url || '');
-      if (!url.includes('/auth/admin/login') && !url.includes('/auth/guest/login')) {
-        clearAdminToken();
-      }
-    }
-
-    const config = error.config as RetryableRequestConfig | undefined;
-    if (!config || config.skipRetry) {
-      return Promise.reject(error);
-    }
-
-    config.__retryCount = config.__retryCount || 0;
-
-    // Determine if error is retryable
-    const isNetworkError = !error.response;
-    const isRetryableStatus = error.response && retryConfig.retryableStatus.includes(error.response.status);
-    const isRetryable = isNetworkError || isRetryableStatus;
-
-    // Don't retry 4xx errors (except those in retryableStatus)
-    if (!isRetryable || config.__retryCount >= retryConfig.maxRetries) {
-      return Promise.reject(error);
-    }
-
-    config.__retryCount++;
-
-    // Exponential backoff with jitter
-    const delay = retryConfig.baseDelay * Math.pow(2, config.__retryCount - 1) + Math.random() * 100;
-    
-    console.log(`[API] Retry ${config.__retryCount}/${retryConfig.maxRetries} for ${config.url} after ${Math.round(delay)}ms`);
-
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    return apiClient(config);
-  }
-);
-
-export const adminLogin = async (username: string, password: string): Promise<AdminLoginResponse> => {
-  const response = await apiClient.post<AdminLoginResponse>('/auth/admin/login', { username, password });
-  setAdminToken(response.data.access_token);
-  setAuthProfile({ role: 'admin', username: response.data.username, permissions: response.data.permissions });
-  return response.data;
-};
-
-export const guestLogin = async (code: string): Promise<GuestLoginResponse> => {
-  const response = await apiClient.post<GuestLoginResponse>('/auth/guest/login', { code });
-  setAdminToken(response.data.access_token);
-  setAuthProfile({
-    role: response.data.role,
-    permissions: response.data.permissions,
-    session_id: response.data.session_id,
-    guest_code_id: response.data.guest_code_id,
-    expires_at: response.data.expires_at,
-    max_backtests_per_day: response.data.max_backtests_per_day,
-    max_concurrent_backtests: response.data.max_concurrent_backtests,
-    max_backtest_days: response.data.max_backtest_days,
-  });
-  return response.data;
-};
-
-export const getAuthProfile = async (): Promise<AuthProfile> => {
-  const response = await apiClient.get<AuthProfile>('/auth/me');
-  setAuthProfile(response.data);
-  return response.data;
-};
-
-export const getAdminProfile = getAuthProfile;
-
-export const listGuestAccessCodes = async (): Promise<GuestAccessCode[]> =>
-  (await apiClient.get<{ items: GuestAccessCode[] }>('/auth/guest-codes')).data.items;
-
-export const createGuestAccessCode = async (request: {
-  note: string;
-  expires_in_minutes: number;
-  max_backtests_per_day: number;
-  max_concurrent_backtests: number;
-  max_backtest_days: number;
-}): Promise<GuestAccessCode> =>
-  (await apiClient.post<GuestAccessCode>('/auth/guest-codes', request)).data;
-
-export const revokeGuestAccessCode = async (codeId: number): Promise<void> => {
-  await apiClient.delete(`/auth/guest-codes/${codeId}`);
-};
-
-export const listMcpAgentTokens = async (): Promise<McpAgentToken[]> =>
-  (await apiClient.get<{ items: McpAgentToken[] }>('/auth/mcp-agent-tokens')).data.items;
-
-export const createMcpAgentToken = async (request: {
-  name: string;
-  scopes: Array<'R' | 'W'>;
-}): Promise<McpAgentToken> =>
-  (await apiClient.post<McpAgentToken>('/auth/mcp-agent-tokens', request)).data;
-
-export const revokeMcpAgentToken = async (tokenId: number): Promise<void> => {
-  await apiClient.delete(`/auth/mcp-agent-tokens/${tokenId}`);
-};
-
-export const getMarketOverview = async (): Promise<MarketOverview> => {
-  try {
-    const response = await apiClient.get<MarketOverview>('/market/overview', pageRead);
-    return response.data;
-  } catch (error) {
-    return rejectPageTimeout('市场概览', error);
-  }
-};
-
-// 短线指标类型（涨停、连板、多板、涨跌比等短线强度指标）
-interface ShortLineIndex {
-  code: string;
-  name: string;
-  price: number;
-  change_percent: number;
-  change_amount: number;
-}
-
-export const getShortLineIndices = async (): Promise<ShortLineIndex[]> => {
-  const response = await apiClient.get<ShortLineIndex[]>('/market/short-line-indices');
-  return response.data;
-};
-
-export const getDailyChart = async (symbol: string): Promise<DailyChartData[]> => {
-  const response = await apiClient.get<DailyChartData[]>(`/charts/daily/${symbol}`);
-  return Array.isArray(response.data) ? response.data : [];
-};
-
-export const getIntradayChart = async (symbol: string): Promise<IntradayChartData[]> => {
-  const response = await apiClient.get<{ data?: IntradayChartData[] } | IntradayChartData[]>(`/charts/intraday/${symbol}`);
-  const payload = response.data;
-  if (Array.isArray(payload)) return payload;
-  return Array.isArray(payload?.data) ? payload.data : [];
-};
-
-export const getStockFundamentals = async (symbol: string): Promise<StockFundamentals> => {
-  const response = await apiClient.get<StockFundamentals>(`/market/fundamentals/${symbol}`);
-  return response.data;
-};
-
-export const getOrderBook = async (symbol: string): Promise<OrderBookSnapshot> => {
-  const response = await apiClient.get<OrderBookSnapshot>(`/market/order-book/${encodeURIComponent(symbol)}`);
-  return response.data;
-};
-
-export const getTaskStatus = async (): Promise<TaskStatus> => {
-  const response = await apiClient.get<TaskStatus>('/admin/task-status');
-  return response.data;
-};
-
-export const triggerHistoryFetch = async (): Promise<{ message: string }> => {
-  const response = await apiClient.post<{ message: string }>('/admin/fetch-history', {});
-  return response.data;
-};
-
-export const searchStocks = async (params: { q?: string; limit?: number } = {}): Promise<StockCandidate[]> => {
-  const response = await apiClient.get<StockCandidate[]>('/stocks/search', {
-    params: { q: params.q ?? '', limit: params.limit ?? 80 },
-  });
-  return response.data;
-};
-
-export const getMarketWatchlist = async (): Promise<MarketWatchlistResponse> =>
-  (await apiClient.get<MarketWatchlistResponse>('/market/watchlist', { timeout: 30_000, skipRetry: true })).data;
-
-export const addMarketWatchlistItem = async (request: { symbol: string; note?: string }): Promise<MarketWatchlistEntry> =>
-  (await apiClient.post<MarketWatchlistEntry>('/market/watchlist/items', request)).data;
-
-export const deleteMarketWatchlistItem = async (entryId: number): Promise<{ id: number; symbol: string; deleted: true }> =>
-  (await apiClient.delete(`/market/watchlist/items/${entryId}`)).data;
-
-export const listExtensionDataImports = async (): Promise<{ items: ExtensionDataImport[]; total: number; storage: 'postgresql'; mapping_state: 'staged_only'; http_allowed_hosts: string[] }> =>
-  (await apiClient.get('/data/exchange/imports', { timeout: 30_000, skipRetry: true })).data;
-
-export const uploadExtensionData = async (file: File, name: string): Promise<ExtensionDataImport> => {
-  const form = new FormData();
-  form.append('file', file);
-  form.append('name', name);
-  return (await apiClient.post<ExtensionDataImport>('/data/exchange/imports', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60_000 })).data;
-};
-
-export const importExtensionDataFromHttp = async (request: { name: string; url: string; format: 'csv' | 'json' | 'xlsx' }): Promise<ExtensionDataImport> =>
-  (await apiClient.post<ExtensionDataImport>('/data/exchange/http-imports', request, { timeout: 60_000 })).data;
-
-export const downloadExtensionData = async (importId: string, format: 'csv' | 'json' | 'xlsx'): Promise<Blob> =>
-  (await apiClient.get(`/data/exchange/imports/${importId}/export`, { params: { format }, responseType: 'blob', timeout: 60_000 })).data;
-
-export const deleteExtensionDataImport = async (importId: string): Promise<{ id: string; name: string; deleted: true }> =>
-  (await apiClient.delete(`/data/exchange/imports/${importId}`)).data;
-
-export const getHotConcepts = async (limit = 50, date?: string): Promise<HotConceptItem[]> => {
-  const response = await apiClient.get<HotConceptItem[]>('/market/hot-concepts', { params: { limit, date } });
-  return response.data;
-};
-
-export const getSectorFundFlow = async (limit = 30): Promise<SectorFundFlowResponse> => {
-  const response = await apiClient.get<SectorFundFlowResponse>('/market/sector-fund-flow', { params: { limit } });
-  return response.data;
-};
-
-export const getLimitBoard = async (tradeDate?: string): Promise<LimitBoardResponse> => {
-  const response = await apiClient.get<LimitBoardResponse>('/market/limit-board', {
-    params: tradeDate ? { trade_date: tradeDate } : undefined,
-  });
-  return response.data;
-};
-
-export const getThsHot = async (limit = 100, date?: string): Promise<ThsHotItem[]> => {
-  const response = await apiClient.get<ThsHotItem[]>('/market/ths-hot', { params: { limit, date } });
-  return response.data;
-};
-
-export const getLianbanLadder = async (date?: string): Promise<LianbanLadderResponse> => {
-  const response = await apiClient.get<LianbanLadderResponse>('/market/lianban-ladder', { params: { date } });
-  return response.data;
-};
-
-export const getHotConceptIntradayKline = async (params: { name: string; period?: string; date?: string }): Promise<ConceptIntradayKlineItem[]> => {
-  const response = await apiClient.get<ConceptIntradayKlineItem[]>('/market/hot-concept/intraday', { params });
-  return response.data;
-};
-
-export const getHotConceptLeaders = async (params: { name: string; limit?: number; date?: string }): Promise<ConceptLeaderStock[]> => {
-  const response = await apiClient.get<ConceptLeaderStock[]>('/market/hot-concept/leaders', { params });
-  return response.data;
-};
-
-export const syncHotConceptLeaders = async (params?: { name?: string; limit?: number }): Promise<{
-  synced: string[];
-  synced_count: number;
-  empty: string[];
-  failed: Record<string, string>;
-  total_concepts: number;
-}> => {
-  const response = await apiClient.post('/market/hot-concept/leaders/sync', null, { params });
-  return response.data;
-};
-
-export const runSentiment = async (params?: { date?: string; universe?: 'all' | 'hot' }): Promise<RunSentimentResponse> => {
-  const response = await apiClient.post<RunSentimentResponse>('/analysis/run-sentiment', null, { params });
-  return response.data;
-};
-
-export const getSentiment = async (params?: { date?: string; limit?: number; order?: 'asc' | 'desc' }): Promise<SentimentItem[]> => {
-  const response = await apiClient.get<SentimentItem[]>('/analysis/sentiment', { params });
-  return response.data;
-};
-
-export const analyzeStockByAI = async (params: { symbol: string; date?: string }): Promise<AIStockAnalyzeResponse> => {
-  const response = await apiClient.post<AIStockAnalyzeResponse>('/ai/analyze-stock', params);
-  return response.data;
-};
-
-export const getMessageStream = async (limit = 50): Promise<MessageStreamResponse> => {
-  const response = await apiClient.get<MessageStreamResponse>('/market/message-stream', { params: { limit } });
-  return response.data;
-};
-
-export const syncNewsStream = async (): Promise<{status: string; count: number}> => {
-  const response = await apiClient.post('/market/message-stream/sync');
-  return response.data;
-};
-
-export const getMarketCalendar = async (params?: { start?: string; end?: string; limit?: number }): Promise<MarketCalendarEvent[]> => {
-  const response = await apiClient.get<MarketCalendarEvent[]>('/market/calendar', { params });
-  return response.data;
-};
-
-export const getTradingCalendar = async (params?: { start?: string; end?: string }): Promise<TradingCalendarResponse> => {
-  const response = await apiClient.get<TradingCalendarResponse>('/market/trading-calendar', { params });
-  return response.data;
-};
-
-export const refreshMarketCalendar = async (months = 6): Promise<CalendarRefreshResponse> => {
-  const response = await apiClient.post<CalendarRefreshResponse>('/market/calendar/refresh', null, { params: { months } });
-  return response.data;
-};
-
-export const refreshMarketCalendarWithFreeData = async (months = 6): Promise<CalendarRefreshResponse> => {
-  const response = await apiClient.post<CalendarRefreshResponse>('/market/calendar/refresh-free', null, { params: { months } });
-  return response.data;
-};
-
-export const generateMarketCalendarWithAI = async (params: { start_date: string; end_date: string }): Promise<GenericApiResponse> => {
-  const response = await apiClient.post<GenericApiResponse>('/market/calendar/generate-with-ai', null, { params });
-  return response.data;
-};
-
-// Preset Tasks API
-export const getPresetTasks = async (): Promise<PresetTaskItem[]> => {
-  const response = await apiClient.get<PresetTaskItem[]>('/preset-tasks');
-  return response.data;
-};
-
-export const executePresetTask = async (request: PresetTaskExecuteRequest): Promise<GenericApiResponse> => {
-  const response = await apiClient.post<GenericApiResponse>('/preset-tasks/execute', request);
-  return response.data;
-};
-
-export const getPresetTaskStatus = async (): Promise<PresetTaskStatus> => {
-  const response = await apiClient.get<PresetTaskStatus>('/preset-tasks/status');
-  return response.data;
-};
-
-export const cancelPresetTask = async (): Promise<GenericApiResponse> => {
-  const response = await apiClient.post<GenericApiResponse>('/preset-tasks/cancel');
-  return response.data;
-};
-
-// Batch Import API
-export const importHistoricalData = async (request: ImportHistoricalRequest): Promise<ImportTaskResponse> => {
-  const response = await apiClient.post<ImportTaskResponse>('/batch-import/historical-data', request);
-  return response.data;
-};
-
-export const getImportStatus = async (): Promise<ImportStatus> => {
-  const response = await apiClient.get<ImportStatus>('/batch-import/status');
-  return response.data;
-};
-
-export const cancelImportTask = async (): Promise<GenericApiResponse> => {
-  const response = await apiClient.post<GenericApiResponse>('/batch-import/cancel');
-  return response.data;
-};
-
-// MA Data Import API
-export const importMAData = async (mainBoardOnly: boolean = true): Promise<ImportTaskResponse> => {
-  const response = await apiClient.post<ImportTaskResponse>('/batch-import/ma-data', { main_board_only: mainBoardOnly });
-  return response.data;
-};
-
-export const getMADataStats = async (): Promise<MADataStatsResponse> => {
-  const response = await apiClient.get<MADataStatsResponse>('/batch-import/ma-data/stats');
-  return response.data;
-};
-
-// Data Development API
-export const getDataDevTasks = async (): Promise<DataDevTask[]> => {
-  const response = await apiClient.get<DataDevTask[]>('/data-dev/tasks');
-  return response.data;
-};
-
-export const createDataDevTask = async (task: DataDevTaskPayload): Promise<GenericApiResponse> => {
-  const response = await apiClient.post<GenericApiResponse>('/data-dev/tasks', task);
-  return response.data;
-};
-
-export const updateDataDevTask = async (taskId: number, task: DataDevTaskPayload): Promise<GenericApiResponse> => {
-  const response = await apiClient.put<GenericApiResponse>(`/data-dev/tasks/${taskId}`, task);
-  return response.data;
-};
-
-export const deleteDataDevTask = async (taskId: number): Promise<GenericApiResponse> => {
-  const response = await apiClient.delete<GenericApiResponse>(`/data-dev/tasks/${taskId}`);
-  return response.data;
-};
-
-export const runDataDevTask = async (taskId: number): Promise<GenericApiResponse> => {
-  const response = await apiClient.post<GenericApiResponse>(`/data-dev/tasks/${taskId}/run`);
-  return response.data;
-};
-
-export const getTaskLogs = async (taskId: number, limit = 50): Promise<DataDevTaskLog[]> => {
-  const response = await apiClient.get<DataDevTaskLog[]>(`/data-dev/tasks/${taskId}/logs?limit=${limit}`);
-  return response.data;
-};
-
-// Data Hub API
-export const getDataHubDatasets = async (): Promise<DataHubDataset[]> => {
-  const response = await apiClient.get<{ status: string; data: DataHubDataset[] }>('/data-hub/datasets');
-  return response.data.data || [];
-};
-
-export const getDataHubDatasetFreshness = async (datasetId: string): Promise<DataHubDatasetFreshness> => {
-  const response = await apiClient.get<{ status: string; data: DataHubDatasetFreshness }>(
-    `/data-hub/datasets/${datasetId}/freshness`
-  );
-  return response.data.data;
-};
-
-export const createDataHubJob = async (payload: {
-  action: string;
-  scope?: string;
-  params?: Record<string, unknown>;
-}): Promise<DataHubJob> => {
-  const response = await apiClient.post<{ status: string; data: DataHubJob }>('/data-hub/jobs', payload);
-  return response.data.data;
-};
-
-export const getDataHubJobs = async (params?: {
-  action?: string;
+export interface SignalStrategySetting {
+  strategyId: number;
+  strategyName: string;
+  signalEnabled: boolean;
+  manualApprovalRequired: boolean;
   status?: string;
-  scope?: string;
-  parent_job_key?: string;
-  limit?: number;
-}): Promise<DataHubJob[]> => {
-  const response = await apiClient.get<{ status: string; data: DataHubJob[] }>('/data-hub/jobs', { params });
-  return response.data.data || [];
-};
-
-export const getDataHubJob = async (jobKey: string): Promise<DataHubJob> => {
-  const response = await apiClient.get<{ status: string; data: DataHubJob }>(`/data-hub/jobs/${jobKey}`);
-  return response.data.data;
-};
-
-export const getDataHubJobLogs = async (jobKey: string, limit = 200): Promise<DataHubJobLog[]> => {
-  const response = await apiClient.get<{ status: string; data: DataHubJobLog[] }>(`/data-hub/jobs/${jobKey}/logs`, {
-    params: { limit },
-  });
-  return response.data.data || [];
-};
-
-export const rerunDataHubJob = async (jobKey: string): Promise<DataHubJob> => {
-  const response = await apiClient.post<{ status: string; data: DataHubJob }>(`/data-hub/jobs/${jobKey}/rerun`);
-  return response.data.data;
-};
-
-export const cancelDataHubJob = async (jobKey: string): Promise<DataHubJob> => {
-  const response = await apiClient.post<{ status: string; data: DataHubJob }>(`/data-hub/jobs/${jobKey}/cancel`);
-  return response.data.data;
-};
-
-export const runDataHubQuality = async (datasets?: string[]): Promise<DataHubQualityReport> => {
-  const response = await apiClient.post<{ status: string; data: DataHubQualityReport }>(
-    '/data-hub/quality/run',
-    { datasets }
-  );
-  return response.data.data;
-};
-
-export const getDataHubQualityReport = async (): Promise<DataHubQualityReport | null> => {
-  const response = await apiClient.get<{ status: string; data: DataHubQualityReport | null }>(
-    '/data-hub/quality/report'
-  );
-  return response.data.data;
-};
-
-export const getDataHubScreenerFeatures = async (
-  params?: ScreenerFeatureParams
-): Promise<DataHubScreenerResponse> => {
-  const response = await apiClient.get<DataHubScreenerResponse>('/data-hub/features/screener', { params });
-  return response.data;
-};
-
-export const getDataHubFactorFeatures = async (params?: {
-  factor_code?: string;
-  date?: string;
-  limit?: number;
-  ascending?: boolean;
-  category?: string;
-}): Promise<DataHubFactorFeaturesResponse> => {
-  const response = await apiClient.get<DataHubFactorFeaturesResponse>('/data-hub/features/factors', { params });
-  return response.data;
-};
-
-// Database Management API
-export const getDatabaseTables = async (): Promise<DatabaseTableInfo[]> => {
-  const response = await apiClient.get<DatabaseTableInfo[]>('/database/tables');
-  return response.data;
-};
-
-export const executeSqlQuery = async (query: string): Promise<DatabaseQueryResult> => {
-  const response = await apiClient.post<DatabaseQueryResult>('/database/query', { query });
-  return response.data;
-};
-
-export const getTableData = async (tableName: string, limit: number = 100): Promise<DatabaseQueryResult> => {
-  const response = await apiClient.get<DatabaseQueryResult>(`/database/table/${tableName}?limit=${limit}`);
-  return response.data;
-};
-
-// ============ Strategy API ============
-
-// The strategy catalogue reads PostgreSQL through the same SSH tunnel as the
-// Data Center. A cold checkout includes connection validation, the SELECT and
-// transaction cleanup, so it needs the established cold-read envelope rather
-// than the ordinary interactive-page timeout.
-export const STRATEGY_LIST_READ_TIMEOUT_MS = 20_000;
-
-export const getStrategies = async (scope: 'business' | 'audit' = 'business'): Promise<Strategy[]> => {
-  try {
-    const response = await apiClient.get<Strategy[]>('/strategy/list', {
-      params: { scope },
-      timeout: STRATEGY_LIST_READ_TIMEOUT_MS,
-      skipRetry: true,
-    });
-    return response.data;
-  } catch (error) {
-    return rejectPageTimeout('策略目录', error);
-  }
-};
-
-export const getAICapabilities = async (): Promise<AICapabilities> => {
-  const response = await apiClient.get<AICapabilities>('/ai/capabilities');
-  return response.data;
-};
-
-export const getStrategy = async (strategyId: number): Promise<Strategy> => {
-  const response = await apiClient.get<Strategy>(`/strategy/${strategyId}`);
-  return response.data;
-};
-
-export const saveStrategy = async (data: SaveStrategyRequest): Promise<StrategySaveResponse> => {
-  const response = await apiClient.post<StrategySaveResponse>('/strategy/save', data);
-  return response.data;
-};
-
-export const updateStrategy = async (strategyId: number, data: SaveStrategyRequest): Promise<StrategySaveResponse> => {
-  const response = await apiClient.put<StrategySaveResponse>(`/strategy/${strategyId}`, data);
-  return response.data;
-};
-
-export const getLatestStrategyVersion = async (strategyId: number): Promise<StrategyVersion | null> => {
-  const response = await apiClient.get<StrategyVersion | null>(`/strategy/${strategyId}/versions/latest`);
-  return response.data;
-};
-
-export const quickRunStrategyVersion = async (versionId: string, request: { dataset_snapshot_id: number; factor_snapshot_id?: number; event_limit?: number }): Promise<StrategyReplayResult> => {
-  const response = await apiClient.post<StrategyReplayResult>(`/strategy/versions/${versionId}/quick-run`, request);
-  return response.data;
-};
-
-export const getFactorSnapshots = async (): Promise<{ items: Array<{ id: number; dataset_snapshot_id: number; universe_snapshot_id: number; status: string }> }> => {
-  const response = await apiClient.get('/factor-snapshots');
-  return response.data;
-};
-
-export const deleteStrategy = async (strategyId: number): Promise<{ success: boolean; message?: string; error?: string }> => {
-  const response = await apiClient.delete<{ success: boolean; message?: string; error?: string }>(`/strategy/${strategyId}`);
-  return response.data;
-};
-
-export const executeStrategy = async (strategyId: number): Promise<StrategyExecutionResult> => {
-  const response = await apiClient.post<StrategyExecutionResult>(`/strategy/${strategyId}/execute`);
-  return response.data;
-};
-
-export const startStrategy = async (strategyId: number, request?: StartStrategyRequest): Promise<{ success: boolean; message?: string; error?: string }> => {
-  const response = await apiClient.post<{ success: boolean; message?: string; error?: string }>(`/strategy/${strategyId}/start`, request || {});
-  return response.data;
-};
-
-export const stopStrategy = async (strategyId: number): Promise<{ success: boolean; message?: string; error?: string }> => {
-  const response = await apiClient.post<{ success: boolean; message?: string; error?: string }>(`/strategy/${strategyId}/stop`);
-  return response.data;
-};
-
-export const getStrategyResults = async (strategyId: number, limit = 50): Promise<StrategyResult[]> => {
-  const response = await apiClient.get<StrategyResult[]>(`/strategy/${strategyId}/results`, { params: { limit } });
-  return response.data;
-};
-
-export const getLatestStrategyResult = async (strategyId: number): Promise<StrategyResult | { message: string }> => {
-  const response = await apiClient.get<StrategyResult | { message: string }>(`/strategy/${strategyId}/latest-result`);
-  return response.data;
-};
-
-export const getRunningStrategies = async (): Promise<Strategy[]> => {
-  const response = await apiClient.get<Strategy[]>('/strategy/running/list');
-  return response.data;
-};
-
-export const syncTodayConceptSectors = async (): Promise<{status: string; count: number; date?: string}> => {
-  const response = await apiClient.post('/market/pulse/sync-today');
-  return response.data;
-};
-
-export interface PulseDailySectorItem {
-  date: string;
-  name: string;
-  change_percent: number;
-  rank?: number | null;
-  inflow?: number | null;
-  outflow?: number | null;
-  net_inflow?: number | null;
+  exchange?: string;
+  symbols?: string[];
+  marketType?: string;
+  totalPnl?: number | null;
+  returnPct?: number | null;
+  updatedAt?: string | null;
 }
 
-export interface PulseLianbanHistoryItem {
-  date: string;
-  stocks?: Array<{
-    code: string;
-    name: string;
-    level?: number;
-    today_level?: number;
-    change_percent?: number | null;
-    price?: number | null;
-    reason?: string | null;
-  }>;
+export interface SignalChannelInput {
+  name: string;
+  webhookUrl: string;
+  signalToken: string;
+  enabled?: boolean;
+  allowedStrategyIds?: number[];
+  allowedSymbols?: string[];
+  allowedActions?: string[];
+  maxMarginUsdt?: number | null;
+  maxLagSec?: number;
+}
+
+export interface SignalChannelTestInput {
+  send?: boolean;
+  action?: string;
+  instrument?: string;
+  investmentType?: string;
+  amount?: number;
+}
+
+export interface SignalChannelTestResult {
+  status: 'dry_run' | 'sent' | 'failed';
+  payload?: Record<string, unknown>;
+  responseStatus?: number | null;
+  responseBody?: string | null;
+  channel?: SignalChannel;
+}
+
+export const signalCenterApi = {
+  listSignals: (params?: {
+    status?: string;
+    strategyId?: number;
+    channelId?: number;
+    limit?: number;
+  }): Promise<{ signals: StrategySignal[] }> => getReq('/signals', { params }),
+
+  approveSignal: (signalId: number, channelIds: number[]): Promise<StrategySignal> =>
+    postReq(`/signals/${signalId}/approve`, { channelIds }),
+
+  cancelSignal: (signalId: number): Promise<StrategySignal> =>
+    postReq(`/signals/${signalId}/cancel`),
+
+  retrySignal: (signalId: number): Promise<StrategySignal> =>
+    postReq(`/signals/${signalId}/retry`),
+
+  listChannels: (): Promise<{ channels: SignalChannel[] }> => getReq('/signal-channels'),
+
+  listSignalStrategies: (): Promise<{ strategies: SignalStrategySetting[] }> =>
+    getReq('/signal-strategies'),
+
+  setStrategySignalEnabled: (
+    strategyId: number,
+    enabled: boolean
+  ): Promise<{ strategy: SignalStrategySetting }> =>
+    putReq(`/signal-strategies/${strategyId}`, { enabled }),
+
+  updateSignalStrategySettings: (
+    strategyId: number,
+    payload: { enabled?: boolean; manualApprovalRequired?: boolean }
+  ): Promise<{ strategy: SignalStrategySetting }> =>
+    putReq(`/signal-strategies/${strategyId}`, payload),
+
+  createChannel: (payload: SignalChannelInput): Promise<{ channel: SignalChannel }> =>
+    postReq('/signal-channels', payload),
+
+  updateChannel: (
+    channelId: number,
+    payload: Partial<SignalChannelInput>
+  ): Promise<{ channel: SignalChannel }> =>
+    putReq(`/signal-channels/${channelId}`, payload),
+
+  deleteChannel: (
+    channelId: number
+  ): Promise<{ deleted: boolean; channelId: number; channelName: string; canceledDeliveries: number }> =>
+    deleteReq(`/signal-channels/${channelId}`),
+
+  testChannel: (
+    channelId: number,
+    payload: SignalChannelTestInput = {}
+  ): Promise<SignalChannelTestResult> =>
+    postReq(`/signal-channels/${channelId}/test`, { send: false, ...payload }),
+};
+
+// ============================================
+// 实盘工作台 API
+// ============================================
+
+export interface LiveExecutionStrategy {
+  strategyId: number;
+  strategyName: string;
+  added: boolean;
+  deployable: boolean;
+  deployed: boolean;
+  liveSubscriptionId?: number | null;
+  deploymentStrategyId?: number | null;
+  deploymentStrategyName?: string | null;
+  deploymentStatus?: string | null;
+  status?: string;
+  workspaceStatus?: string;
+  exchange?: string;
+  accountId?: string;
+  accountIds?: string[];
+  accountBindings?: LiveExecutionAccountBinding[];
+  symbols?: string[];
+  tradeSymbols?: string[];
+  marketType?: string;
+  riskConfig?: Record<string, unknown>;
+  totalPnl?: number | null;
+  returnPct?: number | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface LiveExecutionAccountBinding {
+  accountId: string;
+  accountName?: string;
+  exchange?: string;
+  exchangeAlias?: string;
+  maskedApiKey?: string | null;
+  testnet?: boolean;
+  added: boolean;
+  deployed: boolean;
+  liveSubscriptionId?: number | null;
+  deploymentStrategyId?: number | null;
+  deploymentStatus?: string | null;
+  status?: string | null;
+  riskConfig?: Record<string, unknown>;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface LiveExecutionPreflightCheck {
+  item: string;
+  passed: boolean;
+  detail?: string | null;
+  account?: Record<string, unknown> | null;
+}
+
+export interface LiveExecutionPreflight {
+  allPassed: boolean;
+  checks: LiveExecutionPreflightCheck[];
+  plan?: Record<string, unknown>;
+  account?: Record<string, unknown> | null;
+}
+
+export interface LiveExecutionOrder {
+  id?: string;
+  clientOrderId?: string | null;
+  instrumentId?: string | null;
+  instrumentType?: string | null;
+  symbol?: string;
+  side?: string;
+  positionSide?: string | null;
+  positionDirection?: string | null;
+  positionEffect?: string | null;
+  reduceOnly?: boolean | null;
+  tdMode?: string | null;
+  type?: string;
+  price?: number | null;
+  average?: number | null;
+  amount?: number | null;
+  filled?: number | null;
+  remaining?: number | null;
+  fillPrice?: number | null;
+  fillSize?: number | null;
+  fillTimestamp?: number | null;
+  fillDatetime?: string | null;
+  tradeId?: string | null;
+  createdTimestamp?: number | null;
+  createdDatetime?: string | null;
+  updatedTimestamp?: number | null;
+  updatedDatetime?: string | null;
+  status?: string | null;
+  rawStatus?: string | null;
+  timestamp?: number | null;
+  datetime?: string | null;
+  fee?: number | string | { cost?: number | string | null; currency?: string | null; fee?: number | string | null } | null;
+  feeCurrency?: string | null;
+  feeCost?: number | string | null;
+  fee_cost?: number | string | null;
+  feeCcy?: string | null;
+  pnl?: number | string | null;
+  realizedPnl?: number | string | null;
+  realized_pnl?: number | string | null;
+  fillPnl?: number | string | null;
+  fill_pnl?: number | string | null;
+  rebate?: number | null;
+  rebateCurrency?: string | null;
+  bitproSource?: 'strategy' | 'external';
+  bitproSourceLabel?: string | null;
+  sourceStrategyId?: number | null;
+  sourceStrategyName?: string | null;
+  subscriptionId?: number | null;
+  signalEventId?: number | null;
+  liveExecutionId?: number | null;
+  error?: string | null;
+  failureLog?: Record<string, unknown> | null;
+  source?: string;
+  info?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
-export interface ReplayNote {
-  note_date: string;
-  title: string;
-  content: string;
-  payload_json?: Record<string, unknown> | null;
-  updated_at?: string | null;
+export interface LiveExecutionPosition {
+  symbol?: string;
+  currency?: string;
+  assetType?: string;
+  side?: string;
+  posSide?: string;
+  amount?: number;
+  free?: number;
+  used?: number;
+  contracts?: number;
+  contractSize?: number | null;
+  baseAmount?: number | null;
+  notional?: number;
+  notionalUsdt?: number;
+  margin?: number | null;
+  initialMargin?: number | null;
+  maintenanceMargin?: number | null;
+  marginRatio?: number | null;
+  marginMode?: string | null;
+  leverage?: number | string | null;
+  percentage?: number | null;
+  unrealizedPnlPct?: number | null;
+  unrealizedPnl?: number;
+  markPrice?: number;
+  entryPrice?: number;
+  liquidationPrice?: number;
+  [key: string]: unknown;
 }
 
-export interface ReplayNotePayload {
-  note_date: string;
-  title: string;
-  content: string;
-  payload_json?: Record<string, unknown>;
+export interface LivePositionCloseResult {
+  accountId: string;
+  exchange: string;
+  closed: number;
+  results: Record<string, unknown>[];
 }
 
-export const getPulseDailyStats = async (
-  params: { days?: number; min_change_pct?: number; top_n?: number } = {},
-): Promise<PulseDailySectorItem[]> => {
-  const response = await apiClient.get<PulseDailySectorItem[]>('/market/pulse/daily-stats', { params });
-  return response.data;
-};
-
-export const getPulseLianbanHistory = async (
-  params: { days?: number; min_level?: number } = {},
-): Promise<PulseLianbanHistoryItem[]> => {
-  const response = await apiClient.get<PulseLianbanHistoryItem[]>('/market/pulse/lianban-history', { params });
-  return response.data;
-};
-
-export const listReplayNotes = async (limit = 30): Promise<ReplayNote[]> => {
-  const response = await apiClient.get<{ status: string; data: ReplayNote[] }>('/market/pulse/replay-notes', { params: { limit } });
-  return response.data.data || [];
-};
-
-export const saveReplayNote = async (payload: ReplayNotePayload): Promise<ReplayNote> => {
-  const response = await apiClient.post<{ status: string; data: ReplayNote }>('/market/pulse/replay-notes', payload);
-  return response.data.data;
-};
-
-export interface BackfillResult {
-  status: string;
-  days_filled?: number;
-  sectors_processed?: number;
-  sectors_failed?: number;
-  duration_minutes?: number;
-  message?: string;
-}
-
-export const backfillConceptHistory = async (days: number = 30): Promise<BackfillResult> => {
-  const response = await apiClient.post('/market/pulse/backfill-history', null, {
-    params: { days },
-    timeout: 600000,
-  });
-  return response.data;
-};
-
-export const autoDevelopStrategy = async (
-  request: AutoDevelopStrategyRequest
-): Promise<AutoDevelopStrategyResult> => {
-  const response = await apiClient.post<AutoDevelopStrategyResult>('/strategy/auto-develop', request);
-  return response.data;
-};
-
-export const runStrategyBacktest = async (
-  strategyId: number,
-  request: StrategyBacktestRequest
-): Promise<StrategyBacktestResult> => {
-  const response = await apiClient.post<StrategyBacktestResult>('/backtest/run', {
-    strategy_id: strategyId,
-    ...request,
-  });
-  return response.data;
-};
-
-export const listBacktestResults = async (limit = 20): Promise<{ items: StrategyBacktestResult[]; total: number }> => {
-  const response = await apiClient.get<{ items: StrategyBacktestResult[]; total: number }>('/backtest/results', { params: { limit } });
-  return response.data;
-};
-
-export const BACKTEST_CONFIGURATION_READ_TIMEOUT_MS = 30_000;
-
-export const getBacktestConfiguration = async (): Promise<BacktestConfiguration> => {
-  try {
-    return (await apiClient.get<BacktestConfiguration>('/backtest/configuration', {
-      timeout: BACKTEST_CONFIGURATION_READ_TIMEOUT_MS,
-      skipRetry: true,
-    })).data;
-  } catch (error) {
-    return rejectPageTimeout('回测配置', error);
-  }
-};
-
-export const previewWalkForward = async (request: {
-  dataset_snapshot_id: number;
-  start_date: string;
-  end_date: string;
-  train_sessions: number;
-  test_sessions: number;
-  step_sessions: number;
-}): Promise<WalkForwardPreview> =>
-  (await apiClient.post<WalkForwardPreview>('/backtest/walk-forward/preview', request, { timeout: 120_000 })).data;
-
-export const createWalkForwardJob = async (request: BacktestRunRequestV1 & {
-  train_sessions: number;
-  test_sessions: number;
-  step_sessions: number;
-  parameter_grid: Record<string, unknown[]>;
-  objective: 'sharpe' | 'sortino' | 'strategy_return' | 'maximum_drawdown';
-}): Promise<BacktestJob> =>
-  (await apiClient.post<BacktestJob>('/backtest/walk-forward/jobs', request, { timeout: 120_000 })).data;
-
-export const MARKET_RESEARCH_CONTEXT_TIMEOUT_MS = 20_000;
-
-export const getMarketResearchContext = async (params?: { snapshot_id?: number; trade_date?: string; market_scope?: string }): Promise<MarketResearchContext> => {
-  try {
-    return (await apiClient.get<MarketResearchContext>('/market/research-context', {
-      params,
-      timeout: MARKET_RESEARCH_CONTEXT_TIMEOUT_MS,
-      skipRetry: true,
-    })).data;
-  } catch (error) {
-    if (axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || /timeout/i.test(error.message))) {
-      throw new Error('市场研究快照读取超时，已停止等待。请稍后重试。');
-    }
-    throw error;
-  }
-};
-
-export const listStockPools = async (): Promise<{ items: StockPool[]; total: number }> =>
-  (await apiClient.get<{ items: StockPool[]; total: number }>('/pools')).data;
-
-export const createStockPool = async (request: { name: string; pool_type: StockPool['pool_type']; description?: string; config: Record<string, unknown> }): Promise<StockPool> =>
-  (await apiClient.post<StockPool>('/pools', request)).data;
-
-export const generateStockPool = async (poolId: string, request: { dataset_snapshot_id: number; universe_snapshot_id: number; trade_date: string; factor_snapshot_id?: number; market_evidence_snapshot_id?: number }): Promise<StockPoolGeneration> =>
-  (await apiClient.post<StockPoolGeneration>(`/pools/${poolId}/generate`, request)).data;
-
-export const getStockPoolMembers = async (poolId: string, generationId?: string): Promise<StockPoolMember[]> =>
-  (await apiClient.get<{ items: StockPoolMember[] }>(`/pools/${poolId}/members`, { params: { generation_id: generationId } })).data.items;
-
-export const sealStockPoolSnapshot = async (poolId: string, generationId?: string): Promise<StockPoolSnapshot> =>
-  (await apiClient.post<StockPoolSnapshot>(`/pools/${poolId}/snapshots`, { generation_id: generationId })).data;
-
-export const listStockPoolSnapshots = async (poolId?: string): Promise<{ items: StockPoolSnapshot[]; total: number }> =>
-  (await apiClient.get<{ items: StockPoolSnapshot[]; total: number }>('/pool-snapshots', { params: { pool_id: poolId } })).data;
-
-export const getStockPoolSnapshot = async (snapshotId: number): Promise<StockPoolSnapshot> =>
-  (await apiClient.get<StockPoolSnapshot>(`/pool-snapshots/${snapshotId}`)).data;
-
-export const createPoolBacktestDraft = async (snapshotId: number, request: { strategy_version_id: string; start_date: string; end_date: string; initial_cash: number; benchmark_code?: string; parameters?: Record<string, unknown> }): Promise<{ status: string; experiment: Record<string, unknown>; pool_snapshot: StockPoolSnapshot }> =>
-  (await apiClient.post(`/pool-snapshots/${snapshotId}/backtests`, request)).data;
-
-export const BACKTEST_LIST_READ_TIMEOUT_MS = 30_000;
-
-export const listBacktestRuns = async (limit = 50): Promise<{ items: BacktestRun[]; total: number }> => {
-  try {
-    return (await apiClient.get<{ items: BacktestRun[]; total: number }>('/backtest/runs', {
-      params: { limit },
-      timeout: BACKTEST_LIST_READ_TIMEOUT_MS,
-      skipRetry: true,
-    })).data;
-  } catch (error) {
-    return rejectPageTimeout('回测记录', error);
-  }
-};
-
-export const runBacktestV1 = async (request: BacktestRunRequestV1, mode: 'quick' | 'full'): Promise<BacktestRun> =>
-  (await apiClient.post<BacktestRun>(mode === 'quick' ? '/backtest/quick-runs' : '/backtest/runs', request, { timeout: 120000 })).data;
-
-export const createBacktestJob = async (
-  request: BacktestRunRequestV1,
-  mode: 'quick' | 'full',
-): Promise<BacktestJob> =>
-  (await apiClient.post<BacktestJob>('/backtest/jobs', { ...request, run_mode: mode })).data;
-
-export const listBacktestJobs = async (limit = 50): Promise<{ items: BacktestJob[]; total: number }> => {
-  try {
-    return (await apiClient.get<{ items: BacktestJob[]; total: number }>('/backtest/jobs', {
-      params: { limit },
-      timeout: BACKTEST_LIST_READ_TIMEOUT_MS,
-      skipRetry: true,
-    })).data;
-  } catch (error) {
-    return rejectPageTimeout('回测任务', error);
-  }
-};
-
-export const getBacktestJob = async (jobId: string): Promise<BacktestJob> =>
-  (await apiClient.get<BacktestJob>(`/backtest/jobs/${jobId}`)).data;
-
-export const getBacktestJobLogs = async (jobId: string, afterId = 0): Promise<BacktestJobLog[]> =>
-  (await apiClient.get<{ items: BacktestJobLog[] }>(`/backtest/jobs/${jobId}/logs`, { params: { after_id: afterId } })).data.items;
-
-export const cancelBacktestJob = async (jobId: string): Promise<BacktestJob> =>
-  (await apiClient.post<BacktestJob>(`/backtest/jobs/${jobId}/cancel`)).data;
-
-export const retryBacktestJob = async (jobId: string): Promise<BacktestJob> =>
-  (await apiClient.post<BacktestJob>(`/backtest/jobs/${jobId}/retry`)).data;
-
-export const getBacktestRun = async (runId: string): Promise<BacktestRun> =>
-  (await apiClient.get<BacktestRun>(`/backtest/runs/${runId}`)).data;
-
-export const getBacktestMetrics = async (runId: string): Promise<BacktestMetric[]> =>
-  (await apiClient.get<{ items: BacktestMetric[] }>(`/backtest/runs/${runId}/metrics`)).data.items;
-
-export const getBacktestSeries = async (runId: string): Promise<{ daily: BacktestDailyPoint[]; custom_records: Array<Record<string, unknown>>; monthly_returns: Array<{ month: string; return: number | null }> }> =>
-  (await apiClient.get(`/backtest/runs/${runId}/series`)).data;
-
-export const getBacktestEvidence = async (runId: string, kind: 'positions' | 'orders' | 'trades' | 'logs' | 'attribution'): Promise<Array<Record<string, unknown>>> =>
-  (await apiClient.get<{ items: Array<Record<string, unknown>> }>(`/backtest/runs/${runId}/${kind}`)).data.items;
-
-export const compareBacktestRuns = async (runIds: string[]): Promise<{ runs: BacktestRun[]; series: Record<string, BacktestDailyPoint[]> }> =>
-  (await apiClient.post('/backtest/compare', { run_ids: runIds })).data;
-
-export const healMissingData = async (request: { days?: number; heal_kline?: boolean; heal_market_evidence?: boolean }): Promise<Record<string, unknown>> => {
-  return (await apiClient.post('/data/heal-missing', request)).data;
-};
-
-export const createBacktestProtocol = async (request: Record<string, unknown>): Promise<Record<string, unknown>> =>
-  (await apiClient.post('/backtest/protocols', request)).data;
-
-export const createBacktestExperiment = async (request: BacktestRunRequestV1 & { hypothesis: string }): Promise<Record<string, unknown>> =>
-  (await apiClient.post('/backtest/experiments', request)).data;
-
-export const runBacktestMatrix = async (experimentId: string, request: { parameter_grid: Record<string, unknown[]>; start_date: string; end_date: string; initial_cash: number; symbols: string[]; event_limit: number }): Promise<Record<string, unknown>> =>
-  (await apiClient.post(`/backtest/experiments/${experimentId}/matrix`, request, { timeout: 300000 })).data;
-
-export const runPaperTrading = async (
-  strategyId: number,
-  request: PaperRunRequest
-): Promise<PaperRunResult> => {
-  const response = await apiClient.post<PaperRunResult>('/paper/run', {
-    strategy_id: strategyId,
-    ...request,
-  });
-  return response.data;
-};
-
-export const listPaperAccounts = async (): Promise<{ accounts: PaperAccount[]; total: number }> => {
-  const response = await apiClient.get<{ accounts: PaperAccount[]; total: number }>('/paper/accounts');
-  return response.data;
-};
-
-export const getPaperAccount = async (accountId: number): Promise<PaperAccount> => {
-  const response = await apiClient.get<PaperAccount>(`/paper/${accountId}`);
-  return response.data;
-};
-
-export const refreshPaperAccount = async (accountId: number): Promise<PaperRunResult> => {
-  const response = await apiClient.post<PaperRunResult>(`/paper/${accountId}/refresh`);
-  return response.data;
-};
-
-export const stopPaperAccount = async (accountId: number): Promise<PaperRunResult> => {
-  const response = await apiClient.post<PaperRunResult>(`/paper/${accountId}/stop`);
-  return response.data;
-};
-
-export const listPaperInstances = async (): Promise<{ items: PaperRuntimeInstance[]; total: number }> => {
-  try {
-    return (await apiClient.get<{ items: PaperRuntimeInstance[]; total: number }>('/paper/instances', pageRead)).data;
-  } catch (error) {
-    return rejectPageTimeout('模拟实例', error);
-  }
-};
-
-export const getPaperInstance = async (instanceId: string): Promise<PaperRuntimeInstance> =>
-  (await apiClient.get<PaperRuntimeInstance>(`/paper/instances/${instanceId}`)).data;
-
-export const getPaperInstanceKlines = async (instanceId: string, symbol: string): Promise<PaperKlineSnapshot> =>
-  (await apiClient.get<PaperKlineSnapshot>(`/paper/instances/${instanceId}/klines/${encodeURIComponent(symbol)}`)).data;
-
-export const createPaperInstance = async (request: {
-  name?: string;
-  strategy_version_id: string;
-  dataset_snapshot_id: number;
-  factor_snapshot_id: number;
-  universe_snapshot_id: number;
-  pool_snapshot_id: number;
-  research_protocol_id: string;
-  qualifying_backtest_run_id: string;
-  initial_cash: number;
-  parameters?: Record<string, unknown>;
-  capacity_limits?: Record<string, unknown>;
-  feed_config?: Record<string, unknown>;
-}): Promise<PaperRuntimeInstance> =>
-  (await apiClient.post<PaperRuntimeInstance>('/paper/instances', request)).data;
-
-export const paperInstanceAction = async (instanceId: string, action: 'start' | 'pause' | 'resume' | 'stop'): Promise<PaperRuntimeInstance> =>
-  (await apiClient.post<PaperRuntimeInstance>(`/paper/instances/${instanceId}/${action}`)).data;
-
-export const processPaperCycle = async (instanceId: string, request: { trade_date: string; data_available_at?: string; observed_at?: string; cycle_key?: string }): Promise<Record<string, unknown>> =>
-  (await apiClient.post<Record<string, unknown>>(`/paper/instances/${instanceId}/cycles`, request)).data;
-
-export const advancePaperInstances = async (request?: {
-  instance_ids?: string[];
-  max_dates?: number;
-}): Promise<{
-  instances_attempted: number;
-  dates_processed: number;
-  instances: Array<{
-    instance_id: string;
-    processed_count?: number;
-    skipped_dates?: string[];
-    failures?: Array<{ trade_date: string; error: string }>;
-    pending_remaining?: number;
-    last_processed_trade_date?: string | null;
-    error?: string;
-  }>;
-}> => (await apiClient.post('/paper/instances/advance', request ?? {})).data;
-
-export const getWatchContext = async (scope: 'business' | 'audit' = 'business'): Promise<WatchContext> => {
-  try {
-    return (await apiClient.get<WatchContext>('/watch/context', { params: { scope }, timeout: 30_000, skipRetry: true })).data;
-  } catch (error) {
-    return rejectPageTimeout('盯盘观察台', error);
-  }
-};
-
-export const listRuntimeAlerts = async (status?: string): Promise<{ items: RuntimeAlert[]; total: number }> =>
-  (await apiClient.get<{ items: RuntimeAlert[]; total: number }>('/watch/alerts', { params: status ? { status } : {} })).data;
-
-export const acknowledgeRuntimeAlert = async (alertId: string): Promise<RuntimeAlert> =>
-  (await apiClient.post<RuntimeAlert>(`/watch/alerts/${alertId}/acknowledge`)).data;
-
-export const listWatchRules = async (): Promise<{ items: WatchRule[]; total: number }> =>
-  (await apiClient.get<{ items: WatchRule[]; total: number }>('/watch/rules', { timeout: 30_000, skipRetry: true })).data;
-
-export const createWatchRule = async (request: {
+export interface LiveExecutionAccount {
+  accountId: string;
   name: string;
-  rule_type: WatchRuleType;
-  severity: WatchRule['severity'];
-  config: WatchRule['config'];
-}): Promise<WatchRule> => (await apiClient.post<WatchRule>('/watch/rules', request)).data;
+  exchange: string;
+  exchangeAlias: string;
+  maskedApiKey?: string | null;
+  displayOnly?: boolean;
+  canTrade?: boolean | null;
+  permissionCheckedAt?: string | null;
+  permissionCheckDetail?: string | null;
+  isDefault: boolean;
+  configured: boolean;
+  enabled: boolean;
+  testnet: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
 
-export const previewWatchRule = async (ruleId: string): Promise<WatchRulePreview> =>
-  (await apiClient.post<WatchRulePreview>(`/watch/rules/${ruleId}/preview`)).data;
+export interface LiveExecutionAccountReturnRates {
+  oneDay?: number | null;
+  sevenDay?: number | null;
+  thirtyDay?: number | null;
+  source?: string | null;
+  valuationUsd?: number | null;
+  method?: string | null;
+  error?: string | null;
+}
 
-export const evaluateWatchRule = async (ruleId: string): Promise<WatchRulePreview> =>
-  (await apiClient.post<WatchRulePreview>(`/watch/rules/${ruleId}/evaluate`)).data;
+export interface LiveAccountCreateInput {
+  name: string;
+  exchange?: 'okx' | 'binanceusdm';
+  apiKey: string;
+  apiSecret: string;
+  passphrase?: string;
+  testnet?: boolean;
+}
 
-export const getMonitorHealth = async (scope: 'business' | 'audit' = 'business'): Promise<MonitorHealth> =>
-  (await apiClient.get<MonitorHealth>('/monitor/health', { params: { scope } })).data;
+export const liveExecutionApi = {
+  listAccounts: (): Promise<{ accounts: LiveExecutionAccount[] }> =>
+    getReq('/live/accounts'),
 
-export const getDailyReviewDates = async (): Promise<{ items: string[]; total: number }> =>
-  (await apiClient.get<{ items: string[]; total: number }>('/review/dates')).data;
+  createAccount: (payload: LiveAccountCreateInput): Promise<{ account: LiveExecutionAccount }> =>
+    postReq('/live/accounts', payload),
 
-export const getDailyReview = async (tradeDate: string): Promise<DailyReviewContext> =>
-  (await apiClient.get<DailyReviewContext>(`/review/${tradeDate}`)).data;
+  getAccountBalance: (
+    accountId = 'default'
+  ): Promise<{ accountId: string; exchange: string; balance: any[] }> =>
+    getReq(`/live/accounts/${accountId}/balance`),
 
-export const assembleDailyReview = async (tradeDate: string): Promise<DailyReviewContext> =>
-  (await apiClient.post<DailyReviewContext>(`/review/${tradeDate}/assemble`)).data;
+  getAccountBalanceDetail: (
+    accountId = 'default'
+  ): Promise<{
+    accountId: string;
+    exchange: string;
+    trading: any[];
+    funding: any[];
+    returnRates?: LiveExecutionAccountReturnRates | null;
+  }> =>
+    getReq(`/live/accounts/${accountId}/balance/detail`),
 
-export const saveDailyReview = async (tradeDate: string, request: { author_name?: string; summary?: string; next_day_plan?: string }): Promise<DailyReviewContext> =>
-  (await apiClient.put<DailyReviewContext>(`/review/${tradeDate}`, request)).data;
+  listStrategies: (): Promise<{ strategies: LiveExecutionStrategy[] }> =>
+    getReq('/live/strategies'),
 
-export const sealDailyReview = async (tradeDate: string): Promise<DailyReviewContext> =>
-  (await apiClient.post<DailyReviewContext>(`/review/${tradeDate}/seal`)).data;
+  updateStrategy: (
+    strategyId: number,
+    payload: { added?: boolean; accountId?: string; bindAccount?: boolean; riskConfig?: Record<string, unknown> }
+  ): Promise<{ strategy: LiveExecutionStrategy }> =>
+    api.patch(`/live/strategies/${strategyId}`, snakifyDeep(payload)).then((raw) =>
+      camelizeDeep(unwrapEnvelope(raw.data))
+    ),
 
-const rejectPageTimeout = (label: string, error: unknown): never => {
-  if (axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || /timeout/i.test(String(error.message)))) {
-    throw new Error(`${label}读取超时，已停止等待。请稍后重试。`);
-  }
-  throw error;
+  preflightStrategy: (
+    strategyId: number,
+    payload: {
+      accountId?: string;
+      exchange?: string;
+      initialEquity?: number;
+      loopInterval?: number;
+      startImmediately?: boolean;
+      riskConfig?: Record<string, unknown>;
+    }
+  ): Promise<{ strategy: LiveExecutionStrategy; preflight: LiveExecutionPreflight }> =>
+    postReq(`/live/strategies/${strategyId}/preflight`, payload),
+
+  deployStrategy: (
+    strategyId: number,
+    payload: {
+      accountId?: string;
+      exchange?: string;
+      initialEquity?: number;
+      loopInterval?: number;
+      startImmediately?: boolean;
+      confirmPaperReviewed: boolean;
+      confirmLiveRisk: boolean;
+      riskConfig?: Record<string, unknown>;
+    }
+  ): Promise<{
+    deployed: boolean;
+    started: boolean;
+    sourceStrategyId: number;
+    liveStrategyId?: number | null;
+    liveSubscriptionId?: number | null;
+    strategy: LiveExecutionStrategy;
+    preflight: LiveExecutionPreflight;
+  }> =>
+    postReq(`/live/strategies/${strategyId}/deploy`, payload),
+
+  enableStrategyAccount: (
+    strategyId: number,
+    payload: {
+      accountId?: string;
+      exchange?: string;
+      initialEquity?: number;
+      loopInterval?: number;
+      confirmPaperReviewed: boolean;
+      confirmLiveRisk: boolean;
+      riskConfig?: Record<string, unknown>;
+    }
+  ): Promise<{
+    deployed: boolean;
+    started: boolean;
+    sourceStrategyId: number;
+    liveStrategyId?: number | null;
+    liveSubscriptionId?: number | null;
+    strategy: LiveExecutionStrategy;
+    preflight: LiveExecutionPreflight;
+  }> =>
+    postReq(`/live/strategies/${strategyId}/enable-account`, payload),
+
+  pauseStrategy: (
+    strategyId: number,
+    payload: { accountId?: string } = {}
+  ): Promise<{ paused: boolean; sourceStrategyId: number; liveSubscriptionId?: number | null; strategy: LiveExecutionStrategy }> =>
+    postReq(`/live/strategies/${strategyId}/pause`, payload),
+
+  resumeStrategy: (
+    strategyId: number,
+    payload: { accountId?: string } = {}
+  ): Promise<{ resumed: boolean; sourceStrategyId: number; liveSubscriptionId?: number | null; strategy: LiveExecutionStrategy }> =>
+    postReq(`/live/strategies/${strategyId}/resume`, payload),
+
+  stopStrategy: (
+    strategyId: number,
+    payload: { accountId?: string } = {}
+  ): Promise<{ stopped: boolean; sourceStrategyId: number; liveSubscriptionId?: number | null; strategy: LiveExecutionStrategy }> =>
+    postReq(`/live/strategies/${strategyId}/stop`, payload),
+
+  listPositions: (
+    accountId = 'default',
+    symbol?: string
+  ): Promise<{ accountId: string; exchange: string; positions: LiveExecutionPosition[] }> =>
+    getReq(`/live/accounts/${accountId}/positions`, { params: { symbol } }),
+
+  closePosition: (
+    accountId = 'default',
+    payload: { symbol?: string; side?: 'long' | 'short'; closeAll?: boolean; confirmLiveRisk: boolean }
+  ): Promise<LivePositionCloseResult> =>
+    postReq(`/live/accounts/${accountId}/positions/close`, payload),
+
+  listOpenOrders: (
+    accountId = 'default',
+    symbol?: string
+  ): Promise<{ accountId: string; exchange: string; orders: LiveExecutionOrder[] }> =>
+    getReq(`/live/accounts/${accountId}/orders/open`, { params: { symbol } }),
+
+  listOrderHistory: (
+    accountId = 'default',
+    symbol?: string,
+    limit = 50
+  ): Promise<{ accountId: string; exchange: string; orders: LiveExecutionOrder[] }> =>
+    getReq(`/live/accounts/${accountId}/orders/history`, { params: { symbol, limit } }),
 };
 
-export const DATA_STATUS_READ_TIMEOUT_MS = 20_000;
+// ============================================
+// 跨交易所套利 API
+// ============================================
 
-export const getDataStatus = async <T = unknown>(): Promise<T> => {
-  try {
-    const response = await apiClient.get<T>('/data/status', {
-      timeout: DATA_STATUS_READ_TIMEOUT_MS,
-      skipRetry: true,
-    });
-    return response.data;
-  } catch (error) {
-    return rejectPageTimeout('数据状态', error);
-  }
+export interface ArbitrageLeg {
+  exchange: string;
+  side?: string;
+  price?: number | null;
+  fundingRate?: number | null;
+}
+
+export interface ArbitrageOpportunity {
+  symbol: string;
+  strategyType?: string;
+  longLeg?: ArbitrageLeg | null;
+  shortLeg?: ArbitrageLeg | null;
+  grossEdgeBps?: number | null;
+  feeBps?: number | null;
+  slippageBps?: number | null;
+  fundingEdgeBps?: number | null;
+  netEdgeBps?: number | null;
+  depthUsdt?: number | null;
+  estimatedMarginUsdt?: number | null;
+  reason?: string | null;
+}
+
+export interface ArbitrageSummary {
+  status: string;
+  asOf?: string;
+  configuredExchanges: Array<Record<string, unknown>>;
+  opportunities: ArbitrageOpportunity[];
+  spreadMatrix: Array<Record<string, unknown>>;
+  fundingRankings: Array<Record<string, unknown>>;
+  portfolioPositions: Array<Record<string, unknown>>;
+  legStatus: Array<Record<string, unknown>>;
+  netExposure: { totalUsdt?: number; bySymbol?: Array<Record<string, unknown>> };
+  pnl: {
+    estimatedUsdt?: number;
+    actualUsdt?: number;
+    fundingUsdt?: number;
+    spreadUsdt?: number;
+    feeUsdt?: number;
+  };
+  emptyReason?: string;
+}
+
+export const arbitrageApi = {
+  getSummary: (): Promise<ArbitrageSummary> =>
+    getReq('/arbitrage/summary'),
 };
 
-export const triggerDataSync = async (request?: {
-  symbols?: string[];
-  timeframes?: string[];
-  start_date?: string;
-  end_date?: string;
-  job_name?: string;
-}): Promise<GenericApiResponse> => {
-  const response = await apiClient.post<GenericApiResponse>('/data/sync', request || {});
-  return response.data;
+// ============================================
+// 链上研究 API
+// ============================================
+
+export interface OnchainKpiTarget {
+  name: string;
+  tvlUsd?: number;
+  total24hUsd?: number;
+  category?: string;
+  chain?: string;
+}
+
+export interface OnchainSummary {
+  status: string;
+  asOf?: string;
+  source: {
+    provider: string;
+    authRequired: boolean;
+    endpoints: Record<string, string>;
+  };
+  sourceStatus: Record<string, string>;
+  kpis: {
+    totalTvlUsd: number;
+    totalStablecoinsUsd: number;
+    protocolCount: number;
+    chainCount: number;
+    fee24hUsd: number;
+    stableYieldPoolCount: number;
+    topChain?: OnchainKpiTarget | null;
+    topProtocol?: OnchainKpiTarget | null;
+    topFeeProtocol?: OnchainKpiTarget | null;
+  };
+  chains: Array<Record<string, unknown>>;
+  protocols: Array<Record<string, unknown>>;
+  fees: Array<Record<string, unknown>>;
+  stablecoins: Array<Record<string, unknown>>;
+  stablecoinChains: Array<Record<string, unknown>>;
+  yieldPools: Array<Record<string, unknown>>;
+  warnings: string[];
+  emptyReason?: string;
+}
+
+export const onchainApi = {
+  getSummary: (): Promise<OnchainSummary> =>
+    getReq('/onchain/summary'),
 };
 
-export type DataSyncConfigResponse = {
+// ============================================
+// FactorLab 因子库 API（只读）
+// ============================================
+
+export interface FactorLabDefinition {
+  definitionId: string;
+  definitionVersion: number;
+  displayName: string;
+  family: string;
+  role: string;
+  description: string;
+  kernelName: string;
+  inputs: string[];
+  parameterSchema: Record<string, { type: string; default?: number; minimum?: number; maximum?: number }>;
+  lookbackBars: number;
+  availability: string;
+  orientation: string;
+  missingPolicy: string;
+  validMin?: number | null;
+  validMax?: number | null;
+  implementationHash: string;
+  status: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface FactorLabInstance {
+  instanceId: string;
+  definitionId: string;
+  definitionVersion: number;
+  parametersJson: string;
+  parameters: Record<string, number>;
+  parameterHash: string;
+  requiredBars: number;
+  createdAt: string;
+  isDefault: boolean;
+}
+
+export interface FactorLabLatestValue {
+  exchange: string;
+  marketType: string;
+  symbol: string;
+  timeframe: string;
+  instanceId: string;
+  eventTime: number;
+  availableAt: number;
+  computedAt: number;
+  value?: number | null;
+  valueStatus: string;
+  datasetRevision: string;
+}
+
+export interface FactorLabSummary {
+  status: string;
+  phase: string;
+  statistics: {
+    definitionCount: number;
+    instanceCount: number;
+    latestValueCount: number;
+    materializedPartitionCount: number;
+  };
+  definitions: FactorLabDefinition[];
+  instances: FactorLabInstance[];
+  latestValues: FactorLabLatestValue[];
+  dataPlane: {
+    format: string;
+    layout: string;
+    manifest: string;
+  };
+  capabilities: {
+    apiMode: string;
+    materializationStoreReady: boolean;
+    researchMetricsAvailable: boolean;
+    strategyRuntimeConnected: boolean;
+    paperLiveConnected: boolean;
+  };
+}
+
+export const factorLabApi = {
+  getSummary: (): Promise<FactorLabSummary> =>
+    getReq('/factorlab/summary'),
+};
+
+// ============================================
+// 复盘中心 API
+// ============================================
+
+export type ReviewWindow = '24h' | '7d' | '30d';
+export type ReviewBucket = '1h';
+
+export interface ReviewOverview {
+  reviewWindow: ReviewWindow;
+  bucket: ReviewBucket;
+  updatedAt?: string | null;
+  strategyCount: number;
+  sampleStrategyCount: number;
+  overallReturnPct: number;
+  medianReturnPct: number;
+  maxDrawdownPct: number;
+  observeCount: number;
+  reviewCount: number;
+  sampleHealthPct: number;
+}
+
+export interface ReviewGroupRow {
+  groupKey: string;
+  assetClass: string;
+  timeframe: string;
+  strategyType: string;
+  capitalVersion: string;
+  strategyCount: number;
+  sampleStrategyCount: number;
+  returnPct: number;
+  maxDrawdownPct: number;
+  winRate: number;
+  profitFactor: number;
+  tradeCount: number;
+  score: number;
+  verdict: string;
+  strategies: ReviewGroupStrategy[];
+}
+
+export interface ReviewGroupStrategy {
+  strategyId: number;
+  name: string;
+  score: number;
+  returnPct: number;
+  maxDrawdownPct: number;
+  winRate: number;
+  profitFactor: number;
+  tradeCount: number;
+  sampleCount: number;
+  tags: string[];
+  verdict: string;
+}
+
+export interface ReviewLeaderboardItem {
+  strategyId: number;
+  name: string;
+  groupKey: string;
+  score: number;
+  returnPct: number;
+  maxDrawdownPct: number;
+  winRate: number;
+  profitFactor: number;
+  tradeCount: number;
+  tags: string[];
+  verdict: string;
+}
+
+export interface ReviewHeatmapBucket {
+  hour: string;
+  returnPct: number;
+  tone: 'positive' | 'negative' | 'flat' | string;
+}
+
+export interface ReviewHeatmapRow {
+  groupKey: string;
+  label: string;
+  buckets: ReviewHeatmapBucket[];
+}
+
+export interface ReviewTag {
+  label: string;
+  count: number;
+}
+
+export interface ReviewSummary {
+  overview: ReviewOverview;
+  groups: ReviewGroupRow[];
+  leaderboard: {
+    observe: ReviewLeaderboardItem[];
+    review: ReviewLeaderboardItem[];
+  };
+  heatmap: ReviewHeatmapRow[];
+  tags: ReviewTag[];
+  nextActions: string[];
+}
+
+export const reviewApi = {
+  getSummary: (params?: { window?: ReviewWindow; bucket?: ReviewBucket }): Promise<ReviewSummary> =>
+    getReq('/review/summary', {
+      params: {
+        window: params?.window ?? '24h',
+        bucket: params?.bucket ?? '1h',
+      },
+    }),
+};
+
+export interface WatchlistItem {
+  symbol: string;
+  sourceStrategyId: number;
+  sourceStrategyName: string;
+  lastSide?: string | null;
+  lastAction?: string | null;
+  lastPrice?: number | null;
+  lastQuantity?: number | null;
+  lastNotionalUsdt?: number | null;
+  lastExecutionAt?: string | null;
+  orderCount: number;
+}
+
+export interface WatchTradeMarker {
+  id: number;
+  label: 'B' | 'S';
+  side?: string | null;
+  action?: string | null;
+  symbol: string;
+  price?: number | null;
+  quantity?: number | null;
+  timestamp: number;
+  datetime?: string | null;
+  sourceStrategyId: number;
+  sourceStrategyName: string;
+  subscriptionId: number;
+  liveOrderId?: string | null;
+  clientOrderId?: string | null;
+}
+
+export interface WatchDerivativePoint {
+  timestamp: number;
+  value?: number | null;
+  [key: string]: number | string | null | undefined;
+}
+
+export interface WatchDerivativesData {
+  accountId: string;
+  exchange: string;
+  symbol: string;
+  timeframe: string;
+  openInterest: { points: WatchDerivativePoint[] | null };
+  fundingRate: { points: WatchDerivativePoint[] | null };
+  longShortRatio: { points: WatchDerivativePoint[] | null };
+  takerVolume: { points: WatchDerivativePoint[] | null };
+  basis: { points: WatchDerivativePoint[] | null };
+}
+
+export interface WatchMarketPayload {
+  accountId: string;
+  exchange: string;
+  symbol: string;
+  timeframe: string;
+  ticker: Ticker;
+  klines: Kline[];
+  orderbook: OrderBook;
+  recentTrades: Array<Record<string, unknown>>;
+  positions: LiveExecutionPosition[];
+}
+
+export const liveWatchApi = {
+  getWatchlist: (
+    accountId = 'default',
+    limit = 100
+  ): Promise<{ accountId: string; exchange: string; items: WatchlistItem[] }> =>
+    getReq('/live/watchlist', { params: { accountId, limit } }),
+
+  getWatchMarket: (
+    symbol: string,
+    accountId = 'default',
+    timeframe = '15m',
+    limit = 240
+  ): Promise<WatchMarketPayload> =>
+    getReq('/live/watchlist/market', { params: { accountId, symbol, timeframe, limit } }),
+
+  getTradeMarkers: (
+    symbol: string,
+    accountId = 'default',
+    params?: { start?: number; end?: number; limit?: number }
+  ): Promise<{ accountId: string; exchange: string; symbol: string; markers: WatchTradeMarker[] }> =>
+    getReq('/live/watchlist/markers', { params: { accountId, symbol, ...params } }),
+
+  getDerivativesData: (
+    symbol: string,
+    accountId = 'default',
+    timeframe = '15m',
+    limit = 120
+  ): Promise<WatchDerivativesData> =>
+    getReq('/live/watchlist/derivatives-data', { params: { accountId, symbol, timeframe, limit } }),
+};
+
+// ============================================
+// 行情 API
+// ============================================
+
+export const marketApi = {
+  getTicker: (exchange: string, symbol: string): Promise<Ticker> =>
+    getReq('/market/ticker', { params: { exchange, symbol } }),
+
+  getTickers: (exchange: string, symbols?: string[]): Promise<Ticker[]> =>
+    getReq('/market/tickers', {
+      params: { exchange, symbols: symbols?.join(','), offset: 0, limit: 500 },
+    }),
+
+  getAllTickers: async (
+    exchange: string,
+    scope: { quote: string; marketType: 'spot' | 'swap' | 'future' | 'all' },
+  ): Promise<Ticker[]> => {
+    const items: Ticker[] = [];
+    const limit = 500;
+    let offset = 0;
+    let total = 0;
+
+    do {
+      const page = await getPagedReq<Ticker[]>('/market/tickers', {
+        params: { exchange, quote: scope.quote, marketType: scope.marketType, offset, limit },
+      });
+      const rows = Array.isArray(page.data) ? page.data : [];
+      items.push(...rows);
+      total = page.meta?.total ?? items.length;
+      offset += rows.length;
+      if (rows.length === 0) break;
+    } while (offset < total);
+
+    return items;
+  },
+
+  getKlines: (
+    exchange: string,
+    symbol: string,
+    timeframe = '1h',
+    limit = 100,
+    start?: number,
+    end?: number
+  ): Promise<Kline[]> =>
+    getReq('/market/klines', {
+      params: { exchange, symbol, timeframe, limit, start, end },
+    }),
+
+  getTechnicalIndicators: (
+    exchange: string,
+    symbol: string,
+    timeframe = '1h',
+    limit = 100,
+    start?: number,
+    end?: number,
+    emaPeriods: number[] = [5, 10, 20, 30]
+  ): Promise<TechnicalIndicators> =>
+    getReq('/market/indicators', {
+      params: {
+        exchange,
+        symbol,
+        timeframe,
+        limit,
+        start,
+        end,
+        emaPeriods: emaPeriods.join(','),
+      },
+    }),
+
+  getOrderbook: (exchange: string, symbol: string, limit = 20): Promise<OrderBook> =>
+    getReq('/market/orderbook', { params: { exchange, symbol, limit } }),
+
+  getTrades: (
+    exchange: string,
+    symbol: string,
+    limit = 30
+  ): Promise<Array<{
+    id?: string | number;
+    timestamp?: number;
+    datetime?: string;
+    side?: string;
+    price?: number;
+    amount?: number;
+    cost?: number;
+  }>> => getReq('/market/trades', { params: { exchange, symbol, limit } }),
+
+  getSymbols: (exchange: string, quote = 'USDT', marketType = 'spot'): Promise<{ symbols: string[] }> =>
+    getReq('/market/symbols', { params: { exchange, quote, market_type: marketType } }),
+};
+
+// ============================================
+// 资金费率 API
+// ============================================
+
+export const fundingApi = {
+  getRates: (exchange: string, symbols?: string[]): Promise<FundingRate[]> =>
+    getReq('/funding/rates', {
+      params: { exchange, symbols: symbols?.join(',') },
+    }),
+
+  getRate: (exchange: string, symbol: string): Promise<FundingRate> =>
+    getReq(`/funding/rate/${symbol}`, { params: { exchange } }),
+
+  getHistory: (
+    exchange: string,
+    symbol: string,
+    limit = 100
+  ): Promise<{ timestamp: number; rate: number }[]> =>
+    getReq('/funding/history', { params: { exchange, symbol, limit } }),
+
+  getOpportunities: (
+    exchange: string,
+    minRate = 0.0001,
+    limit = 20
+  ): Promise<FundingOpportunity[]> =>
+    getReq('/funding/opportunities', { params: { exchange, minRate, limit } }),
+
+  getSummary: (): Promise<{
+    exchanges: Record<string, { total: number; avgRate: number }>;
+    topOpportunities: FundingOpportunity[];
+  }> => getReq('/funding/summary'),
+};
+
+// ============================================
+// 交易 API
+// ============================================
+
+export const tradingApi = {
+  getBalance: (exchange: string): Promise<{ exchange: string; balance: any[] }> =>
+    getReq('/trading/accounts/balance', { params: { exchange } }),
+
+  getBalanceDetail: (exchange: string): Promise<{ exchange: string; trading: any[]; funding: any[] }> =>
+    getReq('/trading/accounts/balance/detail', { params: { exchange } }),
+
+  getOpenOrders: (exchange: string, symbol?: string): Promise<{ exchange: string; orders: any[] }> =>
+    getReq('/trading/orders/open', { params: { exchange, symbol } }),
+
+  getOrderHistory: (exchange: string, limit = 50, symbol?: string): Promise<{ exchange: string; orders: any[] }> =>
+    getReq('/trading/orders/history', { params: { exchange, limit, symbol } }),
+
+  cancelOrder: (orderId: string, exchange: string, symbol: string): Promise<{ result: any }> =>
+    deleteReq(`/trading/order/${orderId}`, { params: { exchange, symbol } }),
+
+  transfer: (data: {
+    exchange: string;
+    currency: string;
+    amount: number;
+    fromAccount: string;
+    toAccount: string;
+  }): Promise<any> =>
+    postReq('/trading/transfer', data),
+
+  spotOrder: (data: {
+    exchange: string;
+    symbol: string;
+    side: 'buy' | 'sell';
+    type: 'market' | 'limit';
+    amount: number;
+    price?: number | null;
+  }): Promise<{ order: any; warnings?: string[] }> =>
+    postReq('/trading/spot/order', data),
+
+  futuresOrder: (data: {
+    exchange: string;
+    symbol: string;
+    side: 'long' | 'short';
+    action: 'open' | 'close';
+    amount: number;
+    leverage: number;
+    price?: number | null;
+  }): Promise<{ order: any }> =>
+    postReq('/trading/futures/order', data),
+};
+
+// ============================================
+// 策略 API
+// ============================================
+
+export interface StrategyPageResponse {
+  items: Strategy[];
+  total: number;
+  page: number;
+  perPage: number;
+  pages: number;
+  statusCounts: Record<string, number>;
+  assetCounts: Record<string, number>;
+  typeCounts: Record<string, number>;
+  timeframeCounts: Record<string, number>;
+  capitalCounts: Record<string, number>;
+}
+
+export const strategyApi = {
+  getPage: (params: {
+    page: number;
+    perPage: number;
+    search?: string;
+    status?: string;
+    assetClass?: string;
+    strategyType?: string;
+    timeframe?: string;
+    capital?: string;
+  }): Promise<StrategyPageResponse> =>
+    getReq<StrategyPageResponse>('/strategies', {
+      params: {
+        page: params.page,
+        perPage: params.perPage,
+        search: params.search,
+        status: params.status,
+        assetClass: params.assetClass,
+        strategyType: params.strategyType,
+        timeframe: params.timeframe,
+        capital: params.capital,
+      },
+    }),
+
+  get: (id: number): Promise<Strategy> => getReq(`/strategies/${id}`),
+
+  create: (data: {
+    name: string;
+    description?: string;
+    scriptContent: string;
+    config?: Record<string, unknown>;
+    exchange?: string;
+    symbols?: string[];
+  }): Promise<Strategy> => postReq('/strategies', data),
+
+  update: (id: number, data: Partial<Strategy>): Promise<Strategy> =>
+    putReq(`/strategies/${id}`, data),
+
+  delete: (id: number): Promise<void> => deleteReq(`/strategies/${id}`),
+
+  start: (id: number): Promise<{ started: boolean }> => postReq(`/strategies/${id}/start`),
+
+  stop: (id: number): Promise<{ stopped: boolean }> => postReq(`/strategies/${id}/stop`),
+
+  getStatus: (id: number): Promise<{
+    strategyId: number;
+    name: string;
+    status: string;
+    pnl: number;
+    totalTrades: number;
+  }> => getReq(`/strategies/${id}/status`),
+};
+
+// ============================================
+// 监控 API
+// ============================================
+
+export const monitorApi = {
+  getAlerts: (): Promise<any[]> => getReq('/monitor/alerts'),
+
+  createAlert: (data: {
+    name: string;
+    type: string;
+    exchange: string;
+    symbol?: string;
+    threshold: number;
+    strategyId?: number;
+    cooldownSec?: number;
+    telegramBotToken?: string;
+    telegramChatId?: string;
+    webhookUrl?: string;
+  }): Promise<{ id: number }> => postReq('/monitor/alerts', data),
+
+  toggleAlert: (id: number, enabled: boolean): Promise<{ id: number; enabled: boolean }> =>
+    putReq(`/monitor/alerts/${id}`, null, { params: { enabled } }),
+
+  deleteAlert: (id: number): Promise<{ deleted: boolean }> =>
+    deleteReq(`/monitor/alerts/${id}`),
+
+  getRunningStrategies: (): Promise<any[]> =>
+    getReq('/monitor/running-strategies'),
+
+  getActiveStrategies: (): Promise<any[]> =>
+    getReq('/monitor/active_strategies'),
+
+  getLongShortRatio: (exchange: string, symbol: string): Promise<any> =>
+    getReq('/monitor/long-short-ratio', { params: { exchange, symbol } }),
+
+  getOpenInterest: (exchange: string, symbol: string): Promise<any> =>
+    getReq('/monitor/open-interest', { params: { exchange, symbol } }),
+};
+
+// ============================================
+// 策略上线 (自动交易 / 实盘) API
+// ============================================
+
+export const liveApi = {
+  getStrategies: (params?: { page?: number; perPage?: number }): Promise<StrategyPageResponse> =>
+    getReq<StrategyPageResponse>('/strategies', {
+      params: {
+        page: params?.page ?? 1,
+        perPage: params?.perPage ?? 60,
+      },
+    }),
+
+  startStrategy: (id: number): Promise<any> => postReq(`/strategies/${id}/start`),
+
+  stopStrategy: (id: number): Promise<any> => postReq(`/strategies/${id}/stop`),
+
+  getStrategyStatus: (id: number): Promise<any> => getReq(`/strategies/${id}/status`),
+
+  getStrategyTrades: (id: number, limit = 50): Promise<any> =>
+    getReq(`/strategies/${id}/trades`, { params: { limit } }),
+
+  configure: (config: {
+    [key: string]: unknown;
+    instance_id?: string | number;
+  }): Promise<any> => postReq('/live/configure', config),
+
+  start: (instanceId?: string | number): Promise<any> =>
+    postReq('/live/start', instanceId != null ? { instance_id: instanceId } : {}),
+
+  stop: (instanceId?: string | number, clearMetrics = false): Promise<any> =>
+    postReq('/live/stop', {
+      ...(instanceId != null ? { instance_id: instanceId } : {}),
+      clear_metrics: clearMetrics,
+    }),
+
+  pause: (instanceId?: string | number): Promise<any> =>
+    postReq('/live/pause', instanceId != null ? { instance_id: instanceId } : {}),
+
+  resume: (instanceId?: string | number): Promise<any> =>
+    postReq('/live/resume', instanceId != null ? { instance_id: instanceId } : {}),
+
+  closePaperPosition: (payload: {
+    instanceId?: string | number;
+    symbol: string;
+    side?: string | null;
+    marketType?: 'spot' | 'swap' | string | null;
+  }): Promise<any> => postReq('/live/positions/close', payload),
+
+  getDashboard: (instanceId?: string | number): Promise<any> =>
+    getReq('/live/dashboard', { params: instanceId != null ? { instance_id: instanceId } : {} }),
+
+  getEvents: (limit = 50, eventType?: string, instanceId?: string | number): Promise<any> =>
+    getReq('/live/events', {
+      params: {
+        limit,
+        eventType,
+        ...(instanceId != null ? { instance_id: instanceId } : {}),
+      },
+    }),
+
+  getEquityCurve: (instanceId?: string | number): Promise<any> =>
+    getReq('/live/equity_curve', { params: instanceId != null ? { instance_id: instanceId } : {} }),
+
+  preFlight: (config: {
+    [key: string]: unknown;
+  }): Promise<any> => postReq('/live/pre_flight', config),
+
+  promoteToLive: (config: {
+    sourceStrategyId: string | number;
+    exchange?: string;
+    initialEquity?: number;
+    loopInterval?: number;
+    startImmediately?: boolean;
+    confirmPaperReviewed?: boolean;
+    confirmLiveRisk?: boolean;
+    riskConfig?: Record<string, unknown>;
+  }): Promise<any> => postReq('/live/promote', config),
+
+  promoteToLivePreflight: (config: {
+    sourceStrategyId: string | number;
+    exchange?: string;
+    initialEquity?: number;
+    loopInterval?: number;
+    startImmediately?: boolean;
+    riskConfig?: Record<string, unknown>;
+  }): Promise<any> => postReq('/live/promote/preflight', config),
+
+  testTelegram: (message: string): Promise<any> =>
+    postReq('/live/test_telegram', { message }),
+};
+
+// ============================================
+// 模拟盘 API
+// ============================================
+
+export const paperApi = {
+  // 兼容旧“模拟盘验证”入口：底层改为复用回测 run_sync
+  run: async (config: {
+    [key: string]: unknown;
+  }): Promise<any> => {
+    const daysBack = Number(config.days_back || 30);
+    const end = new Date();
+    const start = new Date(end.getTime() - daysBack * 24 * 60 * 60 * 1000);
+    const toDate = (d: Date) => d.toISOString().slice(0, 10);
+
+    const payload: Record<string, unknown> = {
+      strategy_id: Number(config.strategy),
+      exchange: String(config.exchange || 'okx'),
+      timeframe: String(config.timeframe || '1h'),
+      start_date: toDate(start),
+      end_date: toDate(end),
+      initial_capital: Number(config.initial_capital || 10000),
+      stop_loss: Number(config.stop_loss || 0.05),
+    };
+    if (typeof config.symbol === 'string' && config.symbol.trim()) {
+      payload.symbol = config.symbol.trim();
+    }
+
+    // 与 backtestApi.runSync 一致，避免 Kairos 验证误判超时
+    return postReq('/backtest/run_sync', payload, { timeout: BACKTEST_RUN_SYNC_TIMEOUT_MS });
+  },
+
+  getInstances: (): Promise<any> => getReq('/paper-trading/instances'),
+
+  getInstance: (instanceId: string): Promise<any> => getReq(`/paper-trading/instances/${instanceId}`),
+
+  deleteInstance: (instanceId: string): Promise<any> => deleteReq(`/paper-trading/instances/${instanceId}`),
+
+  clearInstances: (): Promise<any> => deleteReq('/paper-trading/instances'),
+
+  getSignals: (instanceId?: string, strategy?: string, symbol?: string, timeframe?: string, limit?: number): Promise<any> =>
+    getReq('/paper-trading/signals', { params: { instanceId: instanceId, strategy, symbol, timeframe, limit } }),
+};
+
+// ============================================
+// 数据管理 API
+// ============================================
+
+export interface DataSyncMeta {
+  exchange: string;
+  symbol: string;
+  timeframe: string;
+  dataType: string;
+  firstTimestamp: number | null;
+  lastTimestamp: number | null;
+  totalRecords: number;
+  status: string | null;
+  lastSyncAt: string | null;
+  errorMessage: string | null;
+  updatedAt?: string | null;
+}
+
+export interface DataSyncProgressItem {
+  exchange: string;
+  symbol: string;
+  timeframe: string;
+  status: string;
+  totalFetched: number;
+  totalInserted: number;
+  startedAt: string | null;
+  endedAt: string | null;
+  elapsedSeconds: number | null;
+  checkpointTimestamp?: number | null;
+  error: string | null;
+}
+
+export interface DataSyncStatusResponse {
+  isRunning: boolean;
+  currentJob: {
+    jobId?: string | null;
+    exchange: string | null;
+    status: string | null;
+    totalFetched: number;
+    totalInserted: number;
+    errors: number;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    elapsedSeconds?: number | null;
+    totalItems?: number;
+    completedItems?: number;
+    errorItems?: number;
+    processedItems?: number;
+    progress: DataSyncProgressItem[];
+  } | null;
+  summary: {
+    totalRecords: number;
+    exchanges: string[];
+    symbolsCount: number;
+    pairs: number;
+  };
+  details: DataSyncMeta[];
+}
+
+export interface DataSyncJobItem {
+  id?: number;
+  exchange?: string;
+  symbol: string;
+  timeframe: string;
+  status: string;
+  totalFetched: number;
+  totalInserted: number;
+  checkpointTimestamp?: number | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  elapsedSeconds?: number | null;
+  errorMessage?: string | null;
+}
+
+export interface DataSyncJobSummary {
+  jobId: string;
+  exchange: string;
+  status: string;
+  symbols: string[];
+  timeframes: string[];
+  historyDays: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  totalSymbols: number;
+  totalTimeframes: number;
+  totalItems: number;
+  completedItems: number;
+  runningItems: number;
+  pendingItems: number;
+  errorItems: number;
+  processedItems?: number;
+  progressPercent: number;
+  totalFetched: number;
+  totalInserted: number;
+  errorCount: number;
+  errorMessage?: string | null;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  updatedAt?: string | null;
+  elapsedSeconds?: number | null;
+  items?: DataSyncJobItem[];
+}
+
+export interface DataSyncJobsResponse {
+  jobs: DataSyncJobSummary[];
+}
+
+export interface DataSyncConfigResponse {
   defaultSymbols: string[];
   defaultTimeframes: string[];
   defaultHistoryDays: number;
-};
+}
 
-export type DataSyncScheduleConfig = {
+export interface DataSyncScheduleConfig {
   enabled: boolean;
-  mode?: string;
-  syncAllAshare?: boolean;
-  runHour?: number;
-  runMinute?: number;
   intervalMinutes: number;
   historyDays: number;
   symbols: string[];
@@ -1496,383 +1935,706 @@ export type DataSyncScheduleConfig = {
   lastRunAt?: string | null;
   lastStartedAt?: string | null;
   lastFinishedAt?: string | null;
-  nextRunAt?: string | null;
   lastJobId?: string | null;
   lastError?: string | null;
-};
-
-export type DataTableStatsResponse = {
-  totalRecords: number;
-  totalPairs: number;
-  marketStats?: Record<string, { totalRecords: number; totalPairs: number; totalSymbols: number }>;
-  tables: Array<{
-    tableName: string;
-    exchange?: string;
-    symbol?: string;
-    name?: string;
-    timeframe?: string;
-    recordCount: number;
-    firstTimestamp?: number | null;
-    lastTimestamp?: number | null;
-  }>;
-};
-
-export type TushareEndpoint = {
-  endpoint_code: string;
-  module_code: string;
-  display_name: string;
-  required_credits: number;
-  requires_independent_authorization: boolean;
-  schedule_kind: string;
-  storage_dataset: string;
-  contract_url: string;
-  baseline_state: string;
-  enabled: boolean;
-  permission_state?: string | null;
-  checked_at?: string | null;
-  supported_fields?: string[] | null;
-  rate_limit?: string | null;
-  error_code?: string | null;
-  error_message?: string | null;
-};
-
-export type TushareEndpointCatalogResponse = {
-  credit_tier: number;
-  items: TushareEndpoint[];
-  total: number;
-};
-
-export type TushareEndpointProbeResponse = {
-  endpoint_code: string;
-  permission_state: string;
-  checked_at?: string | null;
-  supported_fields?: string[] | null;
-  rate_limit?: string | null;
-  error_code?: string | null;
-  error_message?: string | null;
-};
-
-export type ResearchDataset = {
-  code: string;
-  name: string;
-  primary_source: string;
-  fallback_source?: string | null;
-  schema_version: string;
-  enabled: boolean;
-  latest_partition_id?: number | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  row_count?: number | null;
-  symbol_count?: number | null;
-  partition_status?: string | null;
-  content_hash?: string | null;
-  available_at?: string | null;
-  knowledge_cutoff_at?: string | null;
-  requested_source?: string | null;
-  actual_source?: string | null;
-  fallback_reason?: string | null;
-  response_hash?: string | null;
-  blocking_issues?: number | null;
-};
-
-export type ResearchDatasetSnapshot = {
-  id: number;
-  name: string;
-  status: 'draft' | 'sealed' | 'failed';
-  knowledge_cutoff_at: string;
-  manifest_hash?: string | null;
-  created_at: string;
-  sealed_at?: string | null;
-  partition_count?: number;
-  datasets?: string[] | null;
-};
-
-export type DailyReferenceOrchestrationRun = {
-  id: number;
-  tradeDate: string;
-  status: 'queued' | 'running' | 'not_trading_day' | 'skipped' | 'blocked' | 'failed' | 'sealed';
-  syncJobId?: number | null;
-  snapshotId?: number | null;
-  marketEvidenceSnapshotId?: number | null;
-  attemptCount: number;
-  result?: Record<string, unknown>;
-  errorMessage?: string | null;
-  startedAt?: string | null;
-  finishedAt?: string | null;
-  updatedAt?: string | null;
-};
-
-export type DailyReferenceSchedule = {
-  code: string;
-  cron: string;
-  timezone: string;
-  configured?: boolean;
-  enabled: boolean;
-  catchupDays: number;
-  maxRetries: number;
-  updatedAt?: string | null;
   nextRunAt?: string | null;
-  configuredNextRunAt?: string | null;
-  runtimeEnabled?: boolean;
-  runnerOnline?: boolean;
-  jobRegistered?: boolean;
-  effectiveNextRunAt?: string | null;
-  runtimeStatus?: 'running' | 'runner_offline' | 'disabled' | string;
-  dailyBarsWatermark?: string | null;
-  watermarkUpdatedAt?: string | null;
-  lastRun?: DailyReferenceOrchestrationRun | null;
-};
+  updatedAt?: string | null;
+}
 
-export const getDataConfig = async (): Promise<DataSyncConfigResponse> => {
-  const response = await apiClient.get<DataSyncConfigResponse>('/data/config');
-  return response.data;
-};
-
-export const getDataTableStats = async (): Promise<DataTableStatsResponse> => {
-  const response = await apiClient.get<DataTableStatsResponse>('/data/table-stats');
-  return response.data;
-};
-
-export const getTushareEndpoints = async (module?: string): Promise<TushareEndpointCatalogResponse> => {
-  const response = await apiClient.get<TushareEndpointCatalogResponse>('/data/tushare/endpoints', {
-    params: module ? { module } : undefined,
-  });
-  return response.data;
-};
-
-export const getResearchDatasets = async (): Promise<{ items: ResearchDataset[] }> => {
-  const response = await apiClient.get<{ items: ResearchDataset[] }>('/data/datasets');
-  return response.data;
-};
-
-export const getResearchDatasetSnapshots = async (limit = 10): Promise<{ items: ResearchDatasetSnapshot[] }> => {
-  const response = await apiClient.get<{ items: ResearchDatasetSnapshot[] }>('/data/snapshots', { params: { limit } });
-  return response.data;
-};
-
-export const getDailyReferenceSchedule = async (): Promise<DailyReferenceSchedule> => {
-  const response = await apiClient.get<DailyReferenceSchedule>('/data/schedules/daily');
-  return response.data;
-};
-
-export const updateDailyReferenceSchedule = async (request: {
+export interface DataSyncScheduleUpdate {
   enabled?: boolean;
-  cron?: string;
-  timezone?: string;
-  catchupDays?: number;
-  maxRetries?: number;
-}): Promise<DailyReferenceSchedule> => {
-  const response = await apiClient.put<DailyReferenceSchedule>('/data/schedules/daily', request);
-  return response.data;
-};
-
-export const runDailyReferenceSchedule = async (request?: {
-  trade_date?: string;
-  symbols?: string[];
-  force?: boolean;
-}): Promise<GenericApiResponse & { status?: string; tradeDate?: string; message?: string }> => {
-  const response = await apiClient.post<GenericApiResponse & { status?: string; tradeDate?: string; message?: string }>(
-    '/data/schedules/daily/run',
-    request || { force: true },
-  );
-  return response.data;
-};
-
-export const syncAllMarketHistory = async (request?: {
-  history_days?: number;
-  start_date?: string;
-  end_date?: string;
-  refresh_universe?: boolean;
-  include_signals?: boolean;
-  job_name?: string;
-}): Promise<GenericApiResponse & {
-  jobId?: string;
-  job_id?: number;
-  tradeDateCount?: number;
-  startDate?: string;
-  endDate?: string;
-  includeSignals?: boolean;
-  mode?: string;
-}> => {
-  const response = await apiClient.post('/data/history/sync-all', request || { history_days: 365, include_signals: true });
-  return response.data;
-};
-
-export const probeTushareEndpoint = async (
-  endpointCode: string,
-  request: { params?: Record<string, unknown>; fields?: string } = {},
-): Promise<TushareEndpointProbeResponse> => {
-  const response = await apiClient.post<TushareEndpointProbeResponse>(`/data/tushare/endpoints/${endpointCode}/probe`, request);
-  return response.data;
-};
-
-export const getDataSchedule = async (): Promise<DataSyncScheduleConfig> => {
-  const response = await apiClient.get<DataSyncScheduleConfig>('/data/schedule');
-  return response.data;
-};
-
-export const updateDataSchedule = async (request: Partial<DataSyncScheduleConfig>): Promise<DataSyncScheduleConfig> => {
-  const response = await apiClient.put<DataSyncScheduleConfig>('/data/schedule', request);
-  return response.data;
-};
-
-export const startDataSync = async (request?: {
+  intervalMinutes?: number;
+  historyDays?: number;
   symbols?: string[];
   timeframes?: string[];
+}
+
+export interface DataSyncTableStat {
+  tableName: string;
+  timeframe: string;
+  exchange: string;
+  symbol: string;
+  recordCount: number;
+  firstTimestamp: number | null;
+  lastTimestamp: number | null;
+}
+
+export interface DataSyncMarketStats {
+  totalRecords: number;
+  totalPairs: number;
+  totalSymbols: number;
+}
+
+export interface DataSyncTableStatsResponse {
+  tables: DataSyncTableStat[];
+  totalRecords: number;
+  totalPairs: number;
+  marketStats: {
+    swap: DataSyncMarketStats;
+    spot: DataSyncMarketStats;
+  };
+}
+
+export interface DataSyncQualityIssue {
+  type: string;
+  exchange?: string;
+  symbol?: string;
+  timeframe?: string;
+  count?: number;
+  directionFlips?: number;
+  firstTimestamp?: number | null;
+  lastTimestamp?: number | null;
+  message?: string;
+}
+
+export interface DataSyncQualityItem {
+  exchange: string;
+  symbol: string;
+  timeframe: string;
+  status: 'ok' | 'missing' | 'error' | string;
+  recordCount: number;
+  firstTimestamp: number | null;
+  lastTimestamp: number | null;
+  issues: DataSyncQualityIssue[];
+  message: string;
+}
+
+export interface DataSyncQualityResponse {
+  checkedAt: string;
+  summary: {
+    checked: number;
+    ok: number;
+    error: number;
+    missing: number;
+    issueCount: number;
+    truncated: boolean;
+    maxItems: number;
+  };
+  items: DataSyncQualityItem[];
+}
+
+export interface DataSyncQualityRequest {
+  exchange?: string;
+  symbols?: string[];
+  timeframes?: string[];
+  maxItems?: number;
+}
+
+export interface DataSyncStartRequest {
+  exchange?: string;
+  symbols?: string[];
+  timeframes?: string[];
+  historyDays?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface DataSyncStartResponse {
+  jobId?: string;
+  message?: string;
+  exchange?: string;
+  symbols?: string[];
+  timeframes?: string[];
+  historyDays?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface DataSyncSyncOneRequest {
+  exchange?: string;
+  symbol: string;
+  timeframe: string;
   startDate?: string;
   endDate?: string;
   historyDays?: number;
-  jobName?: string;
-}): Promise<GenericApiResponse> => {
-  const response = await apiClient.post<GenericApiResponse>('/data/start', request || {});
-  return response.data;
+}
+
+export interface DataSyncSyncOneResponse {
+  exchange: string;
+  symbol: string;
+  timeframe: string;
+  status: string;
+  totalFetched: number;
+  totalInserted: number;
+  error?: string | null;
+  elapsedSeconds?: number | null;
+}
+
+export interface DataSyncDeleteRequest {
+  exchange?: string;
+  symbol?: string;
+  timeframe?: string;
+}
+
+export interface DataSyncDeleteResponse {
+  message: string;
+  deleted: number;
+}
+
+export interface DataSyncAddSymbolRequest {
+  symbol: string;
+}
+
+export interface DataSyncAddSymbolResponse {
+  symbol: string;
+  added: boolean;
+  defaultSymbols: string[];
+}
+
+export interface DataSyncRemoveSymbolRequest {
+  symbol: string;
+}
+
+export interface DataSyncRemoveSymbolResponse {
+  symbol: string;
+  removed: boolean;
+  defaultSymbols: string[];
+}
+
+// ============================================
+// AI 分析 API
+// ============================================
+
+export const aiPredictApi = {
+  analyze: (data: {
+    exchange?: string;
+    symbol: string;
+    timeframe: string;
+    lookback?: number;
+  }): Promise<{
+    symbol: string;
+    timeframe: string;
+    analysis: string;
+    predictedBars: any[];
+  }> => postReq('/ai_predict/analyze', data),
 };
 
-export const addDataSymbol = async (symbol: string): Promise<{ symbol: string; added: boolean; defaultSymbols: string[] }> => {
-  const response = await apiClient.post<{ symbol: string; added: boolean; defaultSymbols: string[] }>('/data/symbols', { symbol });
-  return response.data;
+// ============================================
+// 数据资产 API
+// ============================================
+
+export const dataAssetsApi = {
+  getAssets: (): Promise<{
+    assets: Array<{
+      exchange: string;
+      symbol: string;
+      timeframe: string;
+      recordCount: number;
+      firstDate: string | null;
+      lastDate: string | null;
+    }>;
+    totalRecords: number;
+    totalPairs: number;
+    totalItems: number;
+  }> => getReq('/sync/assets'),
+
+  quickSync: (data: {
+    exchange?: string;
+    symbol: string;
+    timeframe: string;
+    historyDays?: number;
+  }): Promise<{ taskId: string; message: string }> =>
+    postReq('/sync/quick-sync', data),
 };
 
-export const lookupSymbolNames = async (
-  symbols: string[],
-): Promise<Record<string, string>> => {
-  const unique = Array.from(new Set(symbols.map((item) => String(item || '').trim()).filter(Boolean)));
-  if (!unique.length) return {};
-  const response = await apiClient.post<{ names: Record<string, string> }>('/data/symbol-names', {
-    symbols: unique,
-  });
-  return response.data.names || {};
+// ============================================
+// 数据同步 API
+// ============================================
+
+export const dataSyncApi = {
+  getStatus: (): Promise<DataSyncStatusResponse> => getReq('/sync/status'),
+
+  getJobs: (limit = 20): Promise<DataSyncJobsResponse> =>
+    getReq('/sync/jobs', { params: { limit, includeItems: false } }),
+
+  getConfig: (): Promise<DataSyncConfigResponse> => getReq('/sync/config'),
+
+  getSchedule: (): Promise<DataSyncScheduleConfig> => getReq('/sync/schedule'),
+
+  updateSchedule: (data: DataSyncScheduleUpdate): Promise<DataSyncScheduleConfig> =>
+    putReq('/sync/schedule', data),
+
+  addSymbol: (data: DataSyncAddSymbolRequest): Promise<DataSyncAddSymbolResponse> =>
+    postReq('/sync/symbols', data),
+
+  removeSymbol: (data: DataSyncRemoveSymbolRequest): Promise<DataSyncRemoveSymbolResponse> =>
+    deleteReq('/sync/symbols', { data }),
+
+  getData: (exchange?: string): Promise<Array<Record<string, unknown>>> =>
+    getReq('/sync/data', { params: { exchange } }),
+
+  getTableStats: (): Promise<DataSyncTableStatsResponse> => getReq('/sync/table-stats'),
+
+  getQuality: (params: DataSyncQualityRequest): Promise<DataSyncQualityResponse> =>
+    getReq('/sync/quality', {
+      params: {
+        exchange: params.exchange,
+        symbols: params.symbols?.join(','),
+        timeframes: params.timeframes?.join(','),
+        maxItems: params.maxItems,
+      },
+      timeout: DATA_SYNC_LONG_TIMEOUT_MS,
+    }),
+
+  startSync: (data: DataSyncStartRequest): Promise<DataSyncStartResponse> =>
+    postReq('/sync/start', data, { timeout: DATA_SYNC_LONG_TIMEOUT_MS }),
+
+  syncOne: (data: DataSyncSyncOneRequest): Promise<DataSyncSyncOneResponse> =>
+    postReq('/sync/sync-one', data, { timeout: DATA_SYNC_LONG_TIMEOUT_MS }),
+
+  dailyUpdate: (exchange?: string, data?: DataSyncStartRequest): Promise<DataSyncStartResponse> =>
+    postReq('/sync/daily-update', data || {}, {
+      params: { exchange },
+      timeout: DATA_SYNC_LONG_TIMEOUT_MS,
+    }),
+
+  deleteData: (data: DataSyncDeleteRequest): Promise<DataSyncDeleteResponse> =>
+    postReq('/sync/delete-data', data),
 };
 
-export const removeDataSymbol = async (symbol: string): Promise<{ symbol: string; removed: boolean; defaultSymbols: string[] }> => {
-  const response = await apiClient.delete<{ symbol: string; removed: boolean; defaultSymbols: string[] }>('/data/symbols', { data: { symbol } });
-  return response.data;
+// ============================================
+// 系统设置 API
+// ============================================
+
+export interface LLMModelSettings {
+  providerKey?: string;
+  providerName?: string;
+  model: string;
+  defaultModel: string;
+  models: string[];
+  freeTierModels?: string[];
+  modelFallbackEnabled?: boolean;
+  baseUrl: string;
+  enableThinking?: boolean;
+  requestTimeout?: number;
+  apiKeyConfigured: boolean;
+  apiKeySource?: string | null;
+  providers?: LLMProviderSettings[];
+}
+
+export interface LLMProviderSettings {
+  providerKey: string;
+  name: string;
+  apiKeyEnv: string;
+  baseUrl: string;
+  defaultModel: string;
+  models: string[];
+  apiKeyConfigured: boolean;
+  builtin?: boolean;
+  active?: boolean;
+}
+
+export interface LLMProviderInput {
+  providerKey: string;
+  name: string;
+  apiKeyEnv: string;
+  baseUrl: string;
+  defaultModel: string;
+  models: string[];
+}
+
+export interface McpTokenSettings {
+  configured: boolean;
+  source: 'none' | 'env' | 'generated' | string;
+  maskedToken?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  note?: string | null;
+  authHeader: string;
+  tokenEnv: string;
+  remoteEnabled: boolean;
+  remotePath: string;
+  requireToken: boolean;
+}
+
+export interface GeneratedMcpToken extends McpTokenSettings {
+  token: string;
+}
+
+export interface McpAgentTokenItem {
+  id: number;
+  name: string;
+  tokenPrefix: string;
+  maskedToken: string;
+  scopes: string[];
+  toolGroups: string[];
+  rateLimitPerMin: number;
+  expiresAt?: string | null;
+  createdAt?: string | null;
+  createdBy?: string | null;
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+}
+
+export interface McpAgentTokenListResponse {
+  items: McpAgentTokenItem[];
+  policy: {
+    plaintextReturnedOnce: boolean;
+    staticTokenEnv: string;
+    authHeaderDefault: string;
+    tokenManagement?: Record<string, unknown>;
+    scopeClasses?: Record<string, unknown>;
+    idempotency?: Record<string, unknown>;
+  };
+  status: {
+    configured: boolean;
+    envTokenConfigured: boolean;
+    activeTokenCount: number;
+  };
+}
+
+export interface McpAgentTokenCreateInput {
+  name?: string;
+  expiresInDays?: number;
+  rateLimitPerMin?: number;
+  toolGroups?: string[];
+}
+
+export interface McpAgentTokenCreateResponse {
+  token: string;
+  item: McpAgentTokenItem;
+}
+
+export const settingsApi = {
+  getNotify: (): Promise<{ enabled: boolean; webhookConfigured: boolean }> =>
+    getReq('/settings/notify'),
+  setNotify: (enabled: boolean): Promise<{ enabled: boolean; webhookConfigured: boolean }> =>
+    postReq('/settings/notify', { enabled }),
+  getFeishuWebhook: (): Promise<{ webhookConfigured: boolean; maskedWebhookUrl?: string | null }> =>
+    getReq('/settings/feishu-webhook'),
+  setFeishuWebhook: (webhookUrl: string): Promise<{ webhookConfigured: boolean; maskedWebhookUrl?: string | null }> =>
+    postReq('/settings/feishu-webhook', { webhookUrl }),
+  getMcpToken: (): Promise<McpTokenSettings> =>
+    getReq('/settings/mcp-token'),
+  generateMcpToken: (note?: string): Promise<GeneratedMcpToken> =>
+    postReq('/settings/mcp-token/generate', { note }),
+  getLLMModel: (): Promise<LLMModelSettings> =>
+    getReq('/settings/llm-model'),
+  setLLMModel: (model: string): Promise<LLMModelSettings> =>
+    putReq('/settings/llm-model', { model }),
+  addLLMModel: (model: string): Promise<LLMModelSettings> =>
+    postReq('/settings/llm-models', { model }),
+  deleteLLMModel: (model: string): Promise<LLMModelSettings> =>
+    deleteReq('/settings/llm-models', { data: { model } }),
+  addLLMProvider: (data: LLMProviderInput): Promise<LLMModelSettings> =>
+    postReq('/settings/llm-providers', data),
+  setLLMProvider: (providerKey: string): Promise<LLMModelSettings> =>
+    putReq('/settings/llm-provider', { providerKey }),
+  testLLMModel: (): Promise<{ ok: boolean; model: string; baseUrl: string; reply: string }> =>
+    postReq('/settings/llm-model/test'),
+  getMcpAgentTokens: (): Promise<McpAgentTokenListResponse> =>
+    getReq('/settings/mcp-agent-tokens'),
+  createMcpAgentToken: (data: McpAgentTokenCreateInput): Promise<McpAgentTokenCreateResponse> =>
+    postReq('/settings/mcp-agent-tokens', data),
+  revokeMcpAgentToken: (tokenId: number): Promise<{ id: number; revokedAt: string }> =>
+    deleteReq(`/settings/mcp-agent-tokens/${tokenId}`),
+  getStrategyProfitPush: (): Promise<{
+    enabled: boolean;
+    intervalMinutes: number;
+    running: boolean;
+    lastStartedAt?: string | null;
+    lastSentAt?: string | null;
+    lastFinishedAt?: string | null;
+    lastError?: string | null;
+    lastSkipReason?: string | null;
+    notifyReady: boolean;
+    notifyEnabled: boolean;
+    webhookConfigured: boolean;
+    profitReportImageReady?: boolean;
+    profitReportImageConfigured?: boolean;
+    profitReportImageCjkFontAvailable?: boolean;
+    profitReportImageReason?: string | null;
+    lastDeliveryType?: string | null;
+    lastDeliveryError?: string | null;
+  }> => getReq('/settings/strategy-profit-push'),
+  setStrategyProfitPush: (data: {
+    enabled?: boolean;
+    intervalMinutes?: number;
+  }): Promise<{
+    enabled: boolean;
+    intervalMinutes: number;
+    running: boolean;
+    lastStartedAt?: string | null;
+    lastSentAt?: string | null;
+    lastFinishedAt?: string | null;
+    lastError?: string | null;
+    lastSkipReason?: string | null;
+    notifyReady: boolean;
+    notifyEnabled: boolean;
+    webhookConfigured: boolean;
+    profitReportImageReady?: boolean;
+    profitReportImageConfigured?: boolean;
+    profitReportImageCjkFontAvailable?: boolean;
+    profitReportImageReason?: string | null;
+    lastDeliveryType?: string | null;
+    lastDeliveryError?: string | null;
+  }> => postReq('/settings/strategy-profit-push', data),
+  sendStrategyProfitPushNow: (): Promise<{
+    enabled: boolean;
+    intervalMinutes: number;
+    running: boolean;
+    lastSentAt?: string | null;
+    lastError?: string | null;
+    lastSkipReason?: string | null;
+    result?: Record<string, unknown>;
+    notifyReady: boolean;
+    notifyEnabled: boolean;
+    webhookConfigured: boolean;
+    profitReportImageReady?: boolean;
+    profitReportImageConfigured?: boolean;
+    profitReportImageCjkFontAvailable?: boolean;
+    profitReportImageReason?: string | null;
+    lastDeliveryType?: string | null;
+    lastDeliveryError?: string | null;
+  }> => postReq('/settings/strategy-profit-push/test'),
+  getLiveProfitPush: (): Promise<{
+    enabled: boolean;
+    intervalMinutes: number;
+    running: boolean;
+    lastStartedAt?: string | null;
+    lastSentAt?: string | null;
+    lastFinishedAt?: string | null;
+    lastError?: string | null;
+    lastSkipReason?: string | null;
+    notifyReady: boolean;
+    notifyEnabled: boolean;
+    webhookConfigured: boolean;
+    profitReportImageReady?: boolean;
+    profitReportImageConfigured?: boolean;
+    profitReportImageCjkFontAvailable?: boolean;
+    profitReportImageReason?: string | null;
+    lastDeliveryType?: string | null;
+    lastDeliveryError?: string | null;
+  }> => getReq('/settings/live-profit-push'),
+  setLiveProfitPush: (data: {
+    enabled?: boolean;
+    intervalMinutes?: number;
+  }): Promise<{
+    enabled: boolean;
+    intervalMinutes: number;
+    running: boolean;
+    lastStartedAt?: string | null;
+    lastSentAt?: string | null;
+    lastFinishedAt?: string | null;
+    lastError?: string | null;
+    lastSkipReason?: string | null;
+    notifyReady: boolean;
+    notifyEnabled: boolean;
+    webhookConfigured: boolean;
+    profitReportImageReady?: boolean;
+    profitReportImageConfigured?: boolean;
+    profitReportImageCjkFontAvailable?: boolean;
+    profitReportImageReason?: string | null;
+    lastDeliveryType?: string | null;
+    lastDeliveryError?: string | null;
+  }> => postReq('/settings/live-profit-push', data),
+  sendLiveProfitPushNow: (): Promise<{
+    enabled: boolean;
+    intervalMinutes: number;
+    running: boolean;
+    lastSentAt?: string | null;
+    lastError?: string | null;
+    lastSkipReason?: string | null;
+    result?: Record<string, unknown>;
+    notifyReady: boolean;
+    notifyEnabled: boolean;
+    webhookConfigured: boolean;
+    profitReportImageReady?: boolean;
+    profitReportImageConfigured?: boolean;
+    profitReportImageCjkFontAvailable?: boolean;
+    profitReportImageReason?: string | null;
+    lastDeliveryType?: string | null;
+    lastDeliveryError?: string | null;
+  }> => postReq('/settings/live-profit-push/test'),
 };
 
-export const deleteDataKlines = async (request: { symbol: string; timeframe?: string }): Promise<{ message: string; deleted: number }> => {
-  const response = await apiClient.post<{ message: string; deleted: number }>('/data/delete-data', request);
-  return response.data;
+// ============================================
+// 健康检查 API
+// ============================================
+
+export const healthApi = {
+  check: (): Promise<{ status: string }> => getReq('/system/health'),
+  checkExchanges: (): Promise<{ exchanges: Record<string, string> }> =>
+    getReq('/system/exchanges'),
 };
 
-export const getResearchFactorLibrary = async (): Promise<{ items: ResearchFactor[] }> => {
-  const response = await apiClient.get<{ items: ResearchFactor[] }>('/factors/research/library');
-  return response.data;
+// ============================================
+// AI Agent API
+// ============================================
+
+export const agentApi = {
+  createTask: (data: {
+    [key: string]: unknown;
+  }): Promise<{ taskId: string; status: string; message: string }> =>
+    postReq('/agent/tasks', data),
+
+  listTasks: (): Promise<any[]> => getReq('/agent/tasks'),
+
+  getTask: (taskId: string): Promise<any> => getReq(`/agent/tasks/${taskId}`),
+
+  getIterations: (taskId: string): Promise<any[]> =>
+    getReq(`/agent/tasks/${taskId}/iterations`),
+
+  stopTask: (taskId: string): Promise<any> =>
+    postReq(`/agent/tasks/${taskId}/stop`),
+
+  acceptBest: (taskId: string): Promise<any> =>
+    postReq(`/agent/tasks/${taskId}/accept`),
+
+  generateStrategy: (data: {
+    prompt: string;
+    symbol?: string;
+    timeframe?: string;
+  }): Promise<{
+    strategyId: number;
+    className: string;
+    fileName: string;
+    description: string;
+    modulePath: string;
+    message: string;
+  }> => postReq('/agent/generate_strategy', data),
 };
 
-export const getFactorComputeRuns = async (limit = 100): Promise<{ items: FactorComputeRun[] }> => {
-  const response = await apiClient.get<{ items: FactorComputeRun[] }>('/factor-compute-runs', { params: { limit } });
-  return response.data;
+// ============================================
+// 回测 API
+// ============================================
+
+export const backtestApi = {
+  runSync: (data: Record<string, unknown>): Promise<any> =>
+    postReq('/backtest/run_sync', data, { timeout: BACKTEST_RUN_SYNC_TIMEOUT_MS }),
+
+  /** 异步回测：立即返回 jobId，进度见 getJob（SQLite 持久化，刷新页面或服务重启后可继续轮询） */
+  runJob: (data: Record<string, unknown>): Promise<{ jobId: string }> =>
+    postReq('/backtest/run_job', data),
+
+  /** 便捷批量回测：为所有运行中的模拟策略创建普通异步回测任务 */
+  runRunningStrategies: (data?: Record<string, unknown>): Promise<{
+    count: number;
+    skippedCount: number;
+    defaults: {
+      startDate: string;
+      endDate: string;
+      initialCapital: number;
+      timeframeMode: string;
+    };
+    jobs: Array<{
+      jobId: string;
+      strategyId: number;
+      strategyName?: string | null;
+      status: string;
+      request?: Record<string, any> | null;
+    }>;
+    skipped: Array<{
+      strategyId?: number | null;
+      strategyName?: string | null;
+      status?: string | null;
+      reason: string;
+    }>;
+  }> => postReq('/backtest/run_running_strategies', data ?? {}),
+
+  getJob: (
+    jobId: string,
+  ): Promise<{
+    jobId: string;
+    strategyId: number;
+    status: string;
+    currentBar: number;
+    totalBars: number;
+    percent: number | null;
+    message?: string | null;
+    result?: any;
+    errorMessage?: string | null;
+    updatedAt?: string | null;
+    resumable?: boolean;
+  }> => getReq(`/backtest/job/${jobId}`),
+
+  cancelJob: (
+    jobId: string,
+  ): Promise<{
+    jobId: string;
+    strategyId: number;
+    status: string;
+    currentBar: number;
+    totalBars: number;
+    percent: number | null;
+    message?: string | null;
+    result?: any;
+    errorMessage?: string | null;
+    updatedAt?: string | null;
+    resumable?: boolean;
+  }> => postReq(`/backtest/job/${jobId}/cancel`),
+
+  resumeJob: (
+    jobId: string,
+  ): Promise<{
+    jobId: string;
+    strategyId: number;
+    status: string;
+    currentBar: number;
+    totalBars: number;
+    percent: number | null;
+    message?: string | null;
+    result?: any;
+    errorMessage?: string | null;
+    updatedAt?: string | null;
+    resumable?: boolean;
+  }> => postReq(`/backtest/job/${jobId}/resume`),
+
+  getJobs: (
+    params?: { strategyId?: number | null; status?: string; limit?: number; includeResult?: boolean },
+  ): Promise<Array<{
+    jobId: string;
+    strategyId: number;
+    status: string;
+    currentBar: number;
+    totalBars: number;
+    percent: number | null;
+    request?: Record<string, unknown> | null;
+    message?: string | null;
+    result?: any;
+    errorMessage?: string | null;
+    updatedAt?: string | null;
+    resumable?: boolean;
+  }>> => getReq('/backtest/jobs', {
+    params: {
+      strategyId: params?.strategyId ?? undefined,
+      status: params?.status,
+      limit: params?.limit ?? 50,
+      include_result: params?.includeResult ?? undefined,
+    },
+  }),
+
+  getResults: (
+    params?: {
+      strategyId?: number | null;
+      query?: string;
+      limit?: number;
+      offset?: number;
+      sortBy?: 'created' | 'return' | 'drawdown' | 'win_rate';
+      sortDir?: 'asc' | 'desc';
+      includeMatrixSummary?: boolean;
+    },
+  ): Promise<any[]> =>
+    getReq('/backtest/results', {
+      params: {
+        strategyId: params?.strategyId ?? undefined,
+        q: params?.query || undefined,
+        limit: params?.limit ?? 20,
+        offset: params?.offset ?? undefined,
+        sort_by: params?.sortBy,
+        sort_dir: params?.sortDir,
+        include_matrix_summary: params?.includeMatrixSummary ?? undefined,
+      },
+    }),
+
+  getResult: (id: number): Promise<any> =>
+    getReq(`/backtest/result/${id}`),
+
+  deleteResult: (id: number): Promise<{ deleted: boolean; id: number }> =>
+    deleteReq(`/backtest/result/${id}`),
+
+  getStrategies: (): Promise<Record<string, unknown>> =>
+    getReq('/backtest/strategies'),
 };
 
-export const getResearchFactorMetrics = async (factorId: number): Promise<{ factor: ResearchFactor; metrics: FactorMetricRow[] }> => {
-  const response = await apiClient.get<{ factor: ResearchFactor; metrics: FactorMetricRow[] }>(`/factors/${factorId}/metrics`);
-  return response.data;
-};
-
-export const getResearchFactorValues = async (factorId: number, limit = 500): Promise<{ items: FactorValueRow[] }> => {
-  const response = await apiClient.get<{ items: FactorValueRow[] }>(`/factors/${factorId}/values`, { params: { limit } });
-  return response.data;
-};
-
-export const getFactorCorrelations = async (tradeDate?: string): Promise<{ items: FactorCorrelationRow[] }> => {
-  const response = await apiClient.get<{ items: FactorCorrelationRow[] }>('/factor-correlations', { params: tradeDate ? { trade_date: tradeDate } : undefined });
-  return response.data;
-};
-
-export const runDailyFactorSchedule = async (request: {
-  trade_date: string;
-  dataset_snapshot_id: number;
-  universe_snapshot_id: number;
-}): Promise<Record<string, unknown>> => {
-  const response = await apiClient.post<Record<string, unknown>>('/factor-schedules/run-daily', request);
-  return response.data;
-};
-
-export const createResearchFactor = async (request: {
-  factor_code: string;
-  factor_name: string;
-  category: string;
-  description?: string;
-  python_code: string;
-}): Promise<Record<string, unknown>> => {
-  const response = await apiClient.post<Record<string, unknown>>('/factors', request);
-  return response.data;
-};
-
-// ---------------------------------------------------------------------------
-// AI 策略研发（BitPro 式多智能体闭环）
-// ---------------------------------------------------------------------------
-
-export const getAgentResearchConfig = async (): Promise<AgentResearchConfig> => {
-  const response = await apiClient.get<AgentResearchConfig>('/agent/config');
-  return response.data;
-};
-
-export const listAgentTasks = async (limit = 50): Promise<{ tasks: AgentTaskSummary[] }> => {
-  const response = await apiClient.get<{ tasks: AgentTaskSummary[] }>('/agent/tasks', { params: { limit } });
-  return response.data;
-};
-
-export const createAgentTask = async (request: AgentTaskCreateRequest): Promise<{ task: AgentTaskSummary }> => {
-  const response = await apiClient.post<{ task: AgentTaskSummary }>('/agent/tasks', request);
-  return response.data;
-};
-
-export const getAgentTask = async (taskId: string): Promise<AgentTaskDetail> => {
-  const response = await apiClient.get<AgentTaskDetail>(`/agent/tasks/${taskId}`);
-  return response.data;
-};
-
-export const listAgentIterations = async (taskId: string): Promise<{ iterations: AgentIteration[] }> => {
-  const response = await apiClient.get<{ iterations: AgentIteration[] }>(`/agent/tasks/${taskId}/iterations`);
-  return response.data;
-};
-
-export const startAgentTask = async (taskId: string): Promise<{ task: AgentTaskSummary }> => {
-  const response = await apiClient.post<{ task: AgentTaskSummary }>(`/agent/tasks/${taskId}/start`);
-  return response.data;
-};
-
-export const stopAgentTask = async (taskId: string): Promise<{ task: AgentTaskSummary }> => {
-  const response = await apiClient.post<{ task: AgentTaskSummary }>(`/agent/tasks/${taskId}/stop`);
-  return response.data;
-};
-
-export const deleteAgentTask = async (taskId: string): Promise<{ deleted: boolean }> => {
-  const response = await apiClient.delete<{ deleted: boolean }>(`/agent/tasks/${taskId}`);
-  return response.data;
-};
-
-export const promoteAgentIteration = async (taskId: string, iteration: number): Promise<{ strategy_version: { id: string; name: string; version: number }; iteration: number }> => {
-  const response = await apiClient.post<{ strategy_version: { id: string; name: string; version: number }; iteration: number }>(`/agent/tasks/${taskId}/promote`, { iteration });
-  return response.data;
-};
-
-// ---------------------------------------------------------------------------
-// A 股实盘工作台（预检 + 晋级管线 + 审计，真实委托需券商通道配置）
-// ---------------------------------------------------------------------------
-
-export const getLiveTradingStatus = async (): Promise<LiveTradingStatus> => {
-  const response = await apiClient.get<LiveTradingStatus>('/live/status');
-  return response.data;
-};
-
-export const getLivePromotionCandidates = async (): Promise<{ candidates: LivePromotionCandidate[] }> => {
-  const response = await apiClient.get<{ candidates: LivePromotionCandidate[] }>('/live/promotion-candidates');
-  return response.data;
-};
-
-export const runLivePreflight = async (request: LivePreflightRequest): Promise<LivePreflightResult> => {
-  const response = await apiClient.post<LivePreflightResult>('/live/preflight', request);
-  return response.data;
-};
-
-export const requestLiveDeployment = async (request: LiveDeploymentRequest): Promise<LiveDeploymentResult> => {
-  const response = await apiClient.post<LiveDeploymentResult>('/live/enable', request);
-  return response.data;
-};
-
-export const listLiveEvents = async (limit = 50): Promise<{ events: LiveAuditEvent[] }> => {
-  const response = await apiClient.get<{ events: LiveAuditEvent[] }>('/live/events', { params: { limit } });
-  return response.data;
-};
+export default api;

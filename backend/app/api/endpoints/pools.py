@@ -1,136 +1,134 @@
-"""Versioned stock-pool generation, evidence, snapshot, and backtest handoff APIs."""
-from typing import Any, Dict, List, Literal, Optional
+from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
-from starlette.concurrency import run_in_threadpool
+from typing import Any, Literal
 
-from app.db import db_instance
-from app.services.stock_pool_service import StockPoolService
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 
-
-router = APIRouter()
-service = StockPoolService(db_instance)
+from app.core.admin_auth import create_auth_dependency
+from app.core.app_context import AppContext
+from app.domain.auth.models import AuthProfile
 
 
 class PoolCreateRequest(BaseModel):
-    name: str
-    pool_type: str
-    description: str = ""
-    rule_type: Optional[str] = None
-    config: Dict[str, Any] = Field(default_factory=dict)
+    name: str = Field(min_length=1, max_length=120)
+    pool_type: Literal["screener", "factor", "sector", "event", "manual"]
+    description: str = Field(default="", max_length=500)
     data_purpose: Literal["user", "acceptance", "seed"] = "user"
+    rule_type: str | None = Field(default=None, max_length=64)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class PoolGenerateRequest(BaseModel):
-    dataset_snapshot_id: int
-    universe_snapshot_id: int
+    model_config = ConfigDict(extra="allow")
+
     trade_date: str
-    factor_snapshot_id: Optional[int] = None
-    market_evidence_snapshot_id: Optional[int] = None
+    dataset_snapshot_id: int | None = None
+    universe_snapshot_id: int | None = None
+    factor_snapshot_id: int | None = None
+    market_evidence_snapshot_id: int | None = None
 
 
-class PoolSnapshotRequest(BaseModel):
-    generation_id: Optional[str] = None
+class PoolSealRequest(BaseModel):
+    generation_id: str
 
 
-class PoolBacktestDraftRequest(BaseModel):
-    strategy_version_id: str
-    start_date: str
-    end_date: str
-    initial_cash: float = 1_000_000
-    cost_model_id: Optional[str] = None
-    research_protocol_id: Optional[str] = None
-    benchmark_code: str = "000300.SH"
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-    name: str = ""
-    hypothesis: str = ""
+def create_pools_router(context: AppContext) -> APIRouter:
+    router = APIRouter()
+    repository = context.repositories.pools
+    require_authenticated = create_auth_dependency(context)
 
+    def require_admin(profile: AuthProfile) -> None:
+        if profile.role != "admin":
+            raise HTTPException(status_code=403, detail="Admin permission required.")
 
-def _error(exc: ValueError, status_code: int = 400) -> HTTPException:
-    return HTTPException(status_code=status_code, detail=str(exc))
+    @router.get("/pools")
+    async def list_pools(
+        _profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, object]:
+        return {"items": repository.list_pools()}
 
+    @router.post("/pools")
+    async def create_pool(
+        body: PoolCreateRequest,
+        profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, Any]:
+        require_admin(profile)
+        payload = body.model_dump(exclude_none=True)
+        if payload.get("rule_type") is None:
+            payload.pop("rule_type", None)
+        try:
+            return repository.create_pool(payload)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
-@router.get("/pools")
-async def list_pools() -> Dict[str, Any]:
-    items = await run_in_threadpool(service.list_pools)
-    return {"items": items, "total": len(items)}
+    @router.get("/pools/{pool_id}")
+    async def get_pool(
+        pool_id: str,
+        _profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, Any]:
+        try:
+            return repository.get_pool(pool_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
+    @router.post("/pools/{pool_id}/generate")
+    async def generate(
+        pool_id: str,
+        body: PoolGenerateRequest,
+        profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, Any]:
+        require_admin(profile)
+        try:
+            return repository.generate(pool_id, body.model_dump(exclude_none=True))
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
-@router.post("/pools")
-async def create_pool(request: PoolCreateRequest) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(
-            service.create_pool,
-            request.model_dump(exclude_none=True),
-        )
-    except ValueError as exc:
-        raise _error(exc) from exc
+    @router.get("/pools/{pool_id}/members")
+    async def members(
+        pool_id: str,
+        generation_id: str | None = None,
+        _profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, object]:
+        try:
+            return {"items": repository.members(pool_id, generation_id)}
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
+    @router.get("/pools/{pool_id}/snapshots")
+    async def pool_snapshots(
+        pool_id: str,
+        _profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, object]:
+        return {"items": repository.list_snapshots(pool_id)}
 
-@router.get("/pools/{pool_id}")
-async def get_pool(pool_id: str) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(service.get_pool, pool_id)
-    except ValueError as exc:
-        raise _error(exc, 404) from exc
+    @router.post("/pools/{pool_id}/snapshots")
+    async def seal_snapshot(
+        pool_id: str,
+        body: PoolSealRequest,
+        profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, Any]:
+        require_admin(profile)
+        try:
+            return repository.seal_snapshot(pool_id, body.generation_id)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
+    @router.get("/pool-snapshots")
+    async def snapshots(
+        pool_id: str | None = Query(default=None),
+        _profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, object]:
+        return {"items": repository.list_snapshots(pool_id)}
 
-@router.post("/pools/{pool_id}/generate")
-async def generate_pool(pool_id: str, request: PoolGenerateRequest) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(
-            service.generate,
-            pool_id,
-            request.model_dump(exclude_none=True),
-        )
-    except ValueError as exc:
-        raise _error(exc) from exc
+    @router.get("/pool-snapshots/{snapshot_id}")
+    async def snapshot(
+        snapshot_id: int,
+        _profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, Any]:
+        try:
+            return repository.get_snapshot(snapshot_id)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
-
-@router.get("/pools/{pool_id}/members")
-async def list_members(pool_id: str, generation_id: Optional[str] = Query(None)) -> Dict[str, Any]:
-    try:
-        items = await run_in_threadpool(service.members, pool_id, generation_id)
-        return {"items": items, "total": len(items)}
-    except ValueError as exc:
-        raise _error(exc, 404) from exc
-
-
-@router.post("/pools/{pool_id}/snapshots")
-async def seal_snapshot(pool_id: str, request: PoolSnapshotRequest) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(
-            service.seal_snapshot,
-            pool_id,
-            request.generation_id,
-        )
-    except ValueError as exc:
-        raise _error(exc) from exc
-
-
-@router.get("/pool-snapshots")
-async def list_snapshots(pool_id: Optional[str] = Query(None)) -> Dict[str, Any]:
-    items = await run_in_threadpool(service.list_snapshots, pool_id)
-    return {"items": items, "total": len(items)}
-
-
-@router.get("/pool-snapshots/{snapshot_id}")
-async def get_snapshot(snapshot_id: int) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(service.get_snapshot, snapshot_id)
-    except ValueError as exc:
-        raise _error(exc, 404) from exc
-
-
-@router.post("/pool-snapshots/{snapshot_id}/backtest-draft")
-@router.post("/pool-snapshots/{snapshot_id}/backtests")
-async def create_backtest_draft(snapshot_id: int, request: PoolBacktestDraftRequest) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(
-            service.create_backtest_draft,
-            snapshot_id,
-            request.model_dump(exclude_none=True),
-        )
-    except ValueError as exc:
-        raise _error(exc) from exc
+    return router

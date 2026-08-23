@@ -1,5 +1,531 @@
 # Progress Log
 
+## PR #4 合并前部署探针修复（2026-08-23）
+
+- 快速 pre-landing review 发现 `deploy/deploy.sh` 内外健康检查仍使用旧
+  `/api/health/health`，会使新应用部署在健康门禁阶段失败。
+- 已统一为当前 `/api/health` 并新增部署合同测试；`bash -n`、84 Python、24 Mock E2E、
+  build/lint/bundle/audit 和 completion audit 全绿。修复提交后更新 PR，不绕过远端流程。
+
+## 生产切换：数据库凭据无中断轮换（2026-08-23）
+
+- 获得最终迁移授权后，创建 `stockpro_rebuild_app` 并继承旧对象所有者权限；服务器 `.env`
+  原子切换到新角色，真实连接验证为 `stockpro_rebuild_app|stockpro_prod`。
+- GitHub Actions workflow_dispatch run `32646230741` 强制重部署当前 main/旧 SHA，2 分钟成功；
+  systemd、Nginx、内外健康通过，`pg_stat_activity` 只见新角色活动连接。
+- 旧 `stockpro_app` 已设为 `NOLOGIN` 并更换随机密码，早期暴露凭据失效；没有把密码写入
+  仓库、日志或报告。生产业务代码仍是旧基线，下一步推送重建分支并创建 PR。
+
+## BitPro-first Wave 6：Pre-deploy 最终验收完成（2026-08-23）
+
+- 机器 completion audit 的 BASE/API/DB/PAPER/SAFE/UI/ASHARE/FUTURE 全部 passed；唯一 pending
+  为 `DEPLOY-001=pending_final_confirmation`。
+- 最终全仓入口通过 83 个 Python、24 个完整 Mock Playwright、真实 13 路由 × 双 viewport、
+  TypeScript、零告警 lint、生产构建、bundle budget、0 dependency vulnerabilities 和安全扫描。
+- 26 张真实隔离截图使用正常管理员登录、无拦截/DOM 注入/写请求，console errors 0；Watch
+  single-flight 后双冷读约 16.6 秒，Signals 专用查询约 1.6 秒。
+- 最新 `stockpro_dev` 恢复到受限临时库并应用 37→38 migrations，所有 Paper/策略/回测/复盘
+  连续；固定旧 SHA 进程在 PG 强制只读下，健康/策略/回测/Paper HTTP 200；临时资源已清理。
+- 切换就绪报告写入 `docs/qa/bitpro-first-rebuild-cutover-readiness.md`。当前未推送、合并或
+  部署；早期暴露的数据库凭据必须在任何外部交付前轮换并同步环境。
+
+## BitPro-first Wave 5：数据、AI 与 Instrument 能力验收（2026-08-23）
+
+- 新增 `/api/capabilities`：enabled stock/ETF/index、reserved future、PostgreSQL、A股 Paper
+  runtime、live=false、futures routes=false、private broker=false；全部为当前无版本 API。
+- `scripts/check.sh` 纳入 DataManager、AI Lab、期货隐藏和 capability shell。最终通过 67 个
+  Python 测试、19 个 Shell/研究/主线/运行/能力 E2E、类型、零告警 lint、生产构建、bundle
+  budget、0 dependency vulnerabilities、diff whitespace 和五类安全扫描。
+- 内联审阅把 AI 模型 HTTP 调用移入线程池，避免阻塞 FastAPI 事件循环；配置模型路径仍只
+  创建验证策略 + quick replay，不创建完整回测或 Paper。
+- 真实 Data/AI 页面 desktop/390px：GET 写入 0、Provider/模型调用 0、console errors 0、
+  页面级溢出 0。隔离库 38 migrations、5,550 stock、0 ETF、4 index、0 future；Paper
+  15/61/47/23/428/681 连续性最终通过。Wave 5 未合并、推送或部署。
+
+## BitPro-first Wave 5：隐藏期货领域预留（2026-08-23）
+
+- 新增第 38 个 additive migration `instrument_definitions`，唯一键为 market/exchange/symbol，
+  支持 stock/ETF/index/future 的真实元数据字段；非期货记录由 CHECK 禁止填写期货字段。
+- 隔离库显式回填 5,550 个现有股票和 4 个指数；当前权威 security_master/行情缓存没有 ETF
+  记录，因此 ETF 为零而不是伪造。期货记录为 0，所有期货元数据保持等待真实数据源。
+- 新增 `InstrumentAdapter`、`AshareCashAdapter`、CN/US Futures Protocol；只实例化 A股现金
+  适配器。期货 Protocol 没有 Provider、credential、network 或 execution 实现。
+- `/futures` 不注册并回首页，导航无期货；模型/隐藏入口/安全测试通过。迁移修正真实
+  `SH_/SZ_/BJ_` 代码格式后重放，新表之外未改原证券/行情表，Paper 前后连续性通过。
+
+## BitPro-first Wave 5：A股 AI 研发工作台（2026-08-23）
+
+- `/ai-lab` 已重塑为自动研究、策略研发、现有策略优化三工作区；保留任务配置、任务/迭代、
+  策略代码、quick 指标、评分和验证候选保存，不含发帖或数字资产模块。
+- 研究表单显式要求 dataset/universe/股票池/因子 snapshot ID 与日期；模型状态来自真实
+  `/api/ai/config`。当前真实状态 unavailable，页面明确不生成 mock、随机或模板结论。
+- 保存候选常驻提示“不运行完整回测、不创建 Paper”；不存在自动实盘、自动模拟或启动
+  Paper 按钮。访客不允许创建/启动任务。
+- Mock 边界 E2E、类型/lint/build通过；真实桌面/390px 三页签、unavailable 状态可见，
+  HTTP 写入/模型调用 0、console errors 0、无页面级溢出，Paper continuity 通过。
+
+## BitPro-first Wave 5：A股 AI 研发当前合同（2026-08-23）
+
+- 新增当前 `/api/ai/config|tasks|start|stop|iterations promote-candidate` 与 PostgreSQL
+  `agent_tasks/agent_iterations` Repository；不注册旧 AI/交易所/发帖入口。
+- 未配置 DashScope/Qwen 时 start 明确 failed“模型未配置”，不生成 mock、随机或模板输出。
+  配置后只向模型发送 A股当前策略合同、目标和封存 dataset/universe/pool/factor manifest。
+- 模型候选必须通过当前 AST 验证后保存为 StrategyVersion，只运行 quick replay；Evaluator
+  只用 quick 指标做 deterministic score 并标注，不产生市场预测或晋级资格。
+- promote-candidate 只接受 validation_status=valid 的已有版本；响应固定
+  `paper_created=false`、`full_backtest_created=false`。无模型、配置模型快照和 promote 门禁
+  3 项测试、安全扫描和编译通过，私有交易所调用 0。
+
+## BitPro-first Wave 5：A股数据中心（2026-08-23）
+
+- `/data` 已恢复 BitPro 七工作区：总览、研究数据、行情覆盖、同步任务、数据源、质量、导入
+  导出；真实显示 10 数据集、686,840 发布记录、28 封存快照和 restricted Provider。
+- 数据集表展示主源/整类回退/分区/记录/Watermark，来源授权展示 permission/cache/export
+  policy；质量和任务保留完整错误/状态证据，缺失值不造 0。
+- 导入导出页常驻“仅暂存 · 未映射”边界，管理员可选择 CSV/JSON/XLSX；访客不显示上传。
+  页面加载没有 Provider、同步、质量、迁移、封存或扩展写入。
+- Mock 七区 E2E、类型、零告警 lint、生产构建通过。真实桌面/390px 七标签可见，GET 写入 0、
+  console errors 0、根页面无溢出，Paper continuity 通过。
+
+## BitPro-first Wave 5：PostgreSQL 数据可信度 API（2026-08-23）
+
+- 新增当前 `/api/data/*` status/datasets/snapshots/providers/schedules/jobs/quality/exchange；GET
+  只读 PostgreSQL，不调用 Provider。隔离运行时 Provider 状态明确为 restricted。
+- 真实状态为 10 datasets、211 published partitions、686,840 rows、28 sealed snapshots、
+  42 sync jobs、47 quality issues、21 source entitlements、0 staged imports；读取写入/Provider
+  调用均为 0。
+- 扩展 CSV/JSON/XLSX 限制 5MB/10,000 行/200 列，拒绝公式前缀，只写独立 staged
+  imports/records 并返回 `mapping_state=staged_only`、`execution_eligible=false`；导出防公式
+  注入。HTTPS 仅允许精确 allowlist + 公共 DNS + 禁止重定向。没有真实导入验收数据。
+- 同步/质量 POST 只创建 pending 审计 job，受控 worker 未启用时不暗示任务已执行；同范围
+  pending/running 返回 409。计划更新、扩展上传、HTTP 导入均管理员限定；访客只读。
+  数据只读/暂存/XLSX/公式与 HTTPS 安全测试、编译和安全扫描通过。
+
+## BitPro-first Wave 4：运行证据链完整验收（2026-08-23）
+
+- Signal → order/trade/risk/alert → Monitor → Review 全部使用同一 `paper_instance_id` 与 source
+  object ID；跨页 E2E 固定信号行 Paper ID 在 Monitor 中仍对应同一实例。
+- `scripts/check.sh` 已纳入信号、盯盘、监控、复盘和跨页 lineage。最终全量通过 57 个
+  Python 测试、15 个 Shell/研究/主线/运行 E2E、类型、零告警 lint、生产构建、bundle
+  budget、0 dependency vulnerabilities、diff whitespace 和安全扫描。
+- 真实隔离浏览器验收四页 desktop/390px，console errors 0、页面级溢出 0；没有点击规则
+  evaluate、信号/告警确认、复盘写动作或 Paper action，截图索引写入 Wave 4 capture。
+- Paper 15/61/47/23/428/681 最终连续性无差异；sealed 复盘三表仍为 1/14/14。Wave 4
+  未合并、推送或部署。下一步进入 Wave 5 数据、AI 与隐藏期货预留。
+
+## BitPro-first Wave 4：A股交易日复盘（2026-08-23）
+
+- 新增当前 `/api/review` dates/list/get/assemble/save/seal/object resolve；GET 对缺失日期返回
+  missing 空态，对已有复盘只读 stored items/metrics，不隐式组装。
+- 显式 assemble 只从市场/股票池/策略/风险/订单/成交/Paper 权益对象构造 source ID、route、
+  evidence hash；save/seal 管理员限定，PostgreSQL trigger 保证 sealed 父子证据不可修改。
+- BitPro 复盘页适配为 A股交易日 Snapshot、量化指标、复盘结论/次日计划和证据时间线；
+  sealed 输入只读，missing 日期明确提供显式组装入口。
+- 真实读取既有 `2025-01-02` sealed 复盘：14 items、14 metrics；页面前后 daily review
+  三表保持 1/14/14，HTTP 写请求 0、console errors 0、390px 无溢出，Paper continuity 通过。
+
+## BitPro-first Wave 4：Paper 证据监控台（2026-08-23）
+
+- 新增当前 `/api/monitor/summary|strategies|data|risk|notifications`，基于 PostgreSQL 最新
+  health snapshots、Paper heartbeat/cycle/equity/ledger difference、alerts 和 deliveries。
+- Monitor ViewModel 明确分开 `lifecycle_status` 与 `health_state`；真实 14 个 running 实例中
+  stale/exhausted 等健康判断只影响 overall health，不写回 Paper 生命周期。
+- BitPro 监控页恢复整体 KPI、服务健康、策略健康表、数据状态、风险告警和通知；缺失证据
+  显示 missing/`—`，响应生成时间不覆盖证据时间，无真实账户或交易所连接字段。
+- API/健康分离测试、Mock E2E、类型/lint 和真实隔离页通过。真实页面展示 15 行策略健康，
+  API 200、console errors 0、390px 无页面级溢出；Paper continuity 无差异。
+
+## BitPro-first Wave 4：信号中心与证据盯盘（2026-08-23）
+
+- `/signals` 已接入 79 条真实信号和 97 条 alert/投递证据，保留 BitPro 高密度 KPI、筛选、
+  审计表和详情抽屉；每行携带 signal/strategy/Paper ID，管理员只可确认 new 信号。
+- `/watch` 已接入 15 个 Paper、79 信号、61 订单、47 成交和 93 个活动告警，按策略信号、
+  订单与成交、图表联动、规则、告警五个标签组织；没有买入、卖出或下单按钮。
+- 规则 preview 与 evaluate 分离，评估确认文案明确“只生成告警，不下单、不改 Paper”；真实
+  验收没有点击评估。访客不显示评估入口。
+- Mock 职责 E2E、类型、零告警 lint、生产构建通过。真实桌面/390px 页面 API 200、console
+  errors 0、无横向溢出，截图人工检查通过；最终 Paper continuity 无差异。
+
+## BitPro-first Wave 4：当前信号与 Alert-only 盯盘 API（2026-08-23）
+
+- 新增唯一当前 `/api/signals*` 与 `/api/watch/*`，覆盖信号目录/详情/确认、统一运行上下文、
+  告警确认、规则目录/创建新版本/preview/evaluate；没有旧路由或实盘执行端点。
+- 恢复 strategy/indicator/price/abnormal 四类规则及字段/操作符 allowlist。规则更新只创建
+  新版本；preview 零写入；evaluate 只允许幂等新增 alert 与 in_app delivery，响应强制
+  `orders_created=0`，并保留命中 signal 的 Paper ID。
+- 信号确认只把 `new` 更新为 `confirmed` 并保留 payload/evidence/source/Paper lineage；访客
+  只能读取，信号/告警确认、规则创建/版本和 evaluate 均为管理员动作。
+- 真实隔离库读取 79 个信号和 1 条非系统最新规则，preview `writes_performed=false`；没有在
+  真实库执行 evaluate。API/同源链测试、安全扫描和 Paper continuity 全部通过。
+
+## BitPro-first Wave 4：统一 PostgreSQL 运行证据模型（2026-08-23）
+
+- 新增 Operations domain、`PostgresOperationsRepository` 和 `OperationsApplicationService`，
+  直接复用 Paper 账本聚合，统一 signal/order/trade/position/risk/runtime event/alert 的
+  `paper_instance_id` 与 source ID，不建立第二套运行事实。
+- 真实隔离库 audit 视图读取 15 实例、79 信号、61 订单、47 成交、23 持仓，以及各最多
+  200 条风险/运行事件和 97 条告警；scope=business 继续排除 acceptance/seed 证据。
+- 公共 Signal/Alert ViewModel 删除历史 API/迁移字段；读取不恢复、不推进、不确认、不写告警。
+  同源链回归测试、安全扫描和 Paper 15/61/47/23/428/681 连续性通过。
+
+## BitPro-first Wave 3：策略 → 回测 → 模拟主线验收（2026-08-23）
+
+- 新增跨页 E2E 固定“策略卡 → 回测控制台 → 仅模拟 Paper”为唯一执行主线；导航继续不注册
+  实盘、链上、ARC、套利或期货，公共路由继续只使用当前 `/api/*`。
+- `scripts/check.sh` 纳入策略、回测、Paper 和主线测试。最终全量通过 53 个 Python 测试、
+  11 个 Shell/研究/主线 Playwright、TypeScript、零告警 lint、生产构建、bundle budget、
+  0 个生产依赖漏洞、diff whitespace 和五类安全扫描。
+- 内联完成提交前审阅并修复两个重要边界：create/lifecycle 响应统一补充当前 Paper ViewModel，
+  避免操作成功后详情崩溃；回测晋级候选读取失败时不再阻断历史 Paper 账本展示。新增后端
+  回归测试和前端降级 E2E，最终门禁重新全量通过。
+- 真实隔离库只读打开策略、回测、Paper 列表与详情，截图索引写入
+  `docs/screenshots/rebuild-wave-3-capture.json`；15/61/47/23/428/681 连续性最终无差异。
+- Wave 3 没有执行 Paper advance/recover/reset，没有生命周期写操作，没有 Provider 调用，
+  没有合并、推送或部署。下一步进入 Wave 4 的盯盘、信号、监控、复盘辅助工作区。
+
+## BitPro-first Wave 3：A股模拟盘控制台（2026-08-23）
+
+- `/paper` 已从适配空态切换为 BitPro 高密度 InstanceDashboard：15 个历史实例卡片、状态
+  分段、名称/ID 搜索、权益/收益/PnL/成交/持仓/心跳和管理员创建入口。
+- 详情按连续操作台组织账户曲线、当前持仓、成交与事件、风控状态、诊断日志和固定输入；
+  证券代码转换为标准 A股展示，人民币和 100 股/T+1/只做多语义明确，无数字资产字段。
+- 创建向导只列出 full + paper_eligible 回测并传递全部封存 lineage；生命周期 start/pause/
+  resume/stop 使用确认弹窗，访客不渲染写按钮。真实验收只读，未触发生命周期动作。
+- Mock E2E 覆盖 15 卡、详情五区、禁用币圈字段和暂停确认；类型、零告警 lint 通过。
+  真实隔离库桌面/390px 显示 15 卡、14 running / 1 stopped、47 成交、23 持仓；详情五区
+  可见，console errors 0、无横向溢出，截图人工检查通过。
+- 真实页面验收前后的 Paper continuity 保持 15/61/47/23/428/681；页面轮询仅 GET，未
+  recover、advance、configure、clear、archive 或 reset。
+
+## BitPro-first Wave 3：PostgreSQL Paper 当前 API（2026-08-23）
+
+- 恢复现有 Paper 状态机、固定输入、exactly-once cycle、风险、订单、成交、现金账本、持仓、
+  净值与事件语义；新增 `PostgresPaperRepository`、`PaperApplicationService` 和唯一当前
+  `/api/paper/*`，没有旧版本入口或实盘路由。
+- GET 列表、详情、事件和 K 线只读，不隐式 recover/advance；创建、推进和 start/pause/resume/
+  stop 都要求管理员且只作用显式实例 ID。公共 ViewModel 删除旧 API/迁移字段，缺失指标保持
+  null；没有净值快照时只使用 Portfolio 账本明确记录的现金。
+- 完整审计视图显示全部 15 个历史实例；`scope=business` 过滤 3 条 acceptance 记录后显示
+  12 个用户实例。真实详情读取成功，当前状态为 14 running / 1 stopped。
+- 连续性校验在真实读取前后均通过：15 实例、61 订单、47 成交、23 持仓、428 净值点、
+  681 事件及逐实例 lineage/首尾权益均未回退。安全扫描五类活动风险保持 0，聚焦测试通过。
+- 隔离库补齐既有 `stockpro_app` 角色对 `stockpro_bitpro_rebase_dev` 的表/序列权限，解决只读
+  manifest 无权访问 `schema_migrations`；源库和生产库未修改。本地通过 SSH 隧道连接隔离库。
+
+## BitPro-first Wave 3：当前不可变策略合同（2026-08-23）
+
+- 恢复 StockPro AST allowlist、隔离 worker、运行限额、validation/replay/intents/custom records
+  与不可变 `strategy_versions`；`app.domain.strategy` 改为显式无副作用入口，不加载 SQLite。
+- 新增 `PostgresStrategyRepository`、`StrategyApplicationService` 和当前 `/api/strategies*`，
+  覆盖目录、详情、子版本、代码验证和 quick-run。公共 response 删除 API 版本/迁移命名；
+  历史合同字段仅在 `include_audit=true` 的只读 metadata 中出现，禁止更新。
+- quick-run 强制 `promotion_status=not_evaluated`，不能生成 Paper 晋级资格；创建/子版本/quick
+  run 管理员限定，验证使用同一 AST 语义。
+- 真实隔离库读取 63 个策略目录项、67 个不可变版本；默认详情无历史合同字段，审计详情
+  可读，当前代码验证通过且不返回 api_version。六张策略/Paper 表前后计数不变，Provider
+  imports 0；15 项合同/安全测试通过。
+
+## BitPro-first Wave 3：策略中心（2026-08-23）
+
+- 用当前 PostgreSQL 策略目录替换导入 Crypto Strategy 页面，保留 BitPro 卡片密度、搜索、
+  状态筛选、12 条分页、详情抽屉、代码验证、子版本和回测入口。
+- 详情明确 CN_A_SHARE、T+1、100股、只做多，以及 pool/factor/dataset/cost 封存输入；
+  未绑定显示“未绑定”，不从当前页面补写 lineage。quick-run/代码有效不可晋级提示常驻。
+- Mock E2E、类型/lint/build通过。真实隔离库首屏 12 卡、63 个目录项，抽屉展示实际
+  `A股多股动量模板` 与当前代码状态；桌面/390px console errors 0、六张策略/Paper 表
+  业务写入 0，截图人工检查通过。
+
+## BitPro-first Wave 3：A股回测证据 API（2026-08-23）
+
+- 恢复 A股日线撮合、T+1、整手、涨跌停、停牌、成本、容量、无未来数据、完整研究协议、
+  异步 job、matrix 和 Walk-forward 服务；Reference service 改为明确运行时延迟加载，GET
+  不导入/调用 Provider。
+- 新增 `PostgresBacktestRepository`、`BacktestApplicationService` 与当前 `/api/backtest/*`，
+  覆盖 configuration、79 个历史 runs、metrics/series/orders/trades/positions/logs、compare、
+  35 个 jobs、cancel/retry、matrix 和 Walk-forward。
+- 公共 configuration 移除 strategy API/migration 版本命名；quick 强制 not_evaluated，matrix
+  全 cells 强制 not_evaluated，Walk-forward folds 强制 promotion_eligible=false；full 保留完整
+  promotion checks。
+- 真实隔离库读取 79 runs 与 35 jobs，八张 backtest/Paper 表前后计数不变，Provider imports 0、
+  public version names 0；当前无 active job 时 recovery 返回 0，jobs/runs 状态分布前后相同；
+  回测门控测试与安全扫描通过。
+
+## BitPro-first Wave 3：回测控制台（2026-08-23）
+
+- 用 A股 Evidence Workbench 替换导入 Crypto Backtest 页面，保留 BitPro KPI、历史表、状态
+  筛选、任务队列、创建向导、详情按需 tab、matrix 与 Walk-forward 入口。
+- 创建向导明确 strategy/dataset/universe/cost 必选，pool/factor/protocol 显式绑定；常驻显示
+  T+1、100股、只做多、快速预检不可晋级。页面打开不创建 job/run。
+- 真实隔离库页面显示 79 runs、76 success、50 full、35 jobs；桌面历史表与 390px 向导
+  console errors 0，七张 backtest/Paper 表前后不变。Mock E2E、类型/lint/build通过，
+  截图人工检查通过。
+
+## BitPro-first Wave 2：传统金融研究模型（2026-08-23）
+
+- 新增不可变 `InstrumentContract`，当前支持 stock/ETF/index，并为 future 保留乘数、保证金、
+  到期、最后交易日和结算字段；A股股票默认 CN/SSE-SZSE 语义、CNY、100 股手数、
+  `CN_A_SHARE` 日历且不可卖空，期货字段保持 `null`。
+- 新增首页、证券详情、股票池和因子稳定 ViewModel；市场总览固定包含 indices、breadth、
+  turnover、limit_ecology、sector_flows、来源、更新时间、交易日和 data_status，缺失块保持
+  `None/null`。
+- 前后端研究类型统一使用当前 API 的 snake_case 字段，不建立 camelCase/旧字段双合同。
+  三项领域测试、前端类型检查与安全扫描通过。
+
+## BitPro-first Wave 2：A股市场当前 API（2026-08-23）
+
+- 新增 `ResearchApplicationService` 与当前 `/api/market/*`：overview、证券搜索/详情、日线、
+  分时、盘口和自选。删除临时 workspace overview，`/stocks/*` 与带版本号路径继续 404。
+- `PostgresRepository` 只读组合 `market_indices_realtime`、`all_stocks_realtime`、最新 published
+  market evidence/metrics、sector evidence 与 `stock_history`；搜索集中规范化 SH/SZ/BJ、
+  股票/ETF/指数、tick size、lot size 和统一 `600519.SH` 形式。
+- 分时和盘口在隔离库没有缓存时返回 `data_status=empty`、空数组、null 来源和明确原因，
+  不合成价格。自选写入只保存 owner、规范化 symbol 和 note，不复制 price。
+- 真实隔离库验收读取 4 个指数、上涨 2505、涨停 54 和贵州茅台 `600519.SH`；日线读取
+  PostgreSQL，分时/盘口诚实空态，自选为空。九张市场/Paper 表前后计数一致，业务写入 0，
+  进程未导入 TuShare/AKShare。聚焦 API/只读/安全测试 18 项与前端类型检查通过。
+
+## BitPro-first Wave 2：真实 A股首页（2026-08-23）
+
+- 直接保留 BitPro Home 的 `Market Command` 操作台节奏，把 Crypto 市场面板替换为五个
+  A股模块：主要指数、市场宽度、涨停生态、板块资金和策略→回测→模拟主线状态。
+- 首页只调用 `/api/market/overview`；Loading/error/empty/partial/stale/fresh 独立呈现，
+  Decimal 使用字符串合同并由展示层显式验证转换，null 显示 `—`。真实环境曾暴露 Mock
+  number 掩盖的 `toFixed` 错误，现已用字符串 fixture 锁定真实 API 形状。
+- 真实隔离库桌面/390px 验收展示 4 个指数、上涨 2,505、下跌 2,860、涨停 54、跌停 13、
+  最高板 3、交易日 2026-08-21 和 `partial`；sector evidence 为空时保持板块资金不可用。
+- Mock 首页 2 项 E2E、类型、lint、构建通过；真实桌面/窄屏无横向溢出、console errors 0，
+  页面无 BTC、ETH、资金费率、永续或数字资产控制。
+
+## BitPro-first Wave 2：A股行情终端（2026-08-23）
+
+- 用 A股终端替换导入的 Crypto Market：保留 BitPro 顶部工具区、搜索弹层、行情概览、
+  K线、盘口、自选和证据 tabs；全部/股票/ETF/指数筛选与 symbol/tab 均写入 URL。
+- 证券搜索支持代码/名称、键盘上下/Enter/Escape；详情显示规范化 symbol、asset class、
+  100股 lot、CNY、tick size 与 freshness。KlineChart 对 A股显示股/CNY 单位，不再使用
+  USDT；OrderBook 标题使用 CNY/委托股数。
+- 自选组件只提交 symbol/note；指数禁止加入。日线、分时、盘口分别绑定当前 API，缺失
+  分时/盘口保持明确空态，不由 close 或随机深度补齐。
+- Mock E2E 与构建通过。真实隔离库 `600519.SH` 显示贵州茅台、1,272.96、3 根真实日线、
+  stale 行情、盘口 empty 和 PostgreSQL 证据；桌面/390px、console errors 0，截图人工检查通过。
+
+## BitPro-first Wave 2：不可变股票池（2026-08-23）
+
+- 恢复 StockPro `StockPoolService` 的规则版本、封存输入绑定、成员 evidence/hash、generation
+  与 snapshot 语义；Factor/Reference/Provider 依赖改为显式生成动作时延迟加载，应用启动和
+  页面 GET 不导入 TuShare/AKShare。
+- 新增当前 pools API 和 `PostgresPoolRepository`；创建、生成、封存要求管理员，目录、详情、
+  members 与 snapshots 可读。不存在 v2 路径或旧 Router。
+- 股票池页面保留 BitPro 目录/详情双栏与高密度证据表，包含规则 config、显式生成绑定表单、
+  成员与 evidence hash、sealed manifest；页面加载不自动生成或封存。
+- 真实隔离库读取 6 个池、6 个 generation、68 个成员和 5 个 sealed snapshot，六张表前后
+  计数不变、Provider imports 0。真实 immutability trigger 拒绝 sealed snapshot 更新并回滚。
+- API/安全聚焦测试、Mock E2E、类型/lint/build通过；真实桌面/390px console errors 0、
+  业务写入 0，截图人工检查通过。
+
+## BitPro-first Wave 2：PostgreSQL 因子库（2026-08-23）
+
+- 新增 `PostgresFactorRepository` 和当前 factors API，覆盖目录、版本/校验/计算、metrics、
+  values、runs、correlations、snapshots 与 snapshot values；写动作管理员限定。
+- 重构 `FactorResearchService`：证券代码与交易日规范化留在因子模块，Reference service 仅在
+  明确封存输入动作时延迟加载；读取目录/指标不导入 TuShare/AKShare。旧 provider/SQLite
+  `factor_sync_service` 未进入当前运行面。
+- FactorLab 页面保留 BitPro 目录/详情、KPI、指标诊断、运行、相关性、快照和值浏览，计算
+  表单要求显式 dataset/universe snapshot；exploratory 与代码 valid 不显示为“已验证”。
+- 真实隔离库读取 100 因子、100 runs、3 snapshots、55 correlations；选中
+  `dollar_volume_20d`，pending metrics 224。八张因子表前后计数不变、Provider imports 0。
+- API/只读/安全测试、Mock E2E、类型/lint/build通过；真实桌面/390px console errors 0、
+  业务写入 0，截图人工检查通过。
+
+## BitPro-first Wave 2：研究工作区完整验收（2026-08-23）
+
+- 首页、行情、股票池和因子全部从 `UnavailableWorkspace` 替换为 BitPro 高密度操作台，
+  统一经当前 `/api/*` → Application/Repository → `stockpro_bitpro_rebase_dev`；GET 不写库、
+  不调用 Provider，不存在币圈入口或版本化 API。
+- 统一 `scripts/check.sh` 已加入 shell + home + market + stock pool + factor lab Mock 矩阵；
+  页面各自覆盖桌面和 390px，无横向溢出、console error 或 mock/真实形状漂移。
+- 真实只读验收覆盖 market 9 张、pool 6 张、factor 8 张业务表，页面/API 前后计数不变；
+  sealed pool trigger 保持不可变，因子 pending 保持 null，分时/盘口/板块证据缺失保持 empty。
+- 截图索引写入 `docs/screenshots/rebuild-wave-2-capture.json`，明确这些是本地隔离证据、
+  不是生产截图；图片本身留在 Git 忽略目录。
+- 安全扫描五类计数全 0，Paper manifest 继续通过。Wave 2 未启动 Provider、scheduler、
+  Paper recovery 或策略 worker，未创建验收业务记录。
+- 最终统一入口通过 45 项 Python 测试、前端类型、0 lint warning/error、生产构建、bundle
+  budget、0 dependency vulnerabilities 和 7/7 Shell/研究 E2E；安全隔离遗留文件 56 个，
+  全部不在当前可达面。
+
+## 重建基线 SHA 现场纠正（2026-08-22）
+
+- Wave 1 开始前验证发现设计草稿中的 `bff8e05…` 不是当前仓库的 Git 对象，不能作为
+  PostgreSQL 基础文件的恢复来源。现场证据确认设计提交 `e204e9f` 的父提交、`main`
+  和 `origin/main` 均为 `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`。
+- 合同、总控计划、Wave 1 恢复命令和 Wave 6 回滚演练已统一固定到真实 SHA
+  `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`；设计/计划提交分别固定为
+  `e204e9f41a9df26a0aefd77a7a6079a86265a234` 和
+  `27f53cead43557760f5ce74ffc2a598078f9fcfa`。本修正不涉及代码、数据库或运行服务。
+
+## BitPro-first Wave 1：A股 PostgreSQL 运行依赖收敛（2026-08-22）
+
+- 后端运行依赖已从 BitPro 的 requirements-base/Kairos 链脱离，移除 ccxt、aiosqlite、
+  Kairos 与 torch；保留 FastAPI、PostgreSQL、TuShare、AKShare、Backtrader、APScheduler、
+  HTTP、Agent 和验证依赖。隔离 venv 安装通过。
+- `Settings` 现在强制 `DATABASE_URL` 存在且为 PostgreSQL，运行模式固定为
+  `ashare_paper`；Provider fetch、scheduler、Paper recovery、私有交易所、币圈后台任务
+  和实盘默认全部关闭。缺失 URL 或 SQLite URL 的配置测试均硬失败。
+- 前端保留导入的 React/Vite/Router 版本与根目录 `@bitpro/ui` 包，新增 TypeScript 检查、
+  Playwright mock/real 脚本和 bundle budget；lockfile 不包含工作区外绝对路径。
+- `app.core` 不再在包导入时实例化配置或加载 BitPro error 模块，静态安全扫描无需数据库
+  凭据。当前 21 项 rebuild 测试、类型检查、零 warning lint、生产构建、bundle budget
+  和五类安全扫描通过；没有启动长运行服务。
+
+## BitPro-first Wave 1：唯一当前 API Router（2026-08-22）
+
+- 后端已建立 `create_api_router(context)`，当前只注册 `/api/health` 与
+  `/api/health/storage`；OpenAPI 恢复标准 `/openapi.json`，所有路径均无版本号。
+- `/api/health/storage` 支持注入 Repository context；Repository 尚未接入时诚实返回
+  PostgreSQL `unconfigured`，不尝试连接、不执行迁移、不回退 SQLite。
+- 已删除导入的 `backend/app/api/v2/` 26 个 Router 文件和直接依赖 SQLite 的旧
+  `backend/app/api/public.py`。没有 redirect、alias 或兼容入口；旧路径测试明确返回 404。
+- 当前 API Router 与安全门禁 12 项测试通过，当前入口/API/client/App 静态扫描没有
+  `app.api.v2`、`api_router_v2` 或版本化 API 字符串，五类安全计数继续全 0。
+
+## BitPro-first Wave 1：PostgreSQL Repository 与隔离数据库（2026-08-23）
+
+- 已从真实 StockPro 基线 `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440` 精确恢复
+  `PostgresDatabase`、migration runner 和 37 个迁移文件；未恢复旧 API、Service 或页面。
+- 新增分域 Repository Protocol、`PostgresRepository.storage_health()` 与 `AppContext`。
+  当前 Repository 只用 `SELECT` 读取迁移数，不向页面暴露通用 SQL，也不自动运行迁移。
+- 经用户继续授权后，通过 `ssh stockpro` 的 PostgreSQL 管理员路径创建专用数据库
+  `stockpro_bitpro_rebase_dev`，从 `stockpro_dev` 做服务器本机一致性逻辑复制。源库未写入，
+  目标业务表、分区、索引、序列和非扩展函数已归现有应用账号管理。
+- 隔离库对账为 37 个迁移、67 个策略版本、79 个回测、15 个 Paper 实例、61 个订单、
+  47 个成交、23 个持仓、428 个权益快照、681 个事件和 1 份复盘；Paper manifest 连续性
+  回验通过。真实 `/api/health/storage` 返回 PostgreSQL `healthy`、37/37、无写入。
+- Repository/Router/安全门禁 14 项聚焦测试通过；安全扫描把 AppContext、Repository 和
+  PostgreSQL 文件纳入真实可达面后，五类阻断计数仍为 0。
+
+## BitPro-first Wave 1：PostgreSQL 当前认证合同（2026-08-23）
+
+- 新增唯一 `/api/auth/admin/login`、`/api/auth/guest/login`、`/api/auth/me` 和
+  `/api/auth/logout`。管理员使用环境密钥与常量时间比较；Bearer token 使用 HMAC-SHA256
+  签名、有效期和随机 session ID，同时下发 HttpOnly、SameSite=Strict Cookie。
+- 访客邀请码只以 SHA-256 查询 PostgreSQL，token 不包含明文邀请码；每次解析按 code ID
+  复核未撤销和有效期。登录成功/失败写 `auth_audit_events`，事件不包含密码、邀请码或 token。
+- 当前业务 Router 统一使用 `require_authenticated`；未登录访问
+  `/api/market/overview` 返回 401。登录按来源 IP 在进程内限制为 15 分钟 10 次失败，超过
+  返回 429；API 输入有明确长度上限，错误信息不区分账号或密码。
+- 修复 `app.domain` 与 `app.services` 根包的 BitPro 隐式导入副作用，认证加载不再触发
+  funding、交易所、ccxt 或 SQLite。对应 auth domain/service/core 全部加入安全可达面扫描。
+- 真实隔离库管理员登录、Cookie 会话、`/api/auth/me`、退出与一条审计追加通过；前端
+  AuthProvider 显式丢弃响应 token，不写 localStorage/sessionStorage。聚焦测试 20 项通过。
+- 供应链非强制升级到 Axios 1.19、ECharts 6.1 和 React Router 7.18 后，生产依赖
+  `npm audit --omit=dev` 为 0 vulnerability；TypeScript、构建和 lint 通过。
+- 安全待办：此前终端诊断曾暴露数据库连接串，相关数据库账号必须在任何 push、部署或
+  对外共享前轮换；本切片未擅自修改原 StockPro/生产凭据。
+
+## BitPro-first Wave 1：BitPro A股操作台骨架（2026-08-23）
+
+- 把内联空态抽为 `UnavailableWorkspace`，所有尚未适配工作区统一显示 Owner route、
+  未注册业务服务、PostgreSQL 数据边界和“正在接入 A股 PostgreSQL 数据”；页面不发业务
+  请求、不展示 mock 行情，也不启动 Provider、策略或 Paper recovery。
+- MainLayout 保持常驻，当前导航完整包含首页、行情、股票池、因子、策略、回测、模拟、
+  盯盘、信号、监控、复盘、数据和 AI研发；不注册实盘、链上、ARC、套利或期货。
+  `/paper` 是唯一模拟入口，因子统一为 `/factors`。
+- 前端导出唯一 `apiClient`，base URL 为 `/api`；Vite 默认端口/代理恢复为 4444→4445，
+  Playwright 使用隔离 4454 端口，避免误测原 StockPro 进程。
+- Shell E2E 在桌面与 390×844 窄屏各通过一项：侧栏跨路由保持同一 DOM、批准导航可见、
+  禁止入口不存在、窄屏无横向溢出。实际截图已人工检查，保持 BitPro 紧凑暗色层级与诚实空态。
+
+## BitPro-first Wave 1：完整验收（2026-08-23）
+
+- `scripts/check.sh` 现在强制拒绝非 `stockpro_bitpro_rebase_dev` URL，并按固定顺序执行
+  安全扫描、Python 编译、当前后端/rebuild 测试、前端冻结安装、类型、lint、生产构建、
+  bundle budget、生产依赖审计、Mock Shell E2E 和 whitespace 检查。
+- 全量入口通过：34 项 Python 测试、前端 0 lint warning/error、生产构建、首屏 306.6 KiB
+  raw / 97.4 KiB gzip、0 dependency vulnerabilities、2 项桌面/窄屏 E2E 全绿；五类
+  安全阻断计数全部为 0，56 个遗留文件保持不可达隔离。
+- 修复旧环境 CORS 的非 JSON 列表兼容：使用 Pydantic `NoDecode` 后由字段 allowlist 解析，
+  仍只接受配置的明确 origin；缺失/非 PostgreSQL DATABASE_URL 继续 fail-fast。
+- 4444/4445 已完成隔离 worktree 的干净重启：前端 cwd 指向 worktree frontend，后端 cwd
+  指向 worktree backend，后端只连接隔离库；健康为 rebuild-safe，存储为 PostgreSQL 37/37。
+- 真实浏览器链路通过管理员登录 → HttpOnly session → MainLayout → 退出，console errors 为 0；
+  登录页和 HTML title 已全部改为 StockPro/A股文案。桌面登录页与真实 shell 截图已人工检查。
+- Paper manifest 再次通过，策略版本、回测、15 个 Paper 实例、订单、成交、持仓、权益
+  曲线和事件均未回退。Wave 1 没有启动 Provider、scheduler、Paper recovery 或策略 worker。
+- 新建长期页面事实入口 `docs/pages/登录门禁.md` 和 `docs/pages/首页.md`；二者明确区分
+  Wave 1 shell 证据与 Wave 2 尚未完成的真实首页业务。
+
+## BitPro-first Wave 0：隔离基线门禁完成（2026-08-22）
+
+- 已从计划提交 `27f53ce` 创建独立 worktree
+  `/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share` 和分支
+  `codex/bitpro-a-share-rebase`；原 StockPro 工作区、`main` 与生产均未改动。
+- 隔离环境基线检查通过：前端生产构建和 bundle budget 通过，lint 为 0 error（保留
+  既有 Fast Refresh warning），后端 424 项测试与 Python 编译通过。
+- 新增只读 PostgreSQL/Paper 连续性采集与校验器。连接强制启用只读事务，只接受
+  `SELECT`；基线清单使用规范化 SHA-256 防篡改，并对 Paper 计数下降和实例 ID 丢失
+  执行硬失败。
+- 当前本地基线已写入 Git 忽略目录 `.codex-artifacts/rebuild/baseline.json`：37 个迁移、
+  67 个策略版本、79 个回测、15 个 Paper 实例、61 个 Paper 订单、47 个 Paper 成交、
+  23 个 Paper 持仓、428 个权益快照、681 个运行事件；清单哈希为
+  `3646d2181a72907520e5b7ba820b39c2fe62a8cb2a5e2e3fd8158073a7a110f2`。
+- 基线工具 5 项测试和真实数据库即时回验通过。下一步只验证 BitPro 固定提交来源，
+  尚未导入 BitPro 应用代码，也未启动任何服务、worker 或调度器。
+- BitPro 来源验证门禁已通过：只从 Git 对象库解析完整提交
+  `00517963e90f463e608289b0277fe598bd82d9bf`，并确认该提交包含 frontend、backend、
+  packages、scripts 和 tests 五个应用根。当前 BitPro 脏工作区、`.env` 和根治理文件
+  均不属于导入来源；来源验证 2 项测试通过。
+- 已通过 allowlist 导入工具把固定 BitPro 提交的 backend、frontend、packages、scripts
+  和 tests 五个应用根机械同步到隔离分支，并把页面设计、截图和产品手册复制到
+  `docs/reference/bitpro-baseline/`；共形成 888 个固定来源路径的纯导入快照。
+- 导入前后的 AGENTS、LICENSE、`.github`、deploy、StockPro 合同、规格与进度文件保持
+  不变；暂存检查未发现 `.env`、虚拟环境、node_modules、数据库或日志。BitPro 来源本身
+  的既有行尾空格保留在纯导入提交中，后续只在实际适配文件上清理。
+- 导入工具提交为 `4a07b41`，固定应用快照提交为 `f84fc53`。截至此处没有启动
+  uvicorn、Vite、scheduler、Provider、Paper recovery 或策略 worker；应用尚不具备
+  安全启动条件，下一步必须先完成数字资产、SQLite 和带版本号 API 静态封锁。
+- 第一启动前安全封锁已完成。当前后端入口只注册 `/api/health` 与 `/api/auth/me`，
+  OpenAPI 位于 `/api/openapi.json`；前端 API 与 WebSocket 基址均已切换到唯一当前
+  `/api/*` 合同，不保留 `/api/v1`、`/api/v2` 或公共版本化入口。
+- 配置默认关闭私有交易所、币圈后台任务和实盘，数据库后端固定为 PostgreSQL。
+  启动入口不导入 SQLite、交易所、策略引擎、scheduler、实时行情或 BitPro Router。
+- 前端保留首页、行情、策略、回测、模拟、盯盘、信号、监控、复盘、数据、因子和
+  AI研发导航；实盘、链上、套利和 ARC 不注册。所有当前页面均为真实的 A股适配空态，
+  不读取旧币圈模块、不显示 mock 行情，也不暗示 Paper 已恢复运行。
+- 安全门禁 8 项测试通过；全树扫描五类可达阻断计数均为 0，69 个 BitPro 遗留文件
+  仅计为不可达来源。前端生产构建与零 warning lint 通过，17 项 rebuild 测试、Python
+  编译和真实 PostgreSQL 连续性回验通过；整个 Wave 仍未启动任何长运行服务。
+- Wave 0 最终审计通过：基线 manifest hash 为
+  `3646d2181a72907520e5b7ba820b39c2fe62a8cb2a5e2e3fd8158073a7a110f2`，导入
+  manifest 文件 SHA-256 为 `d47948eb5ccc235100a16f37d3680ef3bd744b7c26d9d6ca2dbd5c9d38a94c57`，
+  安全报告文件 SHA-256 为 `dabbdd279750f4108257f658de224f6412b4f6e97f2090706d35a503c681e427`。
+- 原 StockPro 工作区仍在 `codex/bitpro-a-share-rebuild-design`，用户既有未跟踪工具目录
+  保持原状；`main` 与 `origin/main` 均为
+  `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`。4444/4445 的既有进程 cwd 指向原
+  StockPro frontend/backend，不属于重建 worktree；本 Wave 没有启动、重启或接管它们。
+- Wave 0 提交链为 `dd5b1ba`（连续性基线）、`911553f`（固定来源）、`4a07b41`
+  （导入工具）、`f84fc53`（纯应用快照）、`9ae2869`（导入记录）和 `5a7056b`
+  （fail-closed 安全封锁）。未推送、未合并、未部署；Wave 1 开始前必须再次执行安全扫描。
+
+## BitPro-first A股整仓重建设计获批（2026-08-22）
+
+- 用户批准采用 BitPro-first B2 路线：从 BitPro 固定提交
+  `00517963e90f463e608289b0277fe598bd82d9bf` 导入完整应用底座，在任何服务启动前隔离
+  数字资产实盘、私有 API、策略 seed、SQLite 和后台任务，再接入 StockPro PostgreSQL
+  与 A股领域。
+- 用户批准恢复 BitPro 完整操作台导航：行情、股票池、因子、策略、回测、模拟、盯盘、
+  信号、监控、复盘、数据和 AI研发；期货与套利预留但隐藏，链上和 ARC 不进入产品。
+- 用户批准唯一当前 API 原则：只提供 `/api/*`，不保留带版本号路径、旧入口、兼容
+  Router 或长期双合同；历史版本字段只作为旧记录审计元数据。
+- 当前 PostgreSQL 对账基线为 37 个迁移、67 个策略版本、79 个回测、15 个 Paper 实例、
+  61 个 Paper 订单、47 个 Paper 成交、23 个持仓、428 个权益快照、681 个运行事件和
+  1 份复盘。任何迁移切片无法证明这些记录连续时必须停止。
+- 正式设计写入 `docs/contracts/active-bitpro-first-a-share-rebuild.md`。当前仅完成设计，
+  尚未创建重建 worktree、复制 BitPro 源码、修改数据库或触发部署。
+- 实施工作拆分为总控计划和 Wave 0–6 七个详细计划，位于
+  `docs/superpowers/plans/2026-08-22-bitpro-*.md`。每个任务包含明确文件、接口、
+  失败测试、通过条件和提交边界；由于 BitPro 规则禁止子代理，执行方式固定为当前会话
+  使用 `executing-plans` 内联推进。
+
 ## Operator capability fusion final acceptance (2026-08-20)
 
 - Completed all eight contract phases while preserving Strategy → Backtest →

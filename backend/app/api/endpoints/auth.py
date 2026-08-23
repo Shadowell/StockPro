@@ -1,176 +1,132 @@
-from datetime import datetime, timezone
+from __future__ import annotations
 
+from collections import defaultdict, deque
+from dataclasses import asdict
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.core.admin_auth import (
-    authenticate_admin,
-    create_admin_token,
-    create_guest_token,
-    require_admin,
-    require_authenticated,
-)
-from app.core.config import settings
-from app.db import db_instance
-from app.services.guest_access_service import GuestAccessError, GuestAccessService
-from app.services.mcp_agent_service import McpAgentError, McpAgentService
-
-router = APIRouter()
-guest_service = GuestAccessService(db_instance)
-mcp_agent_service = McpAgentService(db_instance)
+from app.core.admin_auth import create_auth_dependency, create_optional_auth_dependency
+from app.core.app_context import AppContext
+from app.domain.auth.models import AuthProfile
+from app.services.auth_service import AuthError, AuthService, auth_response
 
 
 class AdminLoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-class AdminLoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
-    username: str
-    role: str = "admin"
-    permissions: list[str] = Field(default_factory=lambda: ["read", "write", "admin"])
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=512)
 
 
 class GuestLoginRequest(BaseModel):
-    code: str = Field(min_length=4, max_length=128)
+    code: str = Field(min_length=1, max_length=128)
 
 
-class GuestCodeRequest(BaseModel):
-    note: str = Field(default="", max_length=200)
-    expires_in_minutes: int = Field(default=1440, ge=1, le=525600)
-    max_backtests_per_day: int = Field(default=10, ge=0, le=500)
-    max_concurrent_backtests: int = Field(default=1, ge=1, le=20)
-    max_backtest_days: int = Field(default=365, ge=1, le=3650)
+class AuthAttemptLimiter:
+    def __init__(self, *, max_failures: int = 10, window_seconds: int = 900) -> None:
+        self.max_failures = max_failures
+        self.window_seconds = window_seconds
+        self.failures: dict[str, deque[float]] = defaultdict(deque)
+
+    def check(self, key: str, now: datetime) -> None:
+        attempts = self.failures[key]
+        cutoff = now.timestamp() - self.window_seconds
+        while attempts and attempts[0] <= cutoff:
+            attempts.popleft()
+        if len(attempts) >= self.max_failures:
+            raise HTTPException(status_code=429, detail="Too many login attempts.")
+
+    def record_failure(self, key: str, now: datetime) -> None:
+        self.failures[key].append(now.timestamp())
+
+    def clear(self, key: str) -> None:
+        self.failures.pop(key, None)
 
 
-class McpAgentTokenRequest(BaseModel):
-    name: str = Field(default="StockPro Agent", min_length=1, max_length=120)
-    scopes: list[str] = Field(default_factory=lambda: ["R"])
-
-
-@router.post("/admin/login", response_model=AdminLoginResponse)
-async def admin_login(payload: AdminLoginRequest) -> AdminLoginResponse:
-    if not authenticate_admin(payload.username, payload.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid admin credentials.",
-        )
-
-    return AdminLoginResponse(
-        access_token=create_admin_token(payload.username),
-        expires_in=settings.ADMIN_TOKEN_TTL_SECONDS,
-        username=payload.username,
-    )
-
-
-@router.get("/admin/me")
-async def admin_me(username: str = Depends(require_admin)) -> dict[str, str]:
-    return {"username": username}
-
-
-@router.post("/guest/login")
-async def guest_login(payload: GuestLoginRequest) -> dict[str, object]:
-    try:
-        code = guest_service.authenticate_code(payload.code)
-        token, session_id = create_guest_token(code)
-    except GuestAccessError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-    expires_at = str(code["expires_at"])
+def _profile_payload(profile: AuthProfile) -> dict[str, object]:
     return {
-        "access_token": token,
-        "token_type": "bearer",
-        "expires_in": max(
-            0,
-            int(
-                (
-                    datetime.fromisoformat(expires_at)
-                    - datetime.now(timezone.utc)
-                ).total_seconds()
-            ),
-        ),
-        "role": "guest",
-        "session_id": session_id,
-        "permissions": ["read", "backtest:run"],
-        "guest_code_id": code["id"],
-        "max_backtests_per_day": code["max_backtests_per_day"],
-        "max_concurrent_backtests": code["max_concurrent_backtests"],
-        "max_backtest_days": code["max_backtest_days"],
-        "expires_at": expires_at,
+        **asdict(profile),
+        "auth_enabled": True,
+        "authenticated": True,
     }
 
 
-@router.get("/me")
-async def auth_me(
-    principal: dict[str, object] = Depends(require_authenticated),
-) -> dict[str, object]:
-    return principal
+def create_auth_router(context: AppContext) -> APIRouter:
+    router = APIRouter()
+    service = AuthService(context)
+    require_authenticated = create_auth_dependency(context)
+    resolve_optional = create_optional_auth_dependency(context)
+    limiter = AuthAttemptLimiter()
 
+    def attempt_key(request: Request, flow: str) -> str:
+        client_host = request.client.host if request.client else "unknown"
+        return f"{flow}:{client_host}"
 
-@router.post("/guest-codes")
-async def create_guest_code(
-    payload: GuestCodeRequest,
-    username: str = Depends(require_admin),
-) -> dict[str, object]:
-    try:
-        return guest_service.create_code(
-            note=payload.note,
-            expires_in_minutes=payload.expires_in_minutes,
-            max_backtests_per_day=payload.max_backtests_per_day,
-            max_concurrent_backtests=payload.max_concurrent_backtests,
-            max_backtest_days=payload.max_backtest_days,
-            created_by=username,
+    def login_response(token, profile) -> JSONResponse:
+        response = JSONResponse(auth_response(token, profile))
+        response.set_cookie(
+            key=str(getattr(context.settings, "AUTH_COOKIE_NAME", "stockpro_session")),
+            value=token.access_token,
+            max_age=token.expires_in,
+            httponly=True,
+            secure=bool(getattr(context.settings, "AUTH_COOKIE_SECURE", False)),
+            samesite="strict",
+            path="/",
         )
-    except GuestAccessError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        return response
 
+    @router.post("/admin/login")
+    async def admin_login(body: AdminLoginRequest, request: Request) -> JSONResponse:
+        key = attempt_key(request, "admin")
+        now = context.clock()
+        limiter.check(key, now)
+        try:
+            token, profile = service.login_admin(body.username, body.password)
+        except AuthError as error:
+            if error.status_code == 401:
+                limiter.record_failure(key, now)
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        limiter.clear(key)
+        return login_response(token, profile)
 
-@router.get("/guest-codes")
-async def list_guest_codes(_username: str = Depends(require_admin)) -> dict[str, object]:
-    return {"items": guest_service.list_codes()}
+    @router.post("/guest/login")
+    async def guest_login(body: GuestLoginRequest, request: Request) -> JSONResponse:
+        key = attempt_key(request, "guest")
+        now = context.clock()
+        limiter.check(key, now)
+        try:
+            token, profile = service.login_guest(body.code)
+        except AuthError as error:
+            if error.status_code == 401:
+                limiter.record_failure(key, now)
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+        limiter.clear(key)
+        return login_response(token, profile)
 
+    @router.get("/me")
+    async def me(
+        profile: AuthProfile | None = Depends(resolve_optional),
+    ) -> dict[str, object]:
+        if profile is None:
+            return {
+                "auth_enabled": True,
+                "authenticated": False,
+                "role": None,
+                "permissions": [],
+            }
+        return _profile_payload(profile)
 
-@router.delete("/guest-codes/{code_id}")
-async def revoke_guest_code(
-    code_id: int,
-    username: str = Depends(require_admin),
-) -> dict[str, object]:
-    try:
-        return guest_service.revoke_code(code_id, username)
-    except GuestAccessError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
-
-@router.post("/mcp-agent-tokens")
-async def create_mcp_agent_token(
-    payload: McpAgentTokenRequest,
-    username: str = Depends(require_admin),
-) -> dict[str, object]:
-    try:
-        return mcp_agent_service.create_token(
-            name=payload.name,
-            scopes=payload.scopes,
-            created_by=username,
+    @router.post("/logout")
+    async def logout() -> JSONResponse:
+        response = JSONResponse({"logged_out": True})
+        response.delete_cookie(
+            key=str(getattr(context.settings, "AUTH_COOKIE_NAME", "stockpro_session")),
+            path="/",
+            httponly=True,
+            secure=bool(getattr(context.settings, "AUTH_COOKIE_SECURE", False)),
+            samesite="strict",
         )
-    except McpAgentError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        return response
 
-
-@router.get("/mcp-agent-tokens")
-async def list_mcp_agent_tokens(
-    _username: str = Depends(require_admin),
-) -> dict[str, object]:
-    return {"items": mcp_agent_service.list_tokens()}
-
-
-@router.delete("/mcp-agent-tokens/{token_id}")
-async def revoke_mcp_agent_token(
-    token_id: int,
-    _username: str = Depends(require_admin),
-) -> dict[str, object]:
-    try:
-        return mcp_agent_service.revoke_token(token_id)
-    except McpAgentError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return router

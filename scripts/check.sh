@@ -3,65 +3,64 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHON="$ROOT_DIR/backend/venv/bin/python"
+
+if [ ! -x "$PYTHON" ]; then
+  echo "[check] backend virtual environment is missing: $PYTHON" >&2
+  exit 1
+fi
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "[check] DATABASE_URL must point to stockpro_bitpro_rebase_dev" >&2
+  exit 1
+fi
+case "$DATABASE_URL" in
+  *"/stockpro_bitpro_rebase_dev") ;;
+  *)
+    echo "[check] refusing non-isolated DATABASE_URL" >&2
+    exit 1
+    ;;
+esac
 
 echo "[check] repository root: $ROOT_DIR"
 
-# Prefer the backend virtualenv so tests run against installed dependencies.
-if [ -x "$ROOT_DIR/backend/venv/bin/python" ]; then
-  PYTHON="$ROOT_DIR/backend/venv/bin/python"
-else
-  PYTHON="python3"
-fi
+echo "[check] rebuild safety"
+"$PYTHON" "$ROOT_DIR/rebuild/assert_safety.py" --root "$ROOT_DIR" --format json \
+  > "$ROOT_DIR/.codex-artifacts/rebuild/safety.json"
 
-run_if_present() {
-  local description="$1"
-  local path="$2"
-  shift 2
+echo "[check] python compile"
+"$PYTHON" -m compileall -q "$ROOT_DIR/backend/app" "$ROOT_DIR/backend/tests" "$ROOT_DIR/rebuild"
 
-  if [ -e "$path" ]; then
-    echo "[check] $description"
-    (
-      cd "$(dirname "$path")"
-      "$@"
-    )
-  fi
-}
+echo "[check] current backend and rebuild tests"
+(
+  cd "$ROOT_DIR"
+  "$PYTHON" -m pytest backend/tests rebuild/tests -q --junitxml="$ROOT_DIR/.codex-artifacts/rebuild/backend-tests.xml"
+)
 
-run_if_present "frontend build" "$ROOT_DIR/frontend/package.json" npm run build
-run_if_present "frontend lint" "$ROOT_DIR/frontend/package.json" npm run lint
+echo "[check] frontend frozen install"
+npm --prefix "$ROOT_DIR/frontend" ci --ignore-scripts --no-audit --no-fund
 
-if [ -d "$ROOT_DIR/deploy" ]; then
-  echo "[check] deploy shell syntax"
-  for script in "$ROOT_DIR"/deploy/*.sh; do
-    if [ -f "$script" ]; then
-      bash -n "$script"
-    fi
-  done
-fi
+echo "[check] frontend type check"
+npm --prefix "$ROOT_DIR/frontend" run check
 
-if [ -f "$ROOT_DIR/pyproject.toml" ]; then
-  echo "[check] python project detected via pyproject.toml"
-elif [ -d "$ROOT_DIR/backend" ]; then
-  if [ -d "$ROOT_DIR/backend/tests" ]; then
-    echo "[check] backend unit tests"
-    (
-      cd "$ROOT_DIR/backend"
-      "$PYTHON" -m unittest discover -s tests
-    )
-  fi
+echo "[check] frontend lint"
+npm --prefix "$ROOT_DIR/frontend" run lint
 
-  echo "[check] compiling backend python sources"
-  "$PYTHON" -m compileall "$ROOT_DIR/backend/app" "$ROOT_DIR/backend/postgres" "$ROOT_DIR/backend/tests"
-  for entrypoint in "$ROOT_DIR"/backend/*.py; do
-    if [ -f "$entrypoint" ]; then
-      "$PYTHON" -m py_compile "$entrypoint"
-    fi
-  done
-fi
+echo "[check] frontend production build"
+npm --prefix "$ROOT_DIR/frontend" run build
 
-if [ -f "$ROOT_DIR/voice_gen.py" ]; then
-  echo "[check] compiling standalone python entrypoints"
-  python3 -m compileall "$ROOT_DIR/voice_gen.py"
-fi
+echo "[check] frontend bundle budget"
+npm --prefix "$ROOT_DIR/frontend" run check:bundle-budget
+
+echo "[check] frontend production dependency audit"
+npm --prefix "$ROOT_DIR/frontend" audit --audit-level=moderate --omit=dev
+
+echo "[check] mock operator shell, research, and mainline E2E"
+npm --prefix "$ROOT_DIR/frontend" run test:e2e:mock
+
+echo "[check] diff whitespace"
+git -C "$ROOT_DIR" diff --check
+
+echo "[check] evidence-backed pre-deploy completion audit"
+"$PYTHON" "$ROOT_DIR/rebuild/audit_completion.py" --mode pre-deploy --output "$ROOT_DIR/.codex-artifacts/rebuild/completion-audit.json"
 
 echo "[check] done"

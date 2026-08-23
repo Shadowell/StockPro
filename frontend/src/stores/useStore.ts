@@ -1,71 +1,82 @@
 import { create } from 'zustand';
-import { Stock, DailyChartData, IntradayChartData, StockFundamentals, MarketOverview } from '../types';
-import { getDailyChart, getIntradayChart, getMarketOverview, getStockFundamentals } from '../api/client';
+import type { Ticker, FundingOpportunity, Strategy } from '../types';
+import { marketApi, fundingApi, strategyApi } from '../api/client';
 
 interface AppState {
-  language: 'zh' | 'en';
-  selectedStock: Stock | null;
-  dailyData: DailyChartData[];
-  intradayData: IntradayChartData[];
-  fundamentals: StockFundamentals | null;
-  marketOverview: MarketOverview | null;
-  isLoadingCharts: boolean;
-  isLoadingMarket: boolean;
+  // 当前选中
+  selectedExchange: string;
+  selectedSymbol: string;
 
-  setLanguage: (lang: 'zh' | 'en') => void;
-  fetchMarketOverview: () => Promise<void>;
-  selectStock: (stock: Stock) => void;
-  clearSelectedStock: () => void;
+  // 行情数据
+  tickers: Ticker[];
+  isLoadingTickers: boolean;
+
+  // 资金费率
+  fundingOpportunities: FundingOpportunity[];
+  isLoadingFunding: boolean;
+
+  // 策略
+  strategies: Strategy[];
+  isLoadingStrategies: boolean;
+
+  // Actions
+  setSelectedExchange: (exchange: string) => void;
+  setSelectedSymbol: (symbol: string) => void;
+  fetchTickers: (exchange?: string) => Promise<void>;
+  fetchFundingOpportunities: (exchange?: string) => Promise<void>;
+  fetchStrategies: () => Promise<void>;
 }
 
-export const useStore = create<AppState>((set) => ({
-  language: (localStorage.getItem('app_language') as 'zh' | 'en') || 'zh',
-  selectedStock: null,
-  dailyData: [],
-  intradayData: [],
-  fundamentals: null,
-  marketOverview: null,
-  isLoadingCharts: false,
-  isLoadingMarket: false,
+export const useStore = create<AppState>((set, get) => ({
+  // 初始状态
+  selectedExchange: 'okx',
+  selectedSymbol: 'BTC/USDT',
 
-  setLanguage: (lang: 'zh' | 'en') => {
-    localStorage.setItem('app_language', lang);
-    set({ language: lang });
-  },
+  tickers: [],
+  isLoadingTickers: false,
 
-  fetchMarketOverview: async () => {
-    set({ isLoadingMarket: true });
+  fundingOpportunities: [],
+  isLoadingFunding: false,
+
+  strategies: [],
+  isLoadingStrategies: false,
+
+  // Actions
+  setSelectedExchange: (exchange) => set({ selectedExchange: exchange }),
+  setSelectedSymbol: (symbol) => set({ selectedSymbol: symbol }),
+
+  fetchTickers: async (exchange) => {
+    const ex = exchange || get().selectedExchange;
+    set({ isLoadingTickers: true });
     try {
-      const data = await getMarketOverview();
-      set({ marketOverview: data, isLoadingMarket: false });
+      const tickers = await marketApi.getTickers(ex);
+      set({ tickers, isLoadingTickers: false });
     } catch (error) {
-      console.error("Failed to fetch market overview", error);
-      set({ isLoadingMarket: false });
+      console.error('Failed to fetch tickers:', error);
+      set({ isLoadingTickers: false });
     }
   },
 
-  selectStock: async (stock: Stock) => {
-    set({ selectedStock: stock, isLoadingCharts: true, dailyData: [], intradayData: [], fundamentals: null });
+  fetchFundingOpportunities: async (exchange) => {
+    const ex = exchange || get().selectedExchange;
+    set({ isLoadingFunding: true });
     try {
-        // 获取图表数据和基本面数据
-        const [daily, intraday, fundData] = await Promise.all([
-            getDailyChart(stock.code),
-            getIntradayChart(stock.code),
-            getStockFundamentals(stock.code).catch(() => null) // 基本面数据获取失败不影响图表显示
-        ]);
-        set({ 
-          dailyData: daily, 
-          intradayData: intraday, 
-          fundamentals: fundData,
-          isLoadingCharts: false 
-        });
+      const opportunities = await fundingApi.getOpportunities(ex, 0.0001, 20);
+      set({ fundingOpportunities: opportunities, isLoadingFunding: false });
     } catch (error) {
-        console.error("Failed to fetch chart data", error);
-        set({ isLoadingCharts: false });
+      console.error('Failed to fetch funding opportunities:', error);
+      set({ isLoadingFunding: false });
     }
   },
 
-  clearSelectedStock: () => {
-    set({ selectedStock: null, dailyData: [], intradayData: [], fundamentals: null });
-  }
+  fetchStrategies: async () => {
+    set({ isLoadingStrategies: true });
+    try {
+      const page = await strategyApi.getPage({ page: 1, perPage: 60 });
+      set({ strategies: page.items || [], isLoadingStrategies: false });
+    } catch (error) {
+      console.error('Failed to fetch strategies:', error);
+      set({ isLoadingStrategies: false });
+    }
+  },
 }));

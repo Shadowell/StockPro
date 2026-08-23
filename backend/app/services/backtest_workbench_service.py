@@ -15,7 +15,6 @@ from app.services.ashare_backtest_engine import AShareBacktestEngine
 from app.services.backtest_metrics_service import calculate_backtest_metrics
 from app.services.data_purpose import infer_data_purpose
 from app.services.dataset_snapshot_service import DatasetSnapshotService, canonical_hash
-from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService
 from app.services.strategy_runtime_service import STRATEGY_API_VERSION, StrategyRuntimeService
 
 
@@ -61,9 +60,20 @@ class BacktestWorkbenchService:
     def __init__(self, database):
         self.database = database
         self.snapshot_service = DatasetSnapshotService(database)
-        self.reference_service = ReferenceDatasetSyncService(database, snapshot_service=self.snapshot_service)
+        self._reference_service = None
         self.runtime = StrategyRuntimeService(database)
         self._cursor = None
+
+    @property
+    def reference_service(self):
+        if self._reference_service is None:
+            from app.services.reference_dataset_sync_service import ReferenceDatasetSyncService
+
+            self._reference_service = ReferenceDatasetSyncService(
+                self.database,
+                snapshot_service=self.snapshot_service,
+            )
+        return self._reference_service
 
     def list_cost_models(self) -> List[Dict[str, Any]]:
         return self._rows("SELECT * FROM backtest_cost_models WHERE status='active' ORDER BY code,version DESC")

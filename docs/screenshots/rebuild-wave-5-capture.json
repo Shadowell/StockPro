@@ -1,0 +1,11 @@
+{
+  "schema_version":"stockpro.rebuild-screenshot-capture.current",
+  "captured_at":"2026-08-23T19:45:00+08:00",
+  "environment":{"kind":"local-isolated-worktree","branch":"codex/bitpro-a-share-rebase","database":"stockpro_bitpro_rebase_dev","production_evidence":false},
+  "pages":[
+    {"route":"/data","desktop_artifact":"frontend/output/rebuild-capabilities-real/data-desktop.png","narrow_artifact":"frontend/output/rebuild-capabilities-real/data-mobile.png","evidence":"10 datasets; 686840 rows; 28 sealed snapshots; provider restricted; GET writes 0","console_errors":0},
+    {"route":"/ai-lab","desktop_artifact":"frontend/output/rebuild-capabilities-real/ai-desktop.png","narrow_artifact":"frontend/output/rebuild-capabilities-real/ai-mobile.png","evidence":"three research tabs; model unavailable; writes/model calls 0; no auto Paper","console_errors":0}
+  ],
+  "capabilities":{"enabled":["stock","etf","index"],"reserved":["future"],"live_trading":false,"futures_routes":false,"instrument_counts":{"stock":5550,"etf":0,"index":4,"future":0}},
+  "guards":{"provider_calls_on_get":0,"ai_calls_on_get":0,"extension_writes_during_capture":0,"futures_navigation_entries":0,"futures_api_entries":0,"paper_manifest_hash":"3646d2181a72907520e5b7ba820b39c2fe62a8cb2a5e2e3fd8158073a7a110f2"}
+}

@@ -1,60 +1,33 @@
-from typing import Any, Dict
+from __future__ import annotations
+from typing import Any
+from fastapi import APIRouter,Depends,HTTPException,Query
+from pydantic import BaseModel,ConfigDict
+from app.core.admin_auth import create_auth_dependency
+from app.core.app_context import AppContext
+from app.domain.auth.models import AuthProfile
+from app.services.review_application_service import ReviewApplicationService
 
-from fastapi import APIRouter, Body, HTTPException, Query
-from starlette.concurrency import run_in_threadpool
+class ReviewPayload(BaseModel):model_config=ConfigDict(extra="allow")
 
-from app.db import db_instance
-from app.services.daily_review_service import DailyReviewService
-
-
-router = APIRouter()
-service = DailyReviewService(db_instance)
-
-
-@router.get("/dates")
-async def review_dates(limit: int = Query(120, ge=1, le=500)) -> Dict[str, Any]:
-    items = await run_in_threadpool(service.available_dates, limit)
-    return {"items": items, "total": len(items)}
-
-
-@router.get("")
-async def list_reviews(limit: int = Query(100, ge=1, le=500)) -> Dict[str, Any]:
-    items = await run_in_threadpool(service.list_reviews, limit)
-    return {"items": items, "total": len(items)}
-
-
-@router.get("/{trade_date}")
-async def review_context(trade_date: str) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(service.context, trade_date)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@router.post("/{trade_date}/assemble")
-async def assemble_review(trade_date: str) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(service.context, trade_date, persist=True)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@router.put("/{trade_date}")
-async def save_review(trade_date: str, payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(service.save, trade_date, payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@router.post("/{trade_date}/seal")
-async def seal_review(trade_date: str) -> Dict[str, Any]:
-    try:
-        return await run_in_threadpool(service.seal, trade_date)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@router.get("/objects/{object_type}/{object_id}")
-async def resolve_review_object(object_type: str, object_id: str) -> Dict[str, Any]:
-    return await run_in_threadpool(service.resolve, object_type, object_id)
+def create_review_router(context:AppContext)->APIRouter:
+    router=APIRouter();service=ReviewApplicationService(context.repositories.review);auth=create_auth_dependency(context)
+    def admin(profile:AuthProfile)->None:
+        if profile.role!="admin":raise HTTPException(status_code=403,detail="Admin permission required.")
+    def call(function,*args):
+        try:return function(*args)
+        except ValueError as error:raise HTTPException(status_code=400,detail=str(error)) from error
+    @router.get("/dates")
+    async def dates(limit:int=Query(default=120,ge=1,le=500),_profile:AuthProfile=Depends(auth))->dict[str,Any]:return service.dates(limit)
+    @router.get("")
+    async def reviews(limit:int=Query(default=100,ge=1,le=500),_profile:AuthProfile=Depends(auth))->dict[str,Any]:return service.list(limit)
+    @router.get("/objects/{object_type}/{object_id}")
+    async def resolve(object_type:str,object_id:str,_profile:AuthProfile=Depends(auth))->dict[str,Any]:return service.resolve(object_type,object_id)
+    @router.get("/{trade_date}")
+    async def review(trade_date:str,_profile:AuthProfile=Depends(auth))->dict[str,Any]:return call(service.get,trade_date)
+    @router.post("/{trade_date}/assemble")
+    async def assemble(trade_date:str,profile:AuthProfile=Depends(auth))->dict[str,Any]:admin(profile);return call(service.assemble,trade_date)
+    @router.put("/{trade_date}")
+    async def save(trade_date:str,body:ReviewPayload,profile:AuthProfile=Depends(auth))->dict[str,Any]:admin(profile);return call(service.save,trade_date,body.model_dump())
+    @router.post("/{trade_date}/seal")
+    async def seal(trade_date:str,profile:AuthProfile=Depends(auth))->dict[str,Any]:admin(profile);return call(service.seal,trade_date)
+    return router

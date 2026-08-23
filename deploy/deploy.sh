@@ -117,7 +117,7 @@ echo -n ">>> 等待后端就绪"
 for i in $(seq 1 30); do
     sleep 1
     echo -n "."
-    if curl -sf "http://127.0.0.1:${BACKEND_PORT}/api/health/health" > /dev/null 2>&1; then
+    if curl -sf "http://127.0.0.1:${BACKEND_PORT}/api/health" > /dev/null 2>&1; then
         echo ""
         echo "✅ 后端就绪"
         break
@@ -152,7 +152,7 @@ for i in $(seq 1 10); do
     sleep 1
     echo -n "."
     if curl -sf --resolve "${PUBLIC_DOMAIN}:443:127.0.0.1" \
-        "https://${PUBLIC_DOMAIN}/api/health/health" > /dev/null 2>&1; then
+        "https://${PUBLIC_DOMAIN}/api/health" > /dev/null 2>&1; then
         echo ""
         echo "✅ HTTPS 域名就绪"
         break
