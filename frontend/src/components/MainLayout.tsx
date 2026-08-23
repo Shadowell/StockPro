@@ -32,6 +32,7 @@ import {
   RefreshCw,
   UsersRound,
   LibraryBig,
+  Sigma,
 } from 'lucide-react';
 import clsx from 'clsx';
 import {
@@ -62,6 +63,8 @@ type LLMProviderFormState = {
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: '首页', allowedRoles: ['admin', 'guest'] },
   { path: '/market', icon: TrendingUp, label: '行情', allowedRoles: ['admin', 'guest'] },
+  { path: '/pools', icon: LibraryBig, label: '股票池', allowedRoles: ['admin', 'guest'] },
+  { path: '/factors', icon: Sigma, label: '因子', allowedRoles: ['admin', 'guest'] },
   { path: '/strategy', icon: Code2, label: '策略', allowedRoles: ['admin', 'guest'] },
   { path: '/backtest', icon: FlaskConical, label: '回测', allowedRoles: ['admin', 'guest'] },
   { path: '/paper', icon: Activity, label: '模拟', allowedRoles: ['admin', 'guest'] },
@@ -70,7 +73,6 @@ const navItems = [
   { path: '/monitor', icon: Eye, label: '监控', allowedRoles: ['admin', 'guest'] },
   { path: '/review', icon: ClipboardList, label: '复盘', allowedRoles: ['admin', 'guest'] },
   { path: '/data', icon: Database, label: '数据', allowedRoles: ['admin', 'guest'] },
-  { path: '/factorlab', icon: LibraryBig, label: '因子', allowedRoles: ['admin', 'guest'] },
   { path: '/ai-lab', icon: Sparkles, label: 'AI研发', allowedRoles: ['admin', 'guest'] },
 ];
 
@@ -993,7 +995,7 @@ export default function MainLayout() {
   const activeSettings = settingsTabs.find((tab) => tab.id === activeSettingsTab) || settingsTabs[0];
 
   return (
-    <div className="flex h-screen bg-crypto-bg">
+    <div className="flex h-screen bg-crypto-bg" data-testid="main-layout">
       {/* 侧边栏 */}
       <aside className="w-16 shrink-0 bg-crypto-card border-r border-crypto-border flex flex-col overflow-hidden">
         {/* Logo */}

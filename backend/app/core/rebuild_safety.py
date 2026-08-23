@@ -112,7 +112,12 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                 "backend/app/services/__init__.py",
             }
             or relative.startswith(
-                ("backend/app/api/", "backend/app/domain/auth/", "backend/app/repositories/")
+                (
+                    "backend/app/api/",
+                    "backend/app/domain/auth/",
+                    "backend/app/repositories/",
+                    "frontend/src/pages/rebuild/",
+                )
             )
         )
         for category, pattern in CATEGORY_PATTERNS.items():

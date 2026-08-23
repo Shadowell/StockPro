@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import json
-from typing import List, Literal, Optional
+from typing import Annotated, List, Literal, Optional
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     )
 
     PROJECT_NAME: str = "StockPro"
-    BACKEND_CORS_ORIGINS: List[str] = [
+    BACKEND_CORS_ORIGINS: Annotated[List[str], NoDecode] = [
         "http://localhost:4444",
         "http://127.0.0.1:4444",
     ]
@@ -59,7 +59,10 @@ class Settings(BaseSettings):
     def assemble_cors_origins(cls, value):
         if isinstance(value, str):
             if value.startswith("["):
-                return json.loads(value)
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    value = value.removeprefix("[").removesuffix("]")
             return [item.strip() for item in value.split(",")]
         return value
 

@@ -26,11 +26,13 @@ const DATA_SYNC_LONG_TIMEOUT_MS = 3_600_000; // 60 分钟
  */
 const BACKTEST_RUN_SYNC_TIMEOUT_MS = 3_600_000; // 60 分钟
 
-const api = axios.create({
+export const apiClient = axios.create({
   baseURL: API_BASE,
   timeout: DEFAULT_TIMEOUT_MS,
   withCredentials: true,
 });
+
+const api = apiClient;
 
 function extractApiErrorDetail(data: unknown): unknown {
   if (!data) return undefined;

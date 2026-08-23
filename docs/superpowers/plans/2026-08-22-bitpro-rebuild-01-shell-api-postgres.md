@@ -370,7 +370,7 @@ git commit -m "feat(auth): use PostgreSQL current authentication contract"
 - Consumes: `/api/auth/*`、`/api/health`。
 - Produces: approved navigation, stable Outlet shell, `apiClient` with `/api` base, route-level unavailable ViewModel。
 
-- [ ] **Step 1: 写 shell E2E 失败测试**
+- [x] **Step 1: 写 shell E2E 失败测试**
 
 ```typescript
 test('shell remains mounted and only approved A-share routes are visible', async ({ page }) => {
@@ -389,13 +389,13 @@ test('shell remains mounted and only approved A-share routes are visible', async
 })
 ```
 
-- [ ] **Step 2: 运行失败 E2E**
+- [x] **Step 2: 运行失败 E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "shell remains mounted"`
 
 Expected: FAIL，导入路由仍包含 BitPro 数字资产页面或 shell 缺稳定 test id。
 
-- [ ] **Step 3: 实现唯一前端 API client**
+- [x] **Step 3: 实现唯一前端 API client**
 
 ```typescript
 export const apiClient = axios.create({ baseURL: '/api', timeout: 30_000 })
@@ -403,7 +403,7 @@ export const apiClient = axios.create({ baseURL: '/api', timeout: 30_000 })
 
 拦截器只处理当前认证合同；源码不得包含带版本号 API 前缀。
 
-- [ ] **Step 4: 实现批准导航和占位页面**
+- [x] **Step 4: 实现批准导航和占位页面**
 
 ```typescript
 type WorkspaceState = {
@@ -417,17 +417,17 @@ type WorkspaceState = {
 所有尚未完成页面路由指向 `UnavailableWorkspace`，显示“正在接入 A股 PostgreSQL 数据”，
 不发业务请求。`/paper` 替代 BitPro `/live`，不注册 `/live-real`。
 
-- [ ] **Step 5: 确保 Suspense 只包 Outlet**
+- [x] **Step 5: 确保 Suspense 只包 Outlet**
 
 MainLayout 常驻侧栏、顶部状态和错误边界；懒加载 fallback 只能替换内容 Outlet。
 
-- [ ] **Step 6: 运行构建、E2E 和静态安全扫描**
+- [x] **Step 6: 运行构建、E2E 和静态安全扫描**
 
 Run: `npm --prefix frontend run build && npm --prefix frontend run test:e2e -- --grep "shell remains mounted" && python rebuild/assert_safety.py --root . --format json`
 
 Expected: PASS；无隐藏数字资产入口，安全计数全 0。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add frontend/src/App.tsx frontend/src/components/MainLayout.tsx frontend/src/pages/rebuild frontend/src/api/client.ts frontend/src/types/index.ts frontend/tests/e2e/rebuild-shell.spec.ts frontend/playwright.config.ts

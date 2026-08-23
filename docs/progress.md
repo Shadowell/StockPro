@@ -69,6 +69,19 @@
 - 安全待办：此前终端诊断曾暴露数据库连接串，相关数据库账号必须在任何 push、部署或
   对外共享前轮换；本切片未擅自修改原 StockPro/生产凭据。
 
+## BitPro-first Wave 1：BitPro A股操作台骨架（2026-08-23）
+
+- 把内联空态抽为 `UnavailableWorkspace`，所有尚未适配工作区统一显示 Owner route、
+  未注册业务服务、PostgreSQL 数据边界和“正在接入 A股 PostgreSQL 数据”；页面不发业务
+  请求、不展示 mock 行情，也不启动 Provider、策略或 Paper recovery。
+- MainLayout 保持常驻，当前导航完整包含首页、行情、股票池、因子、策略、回测、模拟、
+  盯盘、信号、监控、复盘、数据和 AI研发；不注册实盘、链上、ARC、套利或期货。
+  `/paper` 是唯一模拟入口，因子统一为 `/factors`。
+- 前端导出唯一 `apiClient`，base URL 为 `/api`；Vite 默认端口/代理恢复为 4444→4445，
+  Playwright 使用隔离 4454 端口，避免误测原 StockPro 进程。
+- Shell E2E 在桌面与 390×844 窄屏各通过一项：侧栏跨路由保持同一 DOM、批准导航可见、
+  禁止入口不存在、窄屏无横向溢出。实际截图已人工检查，保持 BitPro 紧凑暗色层级与诚实空态。
+
 ## BitPro-first Wave 0：隔离基线门禁完成（2026-08-22）
 
 - 已从计划提交 `27f53ce` 创建独立 worktree

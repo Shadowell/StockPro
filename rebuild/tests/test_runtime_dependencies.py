@@ -52,6 +52,23 @@ def test_settings_fail_when_database_url_is_missing(
         Settings(_env_file=None)
 
 
+def test_settings_accept_legacy_comma_separated_cors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    Settings = _settings_class(monkeypatch)
+    monkeypatch.setenv(
+        "BACKEND_CORS_ORIGINS",
+        "http://localhost:4444,http://127.0.0.1:4444",
+    )
+
+    configured = Settings(_env_file=None)
+
+    assert configured.BACKEND_CORS_ORIGINS == [
+        "http://localhost:4444",
+        "http://127.0.0.1:4444",
+    ]
+
+
 def test_frontend_has_wave_one_verification_scripts() -> None:
     package = json.loads(
         (PROJECT_ROOT / "frontend/package.json").read_text(encoding="utf-8")
