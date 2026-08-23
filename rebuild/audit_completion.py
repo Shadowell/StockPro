@@ -44,7 +44,7 @@ def _e2e_evidence(path:Path)->dict[str,object]:
     payload=json.loads(path.read_text());stats=payload.get("stats",{});failed=int(stats.get("unexpected",0));expected=int(stats.get("expected",0))
     return {"status":"passed"if expected>0 and failed==0 else"failed","expected":expected,"failed":failed,"sha256":_sha(path)}
 
-def collect(root:Path,mode:str)->dict[str,dict[str,object]]:
+def collect(root:Path,mode:str,production_manifest:Path|None=None,production_canary:Path|None=None)->dict[str,dict[str,object]]:
     artifacts=root/".codex-artifacts/rebuild";safety_path=artifacts/"safety.json";junit=artifacts/"backend-tests.xml";e2e=root/"frontend/test-results/e2e-results.json"
     safety=json.loads(safety_path.read_text())if safety_path.exists()else{};pytest_ev=_pytest_evidence(junit);e2e_ev=_e2e_evidence(e2e)
     source_manifest_path=root/"docs/reference/bitpro-baseline/source.json";source_manifest=json.loads(source_manifest_path.read_text())if source_manifest_path.exists()else{};source_repo=Path(str(source_manifest.get("source_repo")or""));source_fields_ok=source_manifest.get("source_sha")==BITPRO_SOURCE_SHA and set(source_manifest.get("copied_roots")or[])=={"backend","frontend","packages","scripts","tests"}
@@ -67,6 +67,9 @@ def collect(root:Path,mode:str)->dict[str,dict[str,object]]:
         payload=json.loads(path.read_text());captures.extend(payload.get("pages",[]))
     routes={str(item.get("route")or"").split("?",1)[0]for item in captures};ui_ok=REQUIRED_ROUTES.issubset(routes)and e2e_ev["status"]=="passed"
     active_total=sum(int(safety.get(key,0))for key in("registered_private_exchange_routes","active_sqlite_repository","active_versioned_api_routes","registered_live_routes","registered_crypto_jobs"))
+    deploy_evidence:dict[str,object]={"status":"pending_final_confirmation"if mode=="pre-deploy"else"missing"}
+    if mode=="post-deploy"and production_manifest and production_canary and production_manifest.exists()and production_canary.exists():
+        deployed=json.loads(production_manifest.read_text());canary=json.loads(production_canary.read_text());comparison=dict(deployed.get("comparison_to_pre")or{});deploy_ok=bool(comparison.get("passed"))and int(deployed.get("counts",{}).get("migrations",0))==38 and bool(deployed.get("deployed_sha"))and bool(canary.get("passed"));deploy_evidence={"status":"passed"if deploy_ok else"failed","deployed_sha":deployed.get("deployed_sha"),"migrations":deployed.get("counts",{}).get("migrations"),"manifest_comparison":comparison,"canary_routes":len(canary.get("routes",[])),"canary_passed":canary.get("passed")}
     return {
         "BASE-001":{"status":base_status,"source_sha":BITPRO_SOURCE_SHA,"manifest_sha256":_sha(source_manifest_path)if source_manifest_path.exists()else None},
         "API-001":{"status":"passed"if safety.get("passed")and int(safety.get("active_versioned_api_routes",1))==0 else"failed","safety_sha256":_sha(safety_path)if safety_path.exists()else None},
@@ -76,10 +79,10 @@ def collect(root:Path,mode:str)->dict[str,dict[str,object]]:
         "UI-001":{"status":"passed"if ui_ok else"failed","routes":sorted(routes),"e2e":e2e_ev},
         "ASHARE-001":{"status":"passed"if pytest_ev["status"]=="passed"else"failed","backend_tests":pytest_ev},
         "FUTURE-001":{"status":"passed"if future_count==0 and e2e_ev["status"]=="passed"else"failed","future_records":future_count,"routes_hidden":True},
-        "DEPLOY-001":{"status":"pending_final_confirmation"if mode=="pre-deploy"else"missing"},
+        "DEPLOY-001":deploy_evidence,
     }
 
 def main()->int:
-    parser=argparse.ArgumentParser();parser.add_argument("--mode",choices=("pre-deploy","post-deploy"),default="pre-deploy");parser.add_argument("--output",type=Path,required=True);parser.add_argument("--root",type=Path,default=Path(__file__).resolve().parents[1]);args=parser.parse_args()
-    requirements=json.loads((args.root/"rebuild/contracts/rebuild-requirements.json").read_text());result=audit(requirements,collect(args.root,args.mode),mode=args.mode);args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(asdict(result),ensure_ascii=False,indent=2,default=str)+"\n");print(json.dumps({"passed":result.passed,"blockers":result.blockers},ensure_ascii=False));return 0 if result.passed else 1
+    parser=argparse.ArgumentParser();parser.add_argument("--mode",choices=("pre-deploy","post-deploy"),default="pre-deploy");parser.add_argument("--output",type=Path,required=True);parser.add_argument("--root",type=Path,default=Path(__file__).resolve().parents[1]);parser.add_argument("--production-manifest",type=Path);parser.add_argument("--production-canary",type=Path);args=parser.parse_args()
+    requirements=json.loads((args.root/"rebuild/contracts/rebuild-requirements.json").read_text());result=audit(requirements,collect(args.root,args.mode,args.production_manifest,args.production_canary),mode=args.mode);args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(asdict(result),ensure_ascii=False,indent=2,default=str)+"\n");print(json.dumps({"passed":result.passed,"blockers":result.blockers},ensure_ascii=False));return 0 if result.passed else 1
 if __name__=="__main__":raise SystemExit(main())

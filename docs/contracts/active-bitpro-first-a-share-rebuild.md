@@ -1,11 +1,14 @@
 # BitPro-first A股整仓重建设计合同
 
-- 状态：Wave 0–6 pre-deploy 验收完成；等待用户最终生产切换确认
+- 状态：已完成；Wave 0–6、生产切换与 post-deploy 验收全部通过
 - 批准日期：2026-08-22
 - StockPro 基线：`99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`
 - BitPro 固定来源：`00517963e90f463e608289b0277fe598bd82d9bf`
 - 目标分支：`codex/bitpro-a-share-rebase`
 - 目标 worktree：`/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share`
+- 生产应用合并 SHA：`4c7fe5194cae7abf6c07a8be005bbfb573b032d8`
+- 生产部署 SHA：`381ec5429114a52af71aae7948834a3f6538f366`
+- 成功部署：GitHub Actions run `32647137727`
 
 ## 1. 目标
 
@@ -338,6 +341,14 @@ BitPro 页面使用其成熟 ViewModel；适配层从现有 PostgreSQL 对象生
 8. BitPro 页面标准与 A股专项门禁全部通过。
 9. 页面文档和真实截图来自最终部署版本。
 10. 生产 SHA、服务健康、迁移和真实页面完成验收。
+
+以上十项已于 2026-08-23 全部验收。生产迁移为 37→38，pre/post 同环境对账无业务记录
+差异；systemd、Nginx、内外健康接口和 storage health 正常。公开站点 8 个关键路由使用
+正常管理员登录完成真实浏览器 canary，无请求拦截，console errors 为 0。生产 manifest、
+canary 和 final completion audit SHA-256 分别为
+`c5f419cd46c2413d9c98f1458c24ba73aa219a16b18e4c1d940aff68a6891b41`、
+`11718b497a1319c92381f5a1e1caa3dcd1bfaf4908ec2cd6f7c8be826f52a50a` 和
+`188d9f9bbfd0e6f855615441f8325a6f41e188cd692b86845364271bff868b1c`。
 
 ## 15. 明确非目标
 
