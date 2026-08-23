@@ -329,19 +329,19 @@ git commit -m "test(storage): rehearse additive rebuild migrations"
 - Consumes: completion audit、测试汇总、截图索引、最新恢复演练、Paper continuity、回滚 SHA。
 - Produces: 用户最终切换确认所需的完整证据。
 
-- [ ] **Step 1: 运行 pre-deploy completion audit**
+- [x] **Step 1: 运行 pre-deploy completion audit**
 
 Run: `python rebuild/audit_completion.py --mode pre-deploy --output .codex-artifacts/rebuild/completion-audit.json`
 
 Expected: 除 `DEPLOY-001=pending_final_confirmation` 外所有 required 项 passed；若有其他 blocker，停止并修复。
 
-- [ ] **Step 2: 写切换就绪报告**
+- [x] **Step 2: 写切换就绪报告**
 
 报告必须列出：分支 SHA、BitPro 来源 SHA、StockPro 基线、提交序列、全测试数量、
 页面矩阵、截图索引、开发 continuity、最新恢复演练、生产 pre-cutover 采集命令、
 旧应用兼容 smoke、回滚 SHA、已知限制和期货隐藏状态。
 
-- [ ] **Step 3: 运行文档检查并提交**
+- [x] **Step 3: 运行文档检查并提交**
 
 ```bash
 git diff --check
@@ -349,7 +349,7 @@ git add docs/contracts/active-bitpro-first-a-share-rebuild.md docs/progress.md d
 git commit -m "docs(rebuild): request final production cutover"
 ```
 
-- [ ] **Step 4: 停止并请求用户最终切换确认**
+- [x] **Step 4: 停止并请求用户最终切换确认**
 
 明确询问是否允许：推送分支、创建 PR、合并 `main`、由 Actions 部署并运行生产 additive migrations。
 

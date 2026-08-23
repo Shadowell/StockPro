@@ -1,5 +1,18 @@
 # Progress Log
 
+## BitPro-first Wave 6：Pre-deploy 最终验收完成（2026-08-23）
+
+- 机器 completion audit 的 BASE/API/DB/PAPER/SAFE/UI/ASHARE/FUTURE 全部 passed；唯一 pending
+  为 `DEPLOY-001=pending_final_confirmation`。
+- 最终全仓入口通过 83 个 Python、24 个完整 Mock Playwright、真实 13 路由 × 双 viewport、
+  TypeScript、零告警 lint、生产构建、bundle budget、0 dependency vulnerabilities 和安全扫描。
+- 26 张真实隔离截图使用正常管理员登录、无拦截/DOM 注入/写请求，console errors 0；Watch
+  single-flight 后双冷读约 16.6 秒，Signals 专用查询约 1.6 秒。
+- 最新 `stockpro_dev` 恢复到受限临时库并应用 37→38 migrations，所有 Paper/策略/回测/复盘
+  连续；固定旧 SHA 进程在 PG 强制只读下，健康/策略/回测/Paper HTTP 200；临时资源已清理。
+- 切换就绪报告写入 `docs/qa/bitpro-first-rebuild-cutover-readiness.md`。当前未推送、合并或
+  部署；早期暴露的数据库凭据必须在任何外部交付前轮换并同步环境。
+
 ## BitPro-first Wave 5：数据、AI 与 Instrument 能力验收（2026-08-23）
 
 - 新增 `/api/capabilities`：enabled stock/ETF/index、reserved future、PostgreSQL、A股 Paper
