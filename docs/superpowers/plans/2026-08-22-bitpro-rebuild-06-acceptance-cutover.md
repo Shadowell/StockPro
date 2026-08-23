@@ -164,7 +164,7 @@ git commit -m "test(rebuild): verify API database and A-share contracts"
 - Consumes: 所有启用页面和当前 API。
 - Produces: 1440px/390px、admin/guest、六种状态的 Playwright evidence。
 
-- [ ] **Step 1: 写一级页面路由矩阵**
+- [x] **Step 1: 写一级页面路由矩阵**
 
 ```typescript
 const routes = ['/', '/market', '/pools', '/factors', '/strategy', '/backtest', '/paper', '/watch', '/signals', '/monitor', '/review', '/data', '/ai-lab']
@@ -179,28 +179,28 @@ for (const route of routes) {
 }
 ```
 
-- [ ] **Step 2: 写状态矩阵**
+- [x] **Step 2: 写状态矩阵**
 
 每个 Owner 页面至少有独立用例覆盖 Loading、Empty、Partial、Stale、Error、Permission；
 Mock 套件可拦截请求验证表现，真实套件不得拦截。
 
-- [ ] **Step 3: 写访客权限矩阵**
+- [x] **Step 3: 写访客权限矩阵**
 
 访客可查看全部已启用页面；除配额内回测外，所有 POST/PUT/PATCH/DELETE 在 DOM 和 Axios 层拒绝。
 
-- [ ] **Step 4: 运行 Mock 桌面/移动端矩阵**
+- [x] **Step 4: 运行 Mock 桌面/移动端矩阵**
 
 Run: `npm --prefix frontend run test:e2e:mock`
 
 Expected: 所有路由和状态用例 PASS，console error 为 0。
 
-- [ ] **Step 5: 运行真实隔离数据库矩阵**
+- [x] **Step 5: 运行真实隔离数据库矩阵**
 
 Run: `MOCK_API=false E2E_REAL_BACKEND=1 npm --prefix frontend run test:e2e:real`
 
 Expected: 无 request interception；真实空/陈旧/可用状态与 API 一致。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add frontend/tests/e2e/rebuild-final-route-matrix.spec.ts frontend/tests/e2e/rebuild-final-state-matrix.spec.ts frontend/tests/e2e/rebuild-final-permissions.spec.ts frontend/playwright.config.ts

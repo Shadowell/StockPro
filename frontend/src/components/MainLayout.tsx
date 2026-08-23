@@ -1086,7 +1086,9 @@ export default function MainLayout() {
               </div>
             }
           >
-            <Outlet />
+            <div data-operator-page={location.pathname} className="contents">
+              <Outlet />
+            </div>
           </Suspense>
         </PageErrorBoundary>
       </main>
