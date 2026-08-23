@@ -38,6 +38,16 @@
   public version names 0；当前无 active job 时 recovery 返回 0，jobs/runs 状态分布前后相同；
   回测门控测试与安全扫描通过。
 
+## BitPro-first Wave 3：回测控制台（2026-08-23）
+
+- 用 A股 Evidence Workbench 替换导入 Crypto Backtest 页面，保留 BitPro KPI、历史表、状态
+  筛选、任务队列、创建向导、详情按需 tab、matrix 与 Walk-forward 入口。
+- 创建向导明确 strategy/dataset/universe/cost 必选，pool/factor/protocol 显式绑定；常驻显示
+  T+1、100股、只做多、快速预检不可晋级。页面打开不创建 job/run。
+- 真实隔离库页面显示 79 runs、76 success、50 full、35 jobs；桌面历史表与 390px 向导
+  console errors 0，七张 backtest/Paper 表前后不变。Mock E2E、类型/lint/build通过，
+  截图人工检查通过。
+
 ## BitPro-first Wave 2：传统金融研究模型（2026-08-23）
 
 - 新增不可变 `InstrumentContract`，当前支持 stock/ETF/index，并为 future 保留乘数、保证金、

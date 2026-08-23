@@ -287,7 +287,7 @@ git commit -m "feat(backtest): restore A-share evidence workbench"
 - Consumes: `/api/backtest/*` 当前合同。
 - Produces: BitPro 多实例历史、创建向导、任务控制、详情、比较、矩阵和 Walk-forward UI。
 
-- [ ] **Step 1: 写控制台/向导/详情失败 E2E**
+- [x] **Step 1: 写控制台/向导/详情失败 E2E**
 
 ```typescript
 test('backtest console keeps BitPro workflow and A-share evidence', async ({ page }) => {
@@ -301,28 +301,28 @@ test('backtest console keeps BitPro workflow and A-share evidence', async ({ pag
 })
 ```
 
-- [ ] **Step 2: 运行失败 E2E**
+- [x] **Step 2: 运行失败 E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "backtest console keeps BitPro"`
 
 Expected: FAIL，页面尚未接当前合同。
 
-- [ ] **Step 3: 绑定 BitPro 控制台全部模式**
+- [x] **Step 3: 绑定 BitPro 控制台全部模式**
 
 保留任务列表、状态筛选、收益排序、创建向导、结果详情、交易/K线/日志、对比；
 增加参数矩阵与 Walk-forward，所有诊断模式标明不可晋级。
 
-- [ ] **Step 4: 分层加载大结果**
+- [x] **Step 4: 分层加载大结果**
 
 核心 run/metrics 先加载，series 和各明细 tab 按需请求；列表分页，不首屏读取全部 ledger。
 
-- [ ] **Step 5: 更新页面合同并运行 E2E/build**
+- [x] **Step 5: 更新页面合同并运行 E2E/build**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "backtest console keeps BitPro" && npm --prefix frontend run build`
 
 Expected: PASS；详情刷新深链保持，bundle 预算通过。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add frontend/src/pages/Backtest.tsx frontend/src/pages/backtest/backtestSupport.tsx frontend/src/api/client.ts frontend/src/types/backtest.ts frontend/tests/e2e/rebuild-backtest.spec.ts docs/pages/回测.md

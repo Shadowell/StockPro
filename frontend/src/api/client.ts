@@ -22,6 +22,7 @@ import type {
   FactorMetricRecord,
 } from '../types/research';
 import type { StrategyValidationResult, StrategyVersionRecord } from '../types/strategy';
+import type { BacktestConfiguration, BacktestJobRecord, BacktestRunRecord } from '../types/backtest';
 
 const API_BASE = '/api';
 
@@ -106,6 +107,21 @@ export const strategyCurrentApi = {
   createVersion: async (parentId: string, payload: { description?: string; script_content: string }): Promise<{ strategy_version: StrategyVersionRecord; validation: StrategyValidationResult }> => apiClient.post(`/strategies/${encodeURIComponent(parentId)}/versions`, payload),
   validate: async (scriptContent: string): Promise<StrategyValidationResult> => apiClient.post('/strategies/validate', { script_content: scriptContent }),
   quickRun: async (versionId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> => apiClient.post(`/strategies/${encodeURIComponent(versionId)}/quick-run`, payload),
+};
+
+export const backtestCurrentApi = {
+  configuration: async (): Promise<BacktestConfiguration> => apiClient.get('/backtest/configuration'),
+  runs: async (limit = 200): Promise<{ items: BacktestRunRecord[] }> => apiClient.get('/backtest/runs', { params: { limit } }),
+  run: async (runId: string): Promise<Record<string, any>> => apiClient.get(`/backtest/runs/${encodeURIComponent(runId)}`),
+  metrics: async (runId: string): Promise<{ items: Record<string, any>[] }> => apiClient.get(`/backtest/runs/${encodeURIComponent(runId)}/metrics`),
+  series: async (runId: string): Promise<Record<string, any>> => apiClient.get(`/backtest/runs/${encodeURIComponent(runId)}/series`),
+  detailRows: async (runId: string, kind: 'orders' | 'trades' | 'positions' | 'logs'): Promise<{ items: Record<string, any>[] }> => apiClient.get(`/backtest/runs/${encodeURIComponent(runId)}/${kind}`),
+  jobs: async (limit = 200): Promise<{ items: BacktestJobRecord[] }> => apiClient.get('/backtest/jobs', { params: { limit } }),
+  createJob: async (payload: Record<string, unknown>): Promise<BacktestJobRecord> => apiClient.post('/backtest/jobs', payload),
+  cancelJob: async (jobId: string): Promise<BacktestJobRecord> => apiClient.post(`/backtest/jobs/${encodeURIComponent(jobId)}/cancel`),
+  retryJob: async (jobId: string): Promise<BacktestJobRecord> => apiClient.post(`/backtest/jobs/${encodeURIComponent(jobId)}/retry`),
+  matrix: async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => apiClient.post('/backtest/matrix', payload),
+  walkForward: async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => apiClient.post('/backtest/walk-forward', payload),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {
