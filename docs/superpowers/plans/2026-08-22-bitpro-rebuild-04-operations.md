@@ -228,7 +228,7 @@ git commit -m "feat(operations-ui): adapt BitPro signals and watch"
 **Interfaces:**
 - Produces: `GET /api/monitor/summary`、strategies、data、risk、notifications；BitPro Monitor ViewModel。
 
-- [ ] **Step 1: 写健康与生命周期分离失败测试**
+- [x] **Step 1: 写健康与生命周期分离失败测试**
 
 ```python
 def test_stale_service_does_not_change_paper_lifecycle(service):
@@ -239,27 +239,27 @@ def test_stale_service_does_not_change_paper_lifecycle(service):
     assert view.overall_status == "warning"
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_monitor_current_api.py -q`
 
 Expected: FAIL，Monitor Service 不存在。
 
-- [ ] **Step 3: 实现 PG health 聚合**
+- [x] **Step 3: 实现 PG health 聚合**
 
 读取 service health snapshots、Paper heartbeats/cycles/equity/drawdown/ledger difference、risk alerts 和 notification counts；response generation time 不刷新 evidence time。
 
-- [ ] **Step 4: 适配 BitPro Monitor 页面**
+- [x] **Step 4: 适配 BitPro Monitor 页面**
 
 保留组合 KPI、策略健康、告警弹窗、通知和数据状态；删除真实账户权益、加密策略和交易所连接状态。
 
-- [ ] **Step 5: 运行 API/E2E/build**
+- [x] **Step 5: 运行 API/E2E/build**
 
 Run: `python -m pytest backend/tests/test_monitor_current_api.py -q && npm --prefix frontend run test:e2e -- --grep "monitor separates lifecycle" && npm --prefix frontend run build`
 
 Expected: PASS，失败加载不显示虚假 0。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/app/services/monitor_application_service.py backend/app/api/endpoints/monitor.py backend/app/api/api.py backend/tests/test_monitor_current_api.py frontend/src/pages/Monitor.tsx frontend/tests/e2e/rebuild-monitor.spec.ts docs/pages/监控.md

@@ -1,5 +1,16 @@
 # Progress Log
 
+## BitPro-first Wave 4：Paper 证据监控台（2026-08-23）
+
+- 新增当前 `/api/monitor/summary|strategies|data|risk|notifications`，基于 PostgreSQL 最新
+  health snapshots、Paper heartbeat/cycle/equity/ledger difference、alerts 和 deliveries。
+- Monitor ViewModel 明确分开 `lifecycle_status` 与 `health_state`；真实 14 个 running 实例中
+  stale/exhausted 等健康判断只影响 overall health，不写回 Paper 生命周期。
+- BitPro 监控页恢复整体 KPI、服务健康、策略健康表、数据状态、风险告警和通知；缺失证据
+  显示 missing/`—`，响应生成时间不覆盖证据时间，无真实账户或交易所连接字段。
+- API/健康分离测试、Mock E2E、类型/lint 和真实隔离页通过。真实页面展示 15 行策略健康，
+  API 200、console errors 0、390px 无页面级溢出；Paper continuity 无差异。
+
 ## BitPro-first Wave 4：信号中心与证据盯盘（2026-08-23）
 
 - `/signals` 已接入 79 条真实信号和 97 条 alert/投递证据，保留 BitPro 高密度 KPI、筛选、

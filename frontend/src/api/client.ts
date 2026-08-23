@@ -24,7 +24,7 @@ import type {
 import type { StrategyValidationResult, StrategyVersionRecord } from '../types/strategy';
 import type { BacktestConfiguration, BacktestJobRecord, BacktestRunRecord } from '../types/backtest';
 import type { PaperInstanceDetail, PaperInstanceList } from '../types/paper';
-import type { OperationAlert, OperationSignal, WatchContext, WatchRule } from '../types/operations';
+import type { MonitorSummary, OperationAlert, OperationSignal, WatchContext, WatchRule } from '../types/operations';
 
 const API_BASE = '/api';
 
@@ -149,6 +149,10 @@ export const operationsCurrentApi = {
   rules: async (scope: 'business' | 'audit' = 'business'): Promise<{ items: WatchRule[]; total: number; scope: string }> => apiClient.get('/watch/rules', { params: { scope } }),
   previewRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/preview`),
   evaluateRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/evaluate`),
+};
+
+export const monitorCurrentApi = {
+  summary: async (scope: 'business' | 'audit' = 'business'): Promise<MonitorSummary> => apiClient.get('/monitor/summary', { params: { scope } }),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

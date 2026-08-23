@@ -48,3 +48,14 @@ export type WatchRule = Record<string, any> & {
   enabled: boolean
   config: Record<string, any>
 }
+
+export type MonitorSummary = Record<string, any> & {
+  overall_status: 'healthy' | 'warning' | 'critical' | 'unavailable'
+  services: Array<Record<string, any>>
+  data: { dataset?: Record<string, any> | null; market?: Record<string, any> | null }
+  strategy_health: Array<Record<string, any> & { id: string; name: string; lifecycle_status: string; health_state: string }>
+  active_alerts: OperationAlert[]
+  notifications: Array<Record<string, any>>
+  source_label: string
+  source_updated_at: string | null
+}

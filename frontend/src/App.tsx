@@ -12,15 +12,10 @@ import Backtest from './pages/Backtest'
 import Paper from './pages/Paper'
 import SignalCenter from './pages/SignalCenter'
 import Watch from './pages/Watch'
+import Monitor from './pages/Monitor'
 
 
 const workspaces: Record<string, WorkspaceState> = {
-  monitor: {
-    title: '监控',
-    description: '运行健康、数据新鲜度与 Paper 状态将在运行 Wave 恢复。',
-    ownerRoute: '/monitor',
-    status: 'adapting',
-  },
   review: {
     title: '复盘',
     description: '保留既有复盘记录，来源证据通过后恢复编辑。',
@@ -66,7 +61,7 @@ function AppRoutes() {
         <Route path="paper" element={<Paper />} />
         <Route path="watch" element={<Watch />} />
         <Route path="signals" element={<SignalCenter />} />
-        <Route path="monitor" element={<UnavailableWorkspace state={workspaces.monitor} />} />
+        <Route path="monitor" element={<Monitor />} />
         <Route path="review" element={<UnavailableWorkspace state={workspaces.review} />} />
         <Route path="data" element={<UnavailableWorkspace state={workspaces.data} />} />
         <Route path="ai-lab" element={<UnavailableWorkspace state={workspaces.aiLab} />} />

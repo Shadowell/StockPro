@@ -14,6 +14,7 @@ from app.api.endpoints.backtest import create_backtest_router
 from app.api.endpoints.paper import create_paper_router
 from app.api.endpoints.signals import create_signals_router
 from app.api.endpoints.watch import create_watch_router
+from app.api.endpoints.monitor import create_monitor_router
 
 
 def create_api_router(context: Any | None = None) -> APIRouter:
@@ -36,4 +37,5 @@ def create_api_router(context: Any | None = None) -> APIRouter:
         if hasattr(context.repositories, "operations"):
             router.include_router(create_signals_router(context), prefix="/signals", tags=["signals"])
             router.include_router(create_watch_router(context), prefix="/watch", tags=["watch"])
+            router.include_router(create_monitor_router(context), prefix="/monitor", tags=["monitor"])
     return router
