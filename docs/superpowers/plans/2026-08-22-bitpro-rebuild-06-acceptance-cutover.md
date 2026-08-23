@@ -365,24 +365,24 @@ Expected: 未收到明确确认时保持分支和预览状态，不执行任何�
 - Consumes: 用户最终确认和无 blocker 的 pre-deploy audit。
 - Produces: `main` merge SHA、部署 run、生产应用和 post-cutover manifest。
 
-- [ ] **Step 1: 采集生产 pre-cutover manifest**
+- [x] **Step 1: 采集生产 pre-cutover manifest**
 
 通过生产后端只读命令/SSH 读取迁移、策略、回测、Paper、账本、信号和复盘，写入本地 `.codex-artifacts/rebuild/production-pre-cutover.json`；不得把本地15实例基线用于生产比较。
 
-- [ ] **Step 2: 推送分支并创建 PR**
+- [x] **Step 2: 推送分支并创建 PR**
 
 ```bash
 git push -u origin codex/bitpro-a-share-rebase
 gh pr create --base main --head codex/bitpro-a-share-rebase --title "feat: rebuild StockPro on BitPro A-share foundation" --body-file docs/qa/bitpro-first-rebuild-cutover-readiness.md
 ```
 
-- [ ] **Step 3: 等待必需检查与可合并状态**
+- [x] **Step 3: 等待必需检查与可合并状态**
 
 Run: `gh pr checks --watch`
 
 Expected: 全部 required checks success；PR mergeable。
 
-- [ ] **Step 4: 合并 PR 并同步本地 main**
+- [x] **Step 4: 合并 PR 并同步本地 main**
 
 ```bash
 gh pr merge --merge --delete-branch
@@ -391,23 +391,23 @@ git -C /Users/jie.feng/Dev/Github/Private/StockPro switch main
 git -C /Users/jie.feng/Dev/Github/Private/StockPro pull --ff-only origin main
 ```
 
-- [ ] **Step 5: 等待 main 部署 Actions**
+- [x] **Step 5: 等待 main 部署 Actions**
 
 Run: `gh run list --branch main --limit 1`，确认 head SHA 等于 merge SHA，然后 `gh run watch <run-id> --exit-status`。
 
 Expected: success；部署脚本记录相同 SHA。
 
-- [ ] **Step 6: 采集 production post-cutover manifest**
+- [x] **Step 6: 采集 production post-cutover manifest**
 
 使用与 pre-cutover 完全相同的只读查询生成 post manifest；比较同环境数据。Additive instrument migration可增加迁移/定义表，不得减少或改写已有业务记录。
 
-- [ ] **Step 7: 验证服务和公网页面**
+- [x] **Step 7: 验证服务和公网页面**
 
 核对 `stockpro-backend`、Nginx、内外 `/api/health`、storage migrations、首页、行情、策略、回测、模拟、信号、数据和 AI研发；生产真实浏览器无 request interception。
 
-- [ ] **Step 8: 运行 post-deploy completion audit**
+- [x] **Step 8: 运行 post-deploy completion audit**
 
-Run: `python rebuild/audit_completion.py --mode post-deploy --production-manifest .codex-artifacts/rebuild/production-post-cutover.json --output .codex-artifacts/rebuild/completion-audit-final.json`
+Run: `python rebuild/audit_completion.py --mode post-deploy --production-manifest .codex-artifacts/rebuild/production-post-cutover.json --production-canary .codex-artifacts/rebuild/production-canary.json --output .codex-artifacts/rebuild/completion-audit-final.json`
 
 Expected: 所有 required 项 including `DEPLOY-001` passed。
 
@@ -428,11 +428,11 @@ Expected: 所有 required 项 including `DEPLOY-001` passed。
 
 Expected: 旧应用健康恢复；生产数据与 pre-cutover manifest 一致；合同保持进行中并记录 blocker。
 
-- [ ] **Step 1B: 如果全部通过，更新合同为完成**
+- [x] **Step 1B: 如果全部通过，更新合同为完成**
 
 记录 merge SHA、Actions run、部署 SHA、迁移数、服务状态、production manifest hash、截图索引和 final audit hash。
 
-- [ ] **Step 2: 运行文档检查并提交最终记录**
+- [x] **Step 2: 运行文档检查并提交最终记录**
 
 ```bash
 git diff --check

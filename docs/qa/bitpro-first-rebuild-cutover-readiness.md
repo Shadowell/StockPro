@@ -1,13 +1,13 @@
-# BitPro-first StockPro A股重建：生产切换就绪报告
+# BitPro-first StockPro A股重建：生产切换验收报告
 
 日期：2026-08-23
-状态：**Pre-deploy ready，等待最终生产切换确认**
+状态：**Deployed and verified**
 
 ## 结论
 
-StockPro 已在独立分支完成 BitPro-first A股重建。机器审计的 BASE/API/DB/PAPER/SAFE/UI/
-ASHARE/FUTURE 八项必需能力均为 passed；`DEPLOY-001` 是唯一
-`pending_final_confirmation`。当前没有推送分支、PR、main 合并、生产迁移、服务重启或部署。
+StockPro 已完成 BitPro-first A股重建、PR 合并、GitHub Actions 部署和生产验收。机器审计的
+BASE/API/DB/PAPER/SAFE/UI/ASHARE/FUTURE/DEPLOY 九项必需能力全部 passed。生产只执行
+additive migration，同环境 pre/post 对账无业务记录差异。
 
 ## 固定来源与分支
 
@@ -16,6 +16,10 @@ ASHARE/FUTURE 八项必需能力均为 passed；`DEPLOY-001` 是唯一
 - 验收分支：`codex/bitpro-a-share-rebase`
 - Pre-deploy 代码验收 SHA：`9dad95c77dc2a6e0ffd0b189072e00a60b9212ff`
 - 切换就绪提交：`5ed617471d3cdd87f29f35dae66f15e554c1ba41`
+- 应用 PR：[#4](https://github.com/Shadowell/StockPro/pull/4)，merge SHA
+  `4c7fe5194cae7abf6c07a8be005bbfb573b032d8`
+- 部署修复 PR：[#5](https://github.com/Shadowell/StockPro/pull/5)，最终生产 SHA
+  `381ec5429114a52af71aae7948834a3f6538f366`
 - 从 StockPro 基线起包含 50+ 个可审计提交；核心阶段提交见 `docs/progress.md` 和各 Wave 计划。
 
 ## 功能与页面
@@ -41,8 +45,10 @@ ASHARE/FUTURE 八项必需能力均为 passed；`DEPLOY-001` 是唯一
 - 生产依赖审计：0 vulnerabilities。
 - 安全扫描：私有数字资产执行、SQLite 业务仓库、版本化 API、实盘路由、币圈后台任务均为 0；
   54 个导入遗留文件保持不可达隔离。
-- Completion audit：passed；SHA-256
+- Pre-deploy completion audit：passed；SHA-256
   `0fa69e262712aad0aa3a6a132d2b62085ba9d140409ddf6d58f5e317be5caa88`。
+- Post-deploy completion audit：九项全部 passed；SHA-256
+  `188d9f9bbfd0e6f855615441f8325a6f41e188cd692b86845364271bff868b1c`。
 
 ## 数据库与 Paper 连续性
 
@@ -66,7 +72,7 @@ additive migrations 后：67 strategy versions、79 backtests、15 Paper、61/47
   strategy list、backtest runs 和 Paper instances 均返回 HTTP 200。
 - Old app smoke SHA-256：`67131115368d5e3fcb476ce65aef5841adf06bce04fffeebbb708b047c38824c`
 
-## 已知限制与切换前动作
+## 已知限制与切换记录
 
 1. 当前 DashScope/Qwen 未配置，AI 页面诚实显示 unavailable；配置后仍只生成验证策略和
    quick replay，不自动完整回测或 Paper。
@@ -78,28 +84,19 @@ additive migrations 后：67 strategy versions、79 backtests、15 Paper、61/47
    生产活动连接已切换，新旧健康均通过，旧 `stockpro_app` 已设为 `NOLOGIN` 并更换随机密码。
 5. PR 创建后的快速审阅发现部署脚本仍探测旧 `/api/health/health`；已改为唯一当前
    `/api/health`，补充部署合同测试，并重新完成 84 Python / 24 Playwright / completion audit。
+6. PR #4 的自动部署 run `32647022871` 在服务器同步前失败，原因是 workflow 引用了仓库中
+   不存在的 `frontend/scripts/check-local-dependencies.mjs`；生产仍保持旧版本健康。PR #5 删除
+   失效 precheck 后，run `32647137727` 成功部署最终 SHA。
 
-## 获批后的生产流程
+## 生产结果
 
-1. 只读 production pre-cutover manifest 已采集；生产当前 37 migrations、业务对象均为 0，
-   部署 SHA 为旧基线，不与本地 15 个 Paper 跨环境比较。
-2. 推送 `codex/bitpro-a-share-rebase` 并创建 PR。
-3. 等待 required checks，通过 PR 合并 `main`。
-4. 仅由 GitHub Actions 部署并应用 additive migration；禁止 SSH/rsync 手工修补。
-5. 采集同环境 post-cutover manifest，核对服务、部署 SHA、内外健康和真实页面。
-6. post-deploy audit 全项通过后关闭合同；失败则回滚应用 release，不回滚/清空数据库。
-
-生产 pre-cutover 采集必须在最终确认后执行，建议命令入口：
-
-```bash
-ssh stockpro 'sudo -u postgres psql -d stockpro_prod -c "...只读 manifest 查询..."'
-```
-
-该命令需使用与 post-cutover 完全相同的查询集合，产物只写本地忽略目录
-`.codex-artifacts/rebuild/production-pre-cutover.json`。
-
-## 最终确认范围
-
-请明确确认是否允许执行以下动作：轮换相关数据库凭据、推送分支、创建 PR、合并 `main`、
-由 GitHub Actions 部署并运行生产 additive migrations，以及执行 production pre/post manifest
-和真实页面验收。
+1. Production pre-cutover：37 migrations，业务对象均为 0，部署 SHA 为旧基线
+   `99adaaae...`；manifest SHA-256
+   `374dafcaaa61bf301b169ac05b372e9408a287ec6f9bc042b0dad810be0d547d`。
+2. Production post-cutover：38 migrations，策略/回测/Paper/账本/信号/告警/复盘计数仍为 0，
+   对账通过；manifest SHA-256
+   `c5f419cd46c2413d9c98f1458c24ba73aa219a16b18e4c1d940aff68a6891b41`。
+3. systemd backend、Nginx、内部与公网 `/api/health`、storage health 全部正常，部署 SHA 对齐。
+4. 公网首页、行情、策略、回测、模拟、信号、数据、AI研发共 8 路由真实 canary 通过；
+   console errors 为 0，单页耗时 1.86–2.58 秒。canary SHA-256
+   `11718b497a1319c92381f5a1e1caa3dcd1bfaf4908ec2cd6f7c8be826f52a50a`。

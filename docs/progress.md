@@ -1,5 +1,18 @@
 # Progress Log
 
+## BitPro-first A股整仓迁移完成（2026-08-23）
+
+- PR #4 合并应用重建，merge SHA `4c7fe5194cae7abf6c07a8be005bbfb573b032d8`。首次自动部署
+  run `32647022871` 在服务器同步前因失效的 frontend precheck 失败，生产旧版本保持健康。
+- PR #5 删除不存在脚本的 workflow 引用；merge/生产 SHA
+  `381ec5429114a52af71aae7948834a3f6538f366`，GitHub Actions run `32647137727` 成功。
+- 生产数据库仅执行 additive 37→38 migration；策略、回测、Paper、订单、成交、持仓、权益、
+  事件、复盘、信号和告警 pre/post 计数均为 0，无减少或改写。
+- systemd、Nginx、内外 `/api/health` 和 storage health 全绿；公网 8 个关键路由正常管理员登录
+  canary 通过，无 request interception、console errors 0，耗时 1.86–2.58 秒。
+- Post-deploy completion audit 的九项 required 全部 passed；final audit SHA-256
+  `188d9f9bbfd0e6f855615441f8325a6f41e188cd692b86845364271bff868b1c`。合同关闭。
+
 ## PR #4 合并前部署探针修复（2026-08-23）
 
 - 快速 pre-landing review 发现 `deploy/deploy.sh` 内外健康检查仍使用旧
@@ -26,8 +39,8 @@
   single-flight 后双冷读约 16.6 秒，Signals 专用查询约 1.6 秒。
 - 最新 `stockpro_dev` 恢复到受限临时库并应用 37→38 migrations，所有 Paper/策略/回测/复盘
   连续；固定旧 SHA 进程在 PG 强制只读下，健康/策略/回测/Paper HTTP 200；临时资源已清理。
-- 切换就绪报告写入 `docs/qa/bitpro-first-rebuild-cutover-readiness.md`。当前未推送、合并或
-  部署；早期暴露的数据库凭据必须在任何外部交付前轮换并同步环境。
+- 切换就绪报告写入 `docs/qa/bitpro-first-rebuild-cutover-readiness.md`；其后的生产执行和
+  验收结果记录在本文件顶部“BitPro-first A股整仓迁移完成”。
 
 ## BitPro-first Wave 5：数据、AI 与 Instrument 能力验收（2026-08-23）
 
