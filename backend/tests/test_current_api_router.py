@@ -80,6 +80,7 @@ def test_storage_health_uses_injected_current_context(monkeypatch) -> None:
             repositories=SimpleNamespace(
                 health=FakeHealthRepository(),
                 auth=FakeHealthRepository(),
+                market=FakeHealthRepository(),
             ),
             clock=lambda: datetime.now(timezone.utc),
         )

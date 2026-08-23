@@ -114,7 +114,7 @@ git commit -m "feat(research): define traditional market view models"
 **Interfaces:**
 - Produces: `GET /api/market/overview`、`GET /api/market/instruments`、`GET /api/market/instruments/{symbol}`、`GET /api/market/instruments/{symbol}/daily`、`GET /api/market/instruments/{symbol}/intraday`、`GET /api/market/instruments/{symbol}/order-book`、`GET/POST/DELETE /api/market/watchlist`。
 
-- [ ] **Step 1: 写真实形状和只读失败测试**
+- [x] **Step 1: 写真实形状和只读失败测试**
 
 ```python
 def test_market_overview_keeps_missing_metrics_null(client, repositories):
@@ -129,13 +129,13 @@ def test_market_overview_keeps_missing_metrics_null(client, repositories):
     assert repositories.provider_calls == []
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_market_current_api.py backend/tests/test_research_pages_readonly.py -q`
 
 Expected: FAIL，当前市场 Service/Router 尚未存在。
 
-- [ ] **Step 3: 从 StockPro 基线恢复算法并包入 Application Service**
+- [x] **Step 3: 从 StockPro 基线恢复算法并包入 Application Service**
 
 只恢复市场计算与查询所需文件，不恢复旧 Router。`ResearchApplicationService` 方法固定为：
 
@@ -146,22 +146,22 @@ class ResearchApplicationService:
     def instrument_detail(self, symbol: str) -> InstrumentDetailView: ...
 ```
 
-- [ ] **Step 4: 实现 PG-only Repository 查询**
+- [x] **Step 4: 实现 PG-only Repository 查询**
 
 从 `all_stocks_realtime`、指数缓存、市场证据快照、日线/分时/盘口/财务缓存读取；
 查询必须限定返回数并保留 `source_updated_at`。写 watchlist 只保存 symbol/note，不复制价格。
 
-- [ ] **Step 5: 注册当前 API 并删除重复消费者**
+- [x] **Step 5: 注册当前 API 并删除重复消费者**
 
 前端只调用上述路径；不存在 `/stocks/*`、旧 market alias 或版本路径。所有符号规范化集中在领域层。
 
-- [ ] **Step 6: 运行 API、只读和安全测试**
+- [x] **Step 6: 运行 API、只读和安全测试**
 
 Run: `python -m pytest backend/tests/test_market_current_api.py backend/tests/test_research_pages_readonly.py rebuild/tests/test_safety.py -q`
 
 Expected: PASS；GET 请求写入数和 Provider 调用数为 0。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add backend/app/services/market_service.py backend/app/services/market_research_service.py backend/app/services/research_application_service.py backend/app/api/endpoints/market.py backend/app/repositories backend/app/api/api.py backend/tests/test_market_current_api.py backend/tests/test_research_pages_readonly.py

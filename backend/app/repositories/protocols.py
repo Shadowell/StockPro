@@ -60,6 +60,14 @@ class MarketRepository(Protocol):
 
     def instrument_detail(self, symbol: str) -> InstrumentDetailView | None: ...
 
+    def daily_bars(self, symbol: str, limit: int) -> list[dict[str, Any]]: ...
+
+    def list_watchlist(self, owner: str) -> list[dict[str, Any]]: ...
+
+    def upsert_watchlist(self, owner: str, symbol: str, note: str) -> dict[str, Any]: ...
+
+    def delete_watchlist(self, owner: str, entry_id: int) -> bool: ...
+
 
 class StrategyRepository(Protocol):
     """Strategy persistence contract; methods are added in Wave 3."""
@@ -77,3 +85,4 @@ class PaperRepository(Protocol):
 class Repositories:
     health: HealthRepository
     auth: AuthRepository
+    market: MarketRepository

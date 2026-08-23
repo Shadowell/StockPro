@@ -11,6 +11,19 @@
 - 前后端研究类型统一使用当前 API 的 snake_case 字段，不建立 camelCase/旧字段双合同。
   三项领域测试、前端类型检查与安全扫描通过。
 
+## BitPro-first Wave 2：A股市场当前 API（2026-08-23）
+
+- 新增 `ResearchApplicationService` 与当前 `/api/market/*`：overview、证券搜索/详情、日线、
+  分时、盘口和自选。删除临时 workspace overview，`/stocks/*` 与带版本号路径继续 404。
+- `PostgresRepository` 只读组合 `market_indices_realtime`、`all_stocks_realtime`、最新 published
+  market evidence/metrics、sector evidence 与 `stock_history`；搜索集中规范化 SH/SZ/BJ、
+  股票/ETF/指数、tick size、lot size 和统一 `600519.SH` 形式。
+- 分时和盘口在隔离库没有缓存时返回 `data_status=empty`、空数组、null 来源和明确原因，
+  不合成价格。自选写入只保存 owner、规范化 symbol 和 note，不复制 price。
+- 真实隔离库验收读取 4 个指数、上涨 2505、涨停 54 和贵州茅台 `600519.SH`；日线读取
+  PostgreSQL，分时/盘口诚实空态，自选为空。九张市场/Paper 表前后计数一致，业务写入 0，
+  进程未导入 TuShare/AKShare。聚焦 API/只读/安全测试 18 项与前端类型检查通过。
+
 ## 重建基线 SHA 现场纠正（2026-08-22）
 
 - Wave 1 开始前验证发现设计草稿中的 `bff8e05…` 不是当前仓库的 Git 对象，不能作为

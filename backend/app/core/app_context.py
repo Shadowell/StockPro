@@ -31,6 +31,6 @@ def build_app_context(
     repository = PostgresRepository(database)
     return AppContext(
         settings=runtime_settings,
-        repositories=Repositories(health=repository, auth=repository),
+        repositories=Repositories(health=repository, auth=repository, market=repository),
         clock=clock,
     )

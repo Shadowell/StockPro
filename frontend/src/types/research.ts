@@ -7,10 +7,10 @@ export type InstrumentContract = {
   market: 'CN' | 'US'
   exchange: string
   currency: string
-  tick_size: string
+  tick_size: number
   lot_size: number
-  contract_multiplier: string | null
-  margin_rate: string | null
+  contract_multiplier: number | null
+  margin_rate: number | null
   expiry_date: string | null
   last_trade_date: string | null
   settlement_type: string | null
@@ -21,8 +21,8 @@ export type InstrumentContract = {
 export type IndexView = {
   symbol: string
   name: string
-  value: string | null
-  change_pct: string | null
+  value: number | null
+  change_pct: number | null
   source_updated_at: string | null
 }
 
@@ -33,7 +33,7 @@ export type MarketBreadthView = {
 }
 
 export type TurnoverView = {
-  amount: string | null
+  amount: number | null
   unit: string
 }
 
@@ -41,14 +41,14 @@ export type LimitEcologyView = {
   limit_up_count: number | null
   limit_down_count: number | null
   max_streak: number | null
-  broken_board_rate: string | null
+  broken_board_rate: number | null
 }
 
 export type SectorFlowView = {
   sector_code: string
   sector_name: string
-  net_inflow: string | null
-  change_pct: string | null
+  net_inflow: number | null
+  change_pct: number | null
 }
 
 export type MarketOverviewView = {
@@ -65,9 +65,9 @@ export type MarketOverviewView = {
 
 export type InstrumentDetailView = {
   instrument: InstrumentContract
-  latest_price: string | null
-  change_pct: string | null
-  turnover: string | null
+  latest_price: number | null
+  change_pct: number | null
+  turnover: number | null
   source_updated_at: string | null
   trade_date: string | null
   data_status: DataStatus
