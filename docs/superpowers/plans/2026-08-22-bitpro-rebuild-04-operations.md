@@ -333,7 +333,7 @@ git commit -m "feat(review): adapt BitPro review to A-share trading days"
 - Consumes: Watch/Signals/Monitor/Review API 和页面。
 - Produces: Wave 5 可使用的统一通知、数据状态和复盘入口。
 
-- [ ] **Step 1: 写跨页面对象链 E2E**
+- [x] **Step 1: 写跨页面对象链 E2E**
 
 ```typescript
 test('signal order trade alert and review keep one Paper lineage', async ({ page }) => {
@@ -347,19 +347,19 @@ test('signal order trade alert and review keep one Paper lineage', async ({ page
 })
 ```
 
-- [ ] **Step 2: 运行后端与页面矩阵**
+- [x] **Step 2: 运行后端与页面矩阵**
 
 Run: `python -m pytest backend/tests/test_operations_evidence_chain.py backend/tests/test_signal_watch_current_api.py backend/tests/test_monitor_current_api.py backend/tests/test_review_current_api.py -q && npm --prefix frontend run test:e2e -- --grep "signal|watch|monitor|review"`
 
 Expected: PASS。
 
-- [ ] **Step 3: 运行 safety/Paper 对账和全仓检查**
+- [x] **Step 3: 运行 safety/Paper 对账和全仓检查**
 
 Run: `python rebuild/assert_safety.py --root . --format json && python rebuild/verify_paper_continuity.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL" && ./scripts/check.sh`
 
 Expected: 全绿；61/47/23/428/681 不变。
 
-- [ ] **Step 4: 更新截图、进度并提交**
+- [x] **Step 4: 更新截图、进度并提交**
 
 ```bash
 git add frontend/tests/e2e/rebuild-operations.spec.ts scripts/check.sh docs/progress.md docs/screenshots/rebuild-wave-4-capture.json

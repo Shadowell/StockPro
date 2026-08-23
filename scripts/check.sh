@@ -55,7 +55,7 @@ echo "[check] frontend production dependency audit"
 npm --prefix "$ROOT_DIR/frontend" audit --audit-level=moderate --omit=dev
 
 echo "[check] mock operator shell, research, and mainline E2E"
-npm --prefix "$ROOT_DIR/frontend" run test:e2e:mock -- --grep "shell|home|market switches|stock pool|factor lab|strategy center|backtest console|paper dashboard|only execution mainline"
+npm --prefix "$ROOT_DIR/frontend" run test:e2e:mock -- --grep "shell|home|market switches|stock pool|factor lab|strategy center|backtest console|paper dashboard|only execution mainline|signal center audits|monitor separates lifecycle|daily review|one Paper lineage"
 
 echo "[check] diff whitespace"
 git -C "$ROOT_DIR" diff --check

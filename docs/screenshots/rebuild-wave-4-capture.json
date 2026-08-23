@@ -1,0 +1,24 @@
+{
+  "schema_version": "stockpro.rebuild-screenshot-capture.current",
+  "captured_at": "2026-08-23T19:19:11+08:00",
+  "environment": {
+    "kind": "local-isolated-worktree",
+    "branch": "codex/bitpro-a-share-rebase",
+    "database": "stockpro_bitpro_rebase_dev",
+    "production_evidence": false
+  },
+  "pages": [
+    {"route":"/signals","desktop_artifact":"frontend/output/rebuild-operations-real/signals-desktop.png","evidence":"79 signals; 97 alert delivery records; Paper lineage on every row","console_errors":0},
+    {"route":"/watch","desktop_artifact":"frontend/output/rebuild-operations-real/watch-desktop.png","narrow_artifact":"frontend/output/rebuild-operations-real/watch-mobile.png","evidence":"15 instances; 79 signals; 61 orders; 47 trades; 93 active alerts; five observation tabs","console_errors":0},
+    {"route":"/monitor","desktop_artifact":"frontend/output/rebuild-operations-real/monitor-desktop.png","narrow_artifact":"frontend/output/rebuild-operations-real/monitor-mobile.png","evidence":"15 strategy health rows; lifecycle and health state separated","console_errors":0},
+    {"route":"/review","desktop_artifact":"frontend/output/rebuild-operations-real/review-desktop.png","narrow_artifact":"frontend/output/rebuild-operations-real/review-mobile.png","evidence":"sealed 2025-01-02 review; 14 items; 14 metrics; page-load writes 0","console_errors":0}
+  ],
+  "guards": {
+    "orders_created_by_watch": 0,
+    "paper_actions_during_capture": 0,
+    "review_writes_during_capture": 0,
+    "horizontal_overflow_failures": 0,
+    "private_broker_reads": 0,
+    "paper_manifest_hash": "3646d2181a72907520e5b7ba820b39c2fe62a8cb2a5e2e3fd8158073a7a110f2"
+  }
+}

@@ -1,5 +1,17 @@
 # Progress Log
 
+## BitPro-first Wave 4：运行证据链完整验收（2026-08-23）
+
+- Signal → order/trade/risk/alert → Monitor → Review 全部使用同一 `paper_instance_id` 与 source
+  object ID；跨页 E2E 固定信号行 Paper ID 在 Monitor 中仍对应同一实例。
+- `scripts/check.sh` 已纳入信号、盯盘、监控、复盘和跨页 lineage。最终全量通过 57 个
+  Python 测试、15 个 Shell/研究/主线/运行 E2E、类型、零告警 lint、生产构建、bundle
+  budget、0 dependency vulnerabilities、diff whitespace 和安全扫描。
+- 真实隔离浏览器验收四页 desktop/390px，console errors 0、页面级溢出 0；没有点击规则
+  evaluate、信号/告警确认、复盘写动作或 Paper action，截图索引写入 Wave 4 capture。
+- Paper 15/61/47/23/428/681 最终连续性无差异；sealed 复盘三表仍为 1/14/14。Wave 4
+  未合并、推送或部署。下一步进入 Wave 5 数据、AI 与隐藏期货预留。
+
 ## BitPro-first Wave 4：A股交易日复盘（2026-08-23）
 
 - 新增当前 `/api/review` dates/list/get/assemble/save/seal/object resolve；GET 对缺失日期返回
