@@ -12,8 +12,8 @@ class SignalApplicationService:
         self.operations = OperationsApplicationService(repository)
 
     def list(self, scope: str) -> dict[str, Any]:
-        context = self.operations.watch_context(scope)
-        return {"items": context.get("signals", []), "total": len(context.get("signals", [])), "scope": scope}
+        items = [self.operations._signal(public(item)) for item in self.repository.list_signals(scope)]
+        return {"items": items, "total": len(items), "scope": scope}
 
     def detail(self, signal_id: str) -> dict[str, Any]:
         item = self.repository.get_signal(signal_id)

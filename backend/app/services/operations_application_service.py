@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any
 
 from app.domain.operations.models import AlertView, SignalView
@@ -20,6 +22,8 @@ def public(value: Any) -> Any:
 class OperationsApplicationService:
     def __init__(self, repository: OperationsRepository) -> None:
         self.repository = repository
+        self._watch_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._watch_lock = threading.Lock()
 
     @staticmethod
     def _signal(item: dict[str, Any]) -> dict[str, Any]:
@@ -51,10 +55,19 @@ class OperationsApplicationService:
         ).to_dict()
 
     def watch_context(self, scope: str = "business") -> dict[str, Any]:
-        context = public(self.repository.watch_context(scope))
-        context["signals"] = [self._signal(item) for item in context.get("signals", [])]
-        context["alerts"] = [self._alert(item) for item in context.get("alerts", [])]
-        return context
+        now = time.monotonic()
+        cached = self._watch_cache.get(scope)
+        if cached and now - cached[0] < 60:
+            return cached[1]
+        with self._watch_lock:
+            cached = self._watch_cache.get(scope)
+            if cached and time.monotonic() - cached[0] < 60:
+                return cached[1]
+            context = public(self.repository.watch_context(scope))
+            context["signals"] = [self._signal(item) for item in context.get("signals", [])]
+            context["alerts"] = [self._alert(item) for item in context.get("alerts", [])]
+            self._watch_cache[scope] = (time.monotonic(), context)
+            return context
 
     def monitor(self, scope: str = "business") -> dict[str, Any]:
         return public(self.repository.health(scope))

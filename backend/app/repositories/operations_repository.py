@@ -4,6 +4,7 @@ from typing import Any
 
 from app.services.paper_runtime_service import PaperRuntimeService
 from app.services.watch_rule_service import WatchRuleService
+from app.services.data_purpose import filter_records_for_scope, resolve_data_purpose
 
 
 class PostgresOperationsRepository:
@@ -34,6 +35,12 @@ class PostgresOperationsRepository:
         if not signal: raise ValueError("信号不存在")
         if signal.get("status") == "new": self.runtime._execute("UPDATE strategy_signals SET status='confirmed',updated_at=NOW() WHERE id=%s", (signal_id,))
         return self.get_signal(signal_id) or {}
+
+    def list_signals(self, scope: str) -> list[dict[str, Any]]:
+        rows = self.runtime._rows("""SELECT s.*,i.name AS instance_name,i.data_purpose FROM strategy_signals s JOIN paper_instances i ON i.id=s.paper_instance_id WHERE s.paper_instance_id IS NOT NULL ORDER BY s.signal_time DESC,s.id DESC LIMIT 500""")
+        for row in rows:
+            row["data_purpose"] = resolve_data_purpose(row.get("data_purpose"), row.get("instance_name"))
+        return filter_records_for_scope(rows, scope)
 
     def list_rules(self, scope: str) -> list[dict[str, Any]]: return self.rules.list_rules(scope)
     def create_rule(self, payload: dict[str, Any]) -> dict[str, Any]: return self.rules.create(payload)
