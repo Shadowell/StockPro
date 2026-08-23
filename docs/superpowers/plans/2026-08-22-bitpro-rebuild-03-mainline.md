@@ -183,7 +183,7 @@ git commit -m "feat(strategy-ui): connect BitPro catalogue to A-share strategies
 **Interfaces:**
 - Produces: configuration、jobs、logs、runs、metrics、series、orders、trades、positions、compare、matrix、Walk-forward endpoints，全部位于 `/api/backtest/*`。
 
-- [ ] **Step 1: 写诊断/完整/矩阵/Walk-forward 门控失败测试**
+- [x] **Step 1: 写诊断/完整/矩阵/Walk-forward 门控失败测试**
 
 ```python
 def test_only_full_protocol_run_can_be_paper_eligible(service):
@@ -197,18 +197,18 @@ def test_only_full_protocol_run_can_be_paper_eligible(service):
     assert full.promotion_checks
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_backtest_current_contract.py -q`
 
 Expected: FAIL，当前 Backtest Application Service 不存在。
 
-- [ ] **Step 3: 恢复 A股撮合与完整证据**
+- [x] **Step 3: 恢复 A股撮合与完整证据**
 
 保留交易日、T+1、整手、涨跌停、停牌、成本、容量、无未来数据；
 所有输入固定 snapshot/protocol/cost/strategy/pool/factor IDs 和 hash。
 
-- [ ] **Step 4: 统一 job 生命周期**
+- [x] **Step 4: 统一 job 生命周期**
 
 ```python
 @dataclass(frozen=True)
@@ -256,17 +256,17 @@ class BacktestApplicationService:
     def run_walk_forward(self, request: WalkForwardRequest) -> BacktestJobView: ...
 ```
 
-- [ ] **Step 5: 注册当前 endpoints 并迁移 worker**
+- [x] **Step 5: 注册当前 endpoints 并迁移 worker**
 
 worker 只读 PostgreSQL job；重启恢复 interrupted 状态；取消点在折叠/组合/分页之间检查。
 
-- [ ] **Step 6: 运行门控、任务和对账测试**
+- [x] **Step 6: 运行门控、任务和对账测试**
 
 Run: `python -m pytest backend/tests/test_backtest_current_contract.py backend/tests/test_backtest_job_recovery.py -q && python rebuild/verify_baseline.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL" --read-only`
 
 Expected: PASS；历史 79 个回测仍可读且未修改。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add backend/app/domain/backtest/models.py backend/app/services/ashare_backtest_engine.py backend/app/services/backtest_workbench_service.py backend/app/services/backtest_job_service.py backend/app/services/walk_forward_plan_service.py backend/app/services/backtest_application_service.py backend/app/api/endpoints/backtest.py backend/app/repositories backend/app/api/api.py backend/tests/test_backtest_current_contract.py backend/tests/test_backtest_job_recovery.py

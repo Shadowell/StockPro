@@ -110,6 +110,11 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                 "backend/app/domain/__init__.py",
                 "backend/app/services/auth_service.py",
                 "backend/app/services/__init__.py",
+                "backend/app/services/ashare_backtest_engine.py",
+                "backend/app/services/backtest_application_service.py",
+                "backend/app/services/backtest_job_service.py",
+                "backend/app/services/backtest_metrics_service.py",
+                "backend/app/services/backtest_workbench_service.py",
                 "backend/app/services/data_purpose.py",
                 "backend/app/services/dataset_snapshot_service.py",
                 "backend/app/services/factor_research_service.py",
@@ -121,11 +126,14 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                 "backend/app/services/strategy_runtime_worker.py",
                 "backend/app/services/tushare_catalog_service.py",
                 "backend/app/services/tushare_provider.py",
+                "backend/app/services/walk_forward_plan_service.py",
+                "backend/app/services/guest_access_service.py",
             }
             or relative.startswith(
                 (
                     "backend/app/api/",
                     "backend/app/domain/auth/",
+                    "backend/app/domain/backtest/",
                     "backend/app/domain/instruments/",
                     "backend/app/domain/research/",
                     "backend/app/domain/strategy/",

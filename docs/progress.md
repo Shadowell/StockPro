@@ -23,6 +23,21 @@
   `A股多股动量模板` 与当前代码状态；桌面/390px console errors 0、六张策略/Paper 表
   业务写入 0，截图人工检查通过。
 
+## BitPro-first Wave 3：A股回测证据 API（2026-08-23）
+
+- 恢复 A股日线撮合、T+1、整手、涨跌停、停牌、成本、容量、无未来数据、完整研究协议、
+  异步 job、matrix 和 Walk-forward 服务；Reference service 改为明确运行时延迟加载，GET
+  不导入/调用 Provider。
+- 新增 `PostgresBacktestRepository`、`BacktestApplicationService` 与当前 `/api/backtest/*`，
+  覆盖 configuration、79 个历史 runs、metrics/series/orders/trades/positions/logs、compare、
+  35 个 jobs、cancel/retry、matrix 和 Walk-forward。
+- 公共 configuration 移除 strategy API/migration 版本命名；quick 强制 not_evaluated，matrix
+  全 cells 强制 not_evaluated，Walk-forward folds 强制 promotion_eligible=false；full 保留完整
+  promotion checks。
+- 真实隔离库读取 79 runs 与 35 jobs，八张 backtest/Paper 表前后计数不变，Provider imports 0、
+  public version names 0；当前无 active job 时 recovery 返回 0，jobs/runs 状态分布前后相同；
+  回测门控测试与安全扫描通过。
+
 ## BitPro-first Wave 2：传统金融研究模型（2026-08-23）
 
 - 新增不可变 `InstrumentContract`，当前支持 stock/ETF/index，并为 future 保留乘数、保证金、
