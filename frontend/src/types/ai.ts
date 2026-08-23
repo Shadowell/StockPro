@@ -1,0 +1,2 @@
+export type AIConfig={provider:string;model:string;model_state:'ready'|'unavailable';execution_mode:string;quick_backtest_only:boolean;auto_paper:boolean;mock_outputs:boolean}
+export type AITask=Record<string,any>&{id:string;name:string;status:string;stage:string;stage_label:string;user_prompt:string;goal:Record<string,any>;research_config:Record<string,any>;error_message?:string|null;created_at:string;iterations?:Array<Record<string,any>>}

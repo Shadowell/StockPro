@@ -225,7 +225,7 @@ git commit -m "feat(ai): adapt BitPro research agents to A-share evidence"
 - Consumes: `/api/ai/*`、策略/回测当前合同。
 - Produces: 自动研究、策略研发、现有策略优化三个 BitPro 工作区。
 
-- [ ] **Step 1: 写 AI 页面边界失败 E2E**
+- [x] **Step 1: 写 AI 页面边界失败 E2E**
 
 ```typescript
 test('AI lab keeps BitPro workbench but cannot auto Paper', async ({ page }) => {
@@ -237,28 +237,28 @@ test('AI lab keeps BitPro workbench but cannot auto Paper', async ({ page }) => 
 })
 ```
 
-- [ ] **Step 2: 运行失败 E2E**
+- [x] **Step 2: 运行失败 E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "AI lab keeps BitPro"`
 
 Expected: FAIL，导入页面仍有数字资产模块或自动执行入口。
 
-- [ ] **Step 3: 适配三个工作区**
+- [x] **Step 3: 适配三个工作区**
 
 保留 BitPro 任务配置、迭代时间线、日志、评分、候选保存和优化对比；
 目标、快照、Universe、股票池、因子和日期全部使用 A股字段。
 
-- [ ] **Step 4: 诚实模型状态**
+- [x] **Step 4: 诚实模型状态**
 
 未配置模型时显示错误与配置入口；不显示示例输出。候选保存按钮说明仍需完整回测门控。
 
-- [ ] **Step 5: 更新文档并运行 E2E/build**
+- [x] **Step 5: 更新文档并运行 E2E/build**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "AI lab keeps BitPro" && npm --prefix frontend run build`
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add frontend/src/pages/AILab.tsx frontend/src/pages/aiLab/AutoAgentPanel.tsx frontend/src/pages/aiLab/ResearchWorkbench.tsx frontend/src/api/client.ts frontend/src/types/ai.ts frontend/tests/e2e/rebuild-ai.spec.ts docs/pages/人工智能研发.md

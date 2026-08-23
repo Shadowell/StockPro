@@ -26,6 +26,7 @@ import type { BacktestConfiguration, BacktestJobRecord, BacktestRunRecord } from
 import type { PaperInstanceDetail, PaperInstanceList } from '../types/paper';
 import type { DailyReviewView, MonitorSummary, OperationAlert, OperationSignal, WatchContext, WatchRule } from '../types/operations';
 import type { DataJob, DataStatus, DatasetRecord, ExtensionImport, SnapshotRecord } from '../types/data';
+import type { AIConfig, AITask } from '../types/ai';
 
 const API_BASE = '/api';
 
@@ -177,6 +178,16 @@ export const dataCurrentApi = {
   createJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/sync',payload),
   createQualityJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/quality/run',payload),
   stageImport: async (payload:Record<string,unknown>):Promise<ExtensionImport>=>apiClient.post('/data/exchange/imports',payload),
+};
+
+export const aiCurrentApi={
+  config:async():Promise<AIConfig>=>apiClient.get('/ai/config'),
+  tasks:async():Promise<{items:AITask[];total:number}>=>apiClient.get('/ai/tasks'),
+  task:async(id:string):Promise<AITask>=>apiClient.get(`/ai/tasks/${encodeURIComponent(id)}`),
+  create:async(payload:Record<string,unknown>):Promise<AITask>=>apiClient.post('/ai/tasks',payload),
+  start:async(id:string):Promise<AITask>=>apiClient.post(`/ai/tasks/${encodeURIComponent(id)}/start`),
+  stop:async(id:string):Promise<AITask>=>apiClient.post(`/ai/tasks/${encodeURIComponent(id)}/stop`),
+  promote:async(iterationId:string):Promise<Record<string,unknown>>=>apiClient.post(`/ai/iterations/${encodeURIComponent(iterationId)}/promote-candidate`),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

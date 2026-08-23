@@ -1,5 +1,16 @@
 # Progress Log
 
+## BitPro-first Wave 5：A股 AI 研发工作台（2026-08-23）
+
+- `/ai-lab` 已重塑为自动研究、策略研发、现有策略优化三工作区；保留任务配置、任务/迭代、
+  策略代码、quick 指标、评分和验证候选保存，不含发帖或数字资产模块。
+- 研究表单显式要求 dataset/universe/股票池/因子 snapshot ID 与日期；模型状态来自真实
+  `/api/ai/config`。当前真实状态 unavailable，页面明确不生成 mock、随机或模板结论。
+- 保存候选常驻提示“不运行完整回测、不创建 Paper”；不存在自动实盘、自动模拟或启动
+  Paper 按钮。访客不允许创建/启动任务。
+- Mock 边界 E2E、类型/lint/build通过；真实桌面/390px 三页签、unavailable 状态可见，
+  HTTP 写入/模型调用 0、console errors 0、无页面级溢出，Paper continuity 通过。
+
 ## BitPro-first Wave 5：A股 AI 研发当前合同（2026-08-23）
 
 - 新增当前 `/api/ai/config|tasks|start|stop|iterations promote-candidate` 与 PostgreSQL

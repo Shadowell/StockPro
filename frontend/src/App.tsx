@@ -2,7 +2,6 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import MainLayout from './components/MainLayout'
 import Login from './pages/Login'
-import UnavailableWorkspace, { type WorkspaceState } from './pages/rebuild/UnavailableWorkspace'
 import Home from './pages/Home'
 import Market from './pages/Market'
 import StockPools from './pages/StockPools'
@@ -15,17 +14,7 @@ import Watch from './pages/Watch'
 import Monitor from './pages/Monitor'
 import ReviewDashboard from './pages/ReviewDashboard'
 import DataManager from './pages/DataManager'
-
-
-const workspaces: Record<string, WorkspaceState> = {
-  aiLab: {
-    title: 'AI研发',
-    description: 'AI 仅生成研究候选，不直接下单；策略门禁完成后接入。',
-    ownerRoute: '/ai-lab',
-    status: 'adapting',
-  },
-}
-
+import AILab from './pages/AILab'
 
 function AppRoutes() {
   const { authEnabled, authenticated, loading } = useAuth()
@@ -54,7 +43,7 @@ function AppRoutes() {
         <Route path="monitor" element={<Monitor />} />
         <Route path="review" element={<ReviewDashboard />} />
         <Route path="data" element={<DataManager />} />
-        <Route path="ai-lab" element={<UnavailableWorkspace state={workspaces.aiLab} />} />
+        <Route path="ai-lab" element={<AILab />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
