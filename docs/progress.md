@@ -1,5 +1,17 @@
 # Progress Log
 
+## BitPro-first Wave 5：A股 AI 研发当前合同（2026-08-23）
+
+- 新增当前 `/api/ai/config|tasks|start|stop|iterations promote-candidate` 与 PostgreSQL
+  `agent_tasks/agent_iterations` Repository；不注册旧 AI/交易所/发帖入口。
+- 未配置 DashScope/Qwen 时 start 明确 failed“模型未配置”，不生成 mock、随机或模板输出。
+  配置后只向模型发送 A股当前策略合同、目标和封存 dataset/universe/pool/factor manifest。
+- 模型候选必须通过当前 AST 验证后保存为 StrategyVersion，只运行 quick replay；Evaluator
+  只用 quick 指标做 deterministic score 并标注，不产生市场预测或晋级资格。
+- promote-candidate 只接受 validation_status=valid 的已有版本；响应固定
+  `paper_created=false`、`full_backtest_created=false`。无模型、配置模型快照和 promote 门禁
+  3 项测试、安全扫描和编译通过，私有交易所调用 0。
+
 ## BitPro-first Wave 5：A股数据中心（2026-08-23）
 
 - `/data` 已恢复 BitPro 七工作区：总览、研究数据、行情覆盖、同步任务、数据源、质量、导入

@@ -163,7 +163,7 @@ git commit -m "feat(data-ui): adapt BitPro data manager to A-share trust"
 **Interfaces:**
 - Produces: `/api/ai/config`、tasks、start/stop、iterations、promote-candidate；promote 只创建/暴露已验证 StrategyVersion，不创建 Paper。
 
-- [ ] **Step 1: 写无模型/无证据/禁止自动Paper失败测试**
+- [x] **Step 1: 写无模型/无证据/禁止自动Paper失败测试**
 
 ```python
 def test_ai_failure_has_no_mock_and_no_paper(service, repositories):
@@ -180,29 +180,29 @@ def test_promote_candidate_only_exposes_valid_strategy(service, repositories):
     assert repositories.paper.created == []
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_ai_current_contract.py -q`
 
 Expected: FAIL，AI Application Service 不存在或导入 BitPro AI 仍依赖币圈/交易所状态。
 
-- [ ] **Step 3: 适配 Planner/Strategist/Backtester/Evaluator**
+- [x] **Step 3: 适配 Planner/Strategist/Backtester/Evaluator**
 
 Planner 固定 A股研究输入；Strategist 生成当前策略合同；AST 验证；Backtester 只跑 quick；
 Evaluator 只用回测指标判定，LLM 失败使用明确 deterministic evaluation 并标注，不生成市场预测。
 
-- [ ] **Step 4: 清除数字资产 AI 依赖**
+- [x] **Step 4: 清除数字资产 AI 依赖**
 
 不读取 OKX position、funding、Kairos/SuperPnL 数字资产预测、Orbit/星球发帖；
 模型仅消费 StockPro 封存证据。
 
-- [ ] **Step 5: 注册当前 API 并运行测试**
+- [x] **Step 5: 注册当前 API 并运行测试**
 
 Run: `python -m pytest backend/tests/test_ai_current_contract.py -q && python rebuild/assert_safety.py --root . --format json`
 
 Expected: PASS；私有交易所调用为 0。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/app/services/agent backend/app/services/ai_application_service.py backend/app/api/endpoints/ai.py backend/app/api/api.py backend/app/repositories backend/tests/test_ai_current_contract.py

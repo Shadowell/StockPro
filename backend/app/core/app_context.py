@@ -15,6 +15,7 @@ from app.repositories.paper_repository import PostgresPaperRepository
 from app.repositories.operations_repository import PostgresOperationsRepository
 from app.repositories.review_repository import PostgresReviewRepository
 from app.repositories.data_repository import PostgresDataRepository
+from app.repositories.ai_repository import PostgresAIRepository
 from app.repositories.protocols import Repositories
 
 
@@ -45,6 +46,7 @@ def build_app_context(
     operations_repository = PostgresOperationsRepository(database)
     review_repository = PostgresReviewRepository(database)
     data_repository = PostgresDataRepository(database)
+    ai_repository = PostgresAIRepository(database)
     return AppContext(
         settings=runtime_settings,
         repositories=Repositories(
@@ -59,6 +61,7 @@ def build_app_context(
             operations=operations_repository,
             review=review_repository,
             data=data_repository,
+            ai=ai_repository,
         ),
         clock=clock,
     )
