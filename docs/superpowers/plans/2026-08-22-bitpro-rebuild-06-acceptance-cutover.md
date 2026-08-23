@@ -34,7 +34,7 @@
 - Consumes: source tree、OpenAPI、test results、baseline/continuity manifests、screenshot index。
 - Produces: `CompletionAuditResult(passed, requirements, blockers, evidence)`、`.codex-artifacts/rebuild/completion-audit.json`。
 
-- [ ] **Step 1: 写未满足需求不能通过的失败测试**
+- [x] **Step 1: 写未满足需求不能通过的失败测试**
 
 ```python
 def test_completion_audit_fails_when_any_requirement_lacks_evidence(tmp_path):
@@ -45,13 +45,13 @@ def test_completion_audit_fails_when_any_requirement_lacks_evidence(tmp_path):
     assert result.blockers == ["PAPER-001"]
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest rebuild/tests/test_completion_audit.py -q`
 
 Expected: FAIL，审计器不存在。
 
-- [ ] **Step 3: 定义逐条需求清单**
+- [x] **Step 3: 定义逐条需求清单**
 
 `rebuild-requirements.json` 至少包含：
 
@@ -80,15 +80,15 @@ class CompletionAuditResult:
     evidence: Mapping[str, Mapping[str, object]]
 ```
 
-- [ ] **Step 4: 实现审计器**
+- [x] **Step 4: 实现审计器**
 
 审计器不把“文件存在”当作通过；每项必须引用测试结果、运行输出、manifest hash、截图索引或生产状态。缺失/unknown 均阻断。
 
-- [ ] **Step 5: 集成到 check.sh 的非生产部分**
+- [x] **Step 5: 集成到 check.sh 的非生产部分**
 
 本地检查执行审计器的 pre-deploy 模式，`DEPLOY-001` 标记 `pending_final_confirmation` 而不是伪装通过；退出码在其他必需项失败时非 0。
 
-- [ ] **Step 6: 运行测试并提交**
+- [x] **Step 6: 运行测试并提交**
 
 ```bash
 python -m pytest rebuild/tests/test_completion_audit.py -q

@@ -33,7 +33,7 @@ echo "[check] python compile"
 echo "[check] current backend and rebuild tests"
 (
   cd "$ROOT_DIR"
-  "$PYTHON" -m pytest backend/tests rebuild/tests -q
+  "$PYTHON" -m pytest backend/tests rebuild/tests -q --junitxml="$ROOT_DIR/.codex-artifacts/rebuild/backend-tests.xml"
 )
 
 echo "[check] frontend frozen install"
@@ -59,5 +59,8 @@ npm --prefix "$ROOT_DIR/frontend" run test:e2e:mock -- --grep "shell|home|market
 
 echo "[check] diff whitespace"
 git -C "$ROOT_DIR" diff --check
+
+echo "[check] evidence-backed pre-deploy completion audit"
+"$PYTHON" "$ROOT_DIR/rebuild/audit_completion.py" --mode pre-deploy --output "$ROOT_DIR/.codex-artifacts/rebuild/completion-audit.json"
 
 echo "[check] done"
