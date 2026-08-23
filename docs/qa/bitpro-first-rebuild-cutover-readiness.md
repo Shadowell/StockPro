@@ -34,7 +34,7 @@ ASHARE/FUTURE 八项必需能力均为 passed；`DEPLOY-001` 是唯一
 
 ## 验证汇总
 
-- Python：83 passed。
+- Python：84 passed（含最终部署健康探针合同）。
 - Playwright Mock 完整套件：24 passed。
 - 真实隔离 route matrix：13 路由 × 2 viewport，无请求拦截，通过。
 - TypeScript、ESLint（0 warning/error）、生产构建、bundle budget：通过。
@@ -76,6 +76,8 @@ additive migrations 后：67 strategy versions、79 backtests、15 Paper、61/47
 4. 早期诊断暴露的数据库角色已在获批后完成无中断轮换：创建继承旧对象权限的
    `stockpro_rebuild_app`，更新服务器环境，并由 Actions run `32646230741` 重部署当前 main；
    生产活动连接已切换，新旧健康均通过，旧 `stockpro_app` 已设为 `NOLOGIN` 并更换随机密码。
+5. PR 创建后的快速审阅发现部署脚本仍探测旧 `/api/health/health`；已改为唯一当前
+   `/api/health`，补充部署合同测试，并重新完成 84 Python / 24 Playwright / completion audit。
 
 ## 获批后的生产流程
 

@@ -1,5 +1,12 @@
 # Progress Log
 
+## PR #4 合并前部署探针修复（2026-08-23）
+
+- 快速 pre-landing review 发现 `deploy/deploy.sh` 内外健康检查仍使用旧
+  `/api/health/health`，会使新应用部署在健康门禁阶段失败。
+- 已统一为当前 `/api/health` 并新增部署合同测试；`bash -n`、84 Python、24 Mock E2E、
+  build/lint/bundle/audit 和 completion audit 全绿。修复提交后更新 PR，不绕过远端流程。
+
 ## 生产切换：数据库凭据无中断轮换（2026-08-23）
 
 - 获得最终迁移授权后，创建 `stockpro_rebuild_app` 并继承旧对象所有者权限；服务器 `.env`
