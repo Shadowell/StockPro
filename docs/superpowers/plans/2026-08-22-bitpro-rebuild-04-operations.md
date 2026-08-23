@@ -110,7 +110,7 @@ git commit -m "feat(operations): unify PostgreSQL runtime evidence"
 **Interfaces:**
 - Produces: `/api/signals`、signal detail/acknowledge；`/api/watch/context`、alerts、rules、preview、evaluate。
 
-- [ ] **Step 1: 写 alert-only 门禁失败测试**
+- [x] **Step 1: 写 alert-only 门禁失败测试**
 
 ```python
 def test_rule_preview_is_readonly_and_evaluate_never_orders(client, repository):
@@ -124,28 +124,28 @@ def test_rule_preview_is_readonly_and_evaluate_never_orders(client, repository):
     assert after.trades == before.trades
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_signal_watch_current_api.py -q`
 
 Expected: FAIL，当前 endpoints 不存在。
 
-- [ ] **Step 3: 恢复四类版本化规则**
+- [x] **Step 3: 恢复四类版本化规则**
 
 策略、指标、价格、异动规则使用严格字段/操作符 allowlist；更新创建新版本；
 preview 零写入；evaluate 只写 alerts 和 in-app delivery，并去重。
 
-- [ ] **Step 4: 实现信号审计和确认**
+- [x] **Step 4: 实现信号审计和确认**
 
 确认只更新状态/确认人/时间；原 signal、payload、evidence、source IDs 保留。
 
-- [ ] **Step 5: 注册当前 API 并运行测试**
+- [x] **Step 5: 注册当前 API 并运行测试**
 
 Run: `python -m pytest backend/tests/test_signal_watch_current_api.py backend/tests/test_operations_evidence_chain.py -q && python rebuild/verify_paper_continuity.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL"`
 
 Expected: PASS；Paper ledger 无变化。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/app/services/watch_rule_service.py backend/app/services/signal_application_service.py backend/app/api/endpoints/signals.py backend/app/api/endpoints/watch.py backend/app/api/api.py backend/tests/test_signal_watch_current_api.py

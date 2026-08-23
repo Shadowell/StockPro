@@ -1,5 +1,17 @@
 # Progress Log
 
+## BitPro-first Wave 4：当前信号与 Alert-only 盯盘 API（2026-08-23）
+
+- 新增唯一当前 `/api/signals*` 与 `/api/watch/*`，覆盖信号目录/详情/确认、统一运行上下文、
+  告警确认、规则目录/创建新版本/preview/evaluate；没有旧路由或实盘执行端点。
+- 恢复 strategy/indicator/price/abnormal 四类规则及字段/操作符 allowlist。规则更新只创建
+  新版本；preview 零写入；evaluate 只允许幂等新增 alert 与 in_app delivery，响应强制
+  `orders_created=0`，并保留命中 signal 的 Paper ID。
+- 信号确认只把 `new` 更新为 `confirmed` 并保留 payload/evidence/source/Paper lineage；访客
+  只能读取，信号/告警确认、规则创建/版本和 evaluate 均为管理员动作。
+- 真实隔离库读取 79 个信号和 1 条非系统最新规则，preview `writes_performed=false`；没有在
+  真实库执行 evaluate。API/同源链测试、安全扫描和 Paper continuity 全部通过。
+
 ## BitPro-first Wave 4：统一 PostgreSQL 运行证据模型（2026-08-23）
 
 - 新增 Operations domain、`PostgresOperationsRepository` 和 `OperationsApplicationService`，
