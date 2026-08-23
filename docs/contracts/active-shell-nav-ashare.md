@@ -1,6 +1,6 @@
 # Sprint Contract: Align StockPro shell nav with BitPro IA
 
-- Status: in progress
+- Status: implemented; local type/lint/build and mock shell E2E passed
 - Issues: #14 (required), #11 (included: package rename + quarantine unused crypto pages)
 - Branch: `cursor/align-shell-nav-f0a5`
 

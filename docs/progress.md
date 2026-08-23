@@ -11,6 +11,10 @@
   `live_diagnostic`。
 - #11：`frontend` 包名改为 `stockpro-frontend`；删除未路由的 Arbitrage / Onchain / Arc /
   liveTrading / Trading / WatchMarket 页面。
+- 本地验证：`tsc` / lint 0 warning / production build / bundle budget、rebuild safety
+  `active=0 quarantined=54`、mock Playwright shell/home/market/paper/futures/capabilities/
+  final-state-matrix 全部通过。`./scripts/check.sh` 因本环境缺少隔离库 `DATABASE_URL`
+  与 backend venv 未跑全量。
 
 ## BitPro-first A股整仓迁移完成（2026-08-23）
 

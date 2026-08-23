@@ -70,21 +70,22 @@ test('shell remains mounted and only approved A-share routes are visible', async
 test('legacy crypto and live deep links stay unavailable instead of live', async ({ page }) => {
   await page.goto('/arbitrage')
   await expect(page.getByTestId('main-layout')).toBeVisible()
-  await expect(page.getByTestId('unavailable-workspace')).toBeVisible()
+  const unavailable = page.getByTestId('unavailable-workspace')
+  await expect(unavailable).toBeVisible()
   await expect(page.getByRole('heading', { name: '套利中心' })).toBeVisible()
-  await expect(page.getByText('不在 A股 Paper MVP')).toBeVisible()
+  await expect(unavailable).toContainText('明确标记为不可用')
   await expect(page).toHaveURL(/\/arbitrage$/)
 
   await page.goto('/onchain')
   await expect(page.getByRole('heading', { name: '链上研究' })).toBeVisible()
-  await expect(page.getByText('继续属于 BitPro')).toBeVisible()
+  await expect(page.getByTestId('unavailable-workspace')).toContainText('继续属于 BitPro')
 
   await page.goto('/arc')
   await expect(page.getByRole('heading', { name: 'ARC Console' })).toBeVisible()
 
   await page.goto('/live')
   await expect(page.getByRole('heading', { name: '实盘工作台' })).toBeVisible()
-  await expect(page.getByText('现金账本')).toBeVisible()
+  await expect(page.getByTestId('unavailable-workspace')).toContainText('现金账本')
   await expect(page.getByRole('navigation').getByText('实盘', { exact: true })).toHaveCount(0)
 })
 
