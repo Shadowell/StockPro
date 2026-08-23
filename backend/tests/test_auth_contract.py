@@ -93,6 +93,10 @@ def _client(monkeypatch, repository: FakeAuthRepository | None = None) -> tuple[
 def test_current_auth_contract(monkeypatch) -> None:
     client, repository = _client(monkeypatch)
 
+    anonymous = client.get("/api/auth/me")
+    assert anonymous.status_code == 200
+    assert anonymous.json()["authenticated"] is False
+
     admin = client.post(
         "/api/auth/admin/login",
         json={"username": "admin", "password": "secret"},

@@ -56,11 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const next = normalizeSession(await authApi.me());
       setSession(next);
-      if (next.authEnabled && !next.authenticated) {
-        setMessage('登录态已过期或被撤销，请重新登录。');
-      } else {
-        setMessage('');
-      }
+      setMessage('');
       return next;
     } catch (error: any) {
       setSession(DEFAULT_SESSION);

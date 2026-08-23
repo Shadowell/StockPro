@@ -48,3 +48,38 @@ def create_auth_dependency(
         return profile
 
     return require_authenticated
+
+
+def create_optional_auth_dependency(
+    context: AppContext,
+) -> Callable[..., AuthProfile | None]:
+    service = AuthService(context)
+
+    def resolve_optional(
+        request: Request,
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_BEARER)],
+    ) -> AuthProfile | None:
+        if not bool(getattr(context.settings, "AUTH_ENABLED", True)):
+            return AuthProfile(
+                role="admin",
+                username=str(getattr(context.settings, "ADMIN_USERNAME", "admin")),
+                permissions=("read", "write", "admin"),
+                session_id="auth-disabled",
+                expires_at="",
+            )
+        token = ""
+        if credentials is not None and credentials.scheme.lower() == "bearer":
+            token = credentials.credentials
+        if not token:
+            cookie_name = str(
+                getattr(context.settings, "AUTH_COOKIE_NAME", "stockpro_session")
+            )
+            token = str(request.cookies.get(cookie_name) or "")
+        if not token:
+            return None
+        try:
+            return service.resolve(token)
+        except AuthError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+
+    return resolve_optional

@@ -1,12 +1,11 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { KeyRound, LockKeyhole, LogIn, ShieldCheck } from 'lucide-react';
+import { KeyRound, LockKeyhole, LogIn, ShieldCheck, TrendingUp } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../auth/AuthProvider';
-import { BitProLogo } from '../components/BitProLogo';
 
 type LoginMode = 'guest' | 'admin';
 
-const DEFAULT_ADMIN_USERNAME = 'Shadowell';
+const DEFAULT_ADMIN_USERNAME = 'admin';
 const AUTO_GUEST_INVITE_PARAM_NAMES = ['invite', 'guest_code'];
 
 function readAutoGuestInviteCode(): string {
@@ -81,10 +80,12 @@ export default function Login() {
       <div className="grid min-h-screen lg:grid-cols-[minmax(420px,0.88fr)_minmax(520px,1.12fr)]">
         <section className="hidden border-r border-crypto-border bg-[#0A0F16] px-10 py-10 lg:flex lg:flex-col">
           <div className="flex items-center gap-3">
-            <BitProLogo className="h-12 w-12" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-300">
+              <TrendingUp className="h-6 w-6" />
+            </div>
             <div>
-              <div className="text-lg font-semibold tracking-wide text-white">BitPro</div>
-              <div className="text-xs text-gray-500">量化研究与模拟执行工作台</div>
+              <div className="text-lg font-semibold tracking-wide text-white">StockPro</div>
+              <div className="text-xs text-gray-500">A股量化研究、回测与模拟工作台</div>
             </div>
           </div>
 
@@ -95,7 +96,7 @@ export default function Login() {
                 访客入口
               </div>
               <p className="text-sm leading-6 text-gray-400">
-                临时邀请码默认 1 小时有效，可查看核心研究页面并发起受配额保护的回测。
+                临时邀请码按服务端有效期授权，可查看研究页面并发起受配额保护的回测。
               </p>
             </div>
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.05] p-5">
@@ -104,7 +105,7 @@ export default function Login() {
                 管理员入口
               </div>
               <p className="text-sm leading-6 text-gray-400">
-                管理员可访问全站、生成邀请码、管理配置与高风险操作入口。
+                管理员可访问当前工作区，并管理研究配置与授权操作。
               </p>
             </div>
           </div>
@@ -121,7 +122,7 @@ export default function Login() {
                   <LockKeyhole className="h-4 w-4" />
                   安全访问
                 </div>
-                <h1 className="mt-2 text-2xl font-bold text-white">登录 BitPro</h1>
+                <h1 className="mt-2 text-2xl font-bold text-white">登录 StockPro</h1>
                 <p className="mt-2 text-sm leading-6 text-gray-500">
                   使用访客邀请码进入只读研究模式，或使用管理员账号进入完整工作台。
                 </p>
@@ -161,7 +162,7 @@ export default function Login() {
                   <input
                     value={code}
                     onChange={(event) => setCode(event.target.value)}
-                    placeholder="BP-XXXXXXXX"
+                    placeholder="请输入临时邀请码"
                     autoFocus
                     className="h-12 w-full rounded-xl border border-crypto-border bg-crypto-bg pl-10 pr-3 text-sm font-semibold text-white outline-none transition-colors placeholder:text-gray-700 focus:border-blue-500/70"
                   />

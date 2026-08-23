@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.core.admin_auth import create_auth_dependency
+from app.core.admin_auth import create_auth_dependency, create_optional_auth_dependency
 from app.core.app_context import AppContext
 from app.domain.auth.models import AuthProfile
 from app.services.auth_service import AuthError, AuthService, auth_response
@@ -56,6 +56,7 @@ def create_auth_router(context: AppContext) -> APIRouter:
     router = APIRouter()
     service = AuthService(context)
     require_authenticated = create_auth_dependency(context)
+    resolve_optional = create_optional_auth_dependency(context)
     limiter = AuthAttemptLimiter()
 
     def attempt_key(request: Request, flow: str) -> str:
@@ -105,8 +106,15 @@ def create_auth_router(context: AppContext) -> APIRouter:
 
     @router.get("/me")
     async def me(
-        profile: AuthProfile = Depends(require_authenticated),
+        profile: AuthProfile | None = Depends(resolve_optional),
     ) -> dict[str, object]:
+        if profile is None:
+            return {
+                "auth_enabled": True,
+                "authenticated": False,
+                "role": None,
+                "permissions": [],
+            }
         return _profile_payload(profile)
 
     @router.post("/logout")
