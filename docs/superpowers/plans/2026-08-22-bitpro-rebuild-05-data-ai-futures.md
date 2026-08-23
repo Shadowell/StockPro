@@ -280,7 +280,7 @@ git commit -m "feat(ai-ui): adapt BitPro AI workbench to A-share research"
 **Interfaces:**
 - Produces: `InstrumentAdapter` Protocol、`AshareCashAdapter`；只声明 `CnFuturesCtpAdapter` 和 `UsFuturesBrokerAdapter` 接口，不提供实现或路由。
 
-- [ ] **Step 1: 写表结构和隐藏入口失败测试**
+- [x] **Step 1: 写表结构和隐藏入口失败测试**
 
 ```python
 def test_future_contract_accepts_real_metadata_without_defaults():
@@ -303,18 +303,18 @@ test('futures remains hidden until a separate contract ships', async ({ page }) 
 })
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_futures_reservation.py -q && npm --prefix frontend run test:e2e -- --grep "futures remains hidden"`
 
 Expected: FAIL，instrument schema/hidden route 合同尚未实现。
 
-- [ ] **Step 3: 添加 additive instrument 表**
+- [x] **Step 3: 添加 additive instrument 表**
 
 迁移创建 `instrument_definitions`，字段与设计合同一致；唯一键为 `(market, exchange, symbol)`；
 当前证券通过显式 backfill 映射 stock/ETF/index，期货字段保持 null。迁移不得修改现有证券/行情表。
 
-- [ ] **Step 4: 定义 adapter Protocol**
+- [x] **Step 4: 定义 adapter Protocol**
 
 ```python
 @dataclass(frozen=True)
@@ -351,17 +351,17 @@ class UsFuturesBrokerAdapter(InstrumentAdapter, Protocol):
 
 本 Wave 只实例化 `AshareCashAdapter`；期货 Protocol 无 provider、credential、network 方法实现。
 
-- [ ] **Step 5: 隐藏所有期货入口**
+- [x] **Step 5: 隐藏所有期货入口**
 
 不注册 `/futures` 页面和 API；导航无期货；访问路径回首页。测试不得通过 feature flag 临时打开。
 
-- [ ] **Step 6: 运行迁移、模型、页面和安全测试**
+- [x] **Step 6: 运行迁移、模型、页面和安全测试**
 
 Run: `python -m pytest backend/tests/test_futures_reservation.py -q && npm --prefix frontend run test:e2e -- --grep "futures remains hidden" && python rebuild/assert_safety.py --root . --format json`
 
 Expected: PASS，迁移数为 38，数字资产/实盘/期货执行计数为 0。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add backend/postgres/migrations/202608220001_instrument_contract.sql backend/app/domain/instruments backend/tests/test_futures_reservation.py frontend/src/App.tsx frontend/src/components/MainLayout.tsx frontend/tests/e2e/rebuild-futures-hidden.spec.ts

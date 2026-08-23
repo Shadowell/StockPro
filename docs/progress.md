@@ -1,5 +1,16 @@
 # Progress Log
 
+## BitPro-first Wave 5：隐藏期货领域预留（2026-08-23）
+
+- 新增第 38 个 additive migration `instrument_definitions`，唯一键为 market/exchange/symbol，
+  支持 stock/ETF/index/future 的真实元数据字段；非期货记录由 CHECK 禁止填写期货字段。
+- 隔离库显式回填 5,550 个现有股票和 4 个指数；当前权威 security_master/行情缓存没有 ETF
+  记录，因此 ETF 为零而不是伪造。期货记录为 0，所有期货元数据保持等待真实数据源。
+- 新增 `InstrumentAdapter`、`AshareCashAdapter`、CN/US Futures Protocol；只实例化 A股现金
+  适配器。期货 Protocol 没有 Provider、credential、network 或 execution 实现。
+- `/futures` 不注册并回首页，导航无期货；模型/隐藏入口/安全测试通过。迁移修正真实
+  `SH_/SZ_/BJ_` 代码格式后重放，新表之外未改原证券/行情表，Paper 前后连续性通过。
+
 ## BitPro-first Wave 5：A股 AI 研发工作台（2026-08-23）
 
 - `/ai-lab` 已重塑为自动研究、策略研发、现有策略优化三工作区；保留任务配置、任务/迭代、
