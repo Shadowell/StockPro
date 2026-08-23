@@ -59,3 +59,14 @@ export type MonitorSummary = Record<string, any> & {
   source_label: string
   source_updated_at: string | null
 }
+
+export type DailyReviewView = {
+  review: (Record<string, any> & { id: string; trade_date: string; status: 'draft' | 'sealed'; summary?: string | null; next_day_plan?: string | null }) | null
+  trade_date: string
+  status: 'missing' | 'draft' | 'sealed'
+  items: Array<Record<string, any>>
+  metrics: Array<Record<string, any>>
+  counts: Record<string, number>
+  source_manifest_hash?: string | null
+  writes_performed: boolean
+}

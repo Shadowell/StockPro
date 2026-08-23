@@ -281,7 +281,7 @@ git commit -m "feat(monitor): adapt BitPro health console to Paper evidence"
 **Interfaces:**
 - Produces: `/api/review/dates`、`/api/review/{trade_date}`、assemble、save、seal、object link；`DailyReviewView`。
 
-- [ ] **Step 1: 写读取不组装与封存不可变失败测试**
+- [x] **Step 1: 写读取不组装与封存不可变失败测试**
 
 ```python
 def test_review_get_is_readonly_and_sealed_review_is_immutable(client, repository):
@@ -294,27 +294,27 @@ def test_review_get_is_readonly_and_sealed_review_is_immutable(client, repositor
         assert client.put("/api/review/2025-01-02", json={"summary": "change"}, headers=admin_headers()).status_code == 400
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_review_current_api.py -q`
 
 Expected: FAIL，Review Service/Router 不存在。
 
-- [ ] **Step 3: 恢复交易日组装和封存**
+- [x] **Step 3: 恢复交易日组装和封存**
 
 市场、股票池、策略、风险、订单、成交、表现对象保留 source route/ID/hash；assemble 是显式 POST，save/seal 管理员限定。
 
-- [ ] **Step 4: 适配 BitPro ReviewDashboard**
+- [x] **Step 4: 适配 BitPro ReviewDashboard**
 
 保留 KPI、排名、热力图、结论和筛选密度；将小时级币圈复盘替换为 A股交易日 Snapshot、证据时间线、总结和次日计划。
 
-- [ ] **Step 5: 运行 API/E2E 与历史复盘验证**
+- [x] **Step 5: 运行 API/E2E 与历史复盘验证**
 
 Run: `python -m pytest backend/tests/test_review_current_api.py -q && npm --prefix frontend run test:e2e -- --grep "daily review"`
 
 Expected: PASS；现有 1 份复盘可读取且未变化。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/app/services/daily_review_service.py backend/app/services/review_application_service.py backend/app/api/endpoints/review.py backend/app/api/api.py backend/tests/test_review_current_api.py frontend/src/pages/ReviewDashboard.tsx frontend/tests/e2e/rebuild-review.spec.ts docs/pages/复盘中心.md

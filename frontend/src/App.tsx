@@ -13,15 +13,10 @@ import Paper from './pages/Paper'
 import SignalCenter from './pages/SignalCenter'
 import Watch from './pages/Watch'
 import Monitor from './pages/Monitor'
+import ReviewDashboard from './pages/ReviewDashboard'
 
 
 const workspaces: Record<string, WorkspaceState> = {
-  review: {
-    title: '复盘',
-    description: '保留既有复盘记录，来源证据通过后恢复编辑。',
-    ownerRoute: '/review',
-    status: 'adapting',
-  },
   data: {
     title: '数据',
     description: 'TuShare、质量报告与安全导入导出将在数据 Wave 接入。',
@@ -62,7 +57,7 @@ function AppRoutes() {
         <Route path="watch" element={<Watch />} />
         <Route path="signals" element={<SignalCenter />} />
         <Route path="monitor" element={<Monitor />} />
-        <Route path="review" element={<UnavailableWorkspace state={workspaces.review} />} />
+        <Route path="review" element={<ReviewDashboard />} />
         <Route path="data" element={<UnavailableWorkspace state={workspaces.data} />} />
         <Route path="ai-lab" element={<UnavailableWorkspace state={workspaces.aiLab} />} />
         <Route path="*" element={<Navigate to="/" replace />} />

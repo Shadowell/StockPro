@@ -134,6 +134,8 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                 "backend/app/services/signal_application_service.py",
                 "backend/app/services/watch_rule_service.py",
                 "backend/app/services/monitor_application_service.py",
+                "backend/app/services/daily_review_service.py",
+                "backend/app/services/review_application_service.py",
             }
             or relative.startswith(
                 (

@@ -24,7 +24,7 @@ import type {
 import type { StrategyValidationResult, StrategyVersionRecord } from '../types/strategy';
 import type { BacktestConfiguration, BacktestJobRecord, BacktestRunRecord } from '../types/backtest';
 import type { PaperInstanceDetail, PaperInstanceList } from '../types/paper';
-import type { MonitorSummary, OperationAlert, OperationSignal, WatchContext, WatchRule } from '../types/operations';
+import type { DailyReviewView, MonitorSummary, OperationAlert, OperationSignal, WatchContext, WatchRule } from '../types/operations';
 
 const API_BASE = '/api';
 
@@ -153,6 +153,15 @@ export const operationsCurrentApi = {
 
 export const monitorCurrentApi = {
   summary: async (scope: 'business' | 'audit' = 'business'): Promise<MonitorSummary> => apiClient.get('/monitor/summary', { params: { scope } }),
+};
+
+export const reviewCurrentApi = {
+  dates: async (limit = 120): Promise<{ items: string[]; total: number }> => apiClient.get('/review/dates', { params: { limit } }),
+  list: async (limit = 100): Promise<{ items: Array<Record<string, any>>; total: number }> => apiClient.get('/review', { params: { limit } }),
+  get: async (tradeDate: string): Promise<DailyReviewView> => apiClient.get(`/review/${encodeURIComponent(tradeDate)}`),
+  assemble: async (tradeDate: string): Promise<DailyReviewView> => apiClient.post(`/review/${encodeURIComponent(tradeDate)}/assemble`),
+  save: async (tradeDate: string, payload: { summary: string; next_day_plan: string }): Promise<DailyReviewView> => apiClient.put(`/review/${encodeURIComponent(tradeDate)}`, payload),
+  seal: async (tradeDate: string): Promise<DailyReviewView> => apiClient.post(`/review/${encodeURIComponent(tradeDate)}/seal`),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

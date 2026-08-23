@@ -1,5 +1,16 @@
 # Progress Log
 
+## BitPro-first Wave 4：A股交易日复盘（2026-08-23）
+
+- 新增当前 `/api/review` dates/list/get/assemble/save/seal/object resolve；GET 对缺失日期返回
+  missing 空态，对已有复盘只读 stored items/metrics，不隐式组装。
+- 显式 assemble 只从市场/股票池/策略/风险/订单/成交/Paper 权益对象构造 source ID、route、
+  evidence hash；save/seal 管理员限定，PostgreSQL trigger 保证 sealed 父子证据不可修改。
+- BitPro 复盘页适配为 A股交易日 Snapshot、量化指标、复盘结论/次日计划和证据时间线；
+  sealed 输入只读，missing 日期明确提供显式组装入口。
+- 真实读取既有 `2025-01-02` sealed 复盘：14 items、14 metrics；页面前后 daily review
+  三表保持 1/14/14，HTTP 写请求 0、console errors 0、390px 无溢出，Paper continuity 通过。
+
 ## BitPro-first Wave 4：Paper 证据监控台（2026-08-23）
 
 - 新增当前 `/api/monitor/summary|strategies|data|risk|notifications`，基于 PostgreSQL 最新
