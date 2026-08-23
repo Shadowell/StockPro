@@ -1,5 +1,16 @@
 # Progress Log
 
+## BitPro-first Wave 5：A股数据中心（2026-08-23）
+
+- `/data` 已恢复 BitPro 七工作区：总览、研究数据、行情覆盖、同步任务、数据源、质量、导入
+  导出；真实显示 10 数据集、686,840 发布记录、28 封存快照和 restricted Provider。
+- 数据集表展示主源/整类回退/分区/记录/Watermark，来源授权展示 permission/cache/export
+  policy；质量和任务保留完整错误/状态证据，缺失值不造 0。
+- 导入导出页常驻“仅暂存 · 未映射”边界，管理员可选择 CSV/JSON/XLSX；访客不显示上传。
+  页面加载没有 Provider、同步、质量、迁移、封存或扩展写入。
+- Mock 七区 E2E、类型、零告警 lint、生产构建通过。真实桌面/390px 七标签可见，GET 写入 0、
+  console errors 0、根页面无溢出，Paper continuity 通过。
+
 ## BitPro-first Wave 5：PostgreSQL 数据可信度 API（2026-08-23）
 
 - 新增当前 `/api/data/*` status/datasets/snapshots/providers/schedules/jobs/quality/exchange；GET

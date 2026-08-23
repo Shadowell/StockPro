@@ -14,15 +14,10 @@ import SignalCenter from './pages/SignalCenter'
 import Watch from './pages/Watch'
 import Monitor from './pages/Monitor'
 import ReviewDashboard from './pages/ReviewDashboard'
+import DataManager from './pages/DataManager'
 
 
 const workspaces: Record<string, WorkspaceState> = {
-  data: {
-    title: '数据',
-    description: 'TuShare、质量报告与安全导入导出将在数据 Wave 接入。',
-    ownerRoute: '/data',
-    status: 'adapting',
-  },
   aiLab: {
     title: 'AI研发',
     description: 'AI 仅生成研究候选，不直接下单；策略门禁完成后接入。',
@@ -58,7 +53,7 @@ function AppRoutes() {
         <Route path="signals" element={<SignalCenter />} />
         <Route path="monitor" element={<Monitor />} />
         <Route path="review" element={<ReviewDashboard />} />
-        <Route path="data" element={<UnavailableWorkspace state={workspaces.data} />} />
+        <Route path="data" element={<DataManager />} />
         <Route path="ai-lab" element={<UnavailableWorkspace state={workspaces.aiLab} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -25,6 +25,7 @@ import type { StrategyValidationResult, StrategyVersionRecord } from '../types/s
 import type { BacktestConfiguration, BacktestJobRecord, BacktestRunRecord } from '../types/backtest';
 import type { PaperInstanceDetail, PaperInstanceList } from '../types/paper';
 import type { DailyReviewView, MonitorSummary, OperationAlert, OperationSignal, WatchContext, WatchRule } from '../types/operations';
+import type { DataJob, DataStatus, DatasetRecord, ExtensionImport, SnapshotRecord } from '../types/data';
 
 const API_BASE = '/api';
 
@@ -162,6 +163,20 @@ export const reviewCurrentApi = {
   assemble: async (tradeDate: string): Promise<DailyReviewView> => apiClient.post(`/review/${encodeURIComponent(tradeDate)}/assemble`),
   save: async (tradeDate: string, payload: { summary: string; next_day_plan: string }): Promise<DailyReviewView> => apiClient.put(`/review/${encodeURIComponent(tradeDate)}`, payload),
   seal: async (tradeDate: string): Promise<DailyReviewView> => apiClient.post(`/review/${encodeURIComponent(tradeDate)}/seal`),
+};
+
+export const dataCurrentApi = {
+  status: async ():Promise<DataStatus>=>apiClient.get('/data/status'),
+  datasets: async ():Promise<{items:DatasetRecord[];total:number}>=>apiClient.get('/data/datasets'),
+  snapshots: async ():Promise<{items:SnapshotRecord[];total:number}>=>apiClient.get('/data/snapshots'),
+  providers: async ():Promise<{items:Array<Record<string,any>>;total:number;provider_calls_performed:number}>=>apiClient.get('/data/providers'),
+  schedules: async ():Promise<{items:Array<Record<string,any>>;total:number}>=>apiClient.get('/data/schedules'),
+  jobs: async ():Promise<{items:DataJob[];total:number}>=>apiClient.get('/data/jobs'),
+  quality: async ():Promise<{items:Array<Record<string,any>>;total:number}>=>apiClient.get('/data/quality'),
+  imports: async ():Promise<{items:ExtensionImport[];total:number}>=>apiClient.get('/data/exchange/imports'),
+  createJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/sync',payload),
+  createQualityJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/quality/run',payload),
+  stageImport: async (payload:Record<string,unknown>):Promise<ExtensionImport>=>apiClient.post('/data/exchange/imports',payload),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

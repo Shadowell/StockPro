@@ -106,7 +106,7 @@ git commit -m "feat(data): restore PostgreSQL data trust contract"
 - Consumes: `/api/data/*`。
 - Produces: BitPro 数据总览、覆盖、任务、数据源、质量、导入导出工作区。
 
-- [ ] **Step 1: 写数据状态和写操作失败 E2E**
+- [x] **Step 1: 写数据状态和写操作失败 E2E**
 
 ```typescript
 test('data center separates cache snapshot provider and staged exchange', async ({ page }) => {
@@ -121,28 +121,28 @@ test('data center separates cache snapshot provider and staged exchange', async 
 })
 ```
 
-- [ ] **Step 2: 运行失败 E2E**
+- [x] **Step 2: 运行失败 E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "data center separates"`
 
 Expected: FAIL，BitPro DataManager 仍显示文件 K线/币对语义或缺工作区。
 
-- [ ] **Step 3: 保留 BitPro DataManager 信息密度**
+- [x] **Step 3: 保留 BitPro DataManager 信息密度**
 
 保留总览 KPI、覆盖表、任务详情、计划弹窗、symbol维护和错误状态；
 替换为 A股数据集、封存快照、TuShare/AKShare目录、质量与扩展交换。
 
-- [ ] **Step 4: 管理员/访客边界**
+- [x] **Step 4: 管理员/访客边界**
 
 访客可查看状态、覆盖、任务、来源和导出；同步、封存、质量执行、上传、删除和计划修改按钮禁用并由 client 拒绝。
 
-- [ ] **Step 5: 更新页面合同并运行桌面/移动端**
+- [x] **Step 5: 更新页面合同并运行桌面/移动端**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "data center separates" && npm --prefix frontend run build`
 
 Expected: PASS；大表可横向滚动但页面根无溢出。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add frontend/src/pages/DataManager.tsx frontend/src/pages/data frontend/src/types/data.ts frontend/src/api/client.ts frontend/tests/e2e/rebuild-data.spec.ts docs/pages/数据中心.md
