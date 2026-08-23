@@ -236,7 +236,7 @@ git commit -m "feat(home): adapt BitPro dashboard to A-share evidence"
 - Consumes: market instrument/search/chart/order-book/watchlist APIs。
 - Produces: 股票/ETF/指数的 BitPro 行情工作台。
 
-- [ ] **Step 1: 写搜索、图表和空态失败测试**
+- [x] **Step 1: 写搜索、图表和空态失败测试**
 
 ```typescript
 test('market switches among stock ETF and index without crypto controls', async ({ page }) => {
@@ -250,32 +250,32 @@ test('market switches among stock ETF and index without crypto controls', async 
 })
 ```
 
-- [ ] **Step 2: 运行失败 E2E**
+- [x] **Step 2: 运行失败 E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "market switches"`
 
 Expected: FAIL，BitPro CryptoSelect/合约控制仍存在。
 
-- [ ] **Step 3: 替换 instrument selector**
+- [x] **Step 3: 替换 instrument selector**
 
 `SymbolSearch` 按 `asset_class` 显示股票/ETF/指数；保留 BitPro 搜索弹层、键盘导航和最近对象。
 
-- [ ] **Step 4: 适配 K线、盘口和证据栏**
+- [x] **Step 4: 适配 K线、盘口和证据栏**
 
 K线显示研究截止日、复权口径；盘口使用未复权可交易价。缓存冲突时显示冲突面板，
 不合成统一价格。指数无盘口时显示明确不可用。
 
-- [ ] **Step 5: 接入自选与指数二级页**
+- [x] **Step 5: 接入自选与指数二级页**
 
 自选只保存代码/备注；指数复用指数缓存。所有 tab 通过 URL 保存状态。
 
-- [ ] **Step 6: 更新文档并运行真实/Mock E2E**
+- [x] **Step 6: 更新文档并运行真实/Mock E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "market switches" && npm --prefix frontend run build`
 
 Expected: PASS，无币圈字段和假数据。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add frontend/src/pages/Market.tsx frontend/src/components/KlineChart.tsx frontend/src/components/OrderBookChart.tsx frontend/src/components/SymbolSearch.tsx frontend/src/components/MarketWatchlist.tsx frontend/tests/e2e/rebuild-market.spec.ts docs/pages/行情.md

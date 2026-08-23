@@ -34,7 +34,7 @@ if (initialRaw > limits.initialRaw) failures.push(`首屏 JS ${initialRaw} > ${l
 if (initialGzip > limits.initialGzip) failures.push(`首屏 gzip JS ${initialGzip} > ${limits.initialGzip} bytes`)
 
 for (const item of sizes) {
-  if (item.name.startsWith('vendor-charts-')) {
+  if (item.name.startsWith('vendor-charts-') || item.name.startsWith('charts-')) {
     if (item.raw > limits.chartsRaw) failures.push(`${item.name} ${item.raw} > ${limits.chartsRaw} bytes`)
     if (item.gzip > limits.chartsGzip) failures.push(`${item.name} gzip ${item.gzip} > ${limits.chartsGzip} bytes`)
     continue

@@ -8,7 +8,14 @@ import type {
   FundingOpportunity,
   Strategy,
 } from '../types';
-import type { MarketOverviewView } from '../types/research';
+import type {
+  DailyBarsResponse,
+  InstrumentContract,
+  InstrumentDetailView,
+  MarketOverviewView,
+  MarketWatchlistEntry,
+  OrderBookView,
+} from '../types/research';
 
 const API_BASE = '/api';
 
@@ -38,6 +45,24 @@ const api = apiClient;
 export const researchApi = {
   marketOverview: async (): Promise<MarketOverviewView> =>
     apiClient.get<MarketOverviewView, MarketOverviewView>('/market/overview'),
+  searchInstruments: async (
+    query: string,
+    assetClass: 'stock' | 'etf' | 'index' | null,
+    limit = 30,
+  ): Promise<{ items: InstrumentContract[]; query: string; asset_class: string | null }> =>
+    apiClient.get('/market/instruments', { params: { q: query, asset_class: assetClass || undefined, limit } }),
+  instrumentDetail: async (symbol: string): Promise<InstrumentDetailView> =>
+    apiClient.get(`/market/instruments/${encodeURIComponent(symbol)}`),
+  dailyBars: async (symbol: string, limit = 500): Promise<DailyBarsResponse> =>
+    apiClient.get(`/market/instruments/${encodeURIComponent(symbol)}/daily`, { params: { limit } }),
+  orderBook: async (symbol: string): Promise<OrderBookView> =>
+    apiClient.get(`/market/instruments/${encodeURIComponent(symbol)}/order-book`),
+  watchlist: async (): Promise<{ items: MarketWatchlistEntry[] }> =>
+    apiClient.get('/market/watchlist'),
+  addWatchlist: async (symbol: string, note = ''): Promise<MarketWatchlistEntry> =>
+    apiClient.post('/market/watchlist', { symbol, note }),
+  deleteWatchlist: async (entryId: number): Promise<{ deleted: boolean; id: number }> =>
+    apiClient.delete(`/market/watchlist/${entryId}`),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

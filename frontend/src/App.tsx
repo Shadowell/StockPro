@@ -4,15 +4,10 @@ import MainLayout from './components/MainLayout'
 import Login from './pages/Login'
 import UnavailableWorkspace, { type WorkspaceState } from './pages/rebuild/UnavailableWorkspace'
 import Home from './pages/Home'
+import Market from './pages/Market'
 
 
 const workspaces: Record<string, WorkspaceState> = {
-  market: {
-    title: '行情',
-    description: 'A股、ETF 与指数行情将在数据源合同完成后接入。',
-    ownerRoute: '/market',
-    status: 'adapting',
-  },
   pools: {
     title: '股票池',
     description: '规则、生成记录与不可变股票池快照将在研究 Wave 接入。',
@@ -98,7 +93,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<MainLayout />}>
         <Route index element={<Home />} />
-        <Route path="market" element={<UnavailableWorkspace state={workspaces.market} />} />
+        <Route path="market" element={<Market />} />
         <Route path="pools" element={<UnavailableWorkspace state={workspaces.pools} />} />
         <Route path="factors" element={<UnavailableWorkspace state={workspaces.factors} />} />
         <Route path="strategy" element={<UnavailableWorkspace state={workspaces.strategy} />} />

@@ -36,6 +36,18 @@
 - Mock 首页 2 项 E2E、类型、lint、构建通过；真实桌面/窄屏无横向溢出、console errors 0，
   页面无 BTC、ETH、资金费率、永续或数字资产控制。
 
+## BitPro-first Wave 2：A股行情终端（2026-08-23）
+
+- 用 A股终端替换导入的 Crypto Market：保留 BitPro 顶部工具区、搜索弹层、行情概览、
+  K线、盘口、自选和证据 tabs；全部/股票/ETF/指数筛选与 symbol/tab 均写入 URL。
+- 证券搜索支持代码/名称、键盘上下/Enter/Escape；详情显示规范化 symbol、asset class、
+  100股 lot、CNY、tick size 与 freshness。KlineChart 对 A股显示股/CNY 单位，不再使用
+  USDT；OrderBook 标题使用 CNY/委托股数。
+- 自选组件只提交 symbol/note；指数禁止加入。日线、分时、盘口分别绑定当前 API，缺失
+  分时/盘口保持明确空态，不由 close 或随机深度补齐。
+- Mock E2E 与构建通过。真实隔离库 `600519.SH` 显示贵州茅台、1,272.96、3 根真实日线、
+  stale 行情、盘口 empty 和 PostgreSQL 证据；桌面/390px、console errors 0，截图人工检查通过。
+
 ## 重建基线 SHA 现场纠正（2026-08-22）
 
 - Wave 1 开始前验证发现设计草稿中的 `bff8e05…` 不是当前仓库的 Git 对象，不能作为

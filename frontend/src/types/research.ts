@@ -90,3 +90,40 @@ export type FactorView = {
   latest_snapshot_id: number | null
   validation_status: string
 }
+
+export type DailyBarView = {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  turnover: number | null
+}
+
+export type DailyBarsResponse = {
+  items: DailyBarView[]
+  adjustment: 'unadjusted'
+  source_label: string
+  data_status: DataStatus
+}
+
+export type OrderBookView = {
+  bids: Array<[number, number]>
+  asks: Array<[number, number]>
+  source_label: string | null
+  source_updated_at: string | null
+  data_status: DataStatus
+  unavailable_reason: string | null
+}
+
+export type MarketWatchlistEntry = {
+  id: number
+  owner: string
+  symbol: string
+  note: string
+  name?: string | null
+  price?: number | null
+  change_percent?: number | null
+  quote_updated_at?: string | null
+}
