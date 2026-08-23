@@ -115,6 +115,8 @@ def scan_rebuild_safety(root: Path) -> RebuildSafetyReport:
                 (
                     "backend/app/api/",
                     "backend/app/domain/auth/",
+                    "backend/app/domain/instruments/",
+                    "backend/app/domain/research/",
                     "backend/app/repositories/",
                     "frontend/src/pages/rebuild/",
                 )

@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
+from app.domain.instruments.models import InstrumentContract
+from app.domain.research.models import InstrumentDetailView, MarketOverviewView
+
 
 @dataclass(frozen=True)
 class StorageHealth:
@@ -46,7 +49,16 @@ class AuthRepository(Protocol):
 
 
 class MarketRepository(Protocol):
-    """A-share market read contract; methods are added in Wave 2."""
+    def market_overview(self) -> MarketOverviewView: ...
+
+    def search_instruments(
+        self,
+        query: str,
+        asset_class: str | None,
+        limit: int,
+    ) -> list[InstrumentContract]: ...
+
+    def instrument_detail(self, symbol: str) -> InstrumentDetailView | None: ...
 
 
 class StrategyRepository(Protocol):

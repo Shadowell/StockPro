@@ -33,7 +33,7 @@
 **Interfaces:**
 - Produces: `InstrumentContract`, `MarketOverviewView`, `InstrumentDetailView`, `StockPoolView`, `FactorView`；Wave 2 页面和 Wave 3 主线共同使用。
 
-- [ ] **Step 1: 写模型失败测试**
+- [x] **Step 1: 写模型失败测试**
 
 ```python
 def test_stock_instrument_keeps_futures_fields_unavailable():
@@ -45,13 +45,13 @@ def test_stock_instrument_keeps_futures_fields_unavailable():
     assert item.expiry_date is None
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest backend/tests/test_research_models.py -q`
 
 Expected: FAIL，模型模块不存在。
 
-- [ ] **Step 3: 实现不可变领域模型**
+- [x] **Step 3: 实现不可变领域模型**
 
 ```python
 @dataclass(frozen=True)
@@ -82,17 +82,17 @@ class InstrumentContract:
 `MarketOverviewView` 必须包含 `indices`、`breadth`、`turnover`、`limit_ecology`、
 `sector_flows`、`source_label`、`source_updated_at`、`trade_date`、`data_status`。
 
-- [ ] **Step 4: 定义前后端同名字段**
+- [x] **Step 4: 定义前后端同名字段**
 
 `frontend/src/types/research.ts` 使用相同 snake_case API 字段，不在 client 中做多套兼容映射。
 
-- [ ] **Step 5: 运行测试和类型检查**
+- [x] **Step 5: 运行测试和类型检查**
 
 Run: `python -m pytest backend/tests/test_research_models.py -q && npm --prefix frontend run check`
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add backend/app/domain/instruments backend/app/domain/research backend/app/repositories/protocols.py backend/tests/test_research_models.py frontend/src/types/research.ts

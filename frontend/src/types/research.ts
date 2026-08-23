@@ -1,0 +1,92 @@
+export type DataStatus = 'empty' | 'partial' | 'fresh' | 'stale' | 'error'
+
+export type InstrumentContract = {
+  symbol: string
+  name: string | null
+  asset_class: 'stock' | 'etf' | 'index' | 'future'
+  market: 'CN' | 'US'
+  exchange: string
+  currency: string
+  tick_size: string
+  lot_size: number
+  contract_multiplier: string | null
+  margin_rate: string | null
+  expiry_date: string | null
+  last_trade_date: string | null
+  settlement_type: string | null
+  session_calendar: string | null
+  shortable: boolean
+}
+
+export type IndexView = {
+  symbol: string
+  name: string
+  value: string | null
+  change_pct: string | null
+  source_updated_at: string | null
+}
+
+export type MarketBreadthView = {
+  rise_count: number | null
+  flat_count: number | null
+  fall_count: number | null
+}
+
+export type TurnoverView = {
+  amount: string | null
+  unit: string
+}
+
+export type LimitEcologyView = {
+  limit_up_count: number | null
+  limit_down_count: number | null
+  max_streak: number | null
+  broken_board_rate: string | null
+}
+
+export type SectorFlowView = {
+  sector_code: string
+  sector_name: string
+  net_inflow: string | null
+  change_pct: string | null
+}
+
+export type MarketOverviewView = {
+  indices: IndexView[]
+  breadth: MarketBreadthView | null
+  turnover: TurnoverView | null
+  limit_ecology: LimitEcologyView | null
+  sector_flows: SectorFlowView[]
+  source_label: string
+  source_updated_at: string | null
+  trade_date: string | null
+  data_status: DataStatus
+}
+
+export type InstrumentDetailView = {
+  instrument: InstrumentContract
+  latest_price: string | null
+  change_pct: string | null
+  turnover: string | null
+  source_updated_at: string | null
+  trade_date: string | null
+  data_status: DataStatus
+}
+
+export type StockPoolView = {
+  pool_id: string
+  name: string
+  status: string
+  latest_snapshot_id: number | null
+  latest_snapshot_status: string | null
+  member_count: number | null
+}
+
+export type FactorView = {
+  factor_code: string
+  name: string
+  category: string
+  latest_version: number | null
+  latest_snapshot_id: number | null
+  validation_status: string
+}

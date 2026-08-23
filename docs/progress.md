@@ -1,5 +1,16 @@
 # Progress Log
 
+## BitPro-first Wave 2：传统金融研究模型（2026-08-23）
+
+- 新增不可变 `InstrumentContract`，当前支持 stock/ETF/index，并为 future 保留乘数、保证金、
+  到期、最后交易日和结算字段；A股股票默认 CN/SSE-SZSE 语义、CNY、100 股手数、
+  `CN_A_SHARE` 日历且不可卖空，期货字段保持 `null`。
+- 新增首页、证券详情、股票池和因子稳定 ViewModel；市场总览固定包含 indices、breadth、
+  turnover、limit_ecology、sector_flows、来源、更新时间、交易日和 data_status，缺失块保持
+  `None/null`。
+- 前后端研究类型统一使用当前 API 的 snake_case 字段，不建立 camelCase/旧字段双合同。
+  三项领域测试、前端类型检查与安全扫描通过。
+
 ## 重建基线 SHA 现场纠正（2026-08-22）
 
 - Wave 1 开始前验证发现设计草稿中的 `bff8e05…` 不是当前仓库的 Git 对象，不能作为
