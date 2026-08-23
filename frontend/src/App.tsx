@@ -9,15 +9,10 @@ import StockPools from './pages/StockPools'
 import FactorLab from './pages/FactorLab'
 import Strategy from './pages/Strategy'
 import Backtest from './pages/Backtest'
+import Paper from './pages/Paper'
 
 
 const workspaces: Record<string, WorkspaceState> = {
-  paper: {
-    title: '模拟',
-    description: '现有 Paper 历史已冻结保护，连续性验收后恢复运行入口。',
-    ownerRoute: '/paper',
-    status: 'adapting',
-  },
   watch: {
     title: '盯盘',
     description: '只在 A股行情与告警数据源可证明时启用。',
@@ -78,7 +73,7 @@ function AppRoutes() {
         <Route path="factors" element={<FactorLab />} />
         <Route path="strategy" element={<Strategy />} />
         <Route path="backtest" element={<Backtest />} />
-        <Route path="paper" element={<UnavailableWorkspace state={workspaces.paper} />} />
+        <Route path="paper" element={<Paper />} />
         <Route path="watch" element={<UnavailableWorkspace state={workspaces.watch} />} />
         <Route path="signals" element={<UnavailableWorkspace state={workspaces.signals} />} />
         <Route path="monitor" element={<UnavailableWorkspace state={workspaces.monitor} />} />

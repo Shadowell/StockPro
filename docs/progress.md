@@ -1,5 +1,19 @@
 # Progress Log
 
+## BitPro-first Wave 3：A股模拟盘控制台（2026-08-23）
+
+- `/paper` 已从适配空态切换为 BitPro 高密度 InstanceDashboard：15 个历史实例卡片、状态
+  分段、名称/ID 搜索、权益/收益/PnL/成交/持仓/心跳和管理员创建入口。
+- 详情按连续操作台组织账户曲线、当前持仓、成交与事件、风控状态、诊断日志和固定输入；
+  证券代码转换为标准 A股展示，人民币和 100 股/T+1/只做多语义明确，无数字资产字段。
+- 创建向导只列出 full + paper_eligible 回测并传递全部封存 lineage；生命周期 start/pause/
+  resume/stop 使用确认弹窗，访客不渲染写按钮。真实验收只读，未触发生命周期动作。
+- Mock E2E 覆盖 15 卡、详情五区、禁用币圈字段和暂停确认；类型、零告警 lint 通过。
+  真实隔离库桌面/390px 显示 15 卡、14 running / 1 stopped、47 成交、23 持仓；详情五区
+  可见，console errors 0、无横向溢出，截图人工检查通过。
+- 真实页面验收前后的 Paper continuity 保持 15/61/47/23/428/681；页面轮询仅 GET，未
+  recover、advance、configure、clear、archive 或 reset。
+
 ## BitPro-first Wave 3：PostgreSQL Paper 当前 API（2026-08-23）
 
 - 恢复现有 Paper 状态机、固定输入、exactly-once cycle、风险、订单、成交、现金账本、持仓、

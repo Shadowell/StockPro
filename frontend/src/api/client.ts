@@ -23,6 +23,7 @@ import type {
 } from '../types/research';
 import type { StrategyValidationResult, StrategyVersionRecord } from '../types/strategy';
 import type { BacktestConfiguration, BacktestJobRecord, BacktestRunRecord } from '../types/backtest';
+import type { PaperInstanceDetail, PaperInstanceList } from '../types/paper';
 
 const API_BASE = '/api';
 
@@ -122,6 +123,19 @@ export const backtestCurrentApi = {
   retryJob: async (jobId: string): Promise<BacktestJobRecord> => apiClient.post(`/backtest/jobs/${encodeURIComponent(jobId)}/retry`),
   matrix: async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => apiClient.post('/backtest/matrix', payload),
   walkForward: async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => apiClient.post('/backtest/walk-forward', payload),
+};
+
+export const paperCurrentApi = {
+  list: async (scope: 'business' | 'audit' = 'audit'): Promise<PaperInstanceList> =>
+    apiClient.get('/paper/instances', { params: { scope } }),
+  detail: async (instanceId: string): Promise<PaperInstanceDetail> =>
+    apiClient.get(`/paper/instances/${encodeURIComponent(instanceId)}`),
+  create: async (payload: Record<string, unknown>): Promise<PaperInstanceDetail> =>
+    apiClient.post('/paper/instances', payload),
+  transition: async (instanceId: string, action: 'start' | 'pause' | 'resume' | 'stop'): Promise<PaperInstanceDetail> =>
+    apiClient.post(`/paper/instances/${encodeURIComponent(instanceId)}/${action}`),
+  advance: async (instanceId: string, maxDates = 1): Promise<Record<string, unknown>> =>
+    apiClient.post(`/paper/instances/${encodeURIComponent(instanceId)}/advance`, { max_dates: maxDates }),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {

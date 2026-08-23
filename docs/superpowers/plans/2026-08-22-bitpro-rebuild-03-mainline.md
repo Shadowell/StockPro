@@ -410,7 +410,7 @@ Run: `python -m pytest backend/tests/test_paper_current_contract.py rebuild/test
 
 Expected: PASS，15/61/47/23/428/681 及每实例关键字段一致。
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add backend/app/services/paper_runtime_service.py backend/app/services/paper_application_service.py backend/app/api/endpoints/paper.py backend/app/repositories backend/app/api/api.py backend/tests/test_paper_current_contract.py rebuild/verify_paper_continuity.py rebuild/tests/test_paper_continuity.py
@@ -434,7 +434,7 @@ git commit -m "feat(paper): adapt immutable PostgreSQL ledger to BitPro views"
 - Consumes: `/api/paper/*`。
 - Produces: `/paper` BitPro 原生控制台、创建向导和实例详情；无 `/live-real`。
 
-- [ ] **Step 1: 写历史实例与详情失败 E2E**
+- [x] **Step 1: 写历史实例与详情失败 E2E**
 
 ```typescript
 test('paper dashboard renders existing instances without reset', async ({ page }) => {
@@ -449,39 +449,39 @@ test('paper dashboard renders existing instances without reset', async ({ page }
 })
 ```
 
-- [ ] **Step 2: 运行失败 E2E**
+- [x] **Step 2: 运行失败 E2E**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "paper dashboard renders existing"`
 
 Expected: FAIL，BitPro页面仍绑定旧 live API 或币圈字段。
 
-- [ ] **Step 3: 将 BitPro `/live` 页面改为 `/paper`**
+- [x] **Step 3: 将 BitPro `/live` 页面改为 `/paper`**
 
 保留 InstanceDashboard、状态分段、筛选、收益排序、卡片密度、详情连续模块和确认弹窗；
 移除 live mode switch、杠杆、保证金、强平和交易所账户。
 
-- [ ] **Step 4: 绑定 A股账户与执行字段**
+- [x] **Step 4: 绑定 A股账户与执行字段**
 
 卡片显示人民币、策略版本、股票池/因子、权益、PnL、交易数、心跳；详情显示持仓可用数量、
 T+1、订单风险决策、成交成本和绑定快照。
 
-- [ ] **Step 5: 验证 lifecycle actions**
+- [x] **Step 5: 验证 lifecycle actions**
 
 Mock E2E 覆盖 start/pause/resume/stop 二次确认；真实验收阶段只读，不在本任务操作当前实例。
 
-- [ ] **Step 6: 更新页面合同和运行 E2E/build**
+- [x] **Step 6: 更新页面合同和运行 E2E/build**
 
 Run: `npm --prefix frontend run test:e2e -- --grep "paper dashboard renders existing" && npm --prefix frontend run build`
 
 Expected: PASS；15 个真实实例在隔离库可见，390px 无溢出。
 
-- [ ] **Step 7: 再次运行 continuity verifier**
+- [x] **Step 7: 再次运行 continuity verifier**
 
 Run: `python rebuild/verify_paper_continuity.py --baseline .codex-artifacts/rebuild/baseline.json --database "$DATABASE_URL"`
 
 Expected: PASS，页面适配没有业务写入。
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add frontend/src/pages/liveTrading frontend/src/App.tsx frontend/src/api/client.ts frontend/tests/e2e/rebuild-paper.spec.ts docs/pages/模拟盘.md
