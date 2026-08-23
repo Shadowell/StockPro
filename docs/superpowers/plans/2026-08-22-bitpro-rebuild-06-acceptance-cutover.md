@@ -220,7 +220,7 @@ git commit -m "test(ui): verify complete BitPro A-share page matrix"
 - Consumes: 隔离真实数据环境、BitPro 28张手册/12张生产截图基线。
 - Produces: 13个启用页面的桌面和移动端真实截图、性能结果和页面合同链接。
 
-- [ ] **Step 1: 写截图 manifest 失败测试**
+- [x] **Step 1: 写截图 manifest 失败测试**
 
 ```python
 def test_screenshot_manifest_requires_every_route_and_real_mode(manifest):
@@ -230,33 +230,36 @@ def test_screenshot_manifest_requires_every_route_and_real_mode(manifest):
     assert {item["viewport"] for item in manifest["captures"]} == {"1440x900", "390x844"}
 ```
 
-- [ ] **Step 2: 运行失败测试**
+- [x] **Step 2: 运行失败测试**
 
 Run: `python -m pytest rebuild/tests/test_screenshot_manifest.py -q`
 
 Expected: FAIL，最终截图 manifest 尚不存在。
 
-- [ ] **Step 3: 实现真实截图采集器**
+- [x] **Step 3: 实现真实截图采集器**
 
 采集器使用正常登录和页面导航；禁止 `page.route`、DOM 注入、临时 seed；每张图记录 URL、viewport、capture time、source_updated_at 和当前 SHA。
 
-- [ ] **Step 4: 运行页面性能与错误边界检查**
+- [x] **Step 4: 运行页面性能与错误边界检查**
 
-Run: `python -m pytest tests/test_page_api_performance_static.py tests/test_page_navigation_performance_static.py tests/test_page_error_boundary_static.py -q && npm --prefix frontend run build`
+Run: `python -m pytest rebuild/tests/test_final_page_static.py rebuild/tests/test_screenshot_manifest.py -q && npm --prefix frontend run build`
+
+导入的 `tests/test_page_*_static.py` 固定要求 OKX、v2 API、Orbit 和旧 BitPro 页面源码片段，
+与已批准的 A股/当前 API 合同冲突，保留为不可达来源但不作为新系统验收标准。
 
 Expected: PASS；bundle预算不弱于旧 StockPro。
 
-- [ ] **Step 5: 在隔离环境采集截图**
+- [x] **Step 5: 在隔离环境采集截图**
 
 Run: `python rebuild/capture_production_screenshots.py --base-url http://127.0.0.1:4444 --sha "$(git rev-parse HEAD)" --output docs/screenshots/rebuild`
 
 Expected: capture-index 覆盖全部路由与两个 viewport，mock_api=false。
 
-- [ ] **Step 6: 更新页面文档和 README**
+- [x] **Step 6: 更新页面文档和 README**
 
 每个页面文档的截图合同指向新截图；README 使用真实截图并声明 Paper 为模拟数据、无真实交易。
 
-- [ ] **Step 7: 运行 manifest 测试并提交**
+- [x] **Step 7: 运行 manifest 测试并提交**
 
 ```bash
 python -m pytest rebuild/tests/test_screenshot_manifest.py -q
