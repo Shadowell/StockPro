@@ -48,6 +48,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { useSettingsStore, type ColorScheme } from '../stores/useSettingsStore';
 import CryptoSelect from './CryptoSelect';
 import { PageErrorBoundary } from './PageErrorBoundary';
+import { WorkspaceStatePanel } from '../shell/WorkspaceState';
 
 type NavRole = 'admin' | 'guest';
 type SettingsTabId = 'ai' | 'agent' | 'access' | 'notifications' | 'appearance';
@@ -554,7 +555,7 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
     try {
       const created = await settingsApi.createMcpAgentToken({
         ...form,
-        toolGroups: ['read', 'research_backtest_paper_mutation', 'live_diagnostic'],
+        toolGroups: ['read', 'research_backtest_paper_mutation'],
       });
       setCreatedToken(created.token);
       await loadTokens();
@@ -590,7 +591,7 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
     <SettingsConfigBlock
       title="MCP Agent Token"
       icon={<ShieldCheck className="h-4 w-4 text-cyan-300" />}
-      description="给 Hermes、Codex 或外部 Agent 访问 BitPro MCP/API 使用；明文只显示一次。"
+      description="给 Hermes、Codex 或外部 Agent 访问 StockPro MCP/API 使用；明文只显示一次。当前不发放实盘诊断权限。"
       status={
         <SettingsStatusBadge tone={activeCount || envConfigured ? 'green' : 'neutral'}>
           {activeCount || envConfigured ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
@@ -663,6 +664,7 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
       <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-gray-500 sm:grid-cols-2">
         <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 px-3 py-2">
           Header: <span className="font-mono text-gray-300">X-BitPro-MCP-Token</span>
+          <span className="ml-1 text-gray-600">（StockPro Agent 兼容头）</span>
         </div>
         <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 px-3 py-2">
           兼容环境变量: <span className="font-mono text-gray-300">BITPRO_MCP_API_TOKEN</span>
@@ -1081,9 +1083,11 @@ export default function MainLayout() {
         <PageErrorBoundary resetKey={location.pathname}>
           <Suspense
             fallback={
-              <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-500">
-                页面加载中…
-              </div>
+              <WorkspaceStatePanel
+                kind="loading"
+                title="页面加载中"
+                description="工作台壳层保持挂载，只切换当前 Owner 页面。"
+              />
             }
           >
             <div data-operator-page={location.pathname} className="contents">

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import type { InstrumentContract } from '../types/research'
+import { formatAshareSymbol } from '../utils/ashareSymbol'
 
 
 type SymbolSearchProps = {
@@ -102,7 +103,7 @@ export default function SymbolSearch({
               setOpen(false)
             }
           }}
-          placeholder="搜索代码或名称，例如 600519 / 贵州茅台"
+          placeholder="搜索代码.市场或名称，例如 600519.SH / 贵州茅台"
           className="h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg pl-9 pr-9 text-sm text-white outline-none placeholder:text-gray-600 focus:border-blue-500/60"
         />
         {currentQuery && (
@@ -142,7 +143,7 @@ export default function SymbolSearch({
               >
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-semibold text-gray-100">{instrument.name || instrument.symbol}</span>
-                  <span className="mt-0.5 block font-mono text-[10px] text-gray-500">{instrument.symbol} · {instrument.exchange}</span>
+                  <span className="mt-0.5 block font-mono text-[10px] text-gray-500">{formatAshareSymbol(instrument.symbol)} · {instrument.exchange || 'A股'}</span>
                 </span>
                 <span className="shrink-0 rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 text-[10px] text-gray-400">
                   {assetLabel(instrument.asset_class)}

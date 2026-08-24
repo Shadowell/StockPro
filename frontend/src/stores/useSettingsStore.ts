@@ -30,11 +30,12 @@ interface SettingsState {
   getColors: () => ColorPair;
 }
 
-const STORAGE_KEY = 'bitpro_settings';
+const STORAGE_KEY = 'stockpro_settings';
+const LEGACY_STORAGE_KEY = 'bitpro_settings';
 
 function loadColorScheme(): ColorScheme {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed.colorScheme === 'greenUpRedDown' || parsed.colorScheme === 'redUpGreenDown') {
