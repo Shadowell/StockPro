@@ -233,6 +233,7 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 - 本地 bootstrap、迁移、数据同步和 Paper 恢复均显式执行。
 - 生产 Web 版本只接受 GitHub Actions 从 `main` 部署，并在迁移、服务重启和健康检查全部成功后记录部署 SHA。
 - 公开 MCP、真实券商接入和实盘订单不在当前产品范围；临时生产数据变更仍需单独明确授权。
+- OKX/Binance 实盘、合约 Paper、funding/arb 策略与 OKX 运维脚本已移出默认产品树（`archive/bitpro-crypto/`），A 股 Paper 不得导入。
 
 ## 14. 非目标
 

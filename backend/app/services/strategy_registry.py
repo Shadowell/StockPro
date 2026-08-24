@@ -190,191 +190,38 @@ def _load_db_script_strategy_class(
         return None
 
 
+_ARCHIVED_CRYPTO_STRATEGY_PREFIXES = (
+    "okx_",
+    "contract_",
+    "funding_",
+    "cross_exchange_",
+    "binance",
+)
+
+
 def get_base_strategy_registry() -> Dict[str, Type[BaseStrategy]]:
+    """StockPro MVP does not register BitPro crypto/contract strategies."""
     global _BASE_STRATEGY_REGISTRY
     if _BASE_STRATEGY_REGISTRY:
         return _BASE_STRATEGY_REGISTRY
-
-    try:
-        from app.strategies.ai_autonomous_trader_strategy import AiAutonomousTraderStrategy
-        from app.strategies.contract_atr_grid_reversion_strategy import ContractAtrGridReversionStrategy
-        from app.strategies.contract_bbands_rsi_reversion_strategy import ContractBbandsRsiReversionStrategy
-        from app.strategies.contract_donchian_breakout_strategy import ContractDonchianBreakoutStrategy
-        from app.strategies.contract_donchian_adx_breakout_strategy import ContractDonchianAdxBreakoutStrategy
-        from app.strategies.contract_donchian_ema_adx_strategy import ContractDonchianEmaAdxStrategy
-        from app.strategies.contract_daily_target_scalp_strategy import ContractDailyTargetScalpStrategy
-        from app.strategies.contract_ema_atr_scalp_strategy import ContractEmaAtrScalpStrategy
-        from app.strategies.contract_ema_atr_trend_strategy import ContractEmaAtrTrendStrategy
-        from app.strategies.contract_fvg_ob_strategy import ContractFvgObStrategy
-        from app.strategies.contract_heikin_ashi_trend_strategy import ContractHeikinAshiTrendStrategy
-        from app.strategies.contract_liquidity_sweep_strategy import ContractLiquiditySweepStrategy
-        from app.strategies.contract_low_leverage_trend_strategy import ContractLowLeverageTrendStrategy
-        from app.strategies.contract_martingale_grid_strategy import ContractMartingaleGridStrategy
-        from app.strategies.contract_market_making_strategy import ContractTrendFilteredMarketMakingStrategy
-        from app.strategies.contract_market_neutral_top5_strategy import ContractMarketNeutralTop5Strategy
-        from app.strategies.contract_multi_factor_rotation_strategy import ContractMultiFactorRotationStrategy
-        from app.strategies.contract_shared_martingale_grid_strategy import ContractSharedMartingaleGridStrategy
-        from app.strategies.contract_supertrend_swing_breakout_strategy import ContractSupertrendSwingBreakoutStrategy
-        from app.strategies.contract_top5_range_reversion_strategy import ContractTop5RangeReversionStrategy
-        from app.strategies.contract_volatility_compression_breakout_strategy import ContractVolatilityCompressionBreakoutStrategy
-        from app.strategies.contract_vwap_volume_profile_strategy import ContractVwapVolumeProfileStrategy
-        from app.strategies.contract_fvg_liquidity_sweep_strategy import ContractFvgLiquiditySweepStrategy
-        from app.strategies.contract_order_flow_breakout_strategy import ContractOrderFlowBreakoutStrategy
-        from app.strategies.cross_exchange_funding_arbitrage_strategy import CrossExchangeFundingArbitrageStrategy
-        from app.strategies.cta_trend_following_strategy import CtaTrendFollowingStrategy
-        from app.strategies.dynamic_cta_trend_following_strategy import DynamicCtaTrendFollowingStrategy
-        from app.strategies.dynamic_momentum_leader_strategy import DynamicMomentumLeaderCtaStrategy
-        from app.strategies.tradfi_leveraged_trend_strategy import TradfiLeveragedTrendStrategy
-        from app.strategies.funding_rate_arbitrage_strategy import FundingRateArbitrageStrategy
-        from app.strategies.grid_trading_strategy import GridTradingStrategy
-        from app.strategies.kairos_30m_horizon_dca_strategy import Kairos30mHorizonDcaStrategy
-        from app.strategies.kairos_path_edge_strategy import KairosPathEdgeStrategy
-        from app.strategies.kairos_superpnl_cost_aware_strategy import KairosSuperPnLCostAwareStrategy
-        from app.strategies.okx_funding_arbitrage_strategy import OkxFundingArbitrageStrategy
-        from app.strategies.okx_contract_funding_carry_strategy import OkxContractFundingCarryStrategy
-        from app.strategies.spot_cta_trend_following_strategy import SpotCtaTrendFollowingStrategy
-        from app.strategies.superpnl_15m_low_turnover_strategy import SuperPnL15mLowTurnoverStrategy
-        from app.strategies.superpnl_contract_mainstream_strategy import SuperPnLContractMainstreamStrategy
-
-        _BASE_STRATEGY_REGISTRY["ai_autonomous_trader"] = AiAutonomousTraderStrategy
-        _BASE_STRATEGY_REGISTRY["okx_funding_arbitrage"] = OkxFundingArbitrageStrategy
-        _BASE_STRATEGY_REGISTRY["okx_contract_funding_carry"] = OkxContractFundingCarryStrategy
-        _BASE_STRATEGY_REGISTRY["spot_cta_trend_following"] = SpotCtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["contract_ema_atr_trend"] = ContractEmaAtrTrendStrategy
-        _BASE_STRATEGY_REGISTRY["contract_donchian_breakout"] = ContractDonchianBreakoutStrategy
-        _BASE_STRATEGY_REGISTRY["contract_grass_1h_donchian_adx_100u"] = ContractDonchianAdxBreakoutStrategy
-        for _key in (
-            "contract_eth_1d_donchian_ema144_cta_100u",
-            "contract_eth_1d_donchian_ema144_cta_tp8_100u",
-            "contract_eth_1d_donchian_ema144_cta_notp_100u",
-        ):
-            _BASE_STRATEGY_REGISTRY[_key] = ContractDonchianEmaAdxStrategy
-        _BASE_STRATEGY_REGISTRY["contract_bbands_rsi_reversion"] = ContractBbandsRsiReversionStrategy
-        _BASE_STRATEGY_REGISTRY["contract_atr_grid_reversion"] = ContractAtrGridReversionStrategy
-        _BASE_STRATEGY_REGISTRY["contract_daily_target_scalp_10u"] = ContractDailyTargetScalpStrategy
-        _BASE_STRATEGY_REGISTRY["contract_ema_atr_scalp"] = ContractEmaAtrScalpStrategy
-        _BASE_STRATEGY_REGISTRY["contract_fvg_ob_1h_100u"] = ContractFvgObStrategy
-        _BASE_STRATEGY_REGISTRY["contract_heikin_ashi_trend"] = ContractHeikinAshiTrendStrategy
-        _BASE_STRATEGY_REGISTRY["contract_heikin_ashi_trend_eth_1h_100u"] = ContractHeikinAshiTrendStrategy
-        _BASE_STRATEGY_REGISTRY["contract_liquidity_sweep_1h_bch_100u"] = ContractLiquiditySweepStrategy
-        _BASE_STRATEGY_REGISTRY["contract_supertrend_swing_breakout_sol_15m_100u"] = ContractSupertrendSwingBreakoutStrategy
-        _BASE_STRATEGY_REGISTRY["contract_volatility_compression_breakout_top20_4h_100u"] = ContractVolatilityCompressionBreakoutStrategy
-        _BASE_STRATEGY_REGISTRY["contract_vwap_volume_profile_btc_eth_sol_1h_100u"] = ContractVwapVolumeProfileStrategy
-        _BASE_STRATEGY_REGISTRY["contract_vwap_volume_profile_btc_eth_sol_4h_100u"] = ContractVwapVolumeProfileStrategy
-        _BASE_STRATEGY_REGISTRY["contract_vwap_volume_profile_lab_4h_100u"] = ContractVwapVolumeProfileStrategy
-        _BASE_STRATEGY_REGISTRY["contract_fvg_liquidity_sweep_btc_eth_sol_15m_100u"] = ContractFvgLiquiditySweepStrategy
-        _BASE_STRATEGY_REGISTRY["contract_order_flow_breakout_btc_eth_sol_5m_100u"] = ContractOrderFlowBreakoutStrategy
-        _BASE_STRATEGY_REGISTRY["contract_low_leverage_trend_1h_eth_10u"] = ContractLowLeverageTrendStrategy
-        _BASE_STRATEGY_REGISTRY["contract_martingale_grid"] = ContractMartingaleGridStrategy
-        _BASE_STRATEGY_REGISTRY["contract_shared_martingale_grid"] = ContractSharedMartingaleGridStrategy
-        _BASE_STRATEGY_REGISTRY["contract_multi_factor_rotation"] = ContractMultiFactorRotationStrategy
-        _BASE_STRATEGY_REGISTRY["contract_top5_range_reversion"] = ContractTop5RangeReversionStrategy
-        _BASE_STRATEGY_REGISTRY["contract_market_neutral_top5"] = ContractMarketNeutralTop5Strategy
-        _BASE_STRATEGY_REGISTRY["cross_exchange_funding_arbitrage"] = CrossExchangeFundingArbitrageStrategy
-        _BASE_STRATEGY_REGISTRY["cross_exchange_funding_basis_carry"] = CrossExchangeFundingArbitrageStrategy
-        _BASE_STRATEGY_REGISTRY["contract_trend_filtered_market_making_sol_100u"] = ContractTrendFilteredMarketMakingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_top20"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_100u"] = CtaTrendFollowingStrategy
-        for _key in (
-            "cta_1h_single_dot_donchian12_tight_x3p0_100u",
-            "cta_1h_single_dot_donchian12_wide_x3p0_100u",
-            "cta_1h_single_dot_donchian12_mid_x3p0_100u",
-            "cta_ema_slope_adx_sol_15m_100u",
-            "cta_ema_slope_adx_doge_15m_100u",
-            "cta_ema_slope_adx_eth_15m_100u",
-            "cta_ema_slope_adx_dot_15m_100u",
-            "cta_atr_top10_ema510_h_15m_100u",
-            "cta_atr_top10_ema510_home_15m_100u",
-            "cta_atr_top10_ema510_edge_15m_100u",
-            "cta_atr_top10_ema510_slx_15m_100u",
-            "cta_atr_top10_ema510_lab_15m_100u",
-            "cta_atr_top10_ema510_pieverse_15m_100u",
-            "cta_atr_top10_ema510_bsb_15m_100u",
-            "cta_atr_top10_ema510_jto_15m_100u",
-            "cta_atr_top10_ema510_ub_15m_100u",
-            "cta_atr_top10_ema510_useless_15m_100u",
-            # Keep the mistaken slope keys registered until production rows have been
-            # migrated through db_name_aliases on seed import.
-            "cta_atr_top10_ema_slope_adx_h_15m_100u",
-            "cta_atr_top10_ema_slope_adx_home_15m_100u",
-            "cta_atr_top10_ema_slope_adx_edge_15m_100u",
-            "cta_atr_top10_ema_slope_adx_slx_15m_100u",
-            "cta_atr_top10_ema_slope_adx_lab_15m_100u",
-            "cta_atr_top10_ema_slope_adx_pieverse_15m_100u",
-            "cta_atr_top10_ema_slope_adx_bsb_15m_100u",
-            "cta_atr_top10_ema_slope_adx_jto_15m_100u",
-            "cta_atr_top10_ema_slope_adx_ub_15m_100u",
-            "cta_atr_top10_ema_slope_adx_useless_15m_100u",
-        ):
-            _BASE_STRATEGY_REGISTRY[_key] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_preipo_3"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_preipo_3_1h"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_preipo_3_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_preipo_3_1h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_preipo_3_5m_ema_cross_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_doge_5m_ema_cross_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_trx_5m_ema_cross_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_dot_5m_ema_cross_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_1inch_5m_ema_cross_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_sol_15m_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_sol_1h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_sol_15m_ema520_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_sol_1h_ema520_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_sol_4h_ema520_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_doge_15m_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_doge_1h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_trx_15m_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_trx_1h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_dot_15m_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_dot_1h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_1inch_15m_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_1inch_1h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_tradfi_metals_15m_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_tradfi_metals_1h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_tradfi_ai_semis_15m_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_tradfi_ai_semis_1h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_tradfi_ai_semis_4h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_tradfi_mixed_1h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_tradfi_mixed_4h_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_tradfi_high_vol_15m_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_trend_following_tradfi_high_vol_1h_100u"] = CtaTrendFollowingStrategy
-        for _symbol in OKX_TOP50_VOLUME_EMA520_1H_SYMBOLS:
-            _key = f"cta_okx_top50_volume_ema520_{_symbol.lower()}_1h_100u"
-            _BASE_STRATEGY_REGISTRY[_key] = CtaTrendFollowingStrategy
-        for _symbol in OKX_TOP100_VOLUME_EMA520_1H_SYMBOLS[50:]:
-            _key = f"cta_okx_top100_volume_ema520_{_symbol.lower()}_1h_100u"
-            _BASE_STRATEGY_REGISTRY[_key] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["cta_hardtp_pos15_15m_100u"] = CtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["dynamic_cta_trend_following_top15"] = DynamicCtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["dynamic_cta_trend_following_top15_1h"] = DynamicCtaTrendFollowingStrategy
-        _BASE_STRATEGY_REGISTRY["dynamic_momentum_leader_top60_15m_100u"] = DynamicMomentumLeaderCtaStrategy
-        _BASE_STRATEGY_REGISTRY["tradfi_leveraged_trend_top7_1h_100u"] = TradfiLeveragedTrendStrategy
-        _BASE_STRATEGY_REGISTRY["funding_rate_arbitrage"] = FundingRateArbitrageStrategy
-        _BASE_STRATEGY_REGISTRY["grid_trading"] = GridTradingStrategy
-        _BASE_STRATEGY_REGISTRY["kairos_30m_horizon_dca"] = Kairos30mHorizonDcaStrategy
-        _BASE_STRATEGY_REGISTRY["kairos_path_edge"] = KairosPathEdgeStrategy
-        _BASE_STRATEGY_REGISTRY["kairos_superpnl_cost_aware"] = KairosSuperPnLCostAwareStrategy
-        _BASE_STRATEGY_REGISTRY["superpnl_15m_low_turnover"] = SuperPnL15mLowTurnoverStrategy
-        _BASE_STRATEGY_REGISTRY["superpnl_contract_mainstream"] = SuperPnLContractMainstreamStrategy
-        # 同名类，不同 strategy_key + 种子 config（开仓间隔 / 先平仓 / 名义比例）
-        for _key in (
-            "kairos_30m_horizon_dca_5m",
-            "kairos_30m_horizon_dca_10m",
-            "kairos_3m_horizon_hft",
-            "kairos_30m_horizon_dca_flat_half",
-        ):
-            _BASE_STRATEGY_REGISTRY[_key] = Kairos30mHorizonDcaStrategy
-    except ImportError as e:
-        logger.warning("BaseStrategy 注册跳过内置策略: %s", e)
-
+    logger.info("A-share MVP strategy registry is empty; archived crypto strategies are not loaded")
     return _BASE_STRATEGY_REGISTRY
+
+
+def _refuse_archived_crypto_strategy(strategy_key: str, name: str = "") -> None:
+    key = (strategy_key or "").strip().lower()
+    label = f"{key} {name}".lower()
+    if any(token in label for token in ("okx", "binance", "funding", "arbitrage", "[合约]", "contract_")):
+        raise ValueError(f"archived crypto strategy is outside StockPro MVP: {strategy_key or name}")
+    if key.startswith(_ARCHIVED_CRYPTO_STRATEGY_PREFIXES):
+        raise ValueError(f"archived crypto strategy is outside StockPro MVP: {strategy_key}")
 
 
 def resolve_dynamic_base_strategy(module_path: str, class_name: str) -> Optional[Type[BaseStrategy]]:
     """从 module_path + class_name 动态解析 BaseStrategy（AI 生成策略等）。"""
     if not module_path or not class_name:
         return None
+    _refuse_archived_crypto_strategy(f"{module_path}.{class_name}")
     try:
         mod = importlib.import_module(module_path)
         cls = getattr(mod, class_name, None)
@@ -460,6 +307,7 @@ def resolve_unified_base_strategy_class(
             config["strategy_key"] = inferred
 
     skey = (config.get("strategy_key") or "").strip()
+    _refuse_archived_crypto_strategy(skey, name)
     reg = get_base_strategy_registry()
 
     if skey and skey in reg:

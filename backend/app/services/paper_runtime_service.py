@@ -7,6 +7,14 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import psycopg2.extras
 
+from app.services.ashare_execution import (
+    AShareSpotBroker,
+    DEFAULT_ASHARE_COST,
+    instrument_key,
+    is_trading_day,
+    storage_symbol,
+    symbol_aliases,
+)
 from app.services.dataset_snapshot_service import DatasetSnapshotService, canonical_hash
 from app.services.data_purpose import filter_records_for_scope, resolve_data_purpose
 from app.services.strategy_runtime_service import STRATEGY_API_VERSION, StrategyRuntimeService
@@ -184,6 +192,9 @@ class PaperRuntimeService:
         trade_date = str(payload.get("trade_date") or "")[:10]
         if not trade_date:
             raise ValueError("行情周期缺少 trade_date")
+        calendar_rows = self._optional_snapshot_dataset(int(instance["dataset_snapshot_id"]), "trade_calendar")
+        if calendar_rows and not is_trading_day(trade_date, calendar_rows):
+            raise ValueError("该日期不是交易日")
         data_available_at = self._timestamp(payload.get("data_available_at") or f"{trade_date}T15:00:00+08:00")
         observed_at = self._timestamp(payload.get("observed_at") or data_available_at)
         cycle_key = str(payload.get("cycle_key") or f"{trade_date}:close")
@@ -204,7 +215,8 @@ class PaperRuntimeService:
                     (int(instance["pool_snapshot_id"]),),
                 )
             ]
-            all_bars = self.datasets.load_daily_bars(int(instance["dataset_snapshot_id"]), symbols=symbols, limit=1_000_000)
+            lookup_symbols = sorted({alias for symbol in symbols for alias in symbol_aliases(symbol)})
+            all_bars = self.datasets.load_daily_bars(int(instance["dataset_snapshot_id"]), symbols=lookup_symbols or symbols, limit=1_000_000)
             bars = {str(item["symbol"]): item for item in all_bars if str(item.get("trade_date"))[:10] == trade_date}
             if not bars:
                 raise ValueError("固定数据快照在该交易日没有股票池行情")
@@ -215,7 +227,8 @@ class PaperRuntimeService:
                 self._record_event(instance_id, cycle_id, "feed", "critical", "行情超过 SLA，禁止新开仓", {"stale_seconds": stale_seconds, "sla_seconds": stale_after})
                 self._alert("stale_feed", instance_id, "data", "critical", "Paper 行情已过期", "新开仓已阻断，退出和估值仍保留", "paper_runtime_cycle", cycle_id, {"trade_date": trade_date, "stale_seconds": stale_seconds}, f"stale:{instance_id}:{trade_date}")
                 order_count, trade_count = self._execute_pending_signals(
-                    instance, cycle_id, trade_date, bars, data_available_at, allow_new_entries=False
+                    instance, cycle_id, trade_date, bars, data_available_at,
+                    allow_new_entries=False, calendar_rows=calendar_rows,
                 )
                 equity = self._persist_equity(instance, cycle_id, trade_date, bars)
                 self._finish_cycle(cycle_id, "blocked", 0, order_count, trade_count, equity["ledger_difference"])
@@ -239,7 +252,10 @@ class PaperRuntimeService:
                         "mode": (instance.get("feed_config") or {}).get("mode"),
                     },
                 )
-            order_count, trade_count = self._execute_pending_signals(instance, cycle_id, trade_date, bars, data_available_at)
+            order_count, trade_count = self._execute_pending_signals(
+                instance, cycle_id, trade_date, bars, data_available_at,
+                calendar_rows=calendar_rows,
+            )
             start_date = (date.fromisoformat(trade_date) - timedelta(days=120)).isoformat()
             replay = self.runtime.replay(str(instance["strategy_version_id"]), {
                 "dataset_snapshot_id": int(instance["dataset_snapshot_id"]), "factor_snapshot_id": int(instance["factor_snapshot_id"]),
@@ -562,9 +578,10 @@ class PaperRuntimeService:
     def get_instance_klines(self, instance_id: str, symbol: str) -> Dict[str, Any]:
         instance = self._instance(instance_id)
         normalized = self._normalize_symbol(symbol)
+        wanted = {item.upper() for item in symbol_aliases(normalized)}
         rows = self.datasets.load_daily_bars(
             int(instance["dataset_snapshot_id"]),
-            symbols=[normalized],
+            symbols=list(symbol_aliases(normalized)),
             limit=PAPER_KLINE_BAR_LIMIT,
         )
         items = [
@@ -577,7 +594,7 @@ class PaperRuntimeService:
                 "volume": item.get("volume"),
             }
             for item in rows
-            if str(item.get("symbol")) == normalized
+            if str(item.get("symbol") or "").upper() in wanted or instrument_key(item.get("symbol")) in wanted
         ]
         snapshot = self.datasets.get_snapshot(int(instance["dataset_snapshot_id"])) or {}
         return {
@@ -592,19 +609,8 @@ class PaperRuntimeService:
 
     @staticmethod
     def _normalize_symbol(symbol: str) -> str:
-        raw = str(symbol or "").strip().upper().replace(".", "_")
-        if raw.startswith(("SH_", "SZ_", "BJ_")):
-            return raw
-        code = "".join(character for character in raw if character.isdigit())
-        if len(code) != 6:
-            return raw
-        if code.startswith("6"):
-            return f"SH_{code}"
-        if code.startswith(("0", "3")):
-            return f"SZ_{code}"
-        if code.startswith(("4", "8", "9")):
-            return f"BJ_{code}"
-        return code
+        key = instrument_key(symbol)
+        return key or storage_symbol(symbol)
 
     @staticmethod
     def _feed_allows_stale_entries(feed_config: Mapping[str, Any]) -> bool:
@@ -1013,6 +1019,58 @@ class PaperRuntimeService:
                     )
         return {"restored": len(running), "interrupted_cycles": len(interrupted), "instances": running}
 
+    def _optional_snapshot_dataset(self, snapshot_id: int, dataset_code: str) -> List[Dict[str, Any]]:
+        try:
+            return self.datasets.load_snapshot_dataset(int(snapshot_id), dataset_code, limit=1_000_000)
+        except ValueError:
+            return []
+
+    def _cost_model(self, instance: Mapping[str, Any]) -> Dict[str, float]:
+        run_id = instance.get("qualifying_backtest_run_id")
+        if not run_id:
+            return dict(DEFAULT_ASHARE_COST)
+        row = self._row(
+            """
+            SELECT c.commission_rate, c.minimum_commission, c.stamp_duty_rate,
+                   c.transfer_fee_rate, c.slippage_rate
+            FROM backtest_runs r
+            JOIN backtest_cost_models c ON c.id = r.cost_model_id
+            WHERE r.id=%s
+            """,
+            (str(run_id),),
+        )
+        if not row:
+            return dict(DEFAULT_ASHARE_COST)
+        return {
+            key: float(row[key])
+            for key in ("commission_rate", "minimum_commission", "stamp_duty_rate", "transfer_fee_rate", "slippage_rate")
+            if row.get(key) is not None
+        }
+
+    def _spot_broker(
+        self,
+        instance: Mapping[str, Any],
+        trade_date: str,
+        *,
+        calendar_rows: Sequence[Mapping[str, Any]] = (),
+    ) -> AShareSpotBroker:
+        snapshot_id = int(instance["dataset_snapshot_id"])
+        return AShareSpotBroker(
+            self._cost_model(instance),
+            calendar_rows=calendar_rows,
+            price_limits=self._optional_snapshot_dataset(snapshot_id, "price_limits"),
+            suspensions=self._optional_snapshot_dataset(snapshot_id, "suspensions"),
+        )
+
+    @staticmethod
+    def _bar_for(bars: Mapping[str, Mapping[str, Any]], symbol: str) -> Optional[Mapping[str, Any]]:
+        wanted = {item.upper() for item in symbol_aliases(symbol)}
+        for key, bar in bars.items():
+            aliases = {item.upper() for item in symbol_aliases(key)}
+            if wanted & aliases:
+                return bar
+        return None
+
     def _execute_pending_signals(
         self,
         instance: Mapping[str, Any],
@@ -1022,6 +1080,7 @@ class PaperRuntimeService:
         available_at: datetime,
         *,
         allow_new_entries: bool = True,
+        calendar_rows: Sequence[Mapping[str, Any]] = (),
     ) -> Tuple[int, int]:
         self._execute(
             """
@@ -1038,13 +1097,15 @@ class PaperRuntimeService:
             "SELECT * FROM strategy_signals WHERE paper_instance_id=%s AND status='new' AND signal_time::date<%s ORDER BY signal_time,id",
             (instance["id"], trade_date),
         )
+        broker = self._spot_broker(instance, trade_date, calendar_rows=calendar_rows)
         orders = trades = 0
         for signal in signals:
-            bar = bars.get(str(signal["symbol"]))
+            bar = self._bar_for(bars, str(signal["symbol"]))
             if not bar:
                 continue
             created, filled = self._execute_signal(
-                instance, cycle_id, signal, bar, trade_date, available_at, allow_new_entries=allow_new_entries
+                instance, cycle_id, signal, bar, trade_date, available_at,
+                allow_new_entries=allow_new_entries, broker=broker,
             )
             orders += int(created)
             trades += int(filled)
@@ -1060,11 +1121,18 @@ class PaperRuntimeService:
         available_at: datetime,
         *,
         allow_new_entries: bool = True,
+        broker: Optional[AShareSpotBroker] = None,
     ) -> Tuple[bool, bool]:
         existing = self._row("SELECT id,status FROM orders WHERE paper_instance_id=%s AND signal_id=%s", (instance["id"], signal["id"]))
         if existing:
             return False, existing["status"] == "filled"
-        position = self._row("SELECT * FROM positions WHERE portfolio_id=%s AND symbol=%s", (instance["portfolio_id"], signal["symbol"])) or {"quantity": 0, "available_quantity": 0, "avg_cost": 0}
+        aliases = symbol_aliases(signal["symbol"])
+        position = None
+        for alias in aliases:
+            position = self._row("SELECT * FROM positions WHERE portfolio_id=%s AND symbol=%s", (instance["portfolio_id"], alias))
+            if position:
+                break
+        position = position or {"quantity": 0, "available_quantity": 0, "avg_cost": 0}
         portfolio = self._row("SELECT * FROM portfolios WHERE id=%s", (instance["portfolio_id"],)) or {}
         latest_equity = self._row("SELECT equity,drawdown FROM paper_equity_snapshots WHERE paper_instance_id=%s ORDER BY trade_date DESC LIMIT 1", (instance["id"],))
         equity = float((latest_equity or {}).get("equity") or portfolio.get("initial_cash") or 0)
@@ -1100,27 +1168,44 @@ class PaperRuntimeService:
                 if not row:
                     return False, False
                 order_id = str(row["id"])
-        accepted, risk_event_id, reason = self._risk_decision(instance, order_id, signal, side, quantity, price, bar, portfolio, latest_equity)
+        spot = broker or AShareSpotBroker(self._cost_model(instance))
+        decision = spot.evaluate(
+            side=side,
+            symbol=str(signal["symbol"]),
+            quantity=quantity,
+            price=price,
+            trade_date=trade_date,
+            cash=float(portfolio.get("cash_balance") or 0),
+            available_quantity=int(position.get("available_quantity") or 0),
+            bar=bar,
+        )
+        accepted, risk_event_id, reason = self._risk_decision(
+            instance, order_id, signal, side, quantity, price, bar, portfolio, latest_equity, broker_decision=decision,
+        )
         if not accepted:
             self._execute("UPDATE orders SET status='rejected',risk_event_id=%s,message=%s,updated_at=NOW() WHERE id=%s", (risk_event_id, reason, order_id))
             self._execute("UPDATE strategy_signals SET status='invalidated',updated_at=NOW() WHERE id=%s", (signal["id"],))
-            self._alert("risk_rejection", str(instance["id"]), "risk", "warning", "Paper 风控拒单", reason, "order", order_id, {"signal_id": str(signal["id"]), "cycle_id": cycle_id}, f"risk:{order_id}")
+            self._alert("risk_rejection", str(instance["id"]), "risk", "warning", "Paper 风控拒单", reason, "order", order_id, {"signal_id": str(signal["id"]), "cycle_id": cycle_id, "rejection_code": decision.get("rejection_code")}, f"risk:{order_id}")
             return True, False
-        amount = price * quantity
-        commission = max(amount * 0.0003, 5.0)
+        fees = decision["fees"]
+        amount = float(decision["amount"])
+        commission = float(fees["commission"])
         cash = float(portfolio.get("cash_balance") or 0)
+        ledger_amount = float(decision["cash_delta"])
+        new_cash = cash + ledger_amount
+        persist_symbol = instrument_key(signal["symbol"]) or str(signal["symbol"])
         if side == "buy":
-            new_cash = cash - amount - commission
             new_quantity = current_quantity + quantity
-            avg_cost = ((current_quantity * float(position.get("avg_cost") or 0)) + amount + commission) / new_quantity
+            avg_cost = ((current_quantity * float(position.get("avg_cost") or 0)) + float(decision["book_cost"])) / new_quantity
             available_quantity = int(position.get("available_quantity") or 0)
-            ledger_amount = -(amount + commission)
         else:
-            new_cash = cash + amount - commission
             new_quantity = current_quantity - quantity
             avg_cost = float(position.get("avg_cost") or 0) if new_quantity else 0
             available_quantity = max(0, int(position.get("available_quantity") or 0) - quantity)
-            ledger_amount = amount - commission
+        fee_note = (
+            f"Paper {side} commission={commission:.2f} tax={float(fees['tax']):.2f} "
+            f"transfer={float(fees['transfer_fee']):.2f}"
+        )
         with self.database.get_connection() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute("UPDATE portfolios SET cash_balance=%s,updated_at=NOW() WHERE id=%s", (new_cash, instance["portfolio_id"]))
@@ -1131,7 +1216,7 @@ class PaperRuntimeService:
                     ON CONFLICT(portfolio_id,symbol) DO UPDATE SET quantity=EXCLUDED.quantity,available_quantity=EXCLUDED.available_quantity,
                         avg_cost=EXCLUDED.avg_cost,last_price=EXCLUDED.last_price,market_value=EXCLUDED.market_value,updated_at=NOW()
                     """,
-                    (instance["portfolio_id"], signal["symbol"], new_quantity, available_quantity, avg_cost, price, new_quantity * price),
+                    (instance["portfolio_id"], persist_symbol, new_quantity, available_quantity, avg_cost, price, new_quantity * price),
                 )
                 cursor.execute(
                     """
@@ -1140,7 +1225,7 @@ class PaperRuntimeService:
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT DO NOTHING RETURNING id
                     """,
-                    (instance["portfolio_id"], instance["id"], order_id, signal["symbol"], side, price, quantity, amount, commission, signal["signal_time"], signal.get("data_available_at") or signal["signal_time"], earliest_fill_at, earliest_fill_at),
+                    (instance["portfolio_id"], instance["id"], order_id, persist_symbol, side, price, quantity, amount, commission, signal["signal_time"], signal.get("data_available_at") or signal["signal_time"], earliest_fill_at, earliest_fill_at),
                 )
                 trade = cursor.fetchone()
                 if not trade:
@@ -1148,14 +1233,17 @@ class PaperRuntimeService:
                 trade_id = str(trade["id"])
                 cursor.execute(
                     "INSERT INTO cash_ledger(portfolio_id,paper_instance_id,event_type,amount,balance_after,ref_type,ref_id,note) VALUES (%s,%s,%s,%s,%s,'order',%s,%s) ON CONFLICT DO NOTHING",
-                    (instance["portfolio_id"], instance["id"], side, ledger_amount, new_cash, order_id, f"Paper {side} 含费用 {commission:.2f}"),
+                    (instance["portfolio_id"], instance["id"], side, ledger_amount, new_cash, order_id, fee_note),
                 )
-                cursor.execute("UPDATE orders SET status='filled',filled_quantity=%s,risk_event_id=%s,filled_at=%s,message='模拟成交',updated_at=NOW() WHERE id=%s", (quantity, risk_event_id, earliest_fill_at, order_id))
+                cursor.execute("UPDATE orders SET status='filled',filled_quantity=%s,risk_event_id=%s,filled_at=%s,message=%s,updated_at=NOW() WHERE id=%s", (quantity, risk_event_id, earliest_fill_at, fee_note, order_id))
                 cursor.execute("UPDATE strategy_signals SET status='ordered',updated_at=NOW() WHERE id=%s", (signal["id"],))
-                self._event_cursor(cursor, str(instance["id"]), cycle_id, "broker", "info", "Paper 订单已模拟成交", {"order_id": order_id, "trade_id": trade_id, "symbol": signal["symbol"], "side": side, "quantity": quantity, "price": price})
+                self._event_cursor(cursor, str(instance["id"]), cycle_id, "broker", "info", "Paper 订单已模拟成交", {"order_id": order_id, "trade_id": trade_id, "symbol": persist_symbol, "side": side, "quantity": quantity, "price": price, "fees": fees})
         return True, True
 
-    def _risk_decision(self, instance: Mapping[str, Any], order_id: str, signal: Mapping[str, Any], side: str, quantity: int, price: float, bar: Mapping[str, Any], portfolio: Mapping[str, Any], latest_equity: Optional[Mapping[str, Any]]) -> Tuple[bool, str, str]:
+    def _risk_decision(self, instance: Mapping[str, Any], order_id: str, signal: Mapping[str, Any], side: str, quantity: int, price: float, bar: Mapping[str, Any], portfolio: Mapping[str, Any], latest_equity: Optional[Mapping[str, Any]], broker_decision: Optional[Mapping[str, Any]] = None) -> Tuple[bool, str, str]:
+        if broker_decision and not broker_decision.get("accepted", True):
+            code = str(broker_decision.get("rejection_code") or "REJECTED")
+            return False, "", str(broker_decision.get("rejection_reason") or code)
         limits = dict(instance.get("capacity_limits") or {})
         cash = float(portfolio.get("cash_balance") or 0)
         initial = float(portfolio.get("initial_cash") or 1)

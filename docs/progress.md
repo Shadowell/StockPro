@@ -16,6 +16,20 @@
   final-state-matrix 全部通过。`./scripts/check.sh` 因本环境缺少隔离库 `DATABASE_URL`
   与 backend venv 未跑全量。
 
+## Backend P0 #13/#9/#10：A股现货 Paper broker（2026-08-23）
+
+- 抽出 `AShareSpotBroker`：`code.market`、交易日历、T+1、100 股整手、现金账本。
+- Paper 成交费用与 `AShareBacktestEngine` 对齐（佣金 + 印花税 + 过户费）。
+- Paper 拒绝涨停买、跌停卖、停牌和非交易日。不开启实盘。
+
+## Backend P0 #8/#12：移出加密交易所与 OKX 脚本（2026-08-23）
+
+- 将 OKX/Binance 实盘交易所、合约 Paper/Broker、funding/arb/`contract_*` 策略
+  以及 `sync_okx_universe.py` / `okx_orbit_publisher.js` 移到
+  `archive/bitpro-crypto/`，不在默认产品树中。
+- `strategy_registry` 不再注册加密策略；OKX/funding/contract key 会被拒绝。
+- 不开启实盘，不修改 BitPro。下一步是 #13 A股现货 Paper broker。
+
 ## BitPro-first A股整仓迁移完成（2026-08-23）
 
 - PR #4 合并应用重建，merge SHA `4c7fe5194cae7abf6c07a8be005bbfb573b032d8`。首次自动部署
