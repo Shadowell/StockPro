@@ -129,9 +129,12 @@ cp backend/.env.example backend/.env
 # 编辑 backend/.env，至少修改管理员密码和 Token 密钥；
 # 需要真实数据或 AI 时，再填写 TUSHARE_TOKEN / QWEN_API_KEY。
 
+./scripts/setup_isolation_db.sh
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
+./scripts/setup_isolation_db.sh --migrate
+
 python3 -m venv backend/venv
 backend/venv/bin/python -m pip install -r backend/requirements.txt
-(cd backend && venv/bin/python bootstrap_runtime.py)
 
 npm --prefix frontend install
 ./restart.sh
@@ -181,6 +184,17 @@ tail -f logs/frontend.log
 数据同步会产生外部 API 调用与数据库写入。先在数据中心确认数据日期、权限、覆盖范围和预计任务量，再执行全市场同步。
 
 ## 验证
+
+隔离库与 `./scripts/check.sh` 黄金路径：
+
+```bash
+./scripts/setup_isolation_db.sh          # 一键创建 stockpro_bitpro_rebase_dev
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
+./scripts/setup_isolation_db.sh --migrate
+./scripts/check.sh
+```
+
+`check.sh` 在 `DATABASE_URL` 未设置或不指向隔离库时会退出，并打印上述命令。详情见 [本地运行手册 · 隔离库](docs/deployment.md#isolation-database)。
 
 项目统一检查入口：
 

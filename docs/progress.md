@@ -1,5 +1,17 @@
 # Progress Log
 
+## DX isolation DB and A-share run_demo (#18, #19)（2026-08-24）
+
+- 新增一键脚本 `scripts/setup_isolation_db.sh`：Docker Compose profile `isolation`
+  或 SQL/`provision_isolation_db.py` 创建 `stockpro_bitpro_rebase_dev`。
+- `scripts/check.sh` 在 `DATABASE_URL` 缺失或非隔离时退出，并指向该 setup 命令与
+  `docs/deployment.md#isolation-database`。也可从 `backend/.env` 读取 URL。
+- `scripts/run_demo.py` 改为 A 股 Paper：`AShareSpotBroker`、`600000.SH`、CNY
+  现金账本、T+1、100 股；可选 `--list-instances` 只读列出隔离库 Paper。不再使用
+  SQLite `crypto_data.db`、Kairos、BTC/USDT、OKX。
+- 未改 BitPro，未加产品页。下一步：Eva 跑 setup 后重跑 `/api/health`、
+  `/api/health/storage` 与 `./scripts/check.sh`。
+
 ## Shell nav and workbench state machine (#14, #11)（2026-08-23）
 
 - 前端壳层继续使用 BitPro IA：首页 / 行情 / 股票池 / 因子 / 策略 / 回测 / 模拟 / 盯盘 /

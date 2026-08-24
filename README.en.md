@@ -47,10 +47,11 @@ Requirements: Python 3.11+, Node.js 18+, npm 9+, and Docker Compose.
 cp backend/.env.example backend/.env
 # Edit backend/.env; change the admin password and token secret.
 
-docker compose up -d postgres
+./scripts/setup_isolation_db.sh
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
+./scripts/setup_isolation_db.sh --migrate
 python3 -m venv backend/venv
 backend/venv/bin/python -m pip install -r backend/requirements.txt
-(cd backend && venv/bin/python bootstrap_runtime.py)
 npm --prefix frontend install
 ./restart.sh
 ```
@@ -65,7 +66,11 @@ Use `./stop.sh` to stop the local frontend and backend. `./restart.sh` never dep
 
 ## Verification
 
+`./scripts/check.sh` requires `DATABASE_URL` to end with `/stockpro_bitpro_rebase_dev`.
+
 ```bash
+./scripts/setup_isolation_db.sh
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 ./scripts/check.sh
 ```
 

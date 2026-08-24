@@ -227,7 +227,9 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 
 - 前端：React + Vite，`http://localhost:4444`。
 - 后端：FastAPI，`http://localhost:4445`。
-- 数据库：服务器 PostgreSQL；开发机默认通过 `127.0.0.1:55432` SSH 隧道访问，不启动本地 PostgreSQL。
+- 数据库：服务器 PostgreSQL 仍是研究/生产事实库。`./scripts/check.sh` 黄金路径使用隔离库
+  `stockpro_bitpro_rebase_dev`，可用 `./scripts/setup_isolation_db.sh` 在本机 Docker
+  （`127.0.0.1:55432`）或已有 Postgres 上创建；不要把 `stockpro_dev` / 生产库交给 check.sh。
 - 调度：APScheduler，计划与执行状态持久化到 PostgreSQL。
 - Electron：可选壳层，不是核心产品架构或主要验收入口。
 - 本地 bootstrap、迁移、数据同步和 Paper 恢复均显式执行。
