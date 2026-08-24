@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.db.postgres_db import PostgresDatabase
 
-PROTOCOL_NAME = "策略库全市场研究协议 2025H2"
+PROTOCOL_NAME = "策略库全市场研究协议 2025H2 v2"
 
 # 基于 quick 诊断结果选定的 10 个策略（名称关键词）
 SELECTED = [
