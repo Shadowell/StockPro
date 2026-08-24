@@ -10,6 +10,23 @@ MIN_PRICE = 3.0
 WEIGHT = 0.24
 
 
+
+def _clean(values):
+    """过滤序列中的 None/NaN（停牌与缺失日），返回 float 列表。"""
+    out = []
+    for item in values:
+        try:
+            value = float(item)
+        except Exception:
+            continue
+        if value == value:
+            out.append(value)
+    return out
+
+
+def _hist(symbol, count, field):
+    return _clean(history(symbol, count, "1d", field))
+
 def initialize(context):
     set_benchmark("000300.SH")
     set_option("avoid_future_data", True)
@@ -35,7 +52,7 @@ def _ema(values, window):
 def trade(context):
     for symbol in list(context.portfolio.positions):
         bar = get_current_data().get(symbol)
-        closes = history(symbol, FAST + 5, "1d", "close")
+        closes = _hist(symbol, FAST + 5, "close")
         if not bar or bar.close is None or len(closes) < FAST:
             continue
         ema_now = _ema(list(closes), FAST)
@@ -50,7 +67,7 @@ def trade(context):
         bar = get_current_data().get(symbol)
         if not bar or bar.close is None or bar.close < MIN_PRICE:
             continue
-        closes = history(symbol, FAST + 6, "1d", "close")
+        closes = _hist(symbol, FAST + 6, "close")
         if len(closes) < FAST + 1:
             continue
         ema_now = _ema(list(closes), FAST)

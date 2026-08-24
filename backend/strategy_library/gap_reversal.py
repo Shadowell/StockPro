@@ -10,6 +10,23 @@ MIN_PRICE = 3.0
 WEIGHT = 0.19
 
 
+
+def _clean(values):
+    """过滤序列中的 None/NaN（停牌与缺失日），返回 float 列表。"""
+    out = []
+    for item in values:
+        try:
+            value = float(item)
+        except Exception:
+            continue
+        if value == value:
+            out.append(value)
+    return out
+
+
+def _hist(symbol, count, field):
+    return _clean(history(symbol, count, "1d", field))
+
 def initialize(context):
     set_benchmark("000300.SH")
     set_option("avoid_future_data", True)
@@ -26,7 +43,7 @@ def trade(context):
     # 简单隔日逻辑：持仓每日按当前信号重估，不再满足条件即离场
     for symbol in list(context.portfolio.positions):
         bar = get_current_data().get(symbol)
-        closes = history(symbol, 3, "1d", "close")
+        closes = _hist(symbol, 3, "close")
         if not bar or bar.close is None or len(closes) < 2 or not closes[-2]:
             continue
         gap_today = bar.open / closes[-2] - 1.0
@@ -41,7 +58,7 @@ def trade(context):
             continue
         if bar.close <= bar.open:
             continue
-        closes = history(symbol, 2, "1d", "close")
+        closes = _hist(symbol, 2, "close")
         if len(closes) < 2 or not closes[-2]:
             continue
         gap = bar.open / closes[-2] - 1.0

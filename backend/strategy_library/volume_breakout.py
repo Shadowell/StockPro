@@ -11,6 +11,23 @@ MAX_POSITIONS = 5
 WEIGHT = 0.19
 
 
+
+def _clean(values):
+    """过滤序列中的 None/NaN（停牌与缺失日），返回 float 列表。"""
+    out = []
+    for item in values:
+        try:
+            value = float(item)
+        except Exception:
+            continue
+        if value == value:
+            out.append(value)
+    return out
+
+
+def _hist(symbol, count, field):
+    return _clean(history(symbol, count, "1d", field))
+
 def initialize(context):
     set_benchmark("000300.SH")
     set_option("avoid_future_data", True)
@@ -25,8 +42,8 @@ def handle_data(context, data):
 
 def trade(context):
     for symbol in list(context.portfolio.positions):
-        highs = history(symbol, BOX, "1d", "high")
-        lows = history(symbol, BOX, "1d", "low")
+        highs = _hist(symbol, BOX, "high")
+        lows = _hist(symbol, BOX, "low")
         bar = get_current_data().get(symbol)
         if not bar or bar.close is None or not highs or not lows:
             continue
@@ -42,12 +59,13 @@ def trade(context):
         bar = get_current_data().get(symbol)
         if not bar or bar.close is None or bar.close < MIN_PRICE:
             continue
-        highs = history(symbol, BOX + 1, "1d", "high")
-        volumes = history(symbol, BOX + 1, "1d", "volume")
+        highs = _hist(symbol, BOX + 1, "high")
+        volumes = _hist(symbol, BOX + 1, "volume")
         if len(highs) < BOX + 1 or len(volumes) < BOX + 1:
             continue
         prior_high = max(list(highs)[:BOX])
-        base = list(volumes)[:BOX].mean()
+        prior_vols = list(volumes)[:BOX]
+        base = sum(prior_vols) / len(prior_vols) if prior_vols else 0.0
         if base <= 0:
             continue
         if bar.close > prior_high and volumes[-1] >= VOLUME_RATIO * base:

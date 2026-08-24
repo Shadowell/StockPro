@@ -11,6 +11,23 @@ TOP_N = 6
 WEIGHT = 0.16
 
 
+
+def _clean(values):
+    """过滤序列中的 None/NaN（停牌与缺失日），返回 float 列表。"""
+    out = []
+    for item in values:
+        try:
+            value = float(item)
+        except Exception:
+            continue
+        if value == value:
+            out.append(value)
+    return out
+
+
+def _hist(symbol, count, field):
+    return _clean(history(symbol, count, "1d", field))
+
 def initialize(context):
     set_benchmark("000300.SH")
     set_option("avoid_future_data", True)
@@ -44,7 +61,7 @@ def trade(context):
         lower = _lower_band(symbol)
         if lower is None:
             continue
-        closes = history(symbol, 2, "1d", "close")
+        closes = _hist(symbol, 2, "close")
         if len(closes) >= 2 and closes[-2] is not None and closes[-2] < lower and bar.close < bar.open + (bar.close - bar.open):
             picks.append(symbol)
         elif bar.close < lower:
@@ -55,7 +72,7 @@ def trade(context):
 
 
 def _stats(symbol):
-    closes = history(symbol, WINDOW, "1d", "close")
+    closes = _hist(symbol, WINDOW, "close")
     if len(closes) < WINDOW:
         return None
     values = [float(v) for v in closes if v is not None]

@@ -10,6 +10,23 @@ WEIGHT = 0.16
 MAX_TURNOVER = 0.15
 
 
+
+def _clean(values):
+    """过滤序列中的 None/NaN（停牌与缺失日），返回 float 列表。"""
+    out = []
+    for item in values:
+        try:
+            value = float(item)
+        except Exception:
+            continue
+        if value == value:
+            out.append(value)
+    return out
+
+
+def _hist(symbol, count, field):
+    return _clean(history(symbol, count, "1d", field))
+
 def initialize(context):
     set_benchmark("000300.SH")
     set_option("avoid_future_data", True)

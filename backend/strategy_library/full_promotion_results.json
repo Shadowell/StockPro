@@ -1,0 +1,96 @@
+[
+ {
+  "keyword": "双均线择时轮动",
+  "run_id": "ea0ccbf2-ee17-4631-9f4b-7143abd08840",
+  "status": "success",
+  "promotion": "rejected",
+  "return": 0.42534336915053594,
+  "sharpe": 1.7991238030463925,
+  "max_dd": 0.2603502585890953,
+  "orders": 328.0
+ },
+ {
+  "keyword": "动量轮动",
+  "run_id": "00bbc209-e207-4eeb-9123-dfe5addcaa06",
+  "status": "success",
+  "promotion": "rejected",
+  "return": -0.25142623540042797,
+  "sharpe": -2.3011421520791098,
+  "max_dd": 0.2976422324704899,
+  "orders": 85.0
+ },
+ {
+  "keyword": "量能萎缩回补",
+  "run_id": "35716107-7daf-4fd7-9eeb-122a0a3087ff",
+  "status": "success",
+  "promotion": "rejected",
+  "return": -0.09053129569043383,
+  "sharpe": -0.8020149139116686,
+  "max_dd": 0.20401071479512267,
+  "orders": 45.0
+ },
+ {
+  "keyword": "布林带回归",
+  "run_id": "84d3ce7e-d2ea-43c8-80e7-72e384ba5c1d",
+  "status": "success",
+  "promotion": "rejected",
+  "return": 0.01257557740978199,
+  "sharpe": 0.2631767966352604,
+  "max_dd": 0.13232313382513994,
+  "orders": 62.0
+ },
+ {
+  "keyword": "均值回归",
+  "run_id": "0febfdc6-27dd-48a8-9845-4de34c2c663c",
+  "status": "success",
+  "promotion": "rejected",
+  "return": 0.46708208211552416,
+  "sharpe": 3.0727631201153436,
+  "max_dd": 0.14329024569424043,
+  "orders": 531.0
+ },
+ {
+  "keyword": "隔日T超跌",
+  "run_id": "700d32cb-1b12-49b9-b15a-c76b81e111c0",
+  "status": "success",
+  "promotion": "rejected",
+  "return": 0.1197916470679099,
+  "sharpe": 0.9061968381633366,
+  "max_dd": 0.1359248758419201,
+  "orders": 338.0
+ },
+ {
+  "keyword": "MA20/MA60金叉放量突破",
+  "run_id": "3c06f248-5589-48cb-8c66-65aac4d4cd54",
+  "status": "success",
+  "promotion": "rejected",
+  "return": 0.07237244438891621,
+  "sharpe": 0.9995385008237756,
+  "max_dd": 0.1252077797911281,
+  "orders": 48.0
+ },
+ {
+  "keyword": "低波动防御",
+  "error": "version not found"
+ },
+ {
+  "keyword": "52周新高突破",
+  "run_id": "0d0bb41a-458e-40a0-9424-de00f41a699d",
+  "status": "success",
+  "promotion": "rejected",
+  "return": 0.2849725176891482,
+  "sharpe": 1.81713209916465,
+  "max_dd": 0.16430998208190442,
+  "orders": 205.0
+ },
+ {
+  "keyword": "小市值低换手",
+  "run_id": "c18ca57b-2266-48c4-9b3e-38ae5e914bb9",
+  "status": "success",
+  "promotion": "rejected",
+  "return": 0.0,
+  "sharpe": null,
+  "max_dd": 0.0,
+  "orders": 0.0
+ }
+]

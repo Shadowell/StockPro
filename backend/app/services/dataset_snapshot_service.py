@@ -116,6 +116,7 @@ class DatasetSnapshotService:
                         updated_at = NOW()
                     """,
                     rows,
+                    page_size=2000,
                 )
                 cursor.execute(
                     """
@@ -714,7 +715,8 @@ class DatasetSnapshotService:
             VALUES %s
             """,
             values,
-        )
+                    page_size=2000,
+                )
 
     def _store_partition_records(self, cursor, partition_id: int, rows: List[Dict[str, Any]]) -> None:
         if not rows:
@@ -730,7 +732,8 @@ class DatasetSnapshotService:
             VALUES %s ON CONFLICT (partition_id, record_ordinal) DO NOTHING
             """,
             values,
-        )
+                    page_size=2000,
+                )
 
     def _create_daily_snapshot(
         self,
@@ -836,7 +839,8 @@ class DatasetSnapshotService:
             VALUES %s ON CONFLICT (snapshot_id, partition_id) DO NOTHING
             """,
             [(snapshot_id, item["id"], item["dataset_code"], item["content_hash"]) for item in partitions],
-        )
+                    page_size=2000,
+                )
 
     def _seal_snapshot(self, cursor, snapshot_id: int) -> None:
         cursor.execute("SELECT status FROM dataset_snapshots WHERE id = %s FOR UPDATE", (snapshot_id,))

@@ -24,19 +24,19 @@ from app.services.factor_research_service import FactorResearchService
 
 STRATEGY_API_VERSION = "stockpro.v1"
 DEFAULT_RUNTIME_LIMITS = {
-    "wall_seconds": 3,
-    "cpu_seconds": 2,
-    "memory_mb": 512,
+    "wall_seconds": 300,
+    "cpu_seconds": 240,
+    "memory_mb": 2048,
     "open_files": 32,
-    "output_bytes": 1_048_576,
+    "output_bytes": 4_194_304,
     "log_bytes": 65_536,
-    "max_intents": 10_000,
-    "max_records": 10_000,
+    "max_intents": 50_000,
+    "max_records": 50_000,
 }
 BACKTEST_RUNTIME_LIMITS = {
-    "wall_seconds": 180,
-    "cpu_seconds": 120,
-    "memory_mb": 512,
+    "wall_seconds": 300,
+    "cpu_seconds": 240,
+    "memory_mb": 2048,
     "open_files": 32,
     "output_bytes": 8_388_608,
     "log_bytes": 262_144,
@@ -406,7 +406,15 @@ class StrategyRuntimeService:
                 return [dict(row) for row in cursor.fetchall()]
 
     def _build_market_payload(self, dataset_snapshot_id: int, payload: Mapping[str, Any]) -> Dict[str, Any]:
-        rows = self.snapshot_service.load_snapshot_dataset(dataset_snapshot_id, "daily_bars", limit=2_000_000)
+        # Filter at the SQL layer: pulling only the requested symbols keeps the
+        # payload build proportional to the strategy universe, not the snapshot.
+        requested = sorted({str(item).strip() for item in (payload.get("symbols") or []) if str(item).strip()})
+        rows = self.snapshot_service.load_snapshot_dataset(
+            dataset_snapshot_id,
+            "daily_bars",
+            symbols=requested or None,
+            limit=1_000_000,
+        )
         frame = pd.DataFrame(rows)
         if frame.empty:
             return {"events": [], "series": {}, "symbols": [], "event_hash": canonical_hash([])}
@@ -415,7 +423,6 @@ class StrategyRuntimeService:
         start = pd.Timestamp(payload.get("start_date")) if payload.get("start_date") else frame["trade_date"].min()
         end = pd.Timestamp(payload.get("end_date")) if payload.get("end_date") else frame["trade_date"].max()
         frame = frame[(frame["trade_date"] >= start) & (frame["trade_date"] <= end)]
-        requested = [str(item) for item in (payload.get("symbols") or [])]
         available = sorted(frame["symbol"].astype(str).unique().tolist())
         symbols = [item for item in requested if item in available] if requested else available[:20]
         frame = frame[frame["symbol"].isin(symbols)]

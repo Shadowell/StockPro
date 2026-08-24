@@ -11,6 +11,23 @@ MIN_PRICE = 3.0
 WEIGHT = 0.16
 
 
+
+def _clean(values):
+    """过滤序列中的 None/NaN（停牌与缺失日），返回 float 列表。"""
+    out = []
+    for item in values:
+        try:
+            value = float(item)
+        except Exception:
+            continue
+        if value == value:
+            out.append(value)
+    return out
+
+
+def _hist(symbol, count, field):
+    return _clean(history(symbol, count, "1d", field))
+
 def initialize(context):
     set_benchmark("000300.SH")
     set_option("avoid_future_data", True)
@@ -29,7 +46,7 @@ def rebalance(context):
         bar = get_current_data().get(symbol)
         if not bar or bar.close is None or bar.close < MIN_PRICE:
             continue
-        closes = history(symbol, MOM + 1, "1d", "close")
+        closes = _hist(symbol, MOM + 1, "close")
         if len(closes) < MOM + 1 or not closes[0]:
             continue
         mom = closes[-1] / closes[0] - 1.0

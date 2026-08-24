@@ -242,6 +242,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -283,6 +284,7 @@ class PostgresDatabase:
                     VALUES %s
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -418,6 +420,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -464,6 +467,7 @@ class PostgresDatabase:
                     VALUES %s
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -506,6 +510,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -571,6 +576,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -616,6 +622,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -696,6 +703,7 @@ class PostgresDatabase:
                     """,
                     values,
                     template="(%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)",
+                    page_size=2000,
                 )
         return len(values)
 
@@ -748,6 +756,7 @@ class PostgresDatabase:
                         turnover = EXCLUDED.turnover
                     """,
                     values,
+                    page_size=2000,
                 )
         self.insert_klines(records, timeframe="1d")
 
@@ -813,6 +822,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -1106,7 +1116,8 @@ class PostgresDatabase:
                         VALUES %s
                         """,
                         items,
-                    )
+                    page_size=2000,
+                )
         return job_id
 
     def create_market_day_sync_job(
@@ -1147,6 +1158,7 @@ class PostgresDatabase:
                     VALUES %s
                     """,
                     items,
+                    page_size=2000,
                 )
         return job_id
 
@@ -1412,6 +1424,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -1500,6 +1513,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -1583,6 +1597,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     rows,
+                    page_size=2000,
                 )
         return len(rows)
 
@@ -1709,6 +1724,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -1815,6 +1831,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     defaults,
+                    page_size=2000,
                 )
 
     def get_factor_definitions(self, category: str = None) -> List[Dict]:
@@ -1874,6 +1891,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 
@@ -2015,6 +2033,7 @@ class PostgresDatabase:
                     VALUES %s
                     """,
                     rows,
+                    page_size=2000,
                 )
 
     def get_factor_sync_logs(self, factor_code: str = None, limit: int = 50) -> List[Dict]:
@@ -2070,6 +2089,7 @@ class PostgresDatabase:
                     VALUES %s
                     """,
                     values,
+                    page_size=2000,
                 )
         return len(values)
 

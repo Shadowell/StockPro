@@ -12,6 +12,23 @@ MAX_POSITIONS = 6
 PER_NAME = 0.16
 
 
+
+def _clean(values):
+    """过滤序列中的 None/NaN（停牌与缺失日），返回 float 列表。"""
+    out = []
+    for item in values:
+        try:
+            value = float(item)
+        except Exception:
+            continue
+        if value == value:
+            out.append(value)
+    return out
+
+
+def _hist(symbol, count, field):
+    return _clean(history(symbol, count, "1d", field))
+
 def initialize(context):
     set_benchmark("000300.SH")
     set_option("avoid_future_data", True)
@@ -26,10 +43,10 @@ def handle_data(context, data):
 
 
 def _ma(symbol, window, field="close"):
-    series = history(symbol, window, "1d", field)
+    series = _hist(symbol, window, field)
     if len(series) < window:
         return None
-    return series.mean()
+    return sum(series) / len(series)
 
 
 def check_exits(context):
@@ -54,10 +71,11 @@ def scan_entries(context):
             continue
         if not (bar.close > ma_fast > ma_slow):
             continue
-        volumes = history(symbol, SLOW + 1, "1d", "volume")
+        volumes = _hist(symbol, SLOW + 1, "volume")
         if len(volumes) < SLOW + 1:
             continue
-        base = volumes[-FAST:].mean() if len(volumes[-FAST:]) else 0.0
+        tail = volumes[-FAST:]
+        base = sum(tail) / len(tail) if tail else 0.0
         if base <= 0 or volumes[-1] < VOLUME_RATIO * base:
             continue
         candidates.append(symbol)
