@@ -1,7 +1,7 @@
 # Backend P0: A-share paper semantics
 
 - Status: in progress
-- Issues: #8, #12 (this slice), then #13 / #9 / #10
+- Issues: #8/#12 in PR #15; this slice is #13 / #9 / #10
 - Owner: BE
 
 ## Goal
@@ -31,7 +31,22 @@ from the default product tree.
 - Paper and `AShareBacktestEngine` do not import those modules.
 - `pytest backend/tests/test_crypto_residue_purged.py rebuild/tests/test_safety.py` passes.
 
-## Next
+## Paper broker slice (#13 / #9 / #10)
 
-Issue #13: A-share spot paper broker (cash ledger, T+1, lot 100, calendar).
-Issues #9 / #10: align paper fees and limit-up/down/halt with backtest.
+- Shared `AShareSpotBroker` used by Paper and `AShareBacktestEngine`.
+- Symbol key is `code.market`; T+1 available qty; 100-share lots; cash ledger.
+- Paper fill costs are commission + stamp duty + transfer fee from the
+  qualifying backtest cost model (default `cn_stock_default`).
+- Paper rejects limit-up buy, limit-down sell, halt, and non-open calendar days.
+
+## Out of this slice
+
+- Live trading / auto order.
+- Schema migration for `trades.tax` / `trades.transfer_fee` (cash ledger and
+  broker events already carry the full fee split).
+
+## Verify
+
+```bash
+PYTHONPATH=backend python3 -m pytest backend/tests/test_ashare_paper_broker.py backend/tests/test_final_ashare_contract.py -q
+```

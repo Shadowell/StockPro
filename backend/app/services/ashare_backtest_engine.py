@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 
+from app.services.ashare_execution import compute_fees, rejection_reason
 from app.services.backtest_metrics_service import calculate_backtest_metrics, drawdown_series, monthly_returns
 
 
@@ -368,10 +369,7 @@ class AShareBacktestEngine:
         return delta, None
 
     def _fees(self, side: str, amount: float) -> Dict[str, float]:
-        commission = max(amount * _number(self.cost.get("commission_rate")), _number(self.cost.get("minimum_commission"), 5.0))
-        tax = amount * _number(self.cost.get("stamp_duty_rate")) if side == "sell" else 0.0
-        transfer_fee = amount * _number(self.cost.get("transfer_fee_rate"))
-        return {"commission": commission, "tax": tax, "transfer_fee": transfer_fee}
+        return compute_fees(side, amount, self.cost)
 
     def _affordable_quantity(self, requested: int, price: float, cash: float) -> int:
         quantity = (requested // 100) * 100
@@ -423,16 +421,10 @@ class AShareBacktestEngine:
 
     @staticmethod
     def _reason(code: str) -> str:
-        return {
-            "INVALID_LOT_SIZE": "买入委托必须为 100 股整数手",
-            "T1_NOT_AVAILABLE": "卖出数量超过 T+1 可用数量",
-            "SUSPENDED": "证券停牌或没有可执行日线",
-            "LIMIT_UP": "涨停价不接受买入",
-            "LIMIT_DOWN": "跌停价不接受卖出",
-            "INSUFFICIENT_CASH": "可用现金不足",
+        extra = {
             "SHORT_OR_LEVERAGE_NOT_SUPPORTED": "初始模型不支持做空或杠杆",
             "NO_FUTURE_EXECUTABLE_BAR": "回测结束前没有下一可执行日线",
-            "INVALID_EXECUTION_PRICE": "执行价格不可用",
             "UNSUPPORTED_INTENT": "运行时委托类型不受回测 Broker 支持",
             "CANCEL_NOT_MATCHED": "未找到可取消的待处理委托",
-        }.get(code, code)
+        }
+        return extra.get(code) or rejection_reason(code)

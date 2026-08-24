@@ -1,5 +1,11 @@
 # Progress Log
 
+## Backend P0 #13/#9/#10：A股现货 Paper broker（2026-08-23）
+
+- 抽出 `AShareSpotBroker`：`code.market`、交易日历、T+1、100 股整手、现金账本。
+- Paper 成交费用与 `AShareBacktestEngine` 对齐（佣金 + 印花税 + 过户费）。
+- Paper 拒绝涨停买、跌停卖、停牌和非交易日。不开启实盘。
+
 ## Backend P0 #8/#12：移出加密交易所与 OKX 脚本（2026-08-23）
 
 - 将 OKX/Binance 实盘交易所、合约 Paper/Broker、funding/arb/`contract_*` 策略
