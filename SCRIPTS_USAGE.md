@@ -4,11 +4,13 @@
 
 ## `restart.sh`
 
-清理旧的 StockPro 前后端进程，启动 Docker PostgreSQL、FastAPI 和 Vite，并验证：
+清理旧的 StockPro 前后端进程，启动 FastAPI 和 Vite，并验证：
 
 - 前端 `http://localhost:4444`
 - 后端 `http://localhost:4445`
-- 健康接口 `/api/health/health`
+- 健康接口 `/api/health`
+
+脚本还会尝试执行 `scripts/database-tunnel.sh start` 建立数据库 SSH 隧道；使用本地隔离库黄金路径时，未配置 `DATABASE_SSH_HOST` 可忽略该步输出。
 
 ```bash
 ./restart.sh
@@ -44,7 +46,7 @@ export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 ```
 
 Docker 不可用时对已有 Postgres 使用 `scripts/sql/create_isolation_db.sql` 或
-`scripts/provision_isolation_db.py`。说明见 [隔离库](docs/deployment.md#isolation-database)。
+`scripts/provision_isolation_db.py`。说明见 [隔离库](docs/deployment.md#7-隔离库)。
 
 ## `scripts/check.sh`
 

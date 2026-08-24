@@ -1,9 +1,19 @@
 # StockPro 专业化交付清单
 
-> 当前状态：执行中；建立日期：2026-08-09
-> 当前合同：[`contracts/active-platform-professionalization.md`](contracts/active-platform-professionalization.md)
+> 状态：**已封存的历史快照（2026-08-09 基线）**。本清单描述的 12 工作区形态和
+> `active-platform-professionalization` 合同已被 BitPro-first A 股重建取代；
+> 当前产品事实见 [`contracts/active.md`](contracts/active.md) 与
+> [开发进度](progress.md)。文中未完成项（SP-014/015/017/018/020/022/023）
+> 是否仍然成立需对照当前代码重新评估，不要直接当作现行队列执行。
 
-本清单是当前唯一优先级队列。`verify` 表示实现和隔离自动化已通过、仍待
+以下为封存时的原始内容：
+
+<details>
+<summary>历史清单原文</summary>
+
+> 建立日期：2026-08-09；当时合同：[`contracts/active-platform-professionalization.md`](contracts/active-platform-professionalization.md)
+
+本清单是当时唯一优先级队列。`verify` 表示实现和隔离自动化已通过、仍待
 干净真实服务重启与浏览器验收；`done` 只表示代码、自动化测试、干净重启
 和浏览器回归均已完成。仅有页面截图、历史测试结果或 API 返回不算完成。
 
@@ -63,7 +73,9 @@
 1. 先写能复现缺陷或锁定契约的测试。
 2. 实现最小修复，不用伪造数据填满页面。
 3. 清洁重启前端 `:4444` 与后端 `:4445`，确认端口和
-   `/api/health/health`、`/api/health/storage`。
+   `/api/health`、`/api/health/storage`。
 4. 运行聚焦测试及 `./scripts/check.sh`；涉及页面时运行对应 Playwright。
 5. 在本文件更新状态和证据，在 `docs/progress.md` 记录本轮事实。
 6. 仅提交当前事项相关文件并推送当前分支；不部署。
+
+</details>

@@ -12,17 +12,18 @@
 | --- | --- | --- |
 | 前端 | `http://localhost:4444` | React + Vite |
 | 后端 | `http://localhost:4445` | FastAPI |
-| 健康检查 | `http://localhost:4445/api/health/health` | 后端进程状态 |
+| 健康检查 | `http://localhost:4445/api/health` | 后端进程状态 |
 | 存储检查 | `http://localhost:4445/api/health/storage` | PostgreSQL 状态 |
 | OpenAPI | `http://localhost:4445/docs` | 运行时接口文档 |
-| PostgreSQL | `127.0.0.1:55432` | 到服务器 PostgreSQL 的 SSH 隧道端口 |
+| PostgreSQL | `127.0.0.1:55432` | 本地隔离库（Docker Compose）；服务器库隧道也复用该端口 |
 
 ## 2. 环境准备
 
 - Python 3.11+
 - Node.js 18+、npm 9+
-- 已配置数据库服务器的 SSH 主机别名
+- Docker Compose：创建隔离库 `stockpro_bitpro_rebase_dev` 的默认方式
 - 可选 `tmux`
+- 可选：数据库服务器的 SSH 主机别名，仅在需要连服务器研究库时配置
 
 ## 3. 首次安装
 
@@ -35,7 +36,7 @@ cp backend/.env.example backend/.env
 编辑 `backend/.env`：
 
 - 修改 `ADMIN_PASSWORD` 和 `ADMIN_TOKEN_SECRET`；
-- 将 `DATABASE_URL` 指向隔离库 `stockpro_bitpro_rebase_dev`（见下方 [隔离库](#isolation-database)）；
+- 将 `DATABASE_URL` 指向隔离库 `stockpro_bitpro_rebase_dev`（见下方 [隔离库](#7-隔离库)）；
 - 需要连服务器研究库时再配置 `DATABASE_SSH_HOST`，不要把 `stockpro_dev` / 生产库交给 `./scripts/check.sh`；
 - 按需填写 `TUSHARE_TOKEN` 和 `QWEN_API_KEY`；
 - 首次运行建议保持实时同步、策略执行和启动期写操作关闭。
@@ -50,7 +51,7 @@ backend/venv/bin/python -m pip install -r backend/requirements.txt
 npm --prefix frontend install
 ```
 
-`bootstrap_runtime.py` 显式执行迁移、数据目录安装、数据集注册和预置策略初始化。它会写入配置的服务器 PostgreSQL，但不会自动执行外部市场同步。
+`bootstrap_runtime.py` 显式执行迁移、数据目录安装、数据集注册和预置策略初始化。它写入 `DATABASE_URL` 指向的数据库，但不会自动执行外部市场同步。
 
 ## 4. 启动、停止和重启
 
@@ -62,7 +63,7 @@ npm --prefix frontend install
 `restart.sh` 会：
 
 1. 停止占用 4444/4445 的旧本地进程；
-2. 建立到服务器 PostgreSQL 的 SSH 隧道；
+2. 尝试建立数据库 SSH 隧道（未配置 `DATABASE_SSH_HOST` 时该步可忽略）；
 3. 确保 Python/Node 依赖已安装；
 4. 启动 FastAPI 和 Vite；
 5. 轮询后端健康接口和前端首页。
@@ -85,7 +86,7 @@ tail -f logs/frontend.log
 lsof -nP -iTCP:4444 -sTCP:LISTEN
 lsof -nP -iTCP:4445 -sTCP:LISTEN
 
-curl -fsS http://127.0.0.1:4445/api/health/health
+curl -fsS http://127.0.0.1:4445/api/health
 curl -fsS http://127.0.0.1:4445/api/health/storage
 curl -I http://127.0.0.1:4444/
 ```
@@ -114,7 +115,7 @@ tmux attach -t stockpro-frontend
 
 启动后无写入并不意味着所有模块可用。数据同步、因子计算、回测和 Paper 均需要对应数据与任务状态。
 
-## 7. 隔离库 {#isolation-database}
+## 7. 隔离库
 
 `./scripts/check.sh` 和 API 黄金路径只接受 `DATABASE_URL` 指向
 `stockpro_bitpro_rebase_dev`。不要用 `stockpro_dev` 或生产库。
@@ -174,7 +175,7 @@ curl -fsS -H "Authorization: Bearer $TOKEN" \
 (cd backend && venv/bin/python bootstrap_runtime.py --recover-paper)
 ```
 
-此命令会改变服务器开发数据库状态，执行前先确认目标数据库连接。
+此命令会改变目标数据库状态，执行前先确认 `DATABASE_URL` 指向的连接。
 
 ## 9. 验证
 
