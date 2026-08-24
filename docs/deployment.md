@@ -35,7 +35,8 @@ cp backend/.env.example backend/.env
 编辑 `backend/.env`：
 
 - 修改 `ADMIN_PASSWORD` 和 `ADMIN_TOKEN_SECRET`；
-- 将 `DATABASE_URL` 指向本机 SSH 隧道端口，并配置 `DATABASE_SSH_HOST`；
+- 将 `DATABASE_URL` 指向隔离库 `stockpro_bitpro_rebase_dev`（见下方 [隔离库](#isolation-database)）；
+- 需要连服务器研究库时再配置 `DATABASE_SSH_HOST`，不要把 `stockpro_dev` / 生产库交给 `./scripts/check.sh`；
 - 按需填写 `TUSHARE_TOKEN` 和 `QWEN_API_KEY`；
 - 首次运行建议保持实时同步、策略执行和启动期写操作关闭。
 
@@ -113,7 +114,53 @@ tmux attach -t stockpro-frontend
 
 启动后无写入并不意味着所有模块可用。数据同步、因子计算、回测和 Paper 均需要对应数据与任务状态。
 
-## 7. 数据库变更
+## 7. 隔离库 {#isolation-database}
+
+`./scripts/check.sh` 和 API 黄金路径只接受 `DATABASE_URL` 指向
+`stockpro_bitpro_rebase_dev`。不要用 `stockpro_dev` 或生产库。
+
+一键创建（优先 Docker Compose profile `isolation`；否则对已有 Postgres 跑 SQL）：
+
+```bash
+./scripts/setup_isolation_db.sh
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
+./scripts/setup_isolation_db.sh --migrate
+```
+
+等价拆步：
+
+```bash
+docker compose --profile isolation up -d postgres
+# 或
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f scripts/sql/create_isolation_db.sql
+PYTHONPATH=backend python3 scripts/provision_isolation_db.py --admin-url "$DATABASE_ADMIN_URL" --migrate
+```
+
+默认本地 URL：
+
+```text
+postgresql://stockpro:stockpro@127.0.0.1:55432/stockpro_bitpro_rebase_dev
+```
+
+Eva / Leo 拉起隔离库后重跑 API 黄金路径：
+
+```bash
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
+# 如需干净重启：按仓库约定重启 4445 / 4444
+curl -fsS http://127.0.0.1:4445/api/health
+curl -fsS http://127.0.0.1:4445/api/health/storage
+# 管理员登录后只读核对 Paper 列表（不写库）
+curl -fsS -X POST http://127.0.0.1:4445/api/auth/admin/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"'"$ADMIN_PASSWORD"'"}'
+curl -fsS -H "Authorization: Bearer $TOKEN" \
+  'http://127.0.0.1:4445/api/paper/instances?scope=business'
+./scripts/check.sh
+```
+
+空隔离库在迁移后即可通过健康检查；Paper / 回测表可以为空。不要从生产库复制。
+
+## 8. 数据库变更
 
 代码包含新迁移或首次拉取项目时，显式运行：
 
@@ -129,19 +176,21 @@ tmux attach -t stockpro-frontend
 
 此命令会改变服务器开发数据库状态，执行前先确认目标数据库连接。
 
-## 8. 验证
+## 9. 验证
 
 ```bash
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 ./scripts/check.sh
 ```
 
-该入口负责前端类型检查、lint、build、后端测试和 Python 编译。真实后端 E2E 需要服务与 PostgreSQL 正常运行：
+该入口负责前端类型检查、lint、build、后端测试和 Python 编译。缺少隔离库时会指向
+`./scripts/setup_isolation_db.sh`。真实后端 E2E 需要服务与 PostgreSQL 正常运行：
 
 ```bash
 npm --prefix frontend run test:e2e:real
 ```
 
-## 9. 常见排障
+## 10. 常见排障
 
 ### 4444 或 4445 被占用
 
@@ -149,13 +198,22 @@ npm --prefix frontend run test:e2e:real
 
 ### PostgreSQL 无法连接
 
+黄金路径先确认隔离库：
+
 ```bash
-./scripts/database-tunnel.sh status
+./scripts/setup_isolation_db.sh
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
+curl -fsS http://127.0.0.1:4445/api/health/storage
+```
+
+若改走服务器隧道：
+
+```bash
 ssh your-db-ssh-host true
 curl -fsS http://127.0.0.1:4445/api/health/storage
 ```
 
-确认 `backend/.env` 的 `DATABASE_URL`、`DATABASE_SSH_HOST` 和远端端口一致。本机端口被旧 PostgreSQL 容器占用时，应先停止该容器，再重建隧道。
+确认 `backend/.env` 的 `DATABASE_URL` 以 `/stockpro_bitpro_rebase_dev` 结尾。本机 55432 被旧容器占用时，先停容器再重跑 setup。
 
 ### 登录失败
 
@@ -165,7 +223,7 @@ curl -fsS http://127.0.0.1:4445/api/health/storage
 
 查看浏览器控制台和后端日志，确认登录 Token 未过期、Vite 代理目标为 `http://127.0.0.1:4445`。
 
-## 10. GitHub Actions 生产部署
+## 11. GitHub Actions 生产部署
 
 `.github/workflows/deploy.yml` 是生产部署入口：
 

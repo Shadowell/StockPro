@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""
-run_demo.py — 最小策略运行入口
-=================================
-1. 向 SQLite strategies 表中 upsert 一条 Kairos DCA 测试策略记录
-2. 通过 strategy_engine.start_strategy(id) 启动它
-3. 定时打印 PaperBroker 资金余额和持仓变化
+"""A-share paper demo — not crypto.
 
-用法:
-    cd backend && python -m scripts.run_demo          # 作为模块运行
-    cd backend && python ../scripts/run_demo.py       # 直接运行
-"""
+Runs a sealed-snapshot-style paper round through AShareSpotBroker:
+buy 600000.SH on T, sell on T+1, print the CNY cash ledger.
 
-import asyncio
-import json
+Optional: list isolation-DB paper instances when DATABASE_URL points at
+stockpro_bitpro_rebase_dev.
+
+Usage:
+    PYTHONPATH=backend python3 scripts/run_demo.py
+    PYTHONPATH=backend python3 scripts/run_demo.py --list-instances
+"""
+from __future__ import annotations
+
+import argparse
 import logging
 import os
-import signal
-import sqlite3
 import sys
-from datetime import datetime
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = PROJECT_ROOT / "backend"
@@ -32,169 +32,188 @@ logging.basicConfig(
 )
 logger = logging.getLogger("run_demo")
 
-DB_PATH = os.environ.get(
-    "DB_PATH",
-    str(PROJECT_ROOT / "data" / "crypto_data.db"),
-)
-
-STRATEGY_NAME = "kairos_dca_demo_test"
-STRATEGY_CONFIG = {
-    "strategy_key": "kairos_30m_horizon_dca",
-    "timeframe": "1m",
-    "use_30m_model_input": False,
-    "hold_bars": 30,
-    "quote_per_order": 10.0,
-    "confidence_threshold": 0.24,
-    "window_size": 256,
-    "warmup_bars": 300,
-    "is_paper_trading": True,
-    "initial_capital": 10000.0,
+ISOLATION_DB = "stockpro_bitpro_rebase_dev"
+DEMO_SYMBOL = "600000.SH"
+DEMO_STORAGE_SYMBOL = "SH_600000"
+INITIAL_CASH = 1_000_000.0
+CURRENCY = "CNY"
+COST = {
+    "commission_rate": 0.0003,
+    "minimum_commission": 5.0,
+    "stamp_duty_rate": 0.0005,
+    "transfer_fee_rate": 0.00001,
 }
 
+def _require_ashare_symbol(symbol: str) -> str:
+    from app.services.ashare_execution import instrument_key
 
-def upsert_strategy() -> int:
-    """向 strategies 表 upsert 策略记录，返回 strategy_id。"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    now = datetime.now().isoformat()
+    key = instrument_key(symbol)
+    if not key or "." not in key:
+        raise SystemExit(f"A-share demo requires code.market, got {symbol!r}")
+    lowered = symbol.lower()
+    if "/" in symbol or any(token in lowered for token in ("btc", "eth", "usdt")):
+        raise SystemExit("A-share demo refuses crypto symbols")
+    return key
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS strategies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            description TEXT,
-            script_content TEXT NOT NULL,
-            config TEXT,
-            status TEXT DEFAULT 'stopped',
-            exchange TEXT,
-            symbols TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+def run_paper_broker_demo(symbol: str = DEMO_SYMBOL) -> dict[str, Any]:
+    from app.services.ashare_backtest_engine import AShareBacktestEngine
+    from app.services.ashare_execution import AShareSpotBroker, compute_fees
+
+    key = _require_ashare_symbol(symbol)
+    storage = "SH_" + key.split(".", 1)[0] if key.endswith(".SH") else DEMO_STORAGE_SYMBOL
+    bars = [
+        {"trade_date": "2026-08-20", "symbol": storage, "open": 10, "close": 10.2, "turnover": 5_000_000, "volume": 1_000_000},
+        {"trade_date": "2026-08-21", "symbol": storage, "open": 10.2, "close": 10.1, "turnover": 5_000_000, "volume": 1_000_000},
+    ]
+    intents = [
+        {
+            "symbol": storage,
+            "intent_type": "order_target_percent",
+            "payload": {"value": 0.1},
+            "simulated_at": "2026-08-20T15:00:00+08:00",
+            "available_at": "2026-08-20T15:00:00+08:00",
+        },
+        {
+            "symbol": storage,
+            "intent_type": "order_target_percent",
+            "payload": {"value": 0},
+            "simulated_at": "2026-08-21T15:00:00+08:00",
+            "available_at": "2026-08-21T15:00:00+08:00",
+        },
+    ]
+    engine = AShareBacktestEngine(bars=bars, intents=intents, initial_cash=INITIAL_CASH, cost_model=COST)
+    backtest = engine.run()
+    buy_trade = next(item for item in backtest["trades"] if item["side"] == "buy")
+    sell_price = 10.2
+
+    broker = AShareSpotBroker(COST)
+    cash = INITIAL_CASH
+    ledger: list[dict[str, Any]] = []
+
+    buy = broker.evaluate(
+        side="buy",
+        symbol=key,
+        quantity=int(buy_trade["quantity"]),
+        price=float(buy_trade["price"]),
+        trade_date="2026-08-21",
+        cash=cash,
+        available_quantity=0,
+        bar=bars[1],
+    )
+    if not buy.get("accepted"):
+        raise SystemExit(f"Paper buy rejected: {buy.get('rejection_code')}")
+    cash += float(buy["cash_delta"])
+    ledger.append({"trade_date": "2026-08-21", "side": "buy", "cash": cash, **buy})
+
+    sell = broker.evaluate(
+        side="sell",
+        symbol=key,
+        quantity=int(buy_trade["quantity"]),
+        price=sell_price,
+        trade_date="2026-08-22",
+        cash=cash,
+        available_quantity=int(buy_trade["quantity"]),
+        bar={"open": sell_price, "close": 10.1, "volume": 1000},
+    )
+    if not sell.get("accepted"):
+        raise SystemExit(f"Paper T+1 sell rejected: {sell.get('rejection_code')}")
+    cash += float(sell["cash_delta"])
+    ledger.append({"trade_date": "2026-08-22", "side": "sell", "cash": cash, **sell})
+
+    return {
+        "runtime_mode": "ashare_paper",
+        "currency": CURRENCY,
+        "symbol": key,
+        "initial_cash": INITIAL_CASH,
+        "final_cash": cash,
+        "pnl": cash - INITIAL_CASH,
+        "trades": ledger,
+        "backtest_trade_count": len(backtest["trades"]),
+        "fees_aligned": compute_fees("sell", float(sell["amount"]), COST) == sell["fees"],
+    }
+
+
+def isolation_database_url(raw: str) -> str:
+    parsed = urlparse(raw)
+    if parsed.scheme not in {"postgresql", "postgresql+psycopg"}:
+        raise SystemExit("DATABASE_URL must be PostgreSQL")
+    name = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+    if name != ISOLATION_DB:
+        raise SystemExit(
+            f"refusing non-isolated DATABASE_URL; run ./scripts/setup_isolation_db.sh "
+            f"(expected /{ISOLATION_DB})"
         )
-    """)
+    return raw
 
-    existing = conn.execute(
-        "SELECT id FROM strategies WHERE name = ?", (STRATEGY_NAME,)
-    ).fetchone()
 
-    config_json = json.dumps(STRATEGY_CONFIG)
-    symbols_json = json.dumps(["BTC/USDT"])
-    description = "EMA 均线交叉策略（自动化测试用，PaperBroker 模拟盘）"
-    script_content = "# BaseStrategy class — 使用 module_path 加载\n"
+def list_paper_instances(database_url: str) -> list[dict[str, Any]]:
+    isolation_database_url(database_url)
+    from app.db.postgres_db import PostgresDatabase
+    from app.services.paper_runtime_service import PaperRuntimeService
 
-    if existing:
-        sid = existing["id"]
-        conn.execute(
-            """UPDATE strategies
-               SET config=?, description=?, status='stopped', updated_at=?
-               WHERE id=?""",
-            (config_json, description, now, sid),
+    database = PostgresDatabase(database_url)
+    try:
+        return PaperRuntimeService(database).list_instances_light()
+    finally:
+        database.close_pool()
+
+
+def _print_broker_demo(result: dict[str, Any]) -> None:
+    logger.info("=" * 56)
+    logger.info("A-share paper demo (CNY cash ledger, T+1, 100-share lots)")
+    logger.info("runtime_mode=%s currency=%s symbol=%s", result["runtime_mode"], result["currency"], result["symbol"])
+    logger.info("initial_cash=%.2f %s", result["initial_cash"], CURRENCY)
+    for trade in result["trades"]:
+        fees = trade.get("fees") or {}
+        logger.info(
+            "%s %s %s qty=%s px=%.2f cash_delta=%+.2f cash=%.2f commission=%.2f tax=%.2f transfer=%.2f",
+            trade["trade_date"],
+            trade["side"].upper(),
+            trade["symbol"],
+            trade["quantity"],
+            float(trade["price"]),
+            float(trade["cash_delta"]),
+            float(trade["cash"]),
+            float(fees.get("commission") or 0),
+            float(fees.get("tax") or 0),
+            float(fees.get("transfer_fee") or 0),
         )
-        logger.info("策略已存在，已更新: id=%d name=%s", sid, STRATEGY_NAME)
-    else:
-        cursor = conn.execute(
-            """INSERT INTO strategies
-               (name, description, script_content, config, status, exchange, symbols, created_at, updated_at)
-               VALUES (?, ?, ?, ?, 'stopped', 'okx', ?, ?, ?)""",
-            (STRATEGY_NAME, description, script_content, config_json, symbols_json, now, now),
-        )
-        sid = cursor.lastrowid
-        logger.info("策略已插入: id=%d name=%s", sid, STRATEGY_NAME)
-
-    conn.commit()
-    conn.close()
-    return sid
+    logger.info("final_cash=%.2f %s pnl=%+.2f %s", result["final_cash"], CURRENCY, result["pnl"], CURRENCY)
+    logger.info("=" * 56)
 
 
-async def monitor_broker(strategy_id: int, interval: float = 15.0):
-    """定时打印 PaperBroker 状态。"""
-    from app.services.strategy_engine import strategy_engine, PaperBroker
+def main() -> int:
+    parser = argparse.ArgumentParser(description="A-share paper demo (not crypto)")
+    parser.add_argument("--symbol", default=DEMO_SYMBOL, help="A-share code.market, default 600000.SH")
+    parser.add_argument(
+        "--list-instances",
+        action="store_true",
+        help="Also list paper instances from the isolation PostgreSQL.",
+    )
+    args = parser.parse_args()
 
-    await asyncio.sleep(5)
+    result = run_paper_broker_demo(args.symbol)
+    _print_broker_demo(result)
 
-    while True:
-        status = strategy_engine.get_strategy_status(strategy_id)
-        if not status:
-            logger.warning("策略 %d 状态不可用", strategy_id)
-            await asyncio.sleep(interval)
-            continue
-
-        if status.get("status") not in ("running",):
-            logger.info("策略已停止: %s", status.get("status"))
-            break
-
-        instance = strategy_engine._strategy_instances.get(strategy_id)
-        if instance and isinstance(instance.broker, PaperBroker):
-            broker: PaperBroker = instance.broker
+    if args.list_instances:
+        database_url = os.environ.get("DATABASE_URL", "")
+        if not database_url:
+            logger.error("DATABASE_URL is unset. Run ./scripts/setup_isolation_db.sh")
+            return 1
+        instances = list_paper_instances(database_url)
+        logger.info("isolation paper instances: %d", len(instances))
+        for item in instances[:20]:
             logger.info(
-                "\n╔═══ PaperBroker 实时状态 ═══╗\n"
-                "║ 余额:    %10.2f USDT   ║\n"
-                "║ 总权益:  %10.2f USDT   ║\n"
-                "║ 盈亏:    %+10.2f USDT   ║\n"
-                "║ 交易数:  %10d          ║\n"
-                "╚════════════════════════════╝",
-                broker.balance, broker.equity,
-                broker.equity - broker.initial_capital,
-                len(broker.trades),
+                "  %s  %s  cash=%.2f %s  status=%s",
+                item.get("id"),
+                item.get("name"),
+                float(item.get("cash_balance") or item.get("initial_cash") or 0),
+                CURRENCY,
+                item.get("status"),
             )
-            for sym, pos in broker.positions.items():
-                if pos["size"] > 0:
-                    logger.info(
-                        "  持仓 %s: %.6f @ %.2f  浮动P&L: %+.2f",
-                        sym, pos["size"], pos["entry_price"], pos.get("unrealized_pnl", 0),
-                    )
-        else:
-            logger.info(
-                "策略运行中 — PnL: %+.2f | 交易数: %d",
-                status.get("pnl", 0), status.get("total_trades", 0),
-            )
-
-        await asyncio.sleep(interval)
-
-
-async def main():
-    sid = upsert_strategy()
-    logger.info("=" * 50)
-    logger.info("策略 ID: %d | 名称: %s", sid, STRATEGY_NAME)
-    logger.info("配置: %s", json.dumps(STRATEGY_CONFIG, indent=2))
-    logger.info("=" * 50)
-
-    os.environ.setdefault("DB_PATH", DB_PATH)
-
-    from app.services.strategy_engine import strategy_engine
-
-    await strategy_engine.start()
-
-    success = await strategy_engine.start_strategy(sid)
-    if not success:
-        logger.error("策略启动失败！请检查日志")
-        return
-
-    logger.info("策略已启动，开始监控 PaperBroker 状态 ...")
-
-    stop_event = asyncio.Event()
-
-    def on_signal(_sig, _frame):
-        logger.info("收到退出信号，正在停止策略 ...")
-        stop_event.set()
-
-    signal.signal(signal.SIGINT, on_signal)
-    signal.signal(signal.SIGTERM, on_signal)
-
-    monitor_task = asyncio.create_task(monitor_broker(sid))
-
-    await stop_event.wait()
-
-    monitor_task.cancel()
-    await strategy_engine.stop_strategy(sid)
-    await strategy_engine.stop()
-
-    instance = strategy_engine._strategy_instances.get(sid)
-    if instance and hasattr(instance.broker, "summary"):
-        logger.info("\n%s", instance.broker.summary())
-
-    logger.info("Demo 运行结束")
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(main())

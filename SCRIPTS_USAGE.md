@@ -33,11 +33,25 @@ tail -f logs/frontend.log
 
 默认不会删除 PostgreSQL 容器或数据卷。
 
-## `scripts/check.sh`
+## `scripts/setup_isolation_db.sh`
 
-统一验证入口：
+一键创建 `./scripts/check.sh` 要求的隔离库 `stockpro_bitpro_rebase_dev`：
 
 ```bash
+./scripts/setup_isolation_db.sh
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
+./scripts/setup_isolation_db.sh --migrate
+```
+
+Docker 不可用时对已有 Postgres 使用 `scripts/sql/create_isolation_db.sql` 或
+`scripts/provision_isolation_db.py`。说明见 [隔离库](docs/deployment.md#isolation-database)。
+
+## `scripts/check.sh`
+
+统一验证入口。必须指向隔离库；缺失时脚本会打印 setup 命令：
+
+```bash
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 ./scripts/check.sh
 ```
 
@@ -45,6 +59,15 @@ tail -f logs/frontend.log
 
 ```bash
 git diff --check
+```
+
+## `scripts/run_demo.py`
+
+A 股 Paper 演示（CNY 现金账本、T+1、100 股），不再使用加密 SQLite / Kairos / OKX：
+
+```bash
+PYTHONPATH=backend python3 scripts/run_demo.py
+PYTHONPATH=backend python3 scripts/run_demo.py --list-instances
 ```
 
 ## 数据库 bootstrap
