@@ -109,6 +109,16 @@ Paper 模拟执行
 
 前端采用紧凑的金融操作台风格：固定一级菜单、页面内二级标签、统一状态语义、中文优先，并支持切换“红涨绿跌 / 绿涨红跌”。
 
+## 仓库布局：产品树与设计分支
+
+- **产品树**：git worktree `StockPro-bitpro-a-share`，检出 `main`。日常开发、PR、验证和
+  GitHub Actions 部署都以它为准。
+- **设计归档**：主目录 `StockPro` 挂在 `codex/bitpro-a-share-rebuild-design` 设计分支上，
+  已落后 `main` 且不含当前 A 股 Paper 运行时。它只作历史设计参考，**不要**在其中做日常
+  开发、修 bug 或开 PR。
+- 开始工作前先确认所在树：`git worktree list` 和 `git branch --show-current`。若不在
+  产品树或 `main` 派生的新分支上，先切换再动手。
+
 ## 快速开始
 
 ### 环境要求
