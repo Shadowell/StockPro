@@ -1,5 +1,21 @@
 # Progress Log
 
+## Shell nav and workbench state machine (#14, #11)（2026-08-23）
+
+- 前端壳层继续使用 BitPro IA：首页 / 行情 / 股票池 / 因子 / 策略 / 回测 / 模拟 / 盯盘 /
+  信号 / 监控 / 复盘 / 数据 / AI研发。期货预留仍回首页；实盘、套利、链上、ARC、旧交易页
+  深链改为明确不可用状态，并指向模拟盘现金账本或首页。
+- 侧栏和 `App.tsx` 不注册 `live-real` / `onchain` / `arbitrage` / `arc`；未知路由由
+  `UnknownWorkspace` 解析。加载 / 错误 / 权限 / 不可用态复用 `@bitpro/ui`。
+- 壳层文案改为 A股口径：代码.市场、交易日历、模拟盘/现金账本；设置中心不再发放
+  `live_diagnostic`。
+- #11：`frontend` 包名改为 `stockpro-frontend`；删除未路由的 Arbitrage / Onchain / Arc /
+  liveTrading / Trading / WatchMarket 页面。
+- 本地验证：`tsc` / lint 0 warning / production build / bundle budget、rebuild safety
+  `active=0 quarantined=54`、mock Playwright shell/home/market/paper/futures/capabilities/
+  final-state-matrix 全部通过。`./scripts/check.sh` 因本环境缺少隔离库 `DATABASE_URL`
+  与 backend venv 未跑全量。
+
 ## BitPro-first A股整仓迁移完成（2026-08-23）
 
 - PR #4 合并应用重建，merge SHA `4c7fe5194cae7abf6c07a8be005bbfb573b032d8`。首次自动部署

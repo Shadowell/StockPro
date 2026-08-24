@@ -13,6 +13,7 @@ import type {
   MarketWatchlistEntry,
   OrderBookView,
 } from '../types/research'
+import { formatAshareSymbol } from '../utils/ashareSymbol'
 
 
 const KlineChart = lazy(() => import('../components/KlineChart'))
@@ -192,7 +193,7 @@ export default function Market() {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-lg font-semibold text-white">{selected.instrument.name || selected.instrument.symbol}</h2>
-                    <span className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 font-mono text-[10px] text-gray-500">{selected.instrument.symbol}</span>
+                    <span className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 font-mono text-[10px] text-gray-500">{formatAshareSymbol(selected.instrument.symbol)}</span>
                     <span className="rounded border border-blue-500/25 bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-200">{selected.instrument.asset_class.toUpperCase()}</span>
                     <span className="rounded border border-crypto-border px-1.5 py-0.5 text-[10px] text-gray-400">{selected.instrument.lot_size}股</span>
                   </div>
@@ -203,10 +204,10 @@ export default function Market() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
                   {[
+                    ['代码.市场', formatAshareSymbol(selected.instrument.symbol)],
                     ['交易所', selected.instrument.exchange],
-                    ['币种', selected.instrument.currency],
-                    ['最小变动', selected.instrument.tick_size],
-                    ['状态', selected.data_status],
+                    ['计价货币', selected.instrument.currency],
+                    ['交易日历', selected.instrument.session_calendar || '—'],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-lg border border-crypto-border bg-crypto-bg/50 px-3 py-2">
                       <div className="text-gray-600">{label}</div><div className="mt-1 font-mono text-gray-300">{value || '—'}</div>

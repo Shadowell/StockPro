@@ -13,6 +13,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { researchApi } from '../api/client'
 import type { MarketOverviewView } from '../types/research'
+import { formatAshareSymbol } from '../utils/ashareSymbol'
 
 
 type NumericValue = number | string | null | undefined
@@ -161,7 +162,7 @@ export default function Home() {
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="text-xs font-semibold text-gray-200">{index.name}</div>
-                          <div className="mt-1 font-mono text-[10px] text-gray-600">{index.symbol}</div>
+                          <div className="mt-1 font-mono text-[10px] text-gray-600">{formatAshareSymbol(index.symbol)}</div>
                         </div>
                         <span className={`font-mono text-xs font-semibold ${valueTone(index.change_pct)}`}>
                           {formatPct(index.change_pct)}
@@ -242,9 +243,9 @@ export default function Home() {
                 <PanelTitle icon={Workflow} title="主线状态" detail="策略 → 回测 → 模拟" />
                 <div className="space-y-2">
                   {[
-                    ['策略', '/strategy', '版本与研究证据将在 Wave 3 接入'],
-                    ['回测', '/backtest', 'A股撮合与晋级门禁将在 Wave 3 接入'],
-                    ['模拟', '/paper', 'PostgreSQL 历史账本与实例监控'],
+                    ['策略', '/strategy', '不可变版本、验证与研究证据'],
+                    ['回测', '/backtest', 'A股撮合、参数矩阵与晋级门禁'],
+                    ['模拟', '/paper', 'PostgreSQL 现金账本与实例监控'],
                   ].map(([label, route, detail]) => (
                     <button
                       type="button"
@@ -256,7 +257,7 @@ export default function Home() {
                         <span className="block text-xs font-semibold text-gray-200">{label}</span>
                         <span className="mt-0.5 block text-[11px] text-gray-600">{detail}</span>
                       </span>
-                      <span className="shrink-0 text-[10px] text-amber-300">待适配</span>
+                      <span className="shrink-0 text-[10px] text-emerald-300">已接入</span>
                     </button>
                   ))}
                 </div>
