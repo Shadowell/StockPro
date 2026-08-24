@@ -1,6 +1,6 @@
 # Electron 架构优化方案总结
 
-> 状态：2026-06 的历史阶段总结。StockPro 当前以本地 B/S 为核心架构，Electron 只是可选壳层；请以 [README](README.md) 和 [技术架构](docs/technical_architecture.md) 为准。
+> 状态：2026-06 的历史阶段总结。StockPro 当前以本地 B/S 为核心架构，Electron 只是可选壳层；请以 [README](../../README.md) 和 [技术架构](../technical_architecture.md) 为准。
 
 ## 优化目标
 将现有 Web 应用转换为 Electron 桌面应用，并使用本地 Postgres 数据库替代远程 Postgres，以提高性能和响应速度。

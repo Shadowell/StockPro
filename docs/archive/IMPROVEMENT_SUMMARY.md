@@ -1,6 +1,6 @@
 # Stock Analysis App 项目改进总结
 
-> 状态：早期 Stock Analysis App 的历史总结，页面、功能和验证结论均不代表当前 StockPro。当前功能见 [README](README.md)，实际实现与检查历史见 [开发进度](docs/progress.md)。
+> 状态：早期 Stock Analysis App 的历史总结，页面、功能和验证结论均不代表当前 StockPro。当前功能见 [README](../../README.md)，实际实现与检查历史见 [开发进度](../progress.md)。
 
 ## 1. 已完成的改进
 
