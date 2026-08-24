@@ -1,5 +1,12 @@
 # Progress Log
 
+## DX worktree clarification docs (#7)（2026-08-24）
+
+- README 新增「仓库布局」：产品树为 worktree `StockPro-bitpro-a-share`（`main`）；
+  主目录 `StockPro` 的 `codex/bitpro-a-share-rebuild-design` 设计分支仅作归档，
+  不再用于日常开发或开 PR，动手前先 `git worktree list` 确认所在树。
+- 纯文档变更；验证为 `git diff --check`。
+
 ## DX isolation DB and A-share run_demo (#18, #19)（2026-08-24）
 
 - 新增一键脚本 `scripts/setup_isolation_db.sh`：Docker Compose profile `isolation`
