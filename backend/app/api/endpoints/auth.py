@@ -23,6 +23,14 @@ class GuestLoginRequest(BaseModel):
     code: str = Field(min_length=1, max_length=128)
 
 
+class GuestCodeCreateRequest(BaseModel):
+    note: str = Field(default="", max_length=160)
+    expires_in_minutes: int = Field(default=720, ge=5, le=60 * 24 * 30)
+    max_backtests_per_day: int = Field(default=10, ge=1, le=200)
+    max_concurrent_backtests: int = Field(default=1, ge=1, le=10)
+    max_backtest_days: int = Field(default=90, ge=1, le=1825)
+
+
 class AuthAttemptLimiter:
     def __init__(self, *, max_failures: int = 10, window_seconds: int = 900) -> None:
         self.max_failures = max_failures
@@ -128,5 +136,54 @@ def create_auth_router(context: AppContext) -> APIRouter:
             samesite="strict",
         )
         return response
+
+    # ------------------------------------------------------------------
+    # Guest code management (admin only)
+    # ------------------------------------------------------------------
+    _guest_service: list = []
+
+    def _get_guest_service():
+        if not _guest_service:
+            from app.services.guest_access_service import GuestAccessService
+
+            data_repo = getattr(context.repositories, "data", None)
+            database = getattr(data_repo, "database", None) or context.repositories.health
+            _guest_service.append(GuestAccessService(database))
+        return _guest_service[0]
+
+    @router.get("/guest-codes")
+    async def list_guest_codes(profile: AuthProfile = Depends(require_authenticated)) -> dict[str, object]:
+        if profile.role != "admin":
+            raise HTTPException(status_code=403, detail="Admin permission required.")
+        items = []
+        for row in _get_guest_service().list_codes():
+            row.pop("code", None)
+            items.append(row)
+        return {"items": items}
+
+    @router.post("/guest-codes")
+    async def create_guest_code(
+        body: GuestCodeCreateRequest,
+        profile: AuthProfile = Depends(require_authenticated),
+    ) -> dict[str, object]:
+        if profile.role != "admin":
+            raise HTTPException(status_code=403, detail="Admin permission required.")
+        created = _get_guest_service().create_code(
+            note=body.note or "访客邀请",
+            expires_in_minutes=body.expires_in_minutes,
+            max_backtests_per_day=body.max_backtests_per_day,
+            max_concurrent_backtests=body.max_concurrent_backtests,
+            max_backtest_days=body.max_backtest_days,
+            created_by=profile.username or "admin",
+        )
+        return created
+
+    @router.delete("/guest-codes/{code_id}")
+    async def revoke_guest_code(code_id: int, profile: AuthProfile = Depends(require_authenticated)) -> dict[str, object]:
+        if profile.role != "admin":
+            raise HTTPException(status_code=403, detail="Admin permission required.")
+        revoked = _get_guest_service().revoke_code(code_id, profile.username or "admin")
+        revoked.pop("code", None)
+        return revoked
 
     return router

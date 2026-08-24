@@ -63,4 +63,15 @@ def create_data_router(context:AppContext)->APIRouter:
         admin(profile)
         try:return service.update_schedule(code,body.model_dump(exclude_none=True))
         except ValueError as error:raise HTTPException(status_code=404,detail=str(error)) from error
+    @router.get("/qlib/status")
+    async def qlib_status(_profile:AuthProfile=Depends(auth)):
+        from app.services.qlib_export_service import QlibExportService
+        return QlibExportService(service.repository).status()
+    @router.post("/qlib/export")
+    async def qlib_export(profile:AuthProfile=Depends(auth),force:bool=False):
+        admin(profile)
+        import asyncio
+        from app.services.qlib_export_service import QlibExportService
+        try:return await asyncio.to_thread(QlibExportService(service.repository).export_incremental, force)
+        except ValueError as error:raise HTTPException(status_code=422,detail=str(error)) from error
     return router
