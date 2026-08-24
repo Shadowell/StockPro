@@ -1,6 +1,6 @@
 import json
 import threading
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from typing import Any, Dict, List, Optional, Sequence
 
 import psycopg2
@@ -850,6 +850,7 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     values,
+                    page_size=2000,
                 )
                 split_values = [
                     (
@@ -889,9 +890,10 @@ class PostgresDatabase:
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     split_values,
+                    page_size=2000,
                 )
-                for item_exchange, symbol in sorted({(item[0], item[1]) for item in values}):
-                    self._refresh_sync_metadata_cursor(cursor, item_exchange, symbol, timeframe)
+                touched = sorted({(item[0], item[1]) for item in values})
+                self._refresh_sync_metadata_bulk(cursor, touched, timeframe)
         return len(values)
 
     def get_kline_history(
@@ -4457,6 +4459,50 @@ class PostgresDatabase:
                     params,
                 )
                 return cursor.fetchall()
+
+    def _refresh_sync_metadata_bulk(self, cursor, pairs, timeframe: str) -> None:
+        """Batch refresh of sync_metadata rows (high-latency links: 4 round trips total)."""
+        if not pairs:
+            return
+        symbols = [symbol for _, symbol in pairs]
+        exchanges = [exchange for exchange, _ in pairs]
+        cursor.execute(
+            """
+            SELECT exchange, symbol, MIN(trade_date), MAX(trade_date), COUNT(*)
+            FROM kline_history
+            WHERE timeframe = %s AND exchange = ANY(%s) AND symbol = ANY(%s)
+            GROUP BY exchange, symbol
+            """,
+            (timeframe, exchanges, symbols),
+        )
+        rows = [
+            (
+                row[0], row[1], timeframe, 'kline', row[2], row[3],
+                int(row[4] or 0), 'success', datetime.now(timezone.utc), None,
+            )
+            for row in cursor.fetchall()
+        ]
+        if not rows:
+            return
+        psycopg2.extras.execute_values(
+            cursor,
+            """
+            INSERT INTO sync_metadata
+            (exchange, symbol, timeframe, data_type, first_timestamp,
+             last_timestamp, total_records, status, last_sync_at, error_message)
+            VALUES %s
+            ON CONFLICT (exchange, symbol, timeframe, data_type) DO UPDATE SET
+                first_timestamp = EXCLUDED.first_timestamp,
+                last_timestamp = EXCLUDED.last_timestamp,
+                total_records = EXCLUDED.total_records,
+                status = EXCLUDED.status,
+                last_sync_at = CURRENT_TIMESTAMP,
+                error_message = EXCLUDED.error_message,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            rows,
+            page_size=2000,
+        )
 
     def _refresh_sync_metadata_cursor(self, cursor, exchange: str, symbol: str, timeframe: str) -> None:
         cursor.execute(

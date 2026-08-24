@@ -151,6 +151,10 @@ export const operationsCurrentApi = {
   rules: async (scope: 'business' | 'audit' = 'business'): Promise<{ items: WatchRule[]; total: number; scope: string }> => apiClient.get('/watch/rules', { params: { scope } }),
   previewRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/preview`),
   evaluateRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/evaluate`),
+  scheduler: async (): Promise<{ running: boolean; timezone: string; jobs: Array<{ id: string; name: string; next_run_at: string | null; trigger: string }>; schedule?: { enabled: boolean; cron: string; dailyBarsWatermark?: string | null }; last_results?: Record<string, unknown> }> => apiClient.get('/operations/scheduler'),
+  updateDailyReferenceSchedule: async (payload: Record<string, unknown>): Promise<Record<string, any>> => apiClient.put('/operations/scheduler/daily-reference', payload),
+  runDailyReference: async (tradeDate?: string | null, force = false): Promise<Record<string, any>> => apiClient.post('/operations/scheduler/daily-reference/run', { trade_date: tradeDate ?? null, force }),
+  advanceAllPaper: async (maxDates = 260): Promise<Record<string, any>> => apiClient.post('/operations/paper/advance', { max_dates: maxDates }),
 };
 
 export const monitorCurrentApi = {
@@ -178,6 +182,8 @@ export const dataCurrentApi = {
   createJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/sync',payload),
   createQualityJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/quality/run',payload),
   stageImport: async (payload:Record<string,unknown>):Promise<ExtensionImport>=>apiClient.post('/data/exchange/imports',payload),
+  qlibStatus: async ():Promise<Record<string,any>>=>apiClient.get('/data/qlib/status'),
+  qlibExport: async (force=false):Promise<Record<string,any>>=>apiClient.post(`/data/qlib/export?force=${force?'true':'false'}`),
 };
 
 export const aiCurrentApi={
