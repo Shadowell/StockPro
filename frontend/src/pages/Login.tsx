@@ -25,7 +25,7 @@ function clearAutoGuestInviteHash() {
 
 export default function Login() {
   const { loginAdmin, loginGuest, message } = useAuth();
-  const [mode, setMode] = useState<LoginMode>('guest');
+  const [mode, setMode] = useState<LoginMode>('admin');
   const [code, setCode] = useState('');
   const [username, setUsername] = useState(DEFAULT_ADMIN_USERNAME);
   const [password, setPassword] = useState('');
@@ -124,15 +124,15 @@ export default function Login() {
                 </div>
                 <h1 className="mt-2 text-2xl font-bold text-white">登录 StockPro</h1>
                 <p className="mt-2 text-sm leading-6 text-gray-500">
-                  使用访客邀请码进入只读研究模式，或使用管理员账号进入完整工作台。
+                  使用管理员账号进入完整工作台，或使用访客邀请码进入只读研究模式。
                 </p>
               </div>
             </div>
 
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-xl border border-crypto-border bg-crypto-bg p-1">
               {[
-                { value: 'guest' as const, label: '访客邀请码', icon: KeyRound },
                 { value: 'admin' as const, label: '管理员登录', icon: ShieldCheck },
+                { value: 'guest' as const, label: '访客邀请码', icon: KeyRound },
               ].map((item) => (
                 <button
                   key={item.value}
