@@ -3507,3 +3507,9 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 策略资产、类型、周期、资金、AI 候选证券、编辑器市场和下单单位已替换为股票/ETF、动量/均值回归/多因子/事件、A 股周期、人民币规模、证券代码和股数；详情继续显示封存输入、100股、T+1、只做多。策略页 `tsc`、零警告 lint 和 Mock E2E 通过。
 - 真实管理员浏览器从当前 PostgreSQL 读取 78 个策略，BitPro 四列卡片、18 条分页和完整筛选均可见；未运行策略的左侧 BitPro 操作位映射为“回测”，运行/暂停策略仍映射实例控制台，保持 A 股“策略→回测→模拟”主线。
 - 全量前端生产构建、零警告 lint 和 25/25 Mock 浏览器矩阵通过。远程 PostgreSQL 冷连接曾使后端在原 30 秒窗口之后才就绪，进程和健康接口随后正常；重启条件等待扩展为 60 秒并新增合同测试，下一次干净重启正常通过。
+- 回测页从 87 行薄壳替换为当前 BitPro 3176 行工作台，并同步导入 `backtestSupport`、结果对比、权益曲线、交易分析、AnimatedNumber 和动画 hook。页面恢复批量回测、实例搜索、状态/资产/周期筛选、排序、对比、异步任务、日志和完整详情结构。
+- `backtestApi` 已桥接到当前 `/api/backtest/runs|jobs|configuration`，使用内存映射把不可变 UUID 安全接入 BitPro 数字视图 ID；策略 legacy ID 反向绑定真实 `strategy_version_id`。结果、任务、详情、series/orders/trades/positions/logs 均读取当前 PostgreSQL API，历史 run 不提供删除入口。
+- 回测领域改为股票/ETF、沪深300、CNY 100 万元、A 股手续费/印花税/过户费/滑点、30m/60m/1d、T+1、100股和只做多；快速预检与完整协议重新成为显式选择。回测 `tsc`、零警告 lint 和 Mock E2E 通过。
+- 真实管理员浏览器从 PostgreSQL 首屏读取 20/79 个 run：18 个完成、2 个失败，收益/回撤/Sharpe/成交与创建时间均来自当前 API；BitPro 左侧筛选、排序、对比和加载更多可见，未生成演示数据。
+- 首次详情验收发现 BitPro 原实现并发读取 core+五类 ledger，在远程 PostgreSQL 下 6 个请求同时超过 30 秒。新增 RED 浏览器合同后改为核心详情先打开、完整证据显式按需串行加载；真实核心详情已显示策略收益 20.81%、回撤 19.56%、Sharpe 1.55、沪深300基准和 A 股审计模块。移动端筛选 key 警告同时修复。
+- 回测完整前端生产构建、零警告 lint 和 25/25 Mock 浏览器矩阵通过；最终路由合同标题同步为当前 BitPro 的“回测”。

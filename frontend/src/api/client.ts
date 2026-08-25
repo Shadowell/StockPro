@@ -1482,6 +1482,60 @@ export interface StrategyPageResponse {
   capitalCounts: Record<string, number>;
 }
 
+const strategyVersionIdByLegacyId = new Map<number, string>();
+const backtestRunIdByLegacyId = new Map<number, string>();
+
+function stableLegacyId(value: unknown): number {
+  const text = String(value ?? '');
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.max(1, hash >>> 0);
+}
+
+function bridgeStrategy(item: Strategy & Record<string, any>): Strategy {
+  const versionId = String(item.id ?? '');
+  const explicitLegacyId = Number(item.legacyStrategyId ?? item.legacy_strategy_id);
+  const legacyId = Number.isFinite(explicitLegacyId) && explicitLegacyId > 0
+    ? explicitLegacyId
+    : stableLegacyId(versionId);
+  strategyVersionIdByLegacyId.set(legacyId, versionId);
+  return {
+    ...item,
+    id: legacyId,
+    exchange: 'cn',
+    scriptContent: item.scriptContent ?? item.script_content ?? '',
+    config: {
+      ...(item.config || {}),
+      strategyVersionId: versionId,
+      assetClass: item.config?.assetClass ?? 'stock',
+    },
+    symbols: Array.isArray(item.symbols) ? item.symbols : [],
+    status: item.status || 'stopped',
+    createdAt: item.createdAt ?? item.created_at ?? '',
+    updatedAt: item.updatedAt ?? item.updated_at ?? item.createdAt ?? item.created_at ?? '',
+  };
+}
+
+function strategyVersionIdForLegacyId(value: unknown): string {
+  const legacyId = Number(value);
+  return strategyVersionIdByLegacyId.get(legacyId) || String(value ?? '');
+}
+
+function registerBacktestRunId(value: unknown): number {
+  const runId = String(value ?? '');
+  const legacyId = stableLegacyId(runId);
+  backtestRunIdByLegacyId.set(legacyId, runId);
+  return legacyId;
+}
+
+function backtestRunIdForLegacyId(value: unknown): string {
+  const legacyId = Number(value);
+  return backtestRunIdByLegacyId.get(legacyId) || String(value ?? '');
+}
+
 export const strategyApi = {
   getPage: async (params: {
     page: number;
@@ -1494,7 +1548,9 @@ export const strategyApi = {
     capital?: string;
   }): Promise<StrategyPageResponse> => {
     const response = await getReq<Partial<StrategyPageResponse> & { items?: Strategy[] }>('/strategies');
-    const allItems = Array.isArray(response.items) ? response.items : [];
+    const allItems = (Array.isArray(response.items) ? response.items : []).map((item) =>
+      bridgeStrategy(item as Strategy & Record<string, any>),
+    );
     const search = (params.search || '').trim().toLowerCase();
     const filtered = allItems.filter((item) => {
       if (search && !`${item.name || ''} ${item.description || ''}`.toLowerCase().includes(search)) return false;
@@ -2440,13 +2496,110 @@ export const agentApi = {
 // 回测 API
 // ============================================
 
+function currentBacktestRunToBitPro(run: Record<string, any>): Record<string, any> {
+  const metrics = run.metrics || {};
+  const initialCapital = Number(run.initialCash ?? run.initial_cash ?? 0);
+  const strategyReturn = Number(metrics.strategyReturn ?? metrics.strategy_return);
+  const maximumDrawdown = Number(metrics.maximumDrawdown ?? metrics.maximum_drawdown);
+  const winRate = Number(metrics.winRate ?? metrics.win_rate);
+  const runId = registerBacktestRunId(run.id);
+  const versionId = String(run.strategyVersionId ?? run.strategy_version_id ?? '');
+  const strategyEntry = [...strategyVersionIdByLegacyId.entries()].find(([, value]) => value === versionId);
+  return {
+    id: runId,
+    strategyId: strategyEntry?.[0] ?? stableLegacyId(versionId),
+    strategyName: run.strategyName ?? run.strategy_name ?? 'A股策略',
+    startDate: run.startDate ?? run.start_date,
+    endDate: run.endDate ?? run.end_date,
+    initialCapital,
+    finalCapital: Number.isFinite(strategyReturn) ? initialCapital * (1 + strategyReturn) : null,
+    totalReturn: Number.isFinite(strategyReturn) ? strategyReturn * 100 : null,
+    annualReturn: Number.isFinite(Number(metrics.annualizedReturn ?? metrics.annualized_return))
+      ? Number(metrics.annualizedReturn ?? metrics.annualized_return) * 100
+      : null,
+    maxDrawdown: Number.isFinite(maximumDrawdown) ? maximumDrawdown * 100 : null,
+    sharpeRatio: metrics.sharpe ?? null,
+    sortinoRatio: metrics.sortino ?? null,
+    beta: metrics.beta ?? null,
+    alpha: Number.isFinite(Number(metrics.alpha)) ? Number(metrics.alpha) * 100 : null,
+    benchmarkReturn: Number.isFinite(Number(metrics.benchmarkReturn ?? metrics.benchmark_return))
+      ? Number(metrics.benchmarkReturn ?? metrics.benchmark_return) * 100
+      : null,
+    winRate: Number.isFinite(winRate) ? winRate * 100 : null,
+    profitFactor: metrics.profitLossRatio ?? metrics.profit_loss_ratio ?? null,
+    totalTrades: metrics.completedTrades ?? metrics.completed_trades ?? metrics.totalOrders ?? metrics.total_orders ?? null,
+    winningTrades: metrics.profitableTrades ?? metrics.profitable_trades ?? null,
+    losingTrades: metrics.losingTrades ?? metrics.losing_trades ?? null,
+    totalFees: metrics.totalCost ?? metrics.total_cost ?? null,
+    avgHoldingBars: metrics.averageHoldingDays ?? metrics.average_holding_days ?? null,
+    annualizedVolatility: Number.isFinite(Number(metrics.annualizedVolatility ?? metrics.annualized_volatility))
+      ? Number(metrics.annualizedVolatility ?? metrics.annualized_volatility) * 100
+      : null,
+    timeframe: run.parameters?.timeframe ?? '1d',
+    timeframeMode: 'strategy',
+    status: run.status === 'success' ? 'completed' : run.status,
+    dataQualityStatus: Number(metrics.dataQualityWarnings ?? metrics.data_quality_warnings ?? 0) > 0 ? 'warning' : 'passed',
+    dataQualityMessage: run.errorMessage ?? run.error_message ?? null,
+    createdAt: run.createdAt ?? run.created_at,
+    promotionStatus: run.promotionStatus ?? run.promotion_status,
+    inputHash: run.inputHash ?? run.input_hash,
+    runMode: run.runMode ?? run.run_mode,
+  };
+}
+
+function currentBacktestJobToBitPro(job: Record<string, any>): Record<string, any> {
+  const progress = Number(job.progress ?? 0);
+  return {
+    jobId: String(job.jobId ?? job.job_id),
+    strategyId: Number(job.legacyStrategyId ?? job.legacy_strategy_id ?? 0),
+    status: job.status === 'success' ? 'completed' : job.status,
+    currentBar: Number(job.currentBar ?? job.current_bar ?? 0),
+    totalBars: Number(job.totalBars ?? job.total_bars ?? 0),
+    percent: Number.isFinite(progress) ? progress : null,
+    request: job.request ?? job.requestPayload ?? job.request_payload ?? null,
+    message: job.message ?? job.phase ?? null,
+    result: job.result ?? null,
+    errorMessage: job.errorMessage ?? job.error_message ?? null,
+    updatedAt: job.updatedAt ?? job.updated_at ?? null,
+    resumable: job.status === 'interrupted' || job.status === 'failed',
+  };
+}
+
+async function createCurrentBacktestJob(data: Record<string, unknown>): Promise<Record<string, any>> {
+  const configuration = await backtestCurrentApi.configuration();
+  const strategyVersionId = strategyVersionIdForLegacyId(data.strategy_id ?? data.strategyId);
+  const payload = {
+    mode: String(data.mode || 'quick'),
+    name: String(data.name || 'A股回测实例'),
+    strategy_version_id: strategyVersionId,
+    dataset_snapshot_id: data.dataset_snapshot_id ?? configuration.dataset_snapshots[0]?.id,
+    universe_snapshot_id: data.universe_snapshot_id ?? configuration.universe_snapshots[0]?.id,
+    factor_snapshot_id: data.factor_snapshot_id ?? null,
+    pool_snapshot_id: data.pool_snapshot_id ?? null,
+    cost_model_id: data.cost_model_id ?? configuration.cost_models[0]?.id,
+    research_protocol_id: data.research_protocol_id ?? configuration.protocols[0]?.id ?? null,
+    start_date: data.start_date ?? data.startDate,
+    end_date: data.end_date ?? data.endDate,
+    initial_cash: data.initial_cash ?? data.initialCapital ?? 1_000_000,
+    parameters: data.parameters ?? {
+      timeframe: data.timeframe ?? '1d',
+      lot_size: 100,
+      long_only: true,
+    },
+    symbols: data.symbols ?? [],
+  };
+  return backtestCurrentApi.createJob(payload);
+}
+
 export const backtestApi = {
   runSync: (data: Record<string, unknown>): Promise<any> =>
     postReq('/backtest/run_sync', data, { timeout: BACKTEST_RUN_SYNC_TIMEOUT_MS }),
 
   /** 异步回测：立即返回 jobId，进度见 getJob（SQLite 持久化，刷新页面或服务重启后可继续轮询） */
-  runJob: (data: Record<string, unknown>): Promise<{ jobId: string }> =>
-    postReq('/backtest/run_job', data),
+  runJob: async (data: Record<string, unknown>): Promise<{ jobId: string }> => {
+    const job = await createCurrentBacktestJob(data);
+    return { jobId: String(job.jobId ?? job.job_id) };
+  },
 
   /** 便捷批量回测：为所有运行中的模拟策略创建普通异步回测任务 */
   runRunningStrategies: (data?: Record<string, unknown>): Promise<{
@@ -2471,7 +2624,51 @@ export const backtestApi = {
       status?: string | null;
       reason: string;
     }>;
-  }> => postReq('/backtest/run_running_strategies', data ?? {}),
+  }> => {
+    const end = new Date();
+    const start = new Date(end);
+    start.setFullYear(end.getFullYear() - 1);
+    const toDate = (value: Date) => value.toISOString().slice(0, 10);
+    const defaults = {
+      startDate: toDate(start),
+      endDate: toDate(end),
+      initialCapital: 1_000_000,
+      timeframeMode: 'strategy',
+    };
+    return paperCurrentApi.list('audit').then(async (paper) => {
+      const running = paper.items.filter((item) => item.lifecycle_status === 'running');
+      const attempts = await Promise.all(running.map(async (item) => {
+        const detail = await paperCurrentApi.detail(item.id);
+        const strategyVersionId = String(detail.strategy_version?.id ?? detail.strategy_version_id ?? '');
+        if (!strategyVersionId) throw new Error('Paper 实例缺少策略版本');
+        const job = await createCurrentBacktestJob({
+          ...(data || {}),
+          strategy_id: strategyVersionId,
+          name: `${item.name} / 批量回测`,
+          start_date: defaults.startDate,
+          end_date: defaults.endDate,
+          initial_capital: defaults.initialCapital,
+          timeframe_mode: defaults.timeframeMode,
+        });
+        return {
+          jobId: String(job.jobId ?? job.job_id),
+          strategyId: stableLegacyId(strategyVersionId),
+          strategyName: detail.strategy_version?.name ?? item.name,
+          status: String(job.status ?? 'pending'),
+          request: job.request ?? null,
+        };
+      }));
+      return {
+        count: attempts.length,
+        skippedCount: paper.items.length - running.length,
+        defaults,
+        jobs: attempts,
+        skipped: paper.items
+          .filter((item) => item.lifecycle_status !== 'running')
+          .map((item) => ({ strategyName: item.name, status: item.lifecycle_status, reason: '仅运行中的 Paper 实例参与批量回测' })),
+      };
+    });
+  },
 
   getJob: (
     jobId: string,
@@ -2487,7 +2684,7 @@ export const backtestApi = {
     errorMessage?: string | null;
     updatedAt?: string | null;
     resumable?: boolean;
-  }> => getReq(`/backtest/job/${jobId}`),
+  }> => apiClient.get(`/backtest/jobs/${encodeURIComponent(jobId)}`).then((item) => currentBacktestJobToBitPro(item) as any),
 
   cancelJob: (
     jobId: string,
@@ -2503,7 +2700,7 @@ export const backtestApi = {
     errorMessage?: string | null;
     updatedAt?: string | null;
     resumable?: boolean;
-  }> => postReq(`/backtest/job/${jobId}/cancel`),
+  }> => backtestCurrentApi.cancelJob(jobId).then((item) => currentBacktestJobToBitPro(item) as any),
 
   resumeJob: (
     jobId: string,
@@ -2519,7 +2716,7 @@ export const backtestApi = {
     errorMessage?: string | null;
     updatedAt?: string | null;
     resumable?: boolean;
-  }> => postReq(`/backtest/job/${jobId}/resume`),
+  }> => backtestCurrentApi.retryJob(jobId).then((item) => currentBacktestJobToBitPro(item) as any),
 
   getJobs: (
     params?: { strategyId?: number | null; status?: string; limit?: number; includeResult?: boolean },
@@ -2536,14 +2733,14 @@ export const backtestApi = {
     errorMessage?: string | null;
     updatedAt?: string | null;
     resumable?: boolean;
-  }>> => getReq('/backtest/jobs', {
-    params: {
-      strategyId: params?.strategyId ?? undefined,
-      status: params?.status,
-      limit: params?.limit ?? 50,
-      include_result: params?.includeResult ?? undefined,
-    },
-  }),
+  }>> => {
+    void params?.strategyId;
+    void params?.status;
+    void params?.includeResult;
+    return backtestCurrentApi.jobs(params?.limit ?? 50).then((response) =>
+      response.items.map((item) => currentBacktestJobToBitPro(item) as any),
+    );
+  },
 
   getResults: (
     params?: {
@@ -2555,24 +2752,46 @@ export const backtestApi = {
       sortDir?: 'asc' | 'desc';
       includeMatrixSummary?: boolean;
     },
-  ): Promise<any[]> =>
-    getReq('/backtest/results', {
-      params: {
-        strategyId: params?.strategyId ?? undefined,
-        q: params?.query || undefined,
-        limit: params?.limit ?? 20,
-        offset: params?.offset ?? undefined,
-        sort_by: params?.sortBy,
-        sort_dir: params?.sortDir,
-        include_matrix_summary: params?.includeMatrixSummary ?? undefined,
-      },
-    }),
+  ): Promise<any[]> => {
+    void params?.strategyId;
+    void params?.sortBy;
+    void params?.sortDir;
+    void params?.includeMatrixSummary;
+    const offset = Math.max(0, params?.offset ?? 0);
+    const limit = Math.max(1, params?.limit ?? 20);
+    return backtestCurrentApi.runs(Math.min(200, offset + limit)).then((response) => {
+      const query = (params?.query || '').trim().toLowerCase();
+      return response.items
+        .map((item) => currentBacktestRunToBitPro(item))
+        .filter((item) => !query || `${item.strategyName} ${item.id}`.toLowerCase().includes(query))
+        .slice(offset, offset + limit);
+    });
+  },
 
-  getResult: (id: number): Promise<any> =>
-    getReq(`/backtest/result/${id}`),
+  getResult: async (id: number): Promise<any> => {
+    const runId = backtestRunIdForLegacyId(id);
+    const run = await backtestCurrentApi.run(runId);
+    return currentBacktestRunToBitPro(run);
+  },
+
+  getResultEvidence: async (id: number): Promise<any> => {
+    const runId = backtestRunIdForLegacyId(id);
+    const series = await backtestCurrentApi.series(runId);
+    const trades = await backtestCurrentApi.detailRows(runId, 'trades');
+    const orders = await backtestCurrentApi.detailRows(runId, 'orders');
+    const positions = await backtestCurrentApi.detailRows(runId, 'positions');
+    const logs = await backtestCurrentApi.detailRows(runId, 'logs');
+    return {
+      trades: trades.items,
+      orders: orders.items,
+      positions: positions.items,
+      logs: logs.items,
+      equityCurve: series.equityCurve ?? series.equity_curve ?? series,
+    };
+  },
 
   deleteResult: (id: number): Promise<{ deleted: boolean; id: number }> =>
-    deleteReq(`/backtest/result/${id}`),
+    Promise.reject(new Error(`回测证据不可删除：${id}`)),
 
   getStrategies: (): Promise<Record<string, unknown>> =>
     getReq('/backtest/strategies'),
