@@ -13,9 +13,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.db.postgres_db import PostgresDatabase
 
-DATASET_ID = 34
+DATASET_ID = 35
 UNIVERSE_ID = 21
-POOL_ID = 6
+POOL_ID = 9
 ANCHOR = "2025-12-31"
 
 
@@ -23,49 +23,11 @@ def main() -> int:
     database = PostgresDatabase(os.environ["DATABASE_URL"])
 
     # ---------- Step 1: 因子日度计划（94/100 成功即可 seal） ----------
-    from app.services.factor_research_service import FactorResearchService
-
-    factors = FactorResearchService(database)
-    print("[step1] running factor schedule for ds34 ...", flush=True)
-    t0 = time.time()
-    try:
-        schedule = factors.run_daily_schedule(ANCHOR, DATASET_ID, UNIVERSE_ID)
-        print(f"[step1] status={schedule.get('status')} elapsed={round(time.time()-t0,1)}s", flush=True)
-    except Exception as exc:
-        print(f"[step1] schedule error (continuing): {str(exc)[:150]}", flush=True)
-        schedule = {"status": "partial"}
 
     # 无论 partial 还是 sealed，把成功的 compute runs 手动封存为因子快照
-    with database.get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT id FROM factor_compute_runs
-                WHERE dataset_snapshot_id=%s AND universe_snapshot_id=%s AND trade_date=%s
-                  AND status='published'
-                ORDER BY id
-                """,
-                (DATASET_ID, UNIVERSE_ID, ANCHOR),
-            )
-            run_ids = [r[0] for r in cur.fetchall()]
-            cur.execute(
-                "SELECT id FROM factor_snapshots WHERE dataset_snapshot_id=%s AND universe_snapshot_id=%s AND status='sealed' LIMIT 1",
-                (DATASET_ID, UNIVERSE_ID),
-            )
-            existing = cur.fetchone()
-    if existing:
-        factor_snapshot_id = int(existing[0])
-        print(f"[step1] reuse sealed factor snapshot #{factor_snapshot_id}", flush=True)
-    elif not run_ids:
-        print("[step1] no published factor runs; abort", flush=True)
-        return 1
-    else:
-        rows = [database._fetch_one(
-            "SELECT id, factor_version_id, value_hash, metric_hash, trade_date, status FROM factor_compute_runs WHERE id=%s",
-            (run_id,)) for run_id in run_ids]
-        snapshot = factors._seal_factor_snapshot(ANCHOR, DATASET_ID, UNIVERSE_ID, rows)
-        factor_snapshot_id = int(snapshot["id"])
-        print(f"[step1] sealed factor snapshot #{factor_snapshot_id}", flush=True)
+    print(f"[step1] using prebuilt factor snapshot #8 for ds{DATASET_ID}", flush=True)
+
+    factor_snapshot_id = 8  # bound to ds35 (identical daily-bars partition as ds34)
 
     # ---------- Step 2: 批量 full 回测 ----------
     from app.core.app_context import build_app_context
@@ -79,20 +41,20 @@ def main() -> int:
             cur.execute("SELECT symbol FROM stock_pool_snapshot_members WHERE snapshot_id=%s ORDER BY ordinal", (POOL_ID,))
             symbols = [r[0] for r in cur.fetchall()]
             cur.execute("SELECT id::text FROM research_protocols WHERE name=%s",
-                        ("策略库全市场研究协议 2025H2 v2",))
+                        ("策略库全市场研究协议 2025H2 v3",))
             protocol_id = cur.fetchone()[0]
             cur.execute("""
-                SELECT DISTINCT ON (name) name, id::text FROM (
-                    SELECT sv.name, sv.id, sv.created_at FROM strategy_versions sv
-                    WHERE sv.validation_status='valid' AND sv.created_at > now() - interval '12 hours'
-                ) t ORDER BY name, created_at DESC
+                SELECT DISTINCT ON (name) name, id::text
+                FROM strategy_versions sv
+                WHERE sv.validation_status='valid' AND sv.name LIKE '[A股][%'
+                ORDER BY name, sv.created_at DESC
             """)
             versions = {r[0]: r[1] for r in cur.fetchall()}
     print(f"[step2] versions={len(versions)} pool={len(symbols)} protocol={protocol_id}", flush=True)
 
     SELECTED = [
-        "双均线择时轮动", "动量轮动", "量能萎缩回补", "布林带回归", "均值回归",
-        "隔日T超跌", "MA20/MA60金叉放量突破", "低波动防御", "52周新高突破", "小市值低换手",
+        "双均线择时轮动", "动量轮动", "量能萎缩回补", "布林带回归",
+        "隔日T超跌", "MA20/MA60金叉放量突破", "52周新高突破", "小市值低换手",
     ]
     eligible_runs = []
     for keyword in SELECTED:

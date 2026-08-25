@@ -23,12 +23,12 @@ def main() -> int:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT br.id::text, sv.name, br.dataset_snapshot_id, br.factor_snapshot_id,
+                SELECT br.id::text, sv.name, br.strategy_version_id::text,
+                       br.dataset_snapshot_id, br.factor_snapshot_id,
                        br.universe_snapshot_id, br.pool_snapshot_id, br.research_protocol_id
                 FROM backtest_runs br
                 JOIN strategy_versions sv ON sv.id = br.strategy_version_id
                 WHERE br.run_mode='full' AND br.status='success' AND br.promotion_status='paper_eligible'
-                  AND br.created_at > now() - interval '12 hours'
                   AND NOT EXISTS (
                       SELECT 1 FROM paper_instances pi
                       WHERE pi.qualifying_backtest_run_id = br.id
@@ -40,11 +40,11 @@ def main() -> int:
 
     print(f"paper-eligible runs awaiting instances: {len(candidates)}", flush=True)
     created = []
-    for run_id, name, ds, fs, us, ps, rp in candidates:
+    for run_id, name, version_id, ds, fs, us, ps, rp in candidates:
         try:
             instance = service.create_instance({
                 "name": f"Paper · {name}",
-                "strategy_version_id": None,  # resolved below from the run
+                "strategy_version_id": str(version_id),
                 "dataset_snapshot_id": int(ds),
                 "factor_snapshot_id": int(fs),
                 "universe_snapshot_id": int(us),
