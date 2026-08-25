@@ -3540,3 +3540,5 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - StockPro 来源测试、导入器、完成审计、活动合同和总控计划已重新钉住该提交；未静默漂移，也未把 BitPro 未提交工作区作为来源。
 - 行情模块完成当前 BitPro 610 行 `Market.tsx` 原样导入；原 A 股 Market Terminal 机械迁入独立 `AshareMarketWorkspace` 并保持默认导出，继续使用股票/ETF/指数、PostgreSQL 日线、CNY、100股、盘口空态、自选和证据 API。BitPro OKX 页面仅作为 named reference，不执行。
 - 行情 `tsc`、零警告 lint 和 Mock E2E 通过；搜索贵州茅台、K线和盘口空态合同保持不变。
+- BitPro 201 行 FactorLab 原文件已逐字保存为 `_quarantine/BitProFactorLab.tsx.disabled`。它依赖 BitPro 独有的 ML task/trial/provider 与 SQLite 控制面，当前不能直接注册；默认 A 股因子页继续使用 PostgreSQL 目录、指标成熟、运行、相关性、快照和值浏览合同，不用空 API 伪装 ML 功能。
+- 因子 `tsc`、零警告 lint 和 Mock E2E 通过；pending Rank IC 仍保持 null 并显示原因，页面加载 mutation 0。
