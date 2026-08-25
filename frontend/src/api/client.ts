@@ -478,46 +478,6 @@ export type ArcEvidence = {
 };
 
 /** HyperTrade ARC 只经由 BitPro 服务端代理，浏览器不持有令牌或签名密钥。 */
-export const arcApi = {
-  config: () => getReq<ArcConsoleConfig>('/arc/config'),
-  listMissions: (params?: { state?: string; limit?: number }) =>
-    getReq<{ missions: ArcMissionSummary[] }>('/arc/missions', { params }),
-  createMission: (payload: {
-    objective: string;
-    symbol: string;
-    timeframe: string;
-    maxCandidates: number;
-  }) => postReq<Record<string, unknown>>('/arc/missions', payload),
-  getProgress: (missionId: string) => getReq<ArcPipelineView>(`/arc/missions/${missionId}/progress`),
-  getEvidence: (missionId: string) => getReq<ArcEvidence>(`/arc/missions/${missionId}/evidence`),
-  getCandidate: (missionId: string, attemptId: string) =>
-    getReq<ArcCandidateRow>(`/arc/missions/${missionId}/candidates/${attemptId}`),
-  decide: (missionId: string, payload: { decision: 'approve' | 'reject'; reason: string }) =>
-    postReq<Record<string, unknown>>(`/arc/missions/${missionId}/decide`, payload),
-};
-
-/** HyperTrade 研究机构流程只经由 BitPro 服务端代理，浏览器不持有上游配置或凭据。 */
-export const researchWorkbenchApi = {
-  summary: () => getReq<Record<string, any>>('/research-workbench/summary'),
-  candidates: () => getReq<{ items: Record<string, any>[]; reportErrors?: string[] }>('/research-workbench/candidates'),
-  createMandate: (payload: Record<string, any>) => postReq<Record<string, any>>('/research-workbench/mandates', payload),
-  pauseMandate: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/pause`, payload),
-  resumeMandate: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/resume`, payload),
-  draftStrategySpec: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/strategy-specs/draft`, payload),
-  createJob: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/jobs`, payload),
-  runJob: (jobId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/jobs/${jobId}/run`, payload),
-  cancelJob: (jobId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/jobs/${jobId}/cancel`, payload),
-  requestPaperPromotion: (payload: Record<string, any>) => postReq<Record<string, any>>('/research-workbench/paper-promotions', payload),
-  approvePaperPromotion: (promotionId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/paper-promotions/${promotionId}/approve`, payload),
-  observePaperPromotion: (promotionId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/paper-promotions/${promotionId}/observe`, payload),
-  samplePaperObservations: (payload: Record<string, any>) => postReq<Record<string, any>>('/research-workbench/paper-observations/sample', payload),
-  portfolioReview: () => getReq<Record<string, any>>('/research-workbench/portfolio-review'),
-};
-
-// ============================================
-// 认证 API
-// ============================================
-
 export const authApi = {
   me: (): Promise<AuthSession> => getReq('/auth/me'),
 
@@ -1069,15 +1029,6 @@ export interface ArbitrageSummary {
   emptyReason?: string;
 }
 
-export const arbitrageApi = {
-  getSummary: (): Promise<ArbitrageSummary> =>
-    getReq('/arbitrage/summary'),
-};
-
-// ============================================
-// 链上研究 API
-// ============================================
-
 export interface OnchainKpiTarget {
   name: string;
   tvlUsd?: number;
@@ -1115,15 +1066,6 @@ export interface OnchainSummary {
   warnings: string[];
   emptyReason?: string;
 }
-
-export const onchainApi = {
-  getSummary: (): Promise<OnchainSummary> =>
-    getReq('/onchain/summary'),
-};
-
-// ============================================
-// FactorLab 因子库 API（只读）
-// ============================================
 
 export interface FactorLabDefinition {
   definitionId: string;
@@ -1527,57 +1469,6 @@ export const fundingApi = {
 // 交易 API
 // ============================================
 
-export const tradingApi = {
-  getBalance: (exchange: string): Promise<{ exchange: string; balance: any[] }> =>
-    getReq('/trading/accounts/balance', { params: { exchange } }),
-
-  getBalanceDetail: (exchange: string): Promise<{ exchange: string; trading: any[]; funding: any[] }> =>
-    getReq('/trading/accounts/balance/detail', { params: { exchange } }),
-
-  getOpenOrders: (exchange: string, symbol?: string): Promise<{ exchange: string; orders: any[] }> =>
-    getReq('/trading/orders/open', { params: { exchange, symbol } }),
-
-  getOrderHistory: (exchange: string, limit = 50, symbol?: string): Promise<{ exchange: string; orders: any[] }> =>
-    getReq('/trading/orders/history', { params: { exchange, limit, symbol } }),
-
-  cancelOrder: (orderId: string, exchange: string, symbol: string): Promise<{ result: any }> =>
-    deleteReq(`/trading/order/${orderId}`, { params: { exchange, symbol } }),
-
-  transfer: (data: {
-    exchange: string;
-    currency: string;
-    amount: number;
-    fromAccount: string;
-    toAccount: string;
-  }): Promise<any> =>
-    postReq('/trading/transfer', data),
-
-  spotOrder: (data: {
-    exchange: string;
-    symbol: string;
-    side: 'buy' | 'sell';
-    type: 'market' | 'limit';
-    amount: number;
-    price?: number | null;
-  }): Promise<{ order: any; warnings?: string[] }> =>
-    postReq('/trading/spot/order', data),
-
-  futuresOrder: (data: {
-    exchange: string;
-    symbol: string;
-    side: 'long' | 'short';
-    action: 'open' | 'close';
-    amount: number;
-    leverage: number;
-    price?: number | null;
-  }): Promise<{ order: any }> =>
-    postReq('/trading/futures/order', data),
-};
-
-// ============================================
-// 策略 API
-// ============================================
-
 export interface StrategyPageResponse {
   items: Strategy[];
   total: number;
@@ -1685,98 +1576,6 @@ export const monitorApi = {
 
 // ============================================
 // 策略上线 (自动交易 / 实盘) API
-// ============================================
-
-export const liveApi = {
-  getStrategies: (params?: { page?: number; perPage?: number }): Promise<StrategyPageResponse> =>
-    getReq<StrategyPageResponse>('/strategies', {
-      params: {
-        page: params?.page ?? 1,
-        perPage: params?.perPage ?? 60,
-      },
-    }),
-
-  startStrategy: (id: number): Promise<any> => postReq(`/strategies/${id}/start`),
-
-  stopStrategy: (id: number): Promise<any> => postReq(`/strategies/${id}/stop`),
-
-  getStrategyStatus: (id: number): Promise<any> => getReq(`/strategies/${id}/status`),
-
-  getStrategyTrades: (id: number, limit = 50): Promise<any> =>
-    getReq(`/strategies/${id}/trades`, { params: { limit } }),
-
-  configure: (config: {
-    [key: string]: unknown;
-    instance_id?: string | number;
-  }): Promise<any> => postReq('/live/configure', config),
-
-  start: (instanceId?: string | number): Promise<any> =>
-    postReq('/live/start', instanceId != null ? { instance_id: instanceId } : {}),
-
-  stop: (instanceId?: string | number, clearMetrics = false): Promise<any> =>
-    postReq('/live/stop', {
-      ...(instanceId != null ? { instance_id: instanceId } : {}),
-      clear_metrics: clearMetrics,
-    }),
-
-  pause: (instanceId?: string | number): Promise<any> =>
-    postReq('/live/pause', instanceId != null ? { instance_id: instanceId } : {}),
-
-  resume: (instanceId?: string | number): Promise<any> =>
-    postReq('/live/resume', instanceId != null ? { instance_id: instanceId } : {}),
-
-  closePaperPosition: (payload: {
-    instanceId?: string | number;
-    symbol: string;
-    side?: string | null;
-    marketType?: 'spot' | 'swap' | string | null;
-  }): Promise<any> => postReq('/live/positions/close', payload),
-
-  getDashboard: (instanceId?: string | number): Promise<any> =>
-    getReq('/live/dashboard', { params: instanceId != null ? { instance_id: instanceId } : {} }),
-
-  getEvents: (limit = 50, eventType?: string, instanceId?: string | number): Promise<any> =>
-    getReq('/live/events', {
-      params: {
-        limit,
-        eventType,
-        ...(instanceId != null ? { instance_id: instanceId } : {}),
-      },
-    }),
-
-  getEquityCurve: (instanceId?: string | number): Promise<any> =>
-    getReq('/live/equity_curve', { params: instanceId != null ? { instance_id: instanceId } : {} }),
-
-  preFlight: (config: {
-    [key: string]: unknown;
-  }): Promise<any> => postReq('/live/pre_flight', config),
-
-  promoteToLive: (config: {
-    sourceStrategyId: string | number;
-    exchange?: string;
-    initialEquity?: number;
-    loopInterval?: number;
-    startImmediately?: boolean;
-    confirmPaperReviewed?: boolean;
-    confirmLiveRisk?: boolean;
-    riskConfig?: Record<string, unknown>;
-  }): Promise<any> => postReq('/live/promote', config),
-
-  promoteToLivePreflight: (config: {
-    sourceStrategyId: string | number;
-    exchange?: string;
-    initialEquity?: number;
-    loopInterval?: number;
-    startImmediately?: boolean;
-    riskConfig?: Record<string, unknown>;
-  }): Promise<any> => postReq('/live/promote/preflight', config),
-
-  testTelegram: (message: string): Promise<any> =>
-    postReq('/live/test_telegram', { message }),
-};
-
-// ============================================
-// 模拟盘 API
 // ============================================
 
 export const paperApi = {
