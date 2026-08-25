@@ -19,4 +19,4 @@ def test_local_restart_uses_the_only_current_health_endpoint() -> None:
     restart = (root / "restart.sh").read_text()
 
     assert "/api/health/health" not in restart
-    assert 'wait_for_url "后端服务" "http://127.0.0.1:4445/api/health"' in restart
+    assert 'wait_for_url "后端服务" "http://127.0.0.1:4445/api/health" 60' in restart

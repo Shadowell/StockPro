@@ -1483,7 +1483,7 @@ export interface StrategyPageResponse {
 }
 
 export const strategyApi = {
-  getPage: (params: {
+  getPage: async (params: {
     page: number;
     perPage: number;
     search?: string;
@@ -1492,19 +1492,42 @@ export const strategyApi = {
     strategyType?: string;
     timeframe?: string;
     capital?: string;
-  }): Promise<StrategyPageResponse> =>
-    getReq<StrategyPageResponse>('/strategies', {
-      params: {
-        page: params.page,
-        perPage: params.perPage,
-        search: params.search,
-        status: params.status,
-        assetClass: params.assetClass,
-        strategyType: params.strategyType,
-        timeframe: params.timeframe,
-        capital: params.capital,
-      },
-    }),
+  }): Promise<StrategyPageResponse> => {
+    const response = await getReq<Partial<StrategyPageResponse> & { items?: Strategy[] }>('/strategies');
+    const allItems = Array.isArray(response.items) ? response.items : [];
+    const search = (params.search || '').trim().toLowerCase();
+    const filtered = allItems.filter((item) => {
+      if (search && !`${item.name || ''} ${item.description || ''}`.toLowerCase().includes(search)) return false;
+      if (params.status && params.status !== 'all') {
+        const normalized = item.status || 'not_started';
+        if (normalized !== params.status) return false;
+      }
+      return true;
+    });
+    const page = Math.max(1, params.page);
+    const perPage = Math.max(1, params.perPage);
+    const total = filtered.length;
+    const pages = Math.max(1, Math.ceil(total / perPage));
+    const items = filtered.slice((page - 1) * perPage, page * perPage);
+    const statusCounts = allItems.reduce<Record<string, number>>((counts, item) => {
+      const key = item.status || 'not_started';
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, { all: allItems.length });
+    const stockCount = allItems.filter((item) => !item.symbols?.some((symbol) => /^(15|16|51|56|58)/.test(symbol))).length;
+    return {
+      items,
+      total,
+      page,
+      perPage,
+      pages,
+      statusCounts,
+      assetCounts: { all: allItems.length, stock: stockCount, etf: allItems.length - stockCount },
+      typeCounts: response.typeCounts || { all: allItems.length },
+      timeframeCounts: response.timeframeCounts || { all: allItems.length },
+      capitalCounts: response.capitalCounts || { all: allItems.length },
+    };
+  },
 
   get: (id: number): Promise<Strategy> => getReq(`/strategies/${id}`),
 

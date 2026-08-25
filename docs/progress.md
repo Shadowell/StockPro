@@ -3503,3 +3503,7 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 补齐后全量 `npm run check`、`npm run build`、零警告 `npm run lint` 通过；首页与现有模拟盘 3 个 Mock Playwright 回归通过。`rebuild/assert_safety.py` 继续通过，五类活动风险计数均为 0，未注册的 BitPro 实盘组件仅作为 quarantine 来源保留。
 - 首次全量 `check.sh` 暴露测试隔离递归：`test_isolation_db_setup` 删除进程环境变量后，子 `check.sh` 又读取本机 `backend/.env`，形成 `check.sh → pytest → check.sh`。新增 `STOCKPRO_CHECK_SKIP_ENV_FILE=1` 测试专用门禁和 10 秒超时后，该组 4/4 通过；递归子进程已全部退出。
 - 使用现有 SSH 隧道凭据只替换数据库名，确认远端隔离库 `stockpro_bitpro_rebase_dev`，未连接生产库执行测试写入。全量门禁已通过 105 个后端/重建测试、前端类型、lint、生产构建、bundle 预算、生产依赖审计和 25/25 Mock 浏览器矩阵；旧首页标题断言已更新为当前 BitPro 的“市场大盘”。
+- 策略页不再保留 105 行自研薄壳：以当前 BitPro 1501 行策略工作台为结构基线，恢复“我的策略 / 策略广场”、AI 写策略、五组筛选、18 条分页、完整编辑器和详情页；`strategyApi.getPage` 在 A 股当前 API 上做稳定分页/计数适配。
+- 策略资产、类型、周期、资金、AI 候选证券、编辑器市场和下单单位已替换为股票/ETF、动量/均值回归/多因子/事件、A 股周期、人民币规模、证券代码和股数；详情继续显示封存输入、100股、T+1、只做多。策略页 `tsc`、零警告 lint 和 Mock E2E 通过。
+- 真实管理员浏览器从当前 PostgreSQL 读取 78 个策略，BitPro 四列卡片、18 条分页和完整筛选均可见；未运行策略的左侧 BitPro 操作位映射为“回测”，运行/暂停策略仍映射实例控制台，保持 A 股“策略→回测→模拟”主线。
+- 全量前端生产构建、零警告 lint 和 25/25 Mock 浏览器矩阵通过。远程 PostgreSQL 冷连接曾使后端在原 30 秒窗口之后才就绪，进程和健康接口随后正常；重启条件等待扩展为 60 秒并新增合同测试，下一次干净重启正常通过。
