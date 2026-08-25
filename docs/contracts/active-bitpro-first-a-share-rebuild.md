@@ -3,7 +3,7 @@
 - 状态：2026-08-25 重新打开；旧基线 Wave 0–6 已交付，但当前 BitPro 1:1 一致性不成立，正在整仓重移植
 - 批准日期：2026-08-22
 - StockPro 基线：`99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`
-- BitPro 固定来源：`aecd03f75d0ef11e18d219da97fecae9613f2a64`（2026-08-25 重新钉住的当前 `main`）
+- BitPro 固定来源：`2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`（2026-08-26 当前 `main`；相对上一基线仅新增策略分析文档，应用树一致）
 - 目标分支：`codex/ashare-operations-restore`
 - 目标 worktree：`/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share`
 - 上一轮生产应用合并 SHA：`4c7fe5194cae7abf6c07a8be005bbfb573b032d8`（仅作历史回滚证据）

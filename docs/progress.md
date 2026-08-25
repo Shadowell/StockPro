@@ -3533,3 +3533,8 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 评分矩阵只按持久化 metric code 分组，榜单只消费 strategy/performance evidence；GET 不自动 assemble/save/seal，sealed 仍不可改。复盘页 `tsc`、零警告 lint 和 Mock E2E 通过。
 - 真实管理员浏览器读取 sealed 复盘 `2025-01-02`：14 个证据对象、14 个指标、5 个风险事件、14 组评分矩阵、策略/表现榜、已封存总结与完整市场→股票池→策略→风险→订单→成交→权益时间线可见；`writes_performed=false`，控制台无业务错误。
 - 复盘切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过；最终路由标题同步为“复盘中心”。
+
+## 2026-08-26 BitPro 基线同步
+
+- BitPro 本地 `main` 前进到 `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`。相对 `aecd03f7` 仅新增 `docs/research/strategy-analysis-2026-08-26-0008-favorites-core-loss-attribution.md` 并更新 BitPro 文档索引/进度，前端、后端、packages、scripts 和 tests 应用树无变化。
+- StockPro 来源测试、导入器、完成审计、活动合同和总控计划已重新钉住该提交；未静默漂移，也未把 BitPro 未提交工作区作为来源。

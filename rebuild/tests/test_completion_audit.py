@@ -2,7 +2,7 @@ from rebuild.audit_completion import BITPRO_SOURCE_SHA, audit
 
 
 def test_completion_audit_is_pinned_to_current_bitpro_baseline():
-    assert BITPRO_SOURCE_SHA == "aecd03f75d0ef11e18d219da97fecae9613f2a64"
+    assert BITPRO_SOURCE_SHA == "2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1"
 
 
 def test_completion_audit_fails_when_any_requirement_lacks_evidence():

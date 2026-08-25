@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 
-SOURCE_SHA = "aecd03f75d0ef11e18d219da97fecae9613f2a64"
+SOURCE_SHA = "2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1"
 TARGET_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_REPO = Path("/Users/jie.feng/Dev/Github/Private/BitPro")
 

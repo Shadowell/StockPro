@@ -3,7 +3,7 @@
 set -euo pipefail
 
 TARGET_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-PINNED_SOURCE_SHA="aecd03f75d0ef11e18d219da97fecae9613f2a64"
+PINNED_SOURCE_SHA="2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1"
 BITPRO_SOURCE_REPO="${BITPRO_SOURCE_REPO:-/Users/jie.feng/Dev/Github/Private/BitPro}"
 BITPRO_SOURCE_SHA="${BITPRO_SOURCE_SHA:-$PINNED_SOURCE_SHA}"
 
