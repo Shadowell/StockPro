@@ -3517,3 +3517,7 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - A 股监控显示 Paper 实例、运行中、健康异常、活动告警、整体状态、服务、Dataset、通知投递、逐实例生命周期/健康/心跳/权益/账本差异，以及服务/数据和调度证据；真实券商、USDT、多空比、资金费率和强平模块不渲染。监控 `tsc`、零警告 lint、Mock E2E 与安全审计通过。
 - 真实管理员浏览器显示 22 个 Paper、21 个 running、6 个健康异常、200 个活动告警、762 个 delivered 通知、3 项服务证据和完整实例表；可见 fresh/failed/exhausted 与 running/stopped 独立，控制台没有数字资产/实盘请求。慢查询窗口提升到 60 秒并用 in-flight ref 阻止 30 秒轮询重叠。
 - 监控切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过。
+- 数据中心完成当前 BitPro 2390 行 `DataManager` 源码导入；其 OKX 现货/合约/原生同步实现设为不可达 named source，`okxNativeSyncApi` 在 StockPro 明确 fail-closed，不注册接口。默认页面保留 BitPro 管理中心/KPI/工作区/表格节奏，唯一使用 PostgreSQL `dataCurrentApi`。
+- 默认数据加载先读 `/data/status`，再用 `Promise.allSettled` 读取 datasets/snapshots/jobs/providers/quality/imports；八个工作区覆盖总览、研究数据、行情覆盖、同步任务、Qlib、数据源、质量和导入导出。数据页 `tsc`、零警告 lint、Mock E2E 和安全审计通过。
+- 真实管理员浏览器显示 PostgreSQL 10 个研究数据集、2,777,870 条发布记录、34 个封存快照、Provider restricted、GET Provider 调用 0、16,989 个质量问题和 0 个暂存导入；八个工作区与真实快照列表可见，控制台无业务错误。
+- 数据切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过；最终路由标题同步为当前 BitPro 的“数据管理中心”。

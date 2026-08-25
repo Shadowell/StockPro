@@ -186,6 +186,28 @@ export const dataCurrentApi = {
   qlibExport: async (force=false):Promise<Record<string,any>>=>apiClient.post(`/data/qlib/export?force=${force?'true':'false'}`),
 };
 
+export interface OkxNativeSyncScheduleConfig {
+  enabled: boolean;
+  rubikIntervalMinutes: number;
+  oiIntervalMinutes: number;
+  ccys: string[];
+  rubikRowCount: number;
+  oiSnapshotCount: number;
+  oiSymbolCount: number;
+  lastRubikRunAt?: string | null;
+  lastRubikFinishedAt?: string | null;
+  lastRubikError?: string | null;
+  lastOiRunAt?: string | null;
+  lastOiFinishedAt?: string | null;
+  lastOiError?: string | null;
+}
+
+export const okxNativeSyncApi = {
+  getSchedule: (): Promise<OkxNativeSyncScheduleConfig> => Promise.reject(new Error('StockPro 不注册 OKX 原生同步')),
+  updateSchedule: (_data: Partial<OkxNativeSyncScheduleConfig>): Promise<OkxNativeSyncScheduleConfig> => Promise.reject(new Error('StockPro 不注册 OKX 原生同步')),
+  run: (_kind: 'rubik' | 'oi' | 'all'): Promise<Record<string, unknown>> => Promise.reject(new Error('StockPro 不注册 OKX 原生同步')),
+};
+
 export const aiCurrentApi={
   config:async():Promise<AIConfig>=>apiClient.get('/ai/config'),
   tasks:async():Promise<{items:AITask[];total:number}>=>apiClient.get('/ai/tasks'),
