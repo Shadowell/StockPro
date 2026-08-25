@@ -44,7 +44,7 @@ if [ ! -x "$PYTHON" ]; then
   VENV_OK=0
 fi
 
-if [ -z "${DATABASE_URL:-}" ]; then
+if [ -z "${DATABASE_URL:-}" ] && [ "${STOCKPRO_CHECK_SKIP_ENV_FILE:-0}" != "1" ]; then
   load_database_url_from_env_file "$ROOT_DIR/backend/.env"
 fi
 

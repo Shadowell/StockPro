@@ -3499,3 +3499,7 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 重启验收发现 `restart.sh` 仍探测已经删除的 `/api/health/health`，而当前唯一健康接口 `/api/health` 正常返回 200。新增脚本合同测试完成 RED→GREEN 后，第二次干净重启通过前端 4444、后端 4445 和健康门禁。
 - 真实浏览器使用管理员会话读取本地 PostgreSQL 首页：标题、三枚 A 股状态标记、4 个真实指数、市场宽度、涨跌停生态、空板块资金原因和策略→回测→模拟入口均可见；未使用请求拦截或 DOM 注入。
 - 首页 Mock Playwright 桌面/390px 共 2 项通过，Vite 生产构建与本轮文件零警告 lint 通过。全量 `tsc` 当前被任务前既有的未跟踪 `frontend/src/pages/liveTrading/` 半套 BitPro 文件阻断；该目录保留不删，下一切片补齐来源模块并接 A 股 API 适配后再恢复全量类型门禁。
+- 已补齐上述 `liveTrading` 的 4 个缺失 BitPro 原文件和 `selectionStyles`，原有 7 个文件经逐文件比较均与当前 BitPro 完全相同。兼容 API 只转到 StockPro 的 A 股 Paper/券商预检合同；无实例 ID 的控制操作 fail-closed，未重新注册真实交易路由。
+- 补齐后全量 `npm run check`、`npm run build`、零警告 `npm run lint` 通过；首页与现有模拟盘 3 个 Mock Playwright 回归通过。`rebuild/assert_safety.py` 继续通过，五类活动风险计数均为 0，未注册的 BitPro 实盘组件仅作为 quarantine 来源保留。
+- 首次全量 `check.sh` 暴露测试隔离递归：`test_isolation_db_setup` 删除进程环境变量后，子 `check.sh` 又读取本机 `backend/.env`，形成 `check.sh → pytest → check.sh`。新增 `STOCKPRO_CHECK_SKIP_ENV_FILE=1` 测试专用门禁和 10 秒超时后，该组 4/4 通过；递归子进程已全部退出。
+- 使用现有 SSH 隧道凭据只替换数据库名，确认远端隔离库 `stockpro_bitpro_rebase_dev`，未连接生产库执行测试写入。全量门禁已通过 105 个后端/重建测试、前端类型、lint、生产构建、bundle 预算、生产依赖审计和 25/25 Mock 浏览器矩阵；旧首页标题断言已更新为当前 BitPro 的“市场大盘”。

@@ -1535,6 +1535,119 @@ export const strategyApi = {
   }> => getReq(`/strategies/${id}/status`),
 };
 
+// BitPro live workspace compatibility surface. The UI is copied from BitPro,
+// while every data call stays on StockPro's A-share Paper/broker contracts.
+export const tradingApi = {
+  getBalance: (accountId = 'default'): Promise<{ exchange: string; balance: any[] }> =>
+    liveExecutionApi.getAccountBalance(accountId),
+};
+
+export const liveApi = {
+  getStrategies: (params?: { page?: number; perPage?: number }): Promise<StrategyPageResponse> =>
+    strategyApi.getPage({
+      page: params?.page ?? 1,
+      perPage: params?.perPage ?? 60,
+    }),
+
+  getStrategyTrades: (id: number, limit = 50): Promise<any> =>
+    getReq(`/strategies/${id}/trades`, { params: { limit } }),
+
+  configure: (config: Record<string, unknown>): Promise<any> =>
+    paperCurrentApi.create(config),
+
+  start: (instanceId?: string | number): Promise<any> => {
+    if (instanceId == null) return Promise.reject(new Error('启动 A 股模拟实例需要明确 instance_id'));
+    return paperCurrentApi.transition(String(instanceId), 'start');
+  },
+
+  stop: (instanceId?: string | number, _clearMetrics = false): Promise<any> => {
+    if (instanceId == null) return Promise.reject(new Error('停止 A 股模拟实例需要明确 instance_id'));
+    return paperCurrentApi.transition(String(instanceId), 'stop');
+  },
+
+  pause: (instanceId?: string | number): Promise<any> => {
+    if (instanceId == null) return Promise.reject(new Error('暂停 A 股模拟实例需要明确 instance_id'));
+    return paperCurrentApi.transition(String(instanceId), 'pause');
+  },
+
+  resume: (instanceId?: string | number): Promise<any> => {
+    if (instanceId == null) return Promise.reject(new Error('恢复 A 股模拟实例需要明确 instance_id'));
+    return paperCurrentApi.transition(String(instanceId), 'resume');
+  },
+
+  closePaperPosition: (payload: {
+    instanceId?: string | number;
+    symbol: string;
+    side?: string | null;
+    marketType?: string | null;
+  }): Promise<any> => {
+    if (payload.instanceId == null) return Promise.reject(new Error('平仓需要明确 A 股模拟实例'));
+    return postReq(`/paper/instances/${encodeURIComponent(String(payload.instanceId))}/positions/close`, payload);
+  },
+
+  getDashboard: (instanceId?: string | number): Promise<any> =>
+    instanceId == null
+      ? paperCurrentApi.list('audit')
+      : paperCurrentApi.detail(String(instanceId)),
+
+  getEvents: async (
+    limit = 50,
+    _eventType?: string,
+    instanceId?: string | number,
+  ): Promise<any> => {
+    if (instanceId == null) return [];
+    const detail = await paperCurrentApi.detail(String(instanceId));
+    return detail.events.slice(0, limit);
+  },
+
+  getEquityCurve: async (instanceId?: string | number): Promise<any> => {
+    if (instanceId == null) return [];
+    const detail = await paperCurrentApi.detail(String(instanceId));
+    return detail.equity_snapshots;
+  },
+
+  preFlight: (config: Record<string, unknown>): Promise<any> =>
+    postReq('/paper/preflight', config),
+
+  promoteToLive: (config: {
+    sourceStrategyId: string | number;
+    accountId?: string;
+    exchange?: string;
+    initialEquity?: number;
+    loopInterval?: number;
+    startImmediately?: boolean;
+    confirmPaperReviewed?: boolean;
+    confirmLiveRisk?: boolean;
+    riskConfig?: Record<string, unknown>;
+  }): Promise<any> => liveExecutionApi.deployStrategy(Number(config.sourceStrategyId), {
+    accountId: config.accountId,
+    exchange: config.exchange,
+    initialEquity: config.initialEquity,
+    loopInterval: config.loopInterval,
+    startImmediately: config.startImmediately,
+    confirmPaperReviewed: config.confirmPaperReviewed === true,
+    confirmLiveRisk: config.confirmLiveRisk === true,
+    riskConfig: config.riskConfig,
+  }),
+
+  promoteToLivePreflight: (config: {
+    sourceStrategyId: string | number;
+    accountId?: string;
+    exchange?: string;
+    initialEquity?: number;
+    loopInterval?: number;
+    startImmediately?: boolean;
+    riskConfig?: Record<string, unknown>;
+  }): Promise<any> => liveExecutionApi.preflightStrategy(Number(config.sourceStrategyId), {
+    accountId: config.accountId,
+    exchange: config.exchange,
+    initialEquity: config.initialEquity,
+    loopInterval: config.loopInterval,
+    startImmediately: config.startImmediately,
+    riskConfig: config.riskConfig,
+  }),
+};
+
 // ============================================
 // 监控 API
 // ============================================
