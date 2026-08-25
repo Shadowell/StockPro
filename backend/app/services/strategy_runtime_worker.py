@@ -253,12 +253,20 @@ def apply_limits(limits):
     except (ValueError, OSError):
         # macOS may reject RLIMIT_AS lowering; the parent process enforces RSS.
         pass
-    cpu = max(1, int(limits.get("cpu_seconds", 2)))
-    _, cpu_hard = resource.getrlimit(resource.RLIMIT_CPU)
-    resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu_hard))
-    files = max(8, int(limits.get("open_files", 32)))
-    _, files_hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (files, files_hard))
+
+    def _set_safe(which: int, value: int) -> None:
+        """Lower the soft limit only; never exceed the inherited hard limit."""
+        soft, hard = resource.getrlimit(which)
+        if hard != resource.RLIM_INFINITY:
+            value = min(value, hard)
+        try:
+            resource.setrlimit(which, (value, hard))
+        except (ValueError, OSError):
+            # Parent still enforces wall clock and RSS; limits are best effort.
+            pass
+
+    _set_safe(resource.RLIMIT_CPU, max(1, int(limits.get("cpu_seconds", 2))))
+    _set_safe(resource.RLIMIT_NOFILE, max(8, int(limits.get("open_files", 32))))
 
 
 def main():
@@ -275,7 +283,7 @@ def main():
             "success": False,
             "error_code": error_code,
             "error_message": str(exc)[:1000],
-            "diagnostic": "".join(traceback.format_exception_only(type(exc), exc))[:2000],
+            "diagnostic": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))[:2000],
         }
     encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
     if len(encoded) > int((payload.get("limits") or {}).get("output_bytes", 1048576)):

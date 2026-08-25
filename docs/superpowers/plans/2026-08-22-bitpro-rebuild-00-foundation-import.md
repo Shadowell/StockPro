@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - 必须使用 `superpowers:using-git-worktrees` 创建 worktree；BitPro 规则禁止子代理。
-- 源 SHA 固定为 `00517963e90f463e608289b0277fe598bd82d9bf`，StockPro 计划提交固定为
+- 源 SHA 固定为 `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`，StockPro 计划提交固定为
   `27f53cead43557760f5ce74ffc2a598078f9fcfa`。
 - 只允许在 `/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share` 写入导入代码。
 - 当前 StockPro 工作区中的 `.agents/`、`.claude-flow/`、`.cursor/`、`.zcode/`、`backend/.claude-flow/`、`frontend/.claude-flow/` 和 `frontend/scripts/qa_visual_pass.mjs` 不得加入提交。
@@ -138,8 +138,8 @@ git commit -m "test(rebuild): capture immutable continuity baseline"
 
 ```python
 def test_source_manifest_uses_committed_tree_only(bitpro_repo):
-    result = verify_source(bitpro_repo, "00517963e90f463e608289b0277fe598bd82d9bf")
-    assert result["head"] == "00517963e90f463e608289b0277fe598bd82d9bf"
+    result = verify_source(bitpro_repo, "2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1")
+    assert result["head"] == "2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1"
     assert result["archive_source"] == "git-object-database"
     assert "AGENTS.md" not in result["application_roots"]
     assert ".env" not in result["application_roots"]

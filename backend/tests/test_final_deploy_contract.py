@@ -12,3 +12,11 @@ def test_deploy_health_probe_uses_the_only_current_endpoint() -> None:
     assert "workflow_dispatch:" in workflow
     assert "branches:\n      - main" in workflow
     assert "check-local-dependencies.mjs" not in workflow
+
+
+def test_local_restart_uses_the_only_current_health_endpoint() -> None:
+    root = Path(__file__).resolve().parents[2]
+    restart = (root / "restart.sh").read_text()
+
+    assert "/api/health/health" not in restart
+    assert 'wait_for_url "后端服务" "http://127.0.0.1:4445/api/health" 60' in restart

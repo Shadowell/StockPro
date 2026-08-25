@@ -1,14 +1,14 @@
 # BitPro-first A股整仓重建设计合同
 
-- 状态：已完成；Wave 0–6、生产切换与 post-deploy 验收全部通过
+- 状态：2026-08-25 重新打开；旧基线 Wave 0–6 已交付，但当前 BitPro 1:1 一致性不成立，正在整仓重移植
 - 批准日期：2026-08-22
 - StockPro 基线：`99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`
-- BitPro 固定来源：`00517963e90f463e608289b0277fe598bd82d9bf`
-- 目标分支：`codex/bitpro-a-share-rebase`
+- BitPro 固定来源：`2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`（2026-08-26 当前 `main`；相对上一基线仅新增策略分析文档，应用树一致）
+- 目标分支：`codex/ashare-operations-restore`
 - 目标 worktree：`/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share`
-- 生产应用合并 SHA：`4c7fe5194cae7abf6c07a8be005bbfb573b032d8`
-- 生产部署 SHA：`381ec5429114a52af71aae7948834a3f6538f366`
-- 成功部署：GitHub Actions run `32647137727`
+- 上一轮生产应用合并 SHA：`4c7fe5194cae7abf6c07a8be005bbfb573b032d8`（仅作历史回滚证据）
+- 上一轮生产部署 SHA：`381ec5429114a52af71aae7948834a3f6538f366`（不代表当前复刻完成）
+- 上一轮成功部署：GitHub Actions run `32647137727`
 
 ## 1. 目标
 
@@ -36,9 +36,14 @@ StockPro 当前启用 A股、ETF 和指数；为中国期货、美国股票和�
 6. 不提供带版本号的 API 路径、旧入口、兼容 Router 或长期双合同。
 7. 历史记录中的旧合同版本字段只作为只读审计元数据保留，不形成旧 API。
 8. BitPro 继续定位数字资产；StockPro 承载传统金融，并预留期货领域。
-9. 最终生产切换前必须再次取得明确确认。
+9. 普通代码切片按仓库 GitHub Delivery Rule 自动交付；涉及生产数据迁移、Paper 重置或真实交易能力时必须停在安全门禁。
 
 ## 3. 仓库、分支和导入边界
+
+当前 BitPro `App.tsx`、`MainLayout.tsx` 与 `index.css` 的逐字基线副本保存在
+`frontend/src/_quarantine/*.disabled`。StockPro 活动壳层只允许 A 股路由映射、中文领域文案、
+Paper-only 安全边界和真实数据状态差异；真实交易不得因 1:1 复刻被重新注册。BitPro 的套利、
+链上、订单流、ARC 和交易深链必须解析到明确的 A 股 Owner 能力，不能展示数字资产实现。
 
 ### 3.1 隔离方式
 
@@ -126,9 +131,11 @@ Wave 0 当前证据：启动入口仅注册 `/api/health` 与 `/api/auth/me` 两
 | 数据 | `/data` | TuShare/AKShare、快照、质量、同步和扩展交换 |
 | 因子库 | `/factors` | 因子定义、计算、诊断、快照和策略输入 |
 | AI研发 | `/ai-lab` | 策略研发、优化和门控后的候选保存 |
-| 套利中心 | 隐藏期货预留 | 未来期现、跨期和跨市场价差 |
-| 链上研究 | 不进入产品 | 继续属于 BitPro |
-| ARC Console | 不进入产品 | 不属于 StockPro 产品能力 |
+| 套利中心 | `/strategy`（旧 `/arbitrage` 跳转） | A 股策略家族与价差研究，不保留跨所/资金费率语义 |
+| 链上研究 | `/data`（旧 `/onchain` 跳转） | 资金流、股东、机构与基本面数据 |
+| 订单流 | `/market`（旧 `/orderflow` 跳转） | A 股盘口、成交额、交易日与来源证据 |
+| ARC Console | `/ai-lab`（旧 `/arc` 跳转） | A 股 AI 研究任务、证据与失败状态 |
+| 交易/Paper | `/paper`（旧 `/trading`、`/live` 跳转） | A 股模拟盘现金账本；不注册真实下单 |
 | 数字资产实盘 | 不注册 | 无真实交易入口 |
 
 ### 5.3 页面继承标准
@@ -139,6 +146,8 @@ Wave 0 当前证据：启动入口仅注册 `/api/health` 与 `/api/auth/me` 两
 - 只替换领域字段、数据源和交易语义，不随意降低信息密度。
 - 所有页面覆盖 Loading、Empty、Partial、Stale、Error 和权限不足。
 - 真实数据为空时展示诚实空态，不为视觉效果创建业务记录。
+- 固定 BitPro 前端树的每个源文件必须由 `frontend-parity.json` 证明为字节级一致或带固定
+  源哈希的 A 股适配；未分类、源漂移、目标缺失或空适配契约均阻断完成审计。
 
 ## 6. 统一当前 API 合同
 

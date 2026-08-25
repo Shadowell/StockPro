@@ -2,32 +2,29 @@ from __future__ import annotations
 
 from pathlib import Path
 import ast
+import importlib.util
 
-from app.services.strategy_registry import (
-    get_base_strategy_registry,
-    resolve_unified_base_strategy_class,
-)
 from app.core.rebuild_safety import scan_rebuild_safety
-import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# 数字资产运行时模块必须彻底离开产品树（不只是隔离）。
 FORBIDDEN_PRODUCT_PATHS = (
-    "backend/app/exchange/okx.py",
-    "backend/app/exchange/binance_usdm.py",
+    "backend/app/exchange",
+    "backend/app/strategies",
     "backend/app/services/contract_paper_account.py",
     "backend/app/services/cross_exchange_paper_account.py",
     "backend/app/services/binance_usdm_contract_broker.py",
     "backend/app/services/live_account_service.py",
-    "backend/app/strategies/okx_funding_arbitrage_strategy.py",
-    "backend/app/strategies/okx_contract_funding_carry_strategy.py",
-    "backend/app/strategies/funding_rate_arbitrage_strategy.py",
-    "backend/app/strategies/cross_exchange_funding_arbitrage_strategy.py",
-    "backend/app/strategies/contract_common.py",
+    "backend/app/services/strategy_engine.py",
+    "backend/app/services/strategy_registry.py",
+    "backend/app/services/strategy_brokers.py",
+    "backend/app/db/local_db.py",
+    "backend/app/workers/backtest_job_worker.py",
+    "backend/app/core/execution/base_strategy.py",
     "scripts/sync_okx_universe.py",
-    "scripts/okx_orbit_publisher.js",
-    "scripts/independent_contract_search.py",
+    "scripts/bitpro_mcp_server.py",
 )
 
 ACTIVE_RUNTIME = (
@@ -52,21 +49,17 @@ def _imports(path: Path) -> set[str]:
     return names
 
 
-def test_okx_binance_and_contract_modules_are_out_of_the_product_tree() -> None:
+def test_crypto_runtime_modules_are_out_of_the_product_tree() -> None:
     for relative in FORBIDDEN_PRODUCT_PATHS:
         assert not (ROOT / relative).exists(), relative
-        assert (ROOT / "archive/bitpro-crypto").exists()
 
 
 def test_paper_and_backtest_do_not_import_crypto_exchanges() -> None:
     forbidden = {
         "app.exchange",
-        "app.services.contract_paper_account",
-        "app.services.cross_exchange_paper_account",
-        "app.services.binance_usdm_contract_broker",
-        "app.services.live_account_service",
-        "app.strategies.okx_funding_arbitrage_strategy",
-        "app.strategies.funding_rate_arbitrage_strategy",
+        "app.services.strategy_engine",
+        "app.services.strategy_registry",
+        "app.db.local_db",
     }
     for relative in ACTIVE_RUNTIME:
         imported = _imports(ROOT / relative)
@@ -74,12 +67,11 @@ def test_paper_and_backtest_do_not_import_crypto_exchanges() -> None:
         assert not overlap, f"{relative} imports {overlap}"
 
 
-def test_strategy_registry_refuses_archived_crypto_keys() -> None:
-    assert get_base_strategy_registry() == {}
-    with pytest.raises(ValueError, match="archived crypto strategy"):
-        resolve_unified_base_strategy_class({"name": "OKX funding", "config": {"strategy_key": "okx_funding_arbitrage"}})
-    with pytest.raises(ValueError, match="archived crypto strategy"):
-        resolve_unified_base_strategy_class({"name": "合约网格", "config": {"strategy_key": "contract_martingale_grid"}})
+def test_archived_crypto_strategy_keys_are_unresolvable() -> None:
+    """旧币圈 strategy_key 不再有任何解析入口。"""
+    for module in ("app.services.strategy_registry", "app.strategies"):
+        spec = importlib.util.find_spec(module)
+        assert spec is None, module
 
 
 def test_safety_scan_still_blocks_only_active_surfaces() -> None:
@@ -87,9 +79,3 @@ def test_safety_scan_still_blocks_only_active_surfaces() -> None:
     assert report.passed is True
     assert report.registered_private_exchange_routes == 0
     assert report.registered_crypto_jobs == 0
-    forbidden_active = {
-        finding["path"]
-        for finding in report.findings
-        if finding["active"] and any(token in str(finding["path"]) for token in ("okx", "binance", "contract_paper"))
-    }
-    assert not forbidden_active

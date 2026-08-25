@@ -1,5 +1,91 @@
 # Progress Log
 
+## BitPro 逐文件复刻对账（2026-08-26）
+
+- 新增机器可执行的前端 parity 审计；对固定 BitPro SHA `2e4b90c3` 的 78 个
+  TypeScript/TSX/CSS 源文件逐项核对。当前结果为 41 个字节级一致、37 个固定源哈希的
+  A 股适配、0 个未分类，审计产物纳入 completion gate `PARITY-001`。
+- 12 个不再保持同路径的 BitPro 源文件以逐字 `.disabled` 参考副本保存；活动产品通过
+  manifest 将其映射到 A 股行情、股票池、数据、策略、模拟盘与 AI 工作台，不把隔离副本
+  计作功能完成证明。
+- 旧 `/live`、`/trading`、`/arbitrage`、`/onchain`、`/orderflow`、`/arc` 深链分别解析到
+  A 股模拟盘、策略、数据、行情和 AI Owner 页面；`/live-real` 继续明确不可用，侧栏不显示
+  实盘、链上、ARC、套利或期货入口。
+- focused Python 6 项、TypeScript、零告警 lint、生产构建、25 项 Mock Playwright 全绿；
+  前后端已干净重启，`4444`/`4445` 监听且 `/api/health` 返回 `rebuild_safe`。
+- 隔离库全仓门禁已通过：107 个 Python 测试、25 个 Mock E2E、bundle budget、依赖审计、
+  39 个迁移、0 条期货记录；Paper 22 实例/165 单/108 成交/49 持仓/970 权益/2013 事件
+  连续性通过。真实管理员登录后的 13 路由 × 桌面/390px 验收 2 项通过，API 5xx 与页面异常均为 0。
+- 首轮全仓检查发现同步导入导致首屏 JS 超预算，恢复 BitPro 路由级 lazy loading 后首屏从
+  658.0 KiB 降到 355.9 KiB，主包从 391.7 KiB 降到 83.6 KiB。
+- 当前提交已重拍 13 路由 × 2 viewport 共 26 张真实截图；采集器要求每页离开骨架和
+  “正在加载/读取中”状态，并隔离每个页面避免图表/定时器污染。清单显示控制台错误 0、
+  业务写请求 0，人工抽检主页、策略和回测均为真实数据或诚实状态。
+- 仍未完成：生产部署与 deployed SHA 验收；本目标尚未关闭，也未推送或部署。
+
+## 运营闭环恢复 + 7策略晋级模拟盘（2026-08-25）
+
+本轮在 BitPro-first 重建底座上恢复生产级运营能力，并完成首轮 A 股策略研究晋级。
+
+### 运营层恢复
+- 移植 `KlineSyncService`（按交易日全市场拉取）与 `DailyReferenceSyncService`
+  （日终链：交易日历门禁→日线同步→快照封存→辅助分区→Universe→因子计划→行情证据，
+  PG advisory lock 防并发，`dataset_orchestration_runs` 全量留痕）。
+- 新增 `AshareSchedulerService`（APScheduler，Asia/Shanghai）：盘后 17:30 日终链、
+  每小时 Paper 兜底推进、每日三次运营心跳；经 FastAPI lifespan 挂载，
+  `ENABLE_SCHEDULER` 显式开关。
+- 修复两处高延迟隧道性能缺陷：批量写入统一 page_size=2000；sync_metadata 刷新从
+  逐标的 2 次 RTT 改为聚合批量（全市场单日写入 2.6 小时 → 30 秒）。
+- 补齐 2025-01~2025-07 共 103 个交易日的全市场日线缺口（TuShare 按日回填）。
+
+### Qlib 数据模块
+- `QlibExportService`：已发布日线分区 → 标准 Qlib bin 布局
+  （calendars/instruments/features，NaN 表达缺失，增量刷新）。
+- 503 交易日 × 5,550 标的导出验证通过；`/api/data/qlib/status|export` 端点
+  与数据中心「Qlib导出」页签；日终链成功后自动增量刷新。
+
+### 前端补齐
+- 设置中心全部端点落地（notify/飞书 webhook/LLM 模型配置与连通性测试/
+  MCP Agent Token（SHA-256 存储、明文仅返回一次）/访客邀请码管理）；
+  新增迁移 `202608240001_settings_and_agent_tokens.sql`。
+- 监控页新增「日终调度」面板（任务注册状态、盘后 cron、日线水位、管理员手动触发）。
+- 登录页管理员登录 Tab 前置并设为默认模式。
+- client.ts 删除 7 个无引用的币圈 API 块（约 210 行）。
+
+### 大扫除
+- 删除 40+ 个 import 即崩的隔离文件（exchange/strategies/workers/local_db/
+  旧 scheduler_service/agent 包等）与根目录三套平行遗产。
+- 防回归测试改为断言彻底移除（而非隔离）；安全扫描 0 活跃命中。
+
+### 策略研究与晋级
+- 新研究 12 个 Strategy API v1 策略 + 3 个参数变体（动量/趋势/均值回归/低波动/
+  量价/多因子/布林/隔日反转/新高/小市值因子等方向），全部通过 AST 沙箱验证。
+- 建立「全市场流动性 Top500」股票池（快照 #9）、研究协议 v3（训练/验证/样本外
+  三段 + 容量/回撤/夏普阈值，封存不可变）与因子快照 #8（94 因子）。
+- **7 个策略通过全部 11 项晋级门禁并上线模拟盘**（快照 #35 全参考数据绑定）：
+
+| 策略 | 方向 | 完整回测 | 门禁 |
+| --- | --- | --- | --- |
+| 连板晋级隔日T | 打板 | +56.8% 夏普4.33 回撤9.0% | 全过 |
+| 多因子风险预算 | 多因子 | +65.0% 夏普3.15 回撤15.9% | 全过 |
+| 均值回归 三日超跌反弹 | 均值回归 | +46.7% 夏普3.07 回撤14.3% | 全过 |
+| 高度板隔日T | 打板 | +35.5% 夏普2.72 回撤13.3% | 全过 |
+| 首板放量隔日T | 打板/量能 | +31.1% 夏普2.87 回撤9.3% | 全过 |
+| 尾盘强势 | 日内强势 | +77.7% 夏普5.00 回撤10.8% | 全过 |
+| 隔日T超跌 低开高走反抽 | 日内反转 | +12.0% 夏普0.91 回撤13.6% | 全过 |
+
+- 约 15 个候选被门禁真实拒绝（多数卡在训练段风控），拒绝证据逐段留档
+  `backtest_protocol_evaluations`。参数变体研究入库供后续窗口复用。
+
+### 已知边界
+- 模拟盘当前为封存快照回放模式（recorded_replay）；实时盘中行情接入不在本轮范围。
+- `rebuild/tests` 部分验收测试依赖重建期环境，本轮验证以 `backend/tests`（61 项全绿）
+  + 前端 tsc/build 为准。
+- 生产部署未触发：工作在 `codex/ashare-operations-restore` 分支，合并 main 前需
+  完成与最新 main 的集成验证。
+
+---
+
 ## 文档全量整治（2026-08-24）
 
 - 修正 6 处错误健康路径 `/api/health/health` → `/api/health`（README、deployment、
@@ -3425,3 +3511,59 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - StockPro 专用 Runner 已固定提供 Node.js 22 / npm 10，满足项目 Node.js 18+
   与 npm 9+ 合同；部署改为本机版本门禁，继续使用干净的 `npm ci` 和完整前端构建，
   避免发布依赖第三方 Action 归档下载可用性。
+
+## 2026-08-25 BitPro 当前基线 1:1 重移植（进行中）
+
+- 用户否决近似复刻，要求以 BitPro 为唯一事实基准直接移植，再只做 A 股领域替换；旧版“已完成”结论因此重新打开。
+- 当前 BitPro `main` 固定为 `aecd03f75d0ef11e18d219da97fecae9613f2a64`。导入器、来源测试、完成审计和总控计划已同步到该提交；导入器只接受 `codex/*` 分支并从 Git object database 读取，不读取 BitPro 未提交工作区。
+- 首轮差异盘点确认目标前端 50 个同路径文件中只有 25 个字节级相同；策略、回测、监控、数据和 AI 研发等关键页面仍显著偏离，不能继续声称 1:1 完成。
+- 首页第一条 TDD 切片把 BitPro 的“市场大盘”外层合同、三枚运行状态标记和两个原生面板边界恢复到 A 股页面，同时保留真实 `/api/market/overview`、PostgreSQL 来源状态及缺失值语义。
+- 当前来源导入仅完成 dry-run，尚未覆盖应用树；`docs/reference/bitpro-baseline/source.json` 仍保留旧导入事实，直到当前 BitPro 应用真正导入后才更新，避免把计划冒充完成状态。
+- 重启验收发现 `restart.sh` 仍探测已经删除的 `/api/health/health`，而当前唯一健康接口 `/api/health` 正常返回 200。新增脚本合同测试完成 RED→GREEN 后，第二次干净重启通过前端 4444、后端 4445 和健康门禁。
+- 真实浏览器使用管理员会话读取本地 PostgreSQL 首页：标题、三枚 A 股状态标记、4 个真实指数、市场宽度、涨跌停生态、空板块资金原因和策略→回测→模拟入口均可见；未使用请求拦截或 DOM 注入。
+- 首页 Mock Playwright 桌面/390px 共 2 项通过，Vite 生产构建与本轮文件零警告 lint 通过。全量 `tsc` 当前被任务前既有的未跟踪 `frontend/src/pages/liveTrading/` 半套 BitPro 文件阻断；该目录保留不删，下一切片补齐来源模块并接 A 股 API 适配后再恢复全量类型门禁。
+- 已补齐上述 `liveTrading` 的 4 个缺失 BitPro 原文件和 `selectionStyles`，原有 7 个文件经逐文件比较均与当前 BitPro 完全相同。兼容 API 只转到 StockPro 的 A 股 Paper/券商预检合同；无实例 ID 的控制操作 fail-closed，未重新注册真实交易路由。
+- 补齐后全量 `npm run check`、`npm run build`、零警告 `npm run lint` 通过；首页与现有模拟盘 3 个 Mock Playwright 回归通过。`rebuild/assert_safety.py` 继续通过，五类活动风险计数均为 0，未注册的 BitPro 实盘组件仅作为 quarantine 来源保留。
+- 首次全量 `check.sh` 暴露测试隔离递归：`test_isolation_db_setup` 删除进程环境变量后，子 `check.sh` 又读取本机 `backend/.env`，形成 `check.sh → pytest → check.sh`。新增 `STOCKPRO_CHECK_SKIP_ENV_FILE=1` 测试专用门禁和 10 秒超时后，该组 4/4 通过；递归子进程已全部退出。
+- 使用现有 SSH 隧道凭据只替换数据库名，确认远端隔离库 `stockpro_bitpro_rebase_dev`，未连接生产库执行测试写入。全量门禁已通过 105 个后端/重建测试、前端类型、lint、生产构建、bundle 预算、生产依赖审计和 25/25 Mock 浏览器矩阵；旧首页标题断言已更新为当前 BitPro 的“市场大盘”。
+- 策略页不再保留 105 行自研薄壳：以当前 BitPro 1501 行策略工作台为结构基线，恢复“我的策略 / 策略广场”、AI 写策略、五组筛选、18 条分页、完整编辑器和详情页；`strategyApi.getPage` 在 A 股当前 API 上做稳定分页/计数适配。
+- 策略资产、类型、周期、资金、AI 候选证券、编辑器市场和下单单位已替换为股票/ETF、动量/均值回归/多因子/事件、A 股周期、人民币规模、证券代码和股数；详情继续显示封存输入、100股、T+1、只做多。策略页 `tsc`、零警告 lint 和 Mock E2E 通过。
+- 真实管理员浏览器从当前 PostgreSQL 读取 78 个策略，BitPro 四列卡片、18 条分页和完整筛选均可见；未运行策略的左侧 BitPro 操作位映射为“回测”，运行/暂停策略仍映射实例控制台，保持 A 股“策略→回测→模拟”主线。
+- 全量前端生产构建、零警告 lint 和 25/25 Mock 浏览器矩阵通过。远程 PostgreSQL 冷连接曾使后端在原 30 秒窗口之后才就绪，进程和健康接口随后正常；重启条件等待扩展为 60 秒并新增合同测试，下一次干净重启正常通过。
+- 回测页从 87 行薄壳替换为当前 BitPro 3176 行工作台，并同步导入 `backtestSupport`、结果对比、权益曲线、交易分析、AnimatedNumber 和动画 hook。页面恢复批量回测、实例搜索、状态/资产/周期筛选、排序、对比、异步任务、日志和完整详情结构。
+- `backtestApi` 已桥接到当前 `/api/backtest/runs|jobs|configuration`，使用内存映射把不可变 UUID 安全接入 BitPro 数字视图 ID；策略 legacy ID 反向绑定真实 `strategy_version_id`。结果、任务、详情、series/orders/trades/positions/logs 均读取当前 PostgreSQL API，历史 run 不提供删除入口。
+- 回测领域改为股票/ETF、沪深300、CNY 100 万元、A 股手续费/印花税/过户费/滑点、30m/60m/1d、T+1、100股和只做多；快速预检与完整协议重新成为显式选择。回测 `tsc`、零警告 lint 和 Mock E2E 通过。
+- 真实管理员浏览器从 PostgreSQL 首屏读取 20/79 个 run：18 个完成、2 个失败，收益/回撤/Sharpe/成交与创建时间均来自当前 API；BitPro 左侧筛选、排序、对比和加载更多可见，未生成演示数据。
+- 首次详情验收发现 BitPro 原实现并发读取 core+五类 ledger，在远程 PostgreSQL 下 6 个请求同时超过 30 秒。新增 RED 浏览器合同后改为核心详情先打开、完整证据显式按需串行加载；真实核心详情已显示策略收益 20.81%、回撤 19.56%、Sharpe 1.55、沪深300基准和 A 股审计模块。移动端筛选 key 警告同时修复。
+- 回测完整前端生产构建、零警告 lint 和 25/25 Mock 浏览器矩阵通过；最终路由合同标题同步为当前 BitPro 的“回测”。
+- 监控页从 26 行薄壳升级为当前 BitPro 2386 行参考实现加 A 股默认工作台。默认 `/monitor` 复用 BitPro 的页头、双总览、折叠监控配置、运行区和指标卡节奏，但唯一读取 `/api/monitor/summary`；原 OKX/实盘实现作为不可达 named source 保留，安全扫描标记 quarantine，未注册任何 live 路由。
+- A 股监控显示 Paper 实例、运行中、健康异常、活动告警、整体状态、服务、Dataset、通知投递、逐实例生命周期/健康/心跳/权益/账本差异，以及服务/数据和调度证据；真实券商、USDT、多空比、资金费率和强平模块不渲染。监控 `tsc`、零警告 lint、Mock E2E 与安全审计通过。
+- 真实管理员浏览器显示 22 个 Paper、21 个 running、6 个健康异常、200 个活动告警、762 个 delivered 通知、3 项服务证据和完整实例表；可见 fresh/failed/exhausted 与 running/stopped 独立，控制台没有数字资产/实盘请求。慢查询窗口提升到 60 秒并用 in-flight ref 阻止 30 秒轮询重叠。
+- 监控切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过。
+- 数据中心完成当前 BitPro 2390 行 `DataManager` 源码导入；其 OKX 现货/合约/原生同步实现设为不可达 named source，`okxNativeSyncApi` 在 StockPro 明确 fail-closed，不注册接口。默认页面保留 BitPro 管理中心/KPI/工作区/表格节奏，唯一使用 PostgreSQL `dataCurrentApi`。
+- 默认数据加载先读 `/data/status`，再用 `Promise.allSettled` 读取 datasets/snapshots/jobs/providers/quality/imports；八个工作区覆盖总览、研究数据、行情覆盖、同步任务、Qlib、数据源、质量和导入导出。数据页 `tsc`、零警告 lint、Mock E2E 和安全审计通过。
+- 真实管理员浏览器显示 PostgreSQL 10 个研究数据集、2,777,870 条发布记录、34 个封存快照、Provider restricted、GET Provider 调用 0、16,989 个质量问题和 0 个暂存导入；八个工作区与真实快照列表可见，控制台无业务错误。
+- 数据切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过；最终路由标题同步为当前 BitPro 的“数据管理中心”。
+- AI 研发完成当前 BitPro 2907 行 AILab 及 AutoAgent/ResearchWorkbench/Orbit/support 全套源码导入。旧 `/api/v2`、Orbit 和自动交易实现设为不可达 named source；默认页面恢复“AI策略助手”页头与自动交易Agent/AI自主交易/新策略研发/现有策略优化四卡导航，唯一使用当前 `/api/ai/*` 和策略合同。
+- 默认 AI 工作台支持任务创建、启动、迭代详情、候选保存和现有策略诊断；模型未配置明确失败，不生成 mock，不自动运行完整回测、不创建/控制 Paper、不显示星球、OKX 持仓或自动实盘入口。AI 页 `tsc`、零警告 lint、Mock E2E 和安全审计通过。
+- 真实管理员浏览器显示 `DashScope / Qwen · qwen3.6-plus · unavailable`，四个 BitPro 工作区、A 股研究配置和“封存证据研究 / Quick 回测 only / 不自动创建 Paper”门控可见；控制台无业务错误，未启动任务、未生成候选、未写 Paper。
+- AI 切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过；最终路由标题同步为“AI策略助手”。
+- 信号中心完成当前 BitPro 2050 行源码导入。OKX Signal Bot/webhook/保证金/自动发送实现设为不可达 named source；默认页面恢复通道配置、信号策略列表、策略信号主表、投递记录和详情抽屉，但唯一读取当前信号与告警 API。
+- 通道配置只读汇总 delivery 状态，策略列表按不可变版本/Paper lineage 聚合，管理员只能把 `new` 信号确认为 confirmed；页面没有买入、卖出、下单或真实发送动作。信号/盯盘 E2E、`tsc`、零警告 lint 和安全审计通过。
+- 真实管理员浏览器显示 BitPro 四段信号工作台；当前 PostgreSQL 审计范围没有策略信号或投递记录，页面如实显示空状态，没有自动构造行或触发任何写操作，控制台无业务错误。
+- 信号切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过。
+- 复盘中心完成当前 BitPro 671 行源码导入；默认页面恢复“复盘中心”页头、KPI、策略分层评分矩阵、策略好坏榜、复盘结论和证据时间线，并唯一读取当前交易日 review/items/metrics。
+- 评分矩阵只按持久化 metric code 分组，榜单只消费 strategy/performance evidence；GET 不自动 assemble/save/seal，sealed 仍不可改。复盘页 `tsc`、零警告 lint 和 Mock E2E 通过。
+- 真实管理员浏览器读取 sealed 复盘 `2025-01-02`：14 个证据对象、14 个指标、5 个风险事件、14 组评分矩阵、策略/表现榜、已封存总结与完整市场→股票池→策略→风险→订单→成交→权益时间线可见；`writes_performed=false`，控制台无业务错误。
+- 复盘切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过；最终路由标题同步为“复盘中心”。
+
+## 2026-08-26 BitPro 基线同步
+
+- BitPro 本地 `main` 前进到 `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`。相对 `aecd03f7` 仅新增 `docs/research/strategy-analysis-2026-08-26-0008-favorites-core-loss-attribution.md` 并更新 BitPro 文档索引/进度，前端、后端、packages、scripts 和 tests 应用树无变化。
+- StockPro 来源测试、导入器、完成审计、活动合同和总控计划已重新钉住该提交；未静默漂移，也未把 BitPro 未提交工作区作为来源。
+- 行情模块完成当前 BitPro 610 行 `Market.tsx` 原样导入；原 A 股 Market Terminal 机械迁入独立 `AshareMarketWorkspace` 并保持默认导出，继续使用股票/ETF/指数、PostgreSQL 日线、CNY、100股、盘口空态、自选和证据 API。BitPro OKX 页面仅作为 named reference，不执行。
+- 行情 `tsc`、零警告 lint 和 Mock E2E 通过；搜索贵州茅台、K线和盘口空态合同保持不变。
+- BitPro 201 行 FactorLab 原文件已逐字保存为 `_quarantine/BitProFactorLab.tsx.disabled`。它依赖 BitPro 独有的 ML task/trial/provider 与 SQLite 控制面，当前不能直接注册；默认 A 股因子页继续使用 PostgreSQL 目录、指标成熟、运行、相关性、快照和值浏览合同，不用空 API 伪装 ML 功能。
+- 因子 `tsc`、零警告 lint 和 Mock E2E 通过；pending Rank IC 仍保持 null 并显示原因，页面加载 mutation 0。
+- BitPro 对应盯盘源码 `WatchMarket.tsx`（765 行）与 `LiveAccountSummaryPanels` 已原样导入但未注册；默认 `/watch` 保持当前 A 股五工作区，只读 Paper 信号/订单/成交/规则/告警。TypeScript 与安全审计通过，活动 live 路由仍为 0。
+- BitPro 当前 `App.tsx`、`MainLayout.tsx` 与 `index.css` 已逐字保存为 `_quarantine/BitPro*.disabled` 基线；活动 App/MainLayout 保留 A 股 13 个 Owner 路由和 Paper-only 安全差异。BitPro 的 livePulse、progressShimmer、rowFadeIn 与 reduced-motion 动效已原样补入活动 `index.css`。

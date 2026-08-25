@@ -44,7 +44,7 @@ if [ ! -x "$PYTHON" ]; then
   VENV_OK=0
 fi
 
-if [ -z "${DATABASE_URL:-}" ]; then
+if [ -z "${DATABASE_URL:-}" ] && [ "${STOCKPRO_CHECK_SKIP_ENV_FILE:-0}" != "1" ]; then
   load_database_url_from_env_file "$ROOT_DIR/backend/.env"
 fi
 
@@ -74,6 +74,13 @@ mkdir -p "$ROOT_DIR/.codex-artifacts/rebuild"
 echo "[check] rebuild safety"
 "$PYTHON" "$ROOT_DIR/rebuild/assert_safety.py" --root "$ROOT_DIR" --format json \
   > "$ROOT_DIR/.codex-artifacts/rebuild/safety.json"
+
+echo "[check] pinned BitPro frontend parity"
+"$PYTHON" "$ROOT_DIR/rebuild/audit_frontend_parity.py" \
+  --source "/Users/jie.feng/Dev/Github/Private/BitPro/frontend/src" \
+  --target "$ROOT_DIR/frontend/src" \
+  --manifest "$ROOT_DIR/rebuild/contracts/frontend-parity.json" \
+  --output "$ROOT_DIR/.codex-artifacts/rebuild/frontend-parity.json"
 
 echo "[check] python compile"
 "$PYTHON" -m compileall -q "$ROOT_DIR/backend/app" "$ROOT_DIR/backend/tests" "$ROOT_DIR/rebuild"

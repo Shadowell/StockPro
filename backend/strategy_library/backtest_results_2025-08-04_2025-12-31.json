@@ -1,0 +1,740 @@
+[
+ {
+  "strategy": "[A股][日线][动量加速] 短期动量超越长期动量。",
+  "run_id": "7ba63a5e-49cf-4971-b16a-fbb1af81052a",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 0.45215561756599404,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][趋势突破] MA20/MA60金叉放量突破。",
+  "run_id": "3193708b-4c2e-4c78-baca-9f7d329b50c7",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][隔日T超跌] 大幅低开高走隔日反抽。",
+  "run_id": "372c109e-3e09-45a3-9410-40f02ffe76c3",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 1.51451028035328,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][双均线择时轮动] 指数增强式EMA趋势轮动。",
+  "run_id": "b6c07f5d-22b7-40e8-9904-d36220546c82",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 7.827114090458145,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][布林带回归] 下轨买入中轨卖出。",
+  "run_id": "2d27a0ac-b303-4249-ba6f-87c2f9b00b6e",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 2.692007993224393,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][量能萎缩回补] 缩量回调买入趋势股。",
+  "run_id": "7bf83814-14fc-424e-b0cb-b05a51b2ee9d",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 5.696939932520052,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][量价共振] 平台突破放量买入。",
+  "run_id": "c2da5b61-2fd4-4417-bf0e-bbc0111856d2",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][小市值低换手] 规模因子+流动性双筛选。",
+  "run_id": "f6935611-9008-4d63-8ab7-da227af977a9",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][均值回归] 三日超跌反弹。",
+  "run_id": "196439ba-f2bb-4f25-a8c7-91dcd97c1862",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 1.8023134304233033,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][52周新高突破] 创出阶段新高强势股跟随。",
+  "run_id": "771b78ff-3c1e-4692-af79-af07d7b6f0d7",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][多因子打分] 动量+反转+波动率综合排名。",
+  "run_id": "7d7002f8-634d-4b2b-8fa9-2af3bb2cf405",
+  "status": "success",
+  "total_return": null,
+  "sharpe": -3.0402267593271173,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][动量轮动] 20日动量TopN周度轮动。",
+  "run_id": "cbcbd6ca-05cf-441b-b93e-12a7c8773b88",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 7.111933245133536,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][动量加速] 短期动量超越长期动量。",
+  "run_id": "32fbd333-c2f1-493d-bef4-471d3f52af3c",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 0.45215561756599404,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][趋势突破] MA20/MA60金叉放量突破。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][隔日T超跌] 大幅低开高走隔日反抽。",
+  "run_id": "7cdd54cd-8efa-47fb-bb3e-0b7cd07bf717",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 1.51451028035328,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][双均线择时轮动] 指数增强式EMA趋势轮动。",
+  "run_id": "48ac1c0f-f1b3-4b47-b6b1-600b9c7214ad",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 7.827114090458145,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][布林带回归] 下轨买入中轨卖出。",
+  "run_id": "d149b820-14b7-4105-b9f5-b688e48bbff1",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 2.692007993224393,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][量能萎缩回补] 缩量回调买入趋势股。",
+  "run_id": "04ba3067-45e1-4058-8be1-0fe29f0cc11e",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 5.696939932520052,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][量价共振] 平台突破放量买入。",
+  "run_id": "7a11e02a-1ca4-4896-84c9-06431727a5a6",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][小市值低换手] 规模因子+流动性双筛选。",
+  "run_id": "7035713b-2456-40d0-81d8-9e5a9eb0f90e",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][均值回归] 三日超跌反弹。",
+  "run_id": "62eb185f-95ca-4091-afe6-e4d8a55720e7",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 1.8023134304233033,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][52周新高突破] 创出阶段新高强势股跟随。",
+  "run_id": "cdf97d32-19a4-434d-89bc-941c3dc80118",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][多因子打分] 动量+反转+波动率综合排名。",
+  "run_id": "78138054-ec63-4c4c-9ad8-1ce1a58a3baa",
+  "status": "success",
+  "total_return": null,
+  "sharpe": -3.0402267593271173,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][动量轮动] 20日动量TopN周度轮动。",
+  "run_id": "fed46357-c9b9-4f25-93b0-c0d9233d04a3",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 7.111933245133536,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][动量加速] 短期动量超越长期动量。",
+  "run_id": "e5adb755-7ac5-40e1-a466-a291219df0d1",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 0.45215561756599404,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][趋势突破] MA20/MA60金叉放量突破。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][隔日T超跌] 大幅低开高走隔日反抽。",
+  "run_id": "d57e05e3-b77e-4e29-9be5-fa8bdf377544",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 1.51451028035328,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][双均线择时轮动] 指数增强式EMA趋势轮动。",
+  "run_id": "fa449968-654a-4ae3-a6a3-d56f3902325a",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 7.827114090458145,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][布林带回归] 下轨买入中轨卖出。",
+  "run_id": "df570e95-2eef-4c31-8e1d-c5daa65b039d",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 2.692007993224393,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][量能萎缩回补] 缩量回调买入趋势股。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][量价共振] 平台突破放量买入。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][小市值低换手] 规模因子+流动性双筛选。",
+  "run_id": "d3f967a3-54c4-45a5-954e-bf4a4a58bd56",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][均值回归] 三日超跌反弹。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][52周新高突破] 创出阶段新高强势股跟随。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][多因子打分] 动量+反转+波动率综合排名。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量轮动] 20日动量TopN周度轮动。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量加速] 短期动量超越长期动量。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][趋势突破] MA20/MA60金叉放量突破。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][隔日T超跌] 大幅低开高走隔日反抽。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][双均线择时轮动] 指数增强式EMA趋势轮动。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][布林带回归] 下轨买入中轨卖出。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][量能萎缩回补] 缩量回调买入趋势股。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][量价共振] 平台突破放量买入。",
+  "run_id": "dbc347e1-c177-4a9b-bada-f69f8fee1d8a",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][小市值低换手] 规模因子+流动性双筛选。",
+  "run_id": "a615f17d-094f-4a56-a973-c7d4fe8718af",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][均值回归] 三日超跌反弹。",
+  "run_id": "a7b9eca8-f0bd-4896-be70-227606b22936",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 1.8023134304233033,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][52周新高突破] 创出阶段新高强势股跟随。",
+  "run_id": "4604f6fe-3b38-475e-872b-d79dc6e8509c",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][多因子打分] 动量+反转+波动率综合排名。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量轮动] 20日动量TopN周度轮动。",
+  "run_id": "f2a94dfb-d632-4a45-8f8f-c78d290201f4",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 6.173971702616427,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][动量加速] 短期动量超越长期动量。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][趋势突破] MA20/MA60金叉放量突破。",
+  "run_id": "212550e2-6f1d-4a71-895f-f21658218cf7",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][隔日T超跌] 大幅低开高走隔日反抽。",
+  "run_id": "e742d945-dc78-4c6c-bac0-bd4fb73d6542",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 1.51451028035328,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 1.0
+ },
+ {
+  "strategy": "[A股][日线][双均线择时轮动] 指数增强式EMA趋势轮动。",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][布林带回归] 下轨买入中轨卖出。",
+  "run_id": "ccebd2c2-1dd3-4b0a-b7fc-77a329f48802",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 2.692007993224393,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][打板] 高度板隔日T",
+  "run_id": "51608139-4773-4e4a-aa4f-1f883e06ebf8",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 4.211173647036689,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.5342465753424658
+ },
+ {
+  "strategy": "[A股][日线][打板] 连板晋级隔日T",
+  "run_id": "4e7a2a50-6bc4-40ca-bf6e-26aac774fadb",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 5.808645354423821,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.5753424657534246
+ },
+ {
+  "strategy": "[A股][日线][打板] 首板弱转强隔日T",
+  "run_id": "e1928f1d-92b6-4644-814d-d1b8614f0f5f",
+  "status": "success",
+  "total_return": null,
+  "sharpe": -0.224364777686019,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.43243243243243246
+ },
+ {
+  "strategy": "[A股][日线][低波] 低波动防守",
+  "run_id": "d0e2bc77-3954-4d42-8745-32b8e81c1ecf",
+  "status": "success",
+  "total_return": null,
+  "sharpe": -8.939284049488537,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.2857142857142857
+ },
+ {
+  "strategy": "[A股][日线][趋势] 均线多头突破",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量] 二十日动量轮动",
+  "run_id": "5fd9a085-b2dd-4f22-beb7-62caba2932ce",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 5.863390212131535,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.631578947368421
+ },
+ {
+  "strategy": "[A股][日线][反转] 三日超卖反转",
+  "run_id": "072764d1-b447-4271-83d7-0a9cf5d753a1",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 1.9753079292535294,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.42857142857142855
+ },
+ {
+  "strategy": "[A股][日线][隔日T] 隔夜高开跟随",
+  "error": "策略回放失败: WORKER_EXIT"
+ },
+ {
+  "strategy": "[A股][日线][隔日T] 窄幅突破",
+  "run_id": "2c5342ea-e4e0-4889-89d6-3433c4637d67",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 0.22962277101875714,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.4393939393939394
+ },
+ {
+  "strategy": "[A股][日线][隔日T] 放量阳线",
+  "error": "策略回放失败: WORKER_EXIT"
+ },
+ {
+  "strategy": "[A股][日线][隔日T] 大振幅回归",
+  "run_id": "53c42707-9301-4e3f-8beb-eeb443af18ac",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 0.6308278452049505,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.4861111111111111
+ },
+ {
+  "strategy": "[A股][日线][隔日T] 尾盘强势",
+  "error": "策略回放失败: WORKER_EXIT"
+ },
+ {
+  "strategy": "[A股][日线][隔日T] 下影线回踩",
+  "error": "策略回放失败: WORKER_EXIT"
+ },
+ {
+  "strategy": "[A股][日线][隔日T] 高开高走跟随",
+  "error": "策略回放失败: WORKER_EXIT"
+ },
+ {
+  "strategy": "[A股][日线][隔日T] 低开高走",
+  "error": "策略回放失败: WORKER_EXIT"
+ },
+ {
+  "strategy": "[A股][日线][打板] 实体板封板质量",
+  "error": "策略回放失败: WORKER_EXIT"
+ },
+ {
+  "strategy": "[A股][日线][打板] 跌停反抽隔日T",
+  "run_id": "044690b2-78e6-4e61-ab57-f3c81e6f550f",
+  "status": "success",
+  "total_return": null,
+  "sharpe": -1.6016995962109088,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.4246575342465753
+ },
+ {
+  "strategy": "[A股][日线][打板] 高度板隔日T",
+  "run_id": "7f446840-b7ed-4362-87b9-1a6bb49ef60b",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 6.113228201156904,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.5616438356164384
+ },
+ {
+  "strategy": "[A股][日线][打板] 首板放量隔日T",
+  "run_id": "597b025f-7495-4614-bb9a-2b8182f7b020",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 3.045448973440836,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.47297297297297297
+ },
+ {
+  "strategy": "[A股][日线][打板] 有空间板回避一字",
+  "error": "策略回放失败: WORKER_EXIT"
+ },
+ {
+  "strategy": "[A股][日线][打板] 炸板次日回封",
+  "run_id": "6d47a73f-245f-4553-807a-0682c7f279ca",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 0.06141641735329729,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.44594594594594594
+ },
+ {
+  "strategy": "[A股][日线][打板] 连板晋级隔日T",
+  "run_id": "5cd7e416-6d45-4ff8-84c8-580b6feb2b94",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 6.113228201156904,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.5616438356164384
+ },
+ {
+  "strategy": "[A股][日线][打板] 首板弱转强隔日T",
+  "run_id": "c74ba90a-b02e-4c0a-9138-a81cfac2977e",
+  "status": "success",
+  "total_return": null,
+  "sharpe": 0.6213920573623369,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": 0.43243243243243246
+ },
+ {
+  "strategy": "[A股][日线][龙头] 研究20池 · 趋势过滤动量龙头 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][龙头] 研究20池 · 相对强度三龙头 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][龙头] 研究20池 · 振幅突破龙头Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][龙头] 研究20池 · 动量新高双核 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][龙头] 研究20池 · 强势近板龙头持5日 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][龙头] 研究20池 · 20日新高突破龙头 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][龙头] 研究20池 · 相对强度龙头Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][龙头] 研究20池 · 动量龙头Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量趋势] 研究20池 · Mom20趋势双核 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量] 研究20池 · Mom10集中Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][相对强度] 研究20池 · RelStr20三核 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][强势打板] 研究20池 · 强势Top1持5日 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量趋势] 研究20池 · Mom20趋势过滤Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][波动突破] 研究20池 · 20日2倍振幅Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][组合因子] 研究20池 · MomRelStr融合Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][相对强度] 研究20池 · RelStr20满仓Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量] 研究20池 · Mom20满仓Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量] 研究20池 · Mom60集中Top1 · 100万",
+  "run_id": "890f0d5c-8e4a-4e13-85fc-2c6e7432a4b6",
+  "status": "success",
+  "total_return": null,
+  "sharpe": null,
+  "max_drawdown": null,
+  "trades": null,
+  "win_rate": null
+ },
+ {
+  "strategy": "[A股][日线][趋势突破] 研究20池 · 唐奇安20突破三核 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][强势打板] 研究20池 · 隔日强势接力 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][波动突破] 研究20池 · 10日1.2倍振幅三核 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][波动突破] 研究20池 · 20日2倍振幅突破 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量] 研究20池 · Mom20双核 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量风控] 研究20池 · Mom20止损双核 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][强势打板] 研究20池 · 强势双核持5日 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][相对强度] 研究20池 · RelStr20双核 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][强势打板] 研究20池 · 强势三剑客 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][强势打板] 研究20池 · 近涨停强势延续 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][动量] 研究20池 · Mom20集中Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][相对强度] 研究20池 · RelStr20集中Top1 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][趋势风控] 动量Top10 · MA5/20趋势止盈止损 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ },
+ {
+  "strategy": "[A股][日线][趋势风控] 动量Top10 · MA5/20趋势止盈止损 · 100万",
+  "error": "策略回放失败: WORKER_RUNTIME_ERROR"
+ }
+]

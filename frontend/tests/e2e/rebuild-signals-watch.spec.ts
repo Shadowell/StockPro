@@ -12,6 +12,9 @@ test('signal center audits and watch observes without order actions', async ({ p
 
   await page.goto('/signals')
   await expect(page.getByRole('heading', { name: '信号中心' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '通道配置' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '信号策略列表' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '策略信号' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '投递记录' })).toBeVisible()
   await expect(page.getByTestId('signal-row')).toHaveAttribute('data-paper-instance-id', 'paper-1')
 

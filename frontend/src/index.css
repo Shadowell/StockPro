@@ -81,3 +81,47 @@ body {
   background: #1d4ed8;
   color: #ffffff;
 }
+
+/* ===== 工作台动效 ===== */
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.78); }
+}
+
+.live-dot {
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes progressShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.progress-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    rgba(168, 85, 247, 0.9) 40%,
+    rgba(216, 180, 254, 0.95) 50%,
+    rgba(168, 85, 247, 0.9) 60%
+  );
+  background-size: 200% 100%;
+  animation: progressShimmer 1.6s linear infinite;
+}
+
+@keyframes rowFadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+
+.row-enter {
+  animation: rowFadeIn 0.32s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot,
+  .progress-shimmer,
+  .row-enter {
+    animation: none;
+  }
+}

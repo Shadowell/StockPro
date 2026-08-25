@@ -15,6 +15,8 @@ from app.api.endpoints.paper import create_paper_router
 from app.api.endpoints.signals import create_signals_router
 from app.api.endpoints.watch import create_watch_router
 from app.api.endpoints.monitor import create_monitor_router
+from app.api.endpoints.operations import create_operations_router
+from app.api.endpoints.settings import create_settings_router
 from app.api.endpoints.review import create_review_router
 from app.api.endpoints.data import create_data_router
 from app.api.endpoints.ai import create_ai_router
@@ -43,10 +45,12 @@ def create_api_router(context: Any | None = None) -> APIRouter:
             router.include_router(create_signals_router(context), prefix="/signals", tags=["signals"])
             router.include_router(create_watch_router(context), prefix="/watch", tags=["watch"])
             router.include_router(create_monitor_router(context), prefix="/monitor", tags=["monitor"])
+            router.include_router(create_operations_router(context), prefix="/operations", tags=["operations"])
         if hasattr(context.repositories, "review"):
             router.include_router(create_review_router(context), prefix="/review", tags=["review"])
         if hasattr(context.repositories, "data"):
             router.include_router(create_data_router(context), prefix="/data", tags=["data"])
+            router.include_router(create_settings_router(context), prefix="/settings", tags=["settings"])
         if hasattr(context.repositories, "ai"):
             router.include_router(create_ai_router(context), prefix="/ai", tags=["ai"])
     return router

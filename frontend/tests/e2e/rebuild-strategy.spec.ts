@@ -11,11 +11,14 @@ const strategy = {
 
 test('strategy center keeps BitPro catalogue and A-share lineage', async ({ page }) => {
   await page.route('**/api/auth/me', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ auth_enabled: false, authenticated: true, role: 'admin', permissions: ['admin'] }) }))
-  await page.route('**/api/strategies', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [strategy] }) }))
+  await page.route('**/api/strategies*', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [strategy] }) }))
   await page.route('**/api/strategies/strategy-version-1', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(strategy) }))
 
   await page.goto('/strategy')
   await expect(page.getByRole('heading', { name: '策略中心' })).toBeVisible()
+  await expect(page.getByText('我的策略', { exact: true })).toBeVisible()
+  await expect(page.getByText('策略广场', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'AI 写策略' })).toBeVisible()
   await expect(page.getByLabel('搜索策略')).toBeVisible()
   await page.getByTestId('strategy-card').first().getByRole('button', { name: '详情' }).click()
   await expect(page.getByRole('heading', { name: '封存输入', exact: true })).toBeVisible()

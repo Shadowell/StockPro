@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     BITPRO_REMOTE_MCP_ENABLED: bool = False
     BITPRO_REMOTE_MCP_PATH: str = "/api/mcp"
 
+    TUSHARE_TOKEN: Optional[str] = None
+    TUSHARE_CREDIT_TIER: int = 5000
+    TUSHARE_REALTIME_SOURCE: str = "dc"
+    ENABLE_TUSHARE: bool = True
+    AKSHARE_TIMEOUT: int = 30
+    AKSHARE_SUBPROCESS_FALLBACK: bool = False
+    QLIB_EXPORT_DIR: str = "data/qlib/cn_data"
+
     DASHSCOPE_API_KEY: Optional[str] = None
     QWEN_API_KEY: Optional[str] = None
     AI_AGENT_MODEL: str = "qwen3.6-plus"

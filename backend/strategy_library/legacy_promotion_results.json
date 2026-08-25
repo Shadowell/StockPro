@@ -1,0 +1,45 @@
+[
+ {
+  "keyword": "高度板隔日T",
+  "run_id": "f5202e79-5b90-4c3a-9f0a-5e4735daa8e9",
+  "promotion": "paper_eligible",
+  "ret": 0.3551396360179182,
+  "sharpe": 2.718976534104208,
+  "dd": 0.13251303826069508,
+  "paper_ready": true
+ },
+ {
+  "keyword": "连板晋级隔日T",
+  "run_id": "fb12754e-3ad6-4e48-b298-b2a306d0c8cb",
+  "promotion": "paper_eligible",
+  "ret": 0.5679537027715693,
+  "sharpe": 4.3272814538897615,
+  "dd": 0.09016131315620975,
+  "paper_ready": true
+ },
+ {
+  "keyword": "二十日动量轮动",
+  "run_id": "e38fe143-688c-4fb1-b577-bea6dbe5cc0f",
+  "promotion": "rejected",
+  "ret": 0.35786537050510714,
+  "sharpe": 2.2769322366171276,
+  "dd": 0.14802501889157638
+ },
+ {
+  "keyword": "首板放量隔日T",
+  "run_id": "3935cec9-8bca-40ca-a404-c3800ee65531",
+  "promotion": "paper_eligible",
+  "ret": 0.3111414312562022,
+  "sharpe": 2.8743789951159746,
+  "dd": 0.09257084326847319,
+  "paper_ready": true
+ },
+ {
+  "keyword": "三日超卖反转",
+  "run_id": "c92eb474-e382-47ab-b57f-c70feb5d0bed",
+  "promotion": "rejected",
+  "ret": 0.023234572234999584,
+  "sharpe": 0.3887906228230001,
+  "dd": 0.17685006169669343
+ }
+]

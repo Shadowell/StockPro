@@ -37,12 +37,14 @@ def test_compose_and_sql_target_isolation_db() -> None:
 
 def test_check_sh_points_at_setup_when_url_missing() -> None:
     env = {key: value for key, value in os.environ.items() if key != "DATABASE_URL"}
+    env["STOCKPRO_CHECK_SKIP_ENV_FILE"] = "1"
     result = subprocess.run(
         [str(CHECK)],
         cwd=str(ROOT),
         env=env,
         capture_output=True,
         text=True,
+        timeout=10,
     )
     assert result.returncode == 1
     output = result.stdout + result.stderr

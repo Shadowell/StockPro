@@ -2,9 +2,8 @@
 
 set -euo pipefail
 
-TARGET_ROOT="/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share"
-EXPECTED_BRANCH="codex/bitpro-a-share-rebase"
-PINNED_SOURCE_SHA="00517963e90f463e608289b0277fe598bd82d9bf"
+TARGET_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+PINNED_SOURCE_SHA="2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1"
 BITPRO_SOURCE_REPO="${BITPRO_SOURCE_REPO:-/Users/jie.feng/Dev/Github/Private/BitPro}"
 BITPRO_SOURCE_SHA="${BITPRO_SOURCE_SHA:-$PINNED_SOURCE_SHA}"
 
@@ -47,8 +46,9 @@ if [ "$(pwd -P)" != "$TARGET_ROOT" ]; then
   echo "refusing to import outside $TARGET_ROOT" >&2
   exit 1
 fi
-if [ "$(git branch --show-current)" != "$EXPECTED_BRANCH" ]; then
-  echo "refusing to import outside $EXPECTED_BRANCH" >&2
+TARGET_BRANCH="$(git branch --show-current)"
+if [[ "$TARGET_BRANCH" != codex/* ]]; then
+  echo "refusing to import outside a codex/* branch" >&2
   exit 1
 fi
 if [ "$BITPRO_SOURCE_SHA" != "$PINNED_SOURCE_SHA" ]; then
@@ -106,6 +106,7 @@ python3 - \
   "$BITPRO_SOURCE_REPO" \
   "$BITPRO_SOURCE_SHA" \
   "$TARGET_ROOT" \
+  "$TARGET_BRANCH" \
   "$GENERATED_AT" \
   "$WRITES_PERFORMED" <<'PY'
 import json
@@ -118,6 +119,7 @@ from pathlib import Path
     source_repo,
     source_sha,
     target_root,
+    target_branch,
     generated_at,
     writes_performed,
 ) = sys.argv[1:]
@@ -128,6 +130,7 @@ manifest = {
     "source_sha": source_sha,
     "source_archive": "git-object-database",
     "target_root": target_root,
+    "target_branch": target_branch,
     "generated_at": generated_at,
     "writes_performed": writes_performed == "true",
     "copied_roots": ["backend", "frontend", "packages", "scripts", "tests"],

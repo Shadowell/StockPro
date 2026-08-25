@@ -1,22 +1,24 @@
+import { lazy } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import MainLayout from './components/MainLayout'
 import Login from './pages/Login'
-import Home from './pages/Home'
-import Market from './pages/Market'
-import StockPools from './pages/StockPools'
-import FactorLab from './pages/FactorLab'
-import Strategy from './pages/Strategy'
-import Backtest from './pages/Backtest'
-import Paper from './pages/Paper'
-import SignalCenter from './pages/SignalCenter'
-import Watch from './pages/Watch'
-import Monitor from './pages/Monitor'
-import ReviewDashboard from './pages/ReviewDashboard'
-import DataManager from './pages/DataManager'
-import AILab from './pages/AILab'
-import UnknownWorkspace from './pages/UnknownWorkspace'
 import { WorkspaceStatePanel } from './shell/WorkspaceState'
+
+const Home = lazy(() => import('./pages/Home'))
+const Market = lazy(() => import('./pages/Market'))
+const StockPools = lazy(() => import('./pages/StockPools'))
+const FactorLab = lazy(() => import('./pages/FactorLab'))
+const Strategy = lazy(() => import('./pages/Strategy'))
+const Backtest = lazy(() => import('./pages/Backtest'))
+const Paper = lazy(() => import('./pages/Paper'))
+const SignalCenter = lazy(() => import('./pages/SignalCenter'))
+const Watch = lazy(() => import('./pages/Watch'))
+const Monitor = lazy(() => import('./pages/Monitor'))
+const ReviewDashboard = lazy(() => import('./pages/ReviewDashboard'))
+const DataManager = lazy(() => import('./pages/DataManager'))
+const AILab = lazy(() => import('./pages/AILab'))
+const UnknownWorkspace = lazy(() => import('./pages/UnknownWorkspace'))
 
 function AppRoutes() {
   const { authEnabled, authenticated, loading } = useAuth()

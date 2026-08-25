@@ -153,7 +153,7 @@ sleep 3
 # 9. 检查服务状态
 echo -e "\n${YELLOW}🔍 检查服务状态...${NC}"
 
-wait_for_url "后端服务" "http://127.0.0.1:4445/api/health/health" 30 || {
+wait_for_url "后端服务" "http://127.0.0.1:4445/api/health" 60 || {
     echo "  请查看日志: tail -f logs/backend.log"
     exit 1
 }

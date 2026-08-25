@@ -1,0 +1,62 @@
+[
+ {
+  "file": "bollinger_reversion",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "ema_trend_timing",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "gap_reversal",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "ma_breakout",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "momentum_acceleration",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "momentum_rotation",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "multi_factor_score",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "new_high_breakout",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "oversold_reversal",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "small_cap_liquid",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "volume_breakout",
+  "version_id": "None",
+  "status": "None"
+ },
+ {
+  "file": "volume_dryup_pullback",
+  "version_id": "None",
+  "status": "None"
+ }
+]

@@ -978,7 +978,8 @@ class ReferenceDatasetSyncService:
                             )
                             for row in members
                         ],
-                    )
+                    page_size=2000,
+                )
         return {
             "status": "sealed",
             "universe_snapshot_id": snapshot_id,
@@ -1070,6 +1071,7 @@ class ReferenceDatasetSyncService:
                         source_fetch_run_id = EXCLUDED.source_fetch_run_id
                     """,
                     values,
+                    page_size=2000,
                 )
 
     def _upsert_security_history(self, rows: Sequence[Mapping[str, Any]], source_fetch_run_id: int, as_of_date: str) -> None:
@@ -1110,6 +1112,7 @@ class ReferenceDatasetSyncService:
                         source_fetch_run_id = EXCLUDED.source_fetch_run_id
                     """,
                     values,
+                    page_size=2000,
                 )
                 if aliases:
                     psycopg2.extras.execute_values(
@@ -1123,4 +1126,5 @@ class ReferenceDatasetSyncService:
                             source_fetch_run_id = EXCLUDED.source_fetch_run_id
                         """,
                         aliases,
-                    )
+                    page_size=2000,
+                )

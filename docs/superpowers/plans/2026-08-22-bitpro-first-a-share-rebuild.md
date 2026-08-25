@@ -4,7 +4,7 @@
 
 **Goal:** 在隔离 worktree 中把 BitPro 固定提交的完整应用底座重建为使用 PostgreSQL 和真实 A股语义的 StockPro，并在最终切换前证明 Paper 历史、页面标准和生产回滚边界完整。
 
-**Architecture:** 以 BitPro `00517963e90f463e608289b0277fe598bd82d9bf` 的前后端应用为页面与交互底座，先静态封锁数字资产执行，再通过唯一 `/api/*` Application Service 和 PostgreSQL Repository 接回 StockPro 业务对象。当前 StockPro `main` 与生产保持运行，重建分支只连接隔离数据库，最终使用最新生产快照演练并经确认后切换。
+**Architecture:** 以 BitPro `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1` 的前后端应用为页面与交互底座，先保持页面结构、组件层级、交互和状态处理一致，再静态封锁数字资产执行，并通过唯一 `/api/*` Application Service 和 PostgreSQL Repository 把币种、交易对及数字资产数据链替换为 A 股对象。当前 StockPro `main` 与生产保持运行，重建分支只连接隔离数据库，最终使用最新生产快照演练并经确认后切换。
 
 **Tech Stack:** React 18、TypeScript、Vite、Tailwind、ECharts、Zustand、FastAPI、Python 3.11+、PostgreSQL、psycopg、Backtrader、APScheduler、Playwright、GitHub Actions、Nginx/systemd。
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 固定 BitPro 来源必须是 `00517963e90f463e608289b0277fe598bd82d9bf`，不得读取其未提交工作区。
+- 固定 BitPro 来源必须是 `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`，不得读取其未提交工作区；后续升级基线必须先更新来源门禁和差异审计，不能静默漂移。
 - StockPro 设计基线必须是 `99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440` 加设计提交
   `e204e9f41a9df26a0aefd77a7a6079a86265a234` 和计划提交
   `27f53cead43557760f5ce74ffc2a598078f9fcfa`。
@@ -26,7 +26,7 @@
 - 页面不得用 mock、seed、随机数或硬编码业务值填充最终验收。
 - 每个一级页面必须更新 `docs/pages/` 合同，并以最终部署的真实数据截图验收。
 - 每个代码切片完成后运行相关测试、`./scripts/check.sh`、真实浏览器检查和 Paper 对账，再创建独立提交。
-- 不自动推送、合并或部署；执行到对应门禁时按 StockPro 仓库规则处理，最终生产切换必须再次取得用户确认。
+- 每个完成且验证通过的切片按 StockPro 仓库规则提交、推送、合并并通过 GitHub Actions 部署；若工作树存在无关或未审查改动，先隔离当前切片，不得扫入。涉及生产数据迁移或真实交易能力时仍须停在对应安全门禁。
 
 ---
 

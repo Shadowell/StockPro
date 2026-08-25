@@ -151,10 +151,14 @@ export const operationsCurrentApi = {
   rules: async (scope: 'business' | 'audit' = 'business'): Promise<{ items: WatchRule[]; total: number; scope: string }> => apiClient.get('/watch/rules', { params: { scope } }),
   previewRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/preview`),
   evaluateRule: async (ruleId: string): Promise<Record<string, any>> => apiClient.post(`/watch/rules/${encodeURIComponent(ruleId)}/evaluate`),
+  scheduler: async (): Promise<{ running: boolean; timezone: string; jobs: Array<{ id: string; name: string; next_run_at: string | null; trigger: string }>; schedule?: { enabled: boolean; cron: string; dailyBarsWatermark?: string | null }; last_results?: Record<string, unknown> }> => apiClient.get('/operations/scheduler'),
+  updateDailyReferenceSchedule: async (payload: Record<string, unknown>): Promise<Record<string, any>> => apiClient.put('/operations/scheduler/daily-reference', payload),
+  runDailyReference: async (tradeDate?: string | null, force = false): Promise<Record<string, any>> => apiClient.post('/operations/scheduler/daily-reference/run', { trade_date: tradeDate ?? null, force }),
+  advanceAllPaper: async (maxDates = 260): Promise<Record<string, any>> => apiClient.post('/operations/paper/advance', { max_dates: maxDates }),
 };
 
 export const monitorCurrentApi = {
-  summary: async (scope: 'business' | 'audit' = 'business'): Promise<MonitorSummary> => apiClient.get('/monitor/summary', { params: { scope } }),
+  summary: async (scope: 'business' | 'audit' = 'business'): Promise<MonitorSummary> => apiClient.get('/monitor/summary', { params: { scope }, timeout: 60_000 }),
 };
 
 export const reviewCurrentApi = {
@@ -178,6 +182,30 @@ export const dataCurrentApi = {
   createJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/sync',payload),
   createQualityJob: async (payload:Record<string,unknown>):Promise<DataJob>=>apiClient.post('/data/quality/run',payload),
   stageImport: async (payload:Record<string,unknown>):Promise<ExtensionImport>=>apiClient.post('/data/exchange/imports',payload),
+  qlibStatus: async ():Promise<Record<string,any>>=>apiClient.get('/data/qlib/status'),
+  qlibExport: async (force=false):Promise<Record<string,any>>=>apiClient.post(`/data/qlib/export?force=${force?'true':'false'}`),
+};
+
+export interface OkxNativeSyncScheduleConfig {
+  enabled: boolean;
+  rubikIntervalMinutes: number;
+  oiIntervalMinutes: number;
+  ccys: string[];
+  rubikRowCount: number;
+  oiSnapshotCount: number;
+  oiSymbolCount: number;
+  lastRubikRunAt?: string | null;
+  lastRubikFinishedAt?: string | null;
+  lastRubikError?: string | null;
+  lastOiRunAt?: string | null;
+  lastOiFinishedAt?: string | null;
+  lastOiError?: string | null;
+}
+
+export const okxNativeSyncApi = {
+  getSchedule: (): Promise<OkxNativeSyncScheduleConfig> => Promise.reject(new Error('StockPro 不注册 OKX 原生同步')),
+  updateSchedule: (_data: Partial<OkxNativeSyncScheduleConfig>): Promise<OkxNativeSyncScheduleConfig> => Promise.reject(new Error('StockPro 不注册 OKX 原生同步')),
+  run: (_kind: 'rubik' | 'oi' | 'all'): Promise<Record<string, unknown>> => Promise.reject(new Error('StockPro 不注册 OKX 原生同步')),
 };
 
 export const aiCurrentApi={
@@ -188,6 +216,17 @@ export const aiCurrentApi={
   start:async(id:string):Promise<AITask>=>apiClient.post(`/ai/tasks/${encodeURIComponent(id)}/start`),
   stop:async(id:string):Promise<AITask>=>apiClient.post(`/ai/tasks/${encodeURIComponent(id)}/stop`),
   promote:async(iterationId:string):Promise<Record<string,unknown>>=>apiClient.post(`/ai/iterations/${encodeURIComponent(iterationId)}/promote-candidate`),
+};
+
+const unavailableResearchWorkbench = (): Promise<any> => Promise.reject(new Error('StockPro 使用当前 /api/ai 研究合同'));
+export const researchWorkbenchApi = {
+  summary: unavailableResearchWorkbench,
+  candidates: unavailableResearchWorkbench,
+  createMandate: (_payload: Record<string, any>) => unavailableResearchWorkbench(),
+  createJob: (_mandateId: string, _payload: Record<string, any>) => unavailableResearchWorkbench(),
+  runJob: (_jobId: string, _payload: Record<string, any>) => unavailableResearchWorkbench(),
+  requestPaperPromotion: (_payload: Record<string, any>) => unavailableResearchWorkbench(),
+  approvePaperPromotion: (_promotionId: string, _payload: Record<string, any>) => unavailableResearchWorkbench(),
 };
 
 function extractApiErrorDetail(data: unknown): unknown {
@@ -472,46 +511,6 @@ export type ArcEvidence = {
 };
 
 /** HyperTrade ARC 只经由 BitPro 服务端代理，浏览器不持有令牌或签名密钥。 */
-export const arcApi = {
-  config: () => getReq<ArcConsoleConfig>('/arc/config'),
-  listMissions: (params?: { state?: string; limit?: number }) =>
-    getReq<{ missions: ArcMissionSummary[] }>('/arc/missions', { params }),
-  createMission: (payload: {
-    objective: string;
-    symbol: string;
-    timeframe: string;
-    maxCandidates: number;
-  }) => postReq<Record<string, unknown>>('/arc/missions', payload),
-  getProgress: (missionId: string) => getReq<ArcPipelineView>(`/arc/missions/${missionId}/progress`),
-  getEvidence: (missionId: string) => getReq<ArcEvidence>(`/arc/missions/${missionId}/evidence`),
-  getCandidate: (missionId: string, attemptId: string) =>
-    getReq<ArcCandidateRow>(`/arc/missions/${missionId}/candidates/${attemptId}`),
-  decide: (missionId: string, payload: { decision: 'approve' | 'reject'; reason: string }) =>
-    postReq<Record<string, unknown>>(`/arc/missions/${missionId}/decide`, payload),
-};
-
-/** HyperTrade 研究机构流程只经由 BitPro 服务端代理，浏览器不持有上游配置或凭据。 */
-export const researchWorkbenchApi = {
-  summary: () => getReq<Record<string, any>>('/research-workbench/summary'),
-  candidates: () => getReq<{ items: Record<string, any>[]; reportErrors?: string[] }>('/research-workbench/candidates'),
-  createMandate: (payload: Record<string, any>) => postReq<Record<string, any>>('/research-workbench/mandates', payload),
-  pauseMandate: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/pause`, payload),
-  resumeMandate: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/resume`, payload),
-  draftStrategySpec: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/strategy-specs/draft`, payload),
-  createJob: (mandateId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/mandates/${mandateId}/jobs`, payload),
-  runJob: (jobId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/jobs/${jobId}/run`, payload),
-  cancelJob: (jobId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/jobs/${jobId}/cancel`, payload),
-  requestPaperPromotion: (payload: Record<string, any>) => postReq<Record<string, any>>('/research-workbench/paper-promotions', payload),
-  approvePaperPromotion: (promotionId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/paper-promotions/${promotionId}/approve`, payload),
-  observePaperPromotion: (promotionId: string, payload: Record<string, any>) => postReq<Record<string, any>>(`/research-workbench/paper-promotions/${promotionId}/observe`, payload),
-  samplePaperObservations: (payload: Record<string, any>) => postReq<Record<string, any>>('/research-workbench/paper-observations/sample', payload),
-  portfolioReview: () => getReq<Record<string, any>>('/research-workbench/portfolio-review'),
-};
-
-// ============================================
-// 认证 API
-// ============================================
-
 export const authApi = {
   me: (): Promise<AuthSession> => getReq('/auth/me'),
 
@@ -1063,15 +1062,6 @@ export interface ArbitrageSummary {
   emptyReason?: string;
 }
 
-export const arbitrageApi = {
-  getSummary: (): Promise<ArbitrageSummary> =>
-    getReq('/arbitrage/summary'),
-};
-
-// ============================================
-// 链上研究 API
-// ============================================
-
 export interface OnchainKpiTarget {
   name: string;
   tvlUsd?: number;
@@ -1109,15 +1099,6 @@ export interface OnchainSummary {
   warnings: string[];
   emptyReason?: string;
 }
-
-export const onchainApi = {
-  getSummary: (): Promise<OnchainSummary> =>
-    getReq('/onchain/summary'),
-};
-
-// ============================================
-// FactorLab 因子库 API（只读）
-// ============================================
 
 export interface FactorLabDefinition {
   definitionId: string;
@@ -1521,57 +1502,6 @@ export const fundingApi = {
 // 交易 API
 // ============================================
 
-export const tradingApi = {
-  getBalance: (exchange: string): Promise<{ exchange: string; balance: any[] }> =>
-    getReq('/trading/accounts/balance', { params: { exchange } }),
-
-  getBalanceDetail: (exchange: string): Promise<{ exchange: string; trading: any[]; funding: any[] }> =>
-    getReq('/trading/accounts/balance/detail', { params: { exchange } }),
-
-  getOpenOrders: (exchange: string, symbol?: string): Promise<{ exchange: string; orders: any[] }> =>
-    getReq('/trading/orders/open', { params: { exchange, symbol } }),
-
-  getOrderHistory: (exchange: string, limit = 50, symbol?: string): Promise<{ exchange: string; orders: any[] }> =>
-    getReq('/trading/orders/history', { params: { exchange, limit, symbol } }),
-
-  cancelOrder: (orderId: string, exchange: string, symbol: string): Promise<{ result: any }> =>
-    deleteReq(`/trading/order/${orderId}`, { params: { exchange, symbol } }),
-
-  transfer: (data: {
-    exchange: string;
-    currency: string;
-    amount: number;
-    fromAccount: string;
-    toAccount: string;
-  }): Promise<any> =>
-    postReq('/trading/transfer', data),
-
-  spotOrder: (data: {
-    exchange: string;
-    symbol: string;
-    side: 'buy' | 'sell';
-    type: 'market' | 'limit';
-    amount: number;
-    price?: number | null;
-  }): Promise<{ order: any; warnings?: string[] }> =>
-    postReq('/trading/spot/order', data),
-
-  futuresOrder: (data: {
-    exchange: string;
-    symbol: string;
-    side: 'long' | 'short';
-    action: 'open' | 'close';
-    amount: number;
-    leverage: number;
-    price?: number | null;
-  }): Promise<{ order: any }> =>
-    postReq('/trading/futures/order', data),
-};
-
-// ============================================
-// 策略 API
-// ============================================
-
 export interface StrategyPageResponse {
   items: Strategy[];
   total: number;
@@ -1585,8 +1515,62 @@ export interface StrategyPageResponse {
   capitalCounts: Record<string, number>;
 }
 
+const strategyVersionIdByLegacyId = new Map<number, string>();
+const backtestRunIdByLegacyId = new Map<number, string>();
+
+function stableLegacyId(value: unknown): number {
+  const text = String(value ?? '');
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.max(1, hash >>> 0);
+}
+
+function bridgeStrategy(item: Strategy & Record<string, any>): Strategy {
+  const versionId = String(item.id ?? '');
+  const explicitLegacyId = Number(item.legacyStrategyId ?? item.legacy_strategy_id);
+  const legacyId = Number.isFinite(explicitLegacyId) && explicitLegacyId > 0
+    ? explicitLegacyId
+    : stableLegacyId(versionId);
+  strategyVersionIdByLegacyId.set(legacyId, versionId);
+  return {
+    ...item,
+    id: legacyId,
+    exchange: 'cn',
+    scriptContent: item.scriptContent ?? item.script_content ?? '',
+    config: {
+      ...(item.config || {}),
+      strategyVersionId: versionId,
+      assetClass: item.config?.assetClass ?? 'stock',
+    },
+    symbols: Array.isArray(item.symbols) ? item.symbols : [],
+    status: item.status || 'stopped',
+    createdAt: item.createdAt ?? item.created_at ?? '',
+    updatedAt: item.updatedAt ?? item.updated_at ?? item.createdAt ?? item.created_at ?? '',
+  };
+}
+
+function strategyVersionIdForLegacyId(value: unknown): string {
+  const legacyId = Number(value);
+  return strategyVersionIdByLegacyId.get(legacyId) || String(value ?? '');
+}
+
+function registerBacktestRunId(value: unknown): number {
+  const runId = String(value ?? '');
+  const legacyId = stableLegacyId(runId);
+  backtestRunIdByLegacyId.set(legacyId, runId);
+  return legacyId;
+}
+
+function backtestRunIdForLegacyId(value: unknown): string {
+  const legacyId = Number(value);
+  return backtestRunIdByLegacyId.get(legacyId) || String(value ?? '');
+}
+
 export const strategyApi = {
-  getPage: (params: {
+  getPage: async (params: {
     page: number;
     perPage: number;
     search?: string;
@@ -1595,19 +1579,44 @@ export const strategyApi = {
     strategyType?: string;
     timeframe?: string;
     capital?: string;
-  }): Promise<StrategyPageResponse> =>
-    getReq<StrategyPageResponse>('/strategies', {
-      params: {
-        page: params.page,
-        perPage: params.perPage,
-        search: params.search,
-        status: params.status,
-        assetClass: params.assetClass,
-        strategyType: params.strategyType,
-        timeframe: params.timeframe,
-        capital: params.capital,
-      },
-    }),
+  }): Promise<StrategyPageResponse> => {
+    const response = await getReq<Partial<StrategyPageResponse> & { items?: Strategy[] }>('/strategies');
+    const allItems = (Array.isArray(response.items) ? response.items : []).map((item) =>
+      bridgeStrategy(item as Strategy & Record<string, any>),
+    );
+    const search = (params.search || '').trim().toLowerCase();
+    const filtered = allItems.filter((item) => {
+      if (search && !`${item.name || ''} ${item.description || ''}`.toLowerCase().includes(search)) return false;
+      if (params.status && params.status !== 'all') {
+        const normalized = item.status || 'not_started';
+        if (normalized !== params.status) return false;
+      }
+      return true;
+    });
+    const page = Math.max(1, params.page);
+    const perPage = Math.max(1, params.perPage);
+    const total = filtered.length;
+    const pages = Math.max(1, Math.ceil(total / perPage));
+    const items = filtered.slice((page - 1) * perPage, page * perPage);
+    const statusCounts = allItems.reduce<Record<string, number>>((counts, item) => {
+      const key = item.status || 'not_started';
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, { all: allItems.length });
+    const stockCount = allItems.filter((item) => !item.symbols?.some((symbol) => /^(15|16|51|56|58)/.test(symbol))).length;
+    return {
+      items,
+      total,
+      page,
+      perPage,
+      pages,
+      statusCounts,
+      assetCounts: { all: allItems.length, stock: stockCount, etf: allItems.length - stockCount },
+      typeCounts: response.typeCounts || { all: allItems.length },
+      timeframeCounts: response.timeframeCounts || { all: allItems.length },
+      capitalCounts: response.capitalCounts || { all: allItems.length },
+    };
+  },
 
   get: (id: number): Promise<Strategy> => getReq(`/strategies/${id}`),
 
@@ -1636,6 +1645,119 @@ export const strategyApi = {
     pnl: number;
     totalTrades: number;
   }> => getReq(`/strategies/${id}/status`),
+};
+
+// BitPro live workspace compatibility surface. The UI is copied from BitPro,
+// while every data call stays on StockPro's A-share Paper/broker contracts.
+export const tradingApi = {
+  getBalance: (accountId = 'default'): Promise<{ exchange: string; balance: any[] }> =>
+    liveExecutionApi.getAccountBalance(accountId),
+};
+
+export const liveApi = {
+  getStrategies: (params?: { page?: number; perPage?: number }): Promise<StrategyPageResponse> =>
+    strategyApi.getPage({
+      page: params?.page ?? 1,
+      perPage: params?.perPage ?? 60,
+    }),
+
+  getStrategyTrades: (id: number, limit = 50): Promise<any> =>
+    getReq(`/strategies/${id}/trades`, { params: { limit } }),
+
+  configure: (config: Record<string, unknown>): Promise<any> =>
+    paperCurrentApi.create(config),
+
+  start: (instanceId?: string | number): Promise<any> => {
+    if (instanceId == null) return Promise.reject(new Error('启动 A 股模拟实例需要明确 instance_id'));
+    return paperCurrentApi.transition(String(instanceId), 'start');
+  },
+
+  stop: (instanceId?: string | number, _clearMetrics = false): Promise<any> => {
+    if (instanceId == null) return Promise.reject(new Error('停止 A 股模拟实例需要明确 instance_id'));
+    return paperCurrentApi.transition(String(instanceId), 'stop');
+  },
+
+  pause: (instanceId?: string | number): Promise<any> => {
+    if (instanceId == null) return Promise.reject(new Error('暂停 A 股模拟实例需要明确 instance_id'));
+    return paperCurrentApi.transition(String(instanceId), 'pause');
+  },
+
+  resume: (instanceId?: string | number): Promise<any> => {
+    if (instanceId == null) return Promise.reject(new Error('恢复 A 股模拟实例需要明确 instance_id'));
+    return paperCurrentApi.transition(String(instanceId), 'resume');
+  },
+
+  closePaperPosition: (payload: {
+    instanceId?: string | number;
+    symbol: string;
+    side?: string | null;
+    marketType?: string | null;
+  }): Promise<any> => {
+    if (payload.instanceId == null) return Promise.reject(new Error('平仓需要明确 A 股模拟实例'));
+    return postReq(`/paper/instances/${encodeURIComponent(String(payload.instanceId))}/positions/close`, payload);
+  },
+
+  getDashboard: (instanceId?: string | number): Promise<any> =>
+    instanceId == null
+      ? paperCurrentApi.list('audit')
+      : paperCurrentApi.detail(String(instanceId)),
+
+  getEvents: async (
+    limit = 50,
+    _eventType?: string,
+    instanceId?: string | number,
+  ): Promise<any> => {
+    if (instanceId == null) return [];
+    const detail = await paperCurrentApi.detail(String(instanceId));
+    return detail.events.slice(0, limit);
+  },
+
+  getEquityCurve: async (instanceId?: string | number): Promise<any> => {
+    if (instanceId == null) return [];
+    const detail = await paperCurrentApi.detail(String(instanceId));
+    return detail.equity_snapshots;
+  },
+
+  preFlight: (config: Record<string, unknown>): Promise<any> =>
+    postReq('/paper/preflight', config),
+
+  promoteToLive: (config: {
+    sourceStrategyId: string | number;
+    accountId?: string;
+    exchange?: string;
+    initialEquity?: number;
+    loopInterval?: number;
+    startImmediately?: boolean;
+    confirmPaperReviewed?: boolean;
+    confirmLiveRisk?: boolean;
+    riskConfig?: Record<string, unknown>;
+  }): Promise<any> => liveExecutionApi.deployStrategy(Number(config.sourceStrategyId), {
+    accountId: config.accountId,
+    exchange: config.exchange,
+    initialEquity: config.initialEquity,
+    loopInterval: config.loopInterval,
+    startImmediately: config.startImmediately,
+    confirmPaperReviewed: config.confirmPaperReviewed === true,
+    confirmLiveRisk: config.confirmLiveRisk === true,
+    riskConfig: config.riskConfig,
+  }),
+
+  promoteToLivePreflight: (config: {
+    sourceStrategyId: string | number;
+    accountId?: string;
+    exchange?: string;
+    initialEquity?: number;
+    loopInterval?: number;
+    startImmediately?: boolean;
+    riskConfig?: Record<string, unknown>;
+  }): Promise<any> => liveExecutionApi.preflightStrategy(Number(config.sourceStrategyId), {
+    accountId: config.accountId,
+    exchange: config.exchange,
+    initialEquity: config.initialEquity,
+    loopInterval: config.loopInterval,
+    startImmediately: config.startImmediately,
+    riskConfig: config.riskConfig,
+  }),
 };
 
 // ============================================
@@ -1679,98 +1801,6 @@ export const monitorApi = {
 
 // ============================================
 // 策略上线 (自动交易 / 实盘) API
-// ============================================
-
-export const liveApi = {
-  getStrategies: (params?: { page?: number; perPage?: number }): Promise<StrategyPageResponse> =>
-    getReq<StrategyPageResponse>('/strategies', {
-      params: {
-        page: params?.page ?? 1,
-        perPage: params?.perPage ?? 60,
-      },
-    }),
-
-  startStrategy: (id: number): Promise<any> => postReq(`/strategies/${id}/start`),
-
-  stopStrategy: (id: number): Promise<any> => postReq(`/strategies/${id}/stop`),
-
-  getStrategyStatus: (id: number): Promise<any> => getReq(`/strategies/${id}/status`),
-
-  getStrategyTrades: (id: number, limit = 50): Promise<any> =>
-    getReq(`/strategies/${id}/trades`, { params: { limit } }),
-
-  configure: (config: {
-    [key: string]: unknown;
-    instance_id?: string | number;
-  }): Promise<any> => postReq('/live/configure', config),
-
-  start: (instanceId?: string | number): Promise<any> =>
-    postReq('/live/start', instanceId != null ? { instance_id: instanceId } : {}),
-
-  stop: (instanceId?: string | number, clearMetrics = false): Promise<any> =>
-    postReq('/live/stop', {
-      ...(instanceId != null ? { instance_id: instanceId } : {}),
-      clear_metrics: clearMetrics,
-    }),
-
-  pause: (instanceId?: string | number): Promise<any> =>
-    postReq('/live/pause', instanceId != null ? { instance_id: instanceId } : {}),
-
-  resume: (instanceId?: string | number): Promise<any> =>
-    postReq('/live/resume', instanceId != null ? { instance_id: instanceId } : {}),
-
-  closePaperPosition: (payload: {
-    instanceId?: string | number;
-    symbol: string;
-    side?: string | null;
-    marketType?: 'spot' | 'swap' | string | null;
-  }): Promise<any> => postReq('/live/positions/close', payload),
-
-  getDashboard: (instanceId?: string | number): Promise<any> =>
-    getReq('/live/dashboard', { params: instanceId != null ? { instance_id: instanceId } : {} }),
-
-  getEvents: (limit = 50, eventType?: string, instanceId?: string | number): Promise<any> =>
-    getReq('/live/events', {
-      params: {
-        limit,
-        eventType,
-        ...(instanceId != null ? { instance_id: instanceId } : {}),
-      },
-    }),
-
-  getEquityCurve: (instanceId?: string | number): Promise<any> =>
-    getReq('/live/equity_curve', { params: instanceId != null ? { instance_id: instanceId } : {} }),
-
-  preFlight: (config: {
-    [key: string]: unknown;
-  }): Promise<any> => postReq('/live/pre_flight', config),
-
-  promoteToLive: (config: {
-    sourceStrategyId: string | number;
-    exchange?: string;
-    initialEquity?: number;
-    loopInterval?: number;
-    startImmediately?: boolean;
-    confirmPaperReviewed?: boolean;
-    confirmLiveRisk?: boolean;
-    riskConfig?: Record<string, unknown>;
-  }): Promise<any> => postReq('/live/promote', config),
-
-  promoteToLivePreflight: (config: {
-    sourceStrategyId: string | number;
-    exchange?: string;
-    initialEquity?: number;
-    loopInterval?: number;
-    startImmediately?: boolean;
-    riskConfig?: Record<string, unknown>;
-  }): Promise<any> => postReq('/live/promote/preflight', config),
-
-  testTelegram: (message: string): Promise<any> =>
-    postReq('/live/test_telegram', { message }),
-};
-
-// ============================================
-// 模拟盘 API
 // ============================================
 
 export const paperApi = {
@@ -2499,13 +2529,110 @@ export const agentApi = {
 // 回测 API
 // ============================================
 
+function currentBacktestRunToBitPro(run: Record<string, any>): Record<string, any> {
+  const metrics = run.metrics || {};
+  const initialCapital = Number(run.initialCash ?? run.initial_cash ?? 0);
+  const strategyReturn = Number(metrics.strategyReturn ?? metrics.strategy_return);
+  const maximumDrawdown = Number(metrics.maximumDrawdown ?? metrics.maximum_drawdown);
+  const winRate = Number(metrics.winRate ?? metrics.win_rate);
+  const runId = registerBacktestRunId(run.id);
+  const versionId = String(run.strategyVersionId ?? run.strategy_version_id ?? '');
+  const strategyEntry = [...strategyVersionIdByLegacyId.entries()].find(([, value]) => value === versionId);
+  return {
+    id: runId,
+    strategyId: strategyEntry?.[0] ?? stableLegacyId(versionId),
+    strategyName: run.strategyName ?? run.strategy_name ?? 'A股策略',
+    startDate: run.startDate ?? run.start_date,
+    endDate: run.endDate ?? run.end_date,
+    initialCapital,
+    finalCapital: Number.isFinite(strategyReturn) ? initialCapital * (1 + strategyReturn) : null,
+    totalReturn: Number.isFinite(strategyReturn) ? strategyReturn * 100 : null,
+    annualReturn: Number.isFinite(Number(metrics.annualizedReturn ?? metrics.annualized_return))
+      ? Number(metrics.annualizedReturn ?? metrics.annualized_return) * 100
+      : null,
+    maxDrawdown: Number.isFinite(maximumDrawdown) ? maximumDrawdown * 100 : null,
+    sharpeRatio: metrics.sharpe ?? null,
+    sortinoRatio: metrics.sortino ?? null,
+    beta: metrics.beta ?? null,
+    alpha: Number.isFinite(Number(metrics.alpha)) ? Number(metrics.alpha) * 100 : null,
+    benchmarkReturn: Number.isFinite(Number(metrics.benchmarkReturn ?? metrics.benchmark_return))
+      ? Number(metrics.benchmarkReturn ?? metrics.benchmark_return) * 100
+      : null,
+    winRate: Number.isFinite(winRate) ? winRate * 100 : null,
+    profitFactor: metrics.profitLossRatio ?? metrics.profit_loss_ratio ?? null,
+    totalTrades: metrics.completedTrades ?? metrics.completed_trades ?? metrics.totalOrders ?? metrics.total_orders ?? null,
+    winningTrades: metrics.profitableTrades ?? metrics.profitable_trades ?? null,
+    losingTrades: metrics.losingTrades ?? metrics.losing_trades ?? null,
+    totalFees: metrics.totalCost ?? metrics.total_cost ?? null,
+    avgHoldingBars: metrics.averageHoldingDays ?? metrics.average_holding_days ?? null,
+    annualizedVolatility: Number.isFinite(Number(metrics.annualizedVolatility ?? metrics.annualized_volatility))
+      ? Number(metrics.annualizedVolatility ?? metrics.annualized_volatility) * 100
+      : null,
+    timeframe: run.parameters?.timeframe ?? '1d',
+    timeframeMode: 'strategy',
+    status: run.status === 'success' ? 'completed' : run.status,
+    dataQualityStatus: Number(metrics.dataQualityWarnings ?? metrics.data_quality_warnings ?? 0) > 0 ? 'warning' : 'passed',
+    dataQualityMessage: run.errorMessage ?? run.error_message ?? null,
+    createdAt: run.createdAt ?? run.created_at,
+    promotionStatus: run.promotionStatus ?? run.promotion_status,
+    inputHash: run.inputHash ?? run.input_hash,
+    runMode: run.runMode ?? run.run_mode,
+  };
+}
+
+function currentBacktestJobToBitPro(job: Record<string, any>): Record<string, any> {
+  const progress = Number(job.progress ?? 0);
+  return {
+    jobId: String(job.jobId ?? job.job_id),
+    strategyId: Number(job.legacyStrategyId ?? job.legacy_strategy_id ?? 0),
+    status: job.status === 'success' ? 'completed' : job.status,
+    currentBar: Number(job.currentBar ?? job.current_bar ?? 0),
+    totalBars: Number(job.totalBars ?? job.total_bars ?? 0),
+    percent: Number.isFinite(progress) ? progress : null,
+    request: job.request ?? job.requestPayload ?? job.request_payload ?? null,
+    message: job.message ?? job.phase ?? null,
+    result: job.result ?? null,
+    errorMessage: job.errorMessage ?? job.error_message ?? null,
+    updatedAt: job.updatedAt ?? job.updated_at ?? null,
+    resumable: job.status === 'interrupted' || job.status === 'failed',
+  };
+}
+
+async function createCurrentBacktestJob(data: Record<string, unknown>): Promise<Record<string, any>> {
+  const configuration = await backtestCurrentApi.configuration();
+  const strategyVersionId = strategyVersionIdForLegacyId(data.strategy_id ?? data.strategyId);
+  const payload = {
+    mode: String(data.mode || 'quick'),
+    name: String(data.name || 'A股回测实例'),
+    strategy_version_id: strategyVersionId,
+    dataset_snapshot_id: data.dataset_snapshot_id ?? configuration.dataset_snapshots[0]?.id,
+    universe_snapshot_id: data.universe_snapshot_id ?? configuration.universe_snapshots[0]?.id,
+    factor_snapshot_id: data.factor_snapshot_id ?? null,
+    pool_snapshot_id: data.pool_snapshot_id ?? null,
+    cost_model_id: data.cost_model_id ?? configuration.cost_models[0]?.id,
+    research_protocol_id: data.research_protocol_id ?? configuration.protocols[0]?.id ?? null,
+    start_date: data.start_date ?? data.startDate,
+    end_date: data.end_date ?? data.endDate,
+    initial_cash: data.initial_cash ?? data.initialCapital ?? 1_000_000,
+    parameters: data.parameters ?? {
+      timeframe: data.timeframe ?? '1d',
+      lot_size: 100,
+      long_only: true,
+    },
+    symbols: data.symbols ?? [],
+  };
+  return backtestCurrentApi.createJob(payload);
+}
+
 export const backtestApi = {
   runSync: (data: Record<string, unknown>): Promise<any> =>
     postReq('/backtest/run_sync', data, { timeout: BACKTEST_RUN_SYNC_TIMEOUT_MS }),
 
   /** 异步回测：立即返回 jobId，进度见 getJob（SQLite 持久化，刷新页面或服务重启后可继续轮询） */
-  runJob: (data: Record<string, unknown>): Promise<{ jobId: string }> =>
-    postReq('/backtest/run_job', data),
+  runJob: async (data: Record<string, unknown>): Promise<{ jobId: string }> => {
+    const job = await createCurrentBacktestJob(data);
+    return { jobId: String(job.jobId ?? job.job_id) };
+  },
 
   /** 便捷批量回测：为所有运行中的模拟策略创建普通异步回测任务 */
   runRunningStrategies: (data?: Record<string, unknown>): Promise<{
@@ -2530,7 +2657,51 @@ export const backtestApi = {
       status?: string | null;
       reason: string;
     }>;
-  }> => postReq('/backtest/run_running_strategies', data ?? {}),
+  }> => {
+    const end = new Date();
+    const start = new Date(end);
+    start.setFullYear(end.getFullYear() - 1);
+    const toDate = (value: Date) => value.toISOString().slice(0, 10);
+    const defaults = {
+      startDate: toDate(start),
+      endDate: toDate(end),
+      initialCapital: 1_000_000,
+      timeframeMode: 'strategy',
+    };
+    return paperCurrentApi.list('audit').then(async (paper) => {
+      const running = paper.items.filter((item) => item.lifecycle_status === 'running');
+      const attempts = await Promise.all(running.map(async (item) => {
+        const detail = await paperCurrentApi.detail(item.id);
+        const strategyVersionId = String(detail.strategy_version?.id ?? detail.strategy_version_id ?? '');
+        if (!strategyVersionId) throw new Error('Paper 实例缺少策略版本');
+        const job = await createCurrentBacktestJob({
+          ...(data || {}),
+          strategy_id: strategyVersionId,
+          name: `${item.name} / 批量回测`,
+          start_date: defaults.startDate,
+          end_date: defaults.endDate,
+          initial_capital: defaults.initialCapital,
+          timeframe_mode: defaults.timeframeMode,
+        });
+        return {
+          jobId: String(job.jobId ?? job.job_id),
+          strategyId: stableLegacyId(strategyVersionId),
+          strategyName: detail.strategy_version?.name ?? item.name,
+          status: String(job.status ?? 'pending'),
+          request: job.request ?? null,
+        };
+      }));
+      return {
+        count: attempts.length,
+        skippedCount: paper.items.length - running.length,
+        defaults,
+        jobs: attempts,
+        skipped: paper.items
+          .filter((item) => item.lifecycle_status !== 'running')
+          .map((item) => ({ strategyName: item.name, status: item.lifecycle_status, reason: '仅运行中的 Paper 实例参与批量回测' })),
+      };
+    });
+  },
 
   getJob: (
     jobId: string,
@@ -2546,7 +2717,7 @@ export const backtestApi = {
     errorMessage?: string | null;
     updatedAt?: string | null;
     resumable?: boolean;
-  }> => getReq(`/backtest/job/${jobId}`),
+  }> => apiClient.get(`/backtest/jobs/${encodeURIComponent(jobId)}`).then((item) => currentBacktestJobToBitPro(item) as any),
 
   cancelJob: (
     jobId: string,
@@ -2562,7 +2733,7 @@ export const backtestApi = {
     errorMessage?: string | null;
     updatedAt?: string | null;
     resumable?: boolean;
-  }> => postReq(`/backtest/job/${jobId}/cancel`),
+  }> => backtestCurrentApi.cancelJob(jobId).then((item) => currentBacktestJobToBitPro(item) as any),
 
   resumeJob: (
     jobId: string,
@@ -2578,7 +2749,7 @@ export const backtestApi = {
     errorMessage?: string | null;
     updatedAt?: string | null;
     resumable?: boolean;
-  }> => postReq(`/backtest/job/${jobId}/resume`),
+  }> => backtestCurrentApi.retryJob(jobId).then((item) => currentBacktestJobToBitPro(item) as any),
 
   getJobs: (
     params?: { strategyId?: number | null; status?: string; limit?: number; includeResult?: boolean },
@@ -2595,14 +2766,14 @@ export const backtestApi = {
     errorMessage?: string | null;
     updatedAt?: string | null;
     resumable?: boolean;
-  }>> => getReq('/backtest/jobs', {
-    params: {
-      strategyId: params?.strategyId ?? undefined,
-      status: params?.status,
-      limit: params?.limit ?? 50,
-      include_result: params?.includeResult ?? undefined,
-    },
-  }),
+  }>> => {
+    void params?.strategyId;
+    void params?.status;
+    void params?.includeResult;
+    return backtestCurrentApi.jobs(params?.limit ?? 50).then((response) =>
+      response.items.map((item) => currentBacktestJobToBitPro(item) as any),
+    );
+  },
 
   getResults: (
     params?: {
@@ -2614,24 +2785,46 @@ export const backtestApi = {
       sortDir?: 'asc' | 'desc';
       includeMatrixSummary?: boolean;
     },
-  ): Promise<any[]> =>
-    getReq('/backtest/results', {
-      params: {
-        strategyId: params?.strategyId ?? undefined,
-        q: params?.query || undefined,
-        limit: params?.limit ?? 20,
-        offset: params?.offset ?? undefined,
-        sort_by: params?.sortBy,
-        sort_dir: params?.sortDir,
-        include_matrix_summary: params?.includeMatrixSummary ?? undefined,
-      },
-    }),
+  ): Promise<any[]> => {
+    void params?.strategyId;
+    void params?.sortBy;
+    void params?.sortDir;
+    void params?.includeMatrixSummary;
+    const offset = Math.max(0, params?.offset ?? 0);
+    const limit = Math.max(1, params?.limit ?? 20);
+    return backtestCurrentApi.runs(Math.min(200, offset + limit)).then((response) => {
+      const query = (params?.query || '').trim().toLowerCase();
+      return response.items
+        .map((item) => currentBacktestRunToBitPro(item))
+        .filter((item) => !query || `${item.strategyName} ${item.id}`.toLowerCase().includes(query))
+        .slice(offset, offset + limit);
+    });
+  },
 
-  getResult: (id: number): Promise<any> =>
-    getReq(`/backtest/result/${id}`),
+  getResult: async (id: number): Promise<any> => {
+    const runId = backtestRunIdForLegacyId(id);
+    const run = await backtestCurrentApi.run(runId);
+    return currentBacktestRunToBitPro(run);
+  },
+
+  getResultEvidence: async (id: number): Promise<any> => {
+    const runId = backtestRunIdForLegacyId(id);
+    const series = await backtestCurrentApi.series(runId);
+    const trades = await backtestCurrentApi.detailRows(runId, 'trades');
+    const orders = await backtestCurrentApi.detailRows(runId, 'orders');
+    const positions = await backtestCurrentApi.detailRows(runId, 'positions');
+    const logs = await backtestCurrentApi.detailRows(runId, 'logs');
+    return {
+      trades: trades.items,
+      orders: orders.items,
+      positions: positions.items,
+      logs: logs.items,
+      equityCurve: series.equityCurve ?? series.equity_curve ?? series,
+    };
+  },
 
   deleteResult: (id: number): Promise<{ deleted: boolean; id: number }> =>
-    deleteReq(`/backtest/result/${id}`),
+    Promise.reject(new Error(`回测证据不可删除：${id}`)),
 
   getStrategies: (): Promise<Record<string, unknown>> =>
     getReq('/backtest/strategies'),
