@@ -11,7 +11,7 @@ Before substantial work, read:
 1. `README.md`
 2. `docs/spec.md`
 3. `docs/progress.md`
-4. the active contract under `docs/contracts/`
+4. the current contract pointed to by `docs/contracts/active.md`
 
 ## Operating Rules
 
@@ -112,10 +112,13 @@ Both services:
 Preferred entrypoint:
 
 ```bash
+export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 ./scripts/check.sh
 ```
 
-If project-specific commands exist, add them to `scripts/check.sh`.
+`DATABASE_URL` must point at the isolated `stockpro_bitpro_rebase_dev` database;
+`check.sh` refuses anything else. If project-specific commands exist, add them
+to `scripts/check.sh`.
 
 ## When To Pause
 

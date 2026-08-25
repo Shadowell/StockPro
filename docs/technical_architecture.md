@@ -1,6 +1,6 @@
 # StockPro 技术架构
 
-> 更新日期：2026-07-29
+> 更新日期：2026-08-24
 > 目标环境：本地 B/S
 > 核心约束：PostgreSQL only、读取不触发写操作、仅 Paper 模拟交易
 
@@ -49,7 +49,7 @@ PostgreSQL :55432
 
 ### 页面结构
 
-`frontend/src/App.tsx` 注册 12 个一级工作区、详情路由和历史兼容跳转。`MainLayout` 提供：
+`frontend/src/App.tsx` 注册 13 个一级工作区、详情路由和历史兼容跳转。`MainLayout` 提供：
 
 - 固定 64px 一级侧栏；
 - 管理员/访客身份状态；
@@ -94,19 +94,18 @@ backend/app/
 
 ### API 域
 
-所有接口使用单一 `/api` 前缀。主要域：
+所有接口使用单一 `/api` 前缀。当前注册的域（对照 `backend/app/api/api.py`）：
 
 ```text
-health auth workflow
-market stocks charts ai
-data data-hub data-dev database
-factors factor-research pools
-strategy backtest paper
-watch monitor review
-acceptance
+health capabilities auth
+market pools factors strategies
+backtest paper
+signals watch monitor
+review data ai
 ```
 
-完整接口由 FastAPI OpenAPI 生成。
+已移除的 `workflow / stocks / charts / data-hub / data-dev / database / acceptance`
+域不再存在。完整接口由 FastAPI OpenAPI 生成，域级说明见 [API 指南](api.md)。
 
 ## 4. 鉴权与权限
 
@@ -210,8 +209,9 @@ APScheduler 用于日终数据同步、备份和其他受控任务。计划、�
 
 - `restart.sh` 启动 PostgreSQL、FastAPI 和 Vite，并做健康检查。
 - 日志写入 `logs/backend.log` 与 `logs/frontend.log`。
-- `/api/health/health` 检查进程，`/api/health/storage` 检查 PG。
-- `./scripts/check.sh` 是统一静态检查和测试入口。
+- `/api/health` 检查进程，`/api/health/storage` 检查 PG。
+- `./scripts/check.sh` 是统一静态检查和测试入口；运行前需将 `DATABASE_URL`
+  指向隔离库（见[本地运行手册](deployment.md#7-隔离库)）。
 
 浏览器验收需同时关注：
 

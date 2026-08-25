@@ -34,6 +34,7 @@ ACTIVE_RUNTIME = (
     "backend/app/services/ashare_backtest_engine.py",
     "backend/app/services/paper_application_service.py",
     "backend/app/repositories/paper_repository.py",
+    "scripts/run_demo.py",
 )
 
 

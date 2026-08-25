@@ -1,19 +1,21 @@
 services:
   postgres:
-    profiles: ["local-db-recovery"]
+    profiles: ["isolation", "local-db-recovery"]
     image: postgres:16-alpine
     container_name: stockpro-postgres
     restart: "no"
     environment:
       POSTGRES_USER: stockpro
       POSTGRES_PASSWORD: stockpro
-      POSTGRES_DB: stockpro
+      POSTGRES_DB: stockpro_bitpro_rebase_dev
     ports:
       - "55432:5432"
     volumes:
       - stockpro_postgres_data:/var/lib/postgresql/data
+      - ./scripts/sql/docker-init-isolation-db.sh:/docker-entrypoint-initdb.d/zz-stockpro-isolation.sh:ro
+      - ./scripts/sql/create_isolation_db.sql:/docker-entrypoint-initdb.d/zz-stockpro-isolation.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U stockpro -d stockpro"]
+      test: ["CMD-SHELL", "pg_isready -U stockpro -d stockpro_bitpro_rebase_dev"]
       interval: 5s
       timeout: 5s
       retries: 10

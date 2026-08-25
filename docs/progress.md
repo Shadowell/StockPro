@@ -1,5 +1,43 @@
 # Progress Log
 
+## 文档全量整治（2026-08-24）
+
+- 修正 6 处错误健康路径 `/api/health/health` → `/api/health`（README、deployment、
+  api、SCRIPTS_USAGE、technical_architecture、todo）；历史 progress/合同中的旧记录保留不改。
+- 重写 `README.md`：快速开始前置、验证去重、隔离库为默认数据库口径、工作区表直链
+  `docs/pages/` 页面合同；`README.en.md` 同步（13 工作区侧栏、隔离库黄金路径）。
+- 重写 `docs/api.md`：接口域表对照 `backend/app/api/api.py` 重新生成，删除不存在的
+  workflow/stocks/charts/data-hub/data-dev/acceptance 域与访客码管理端点；MCP 头改为
+  实际默认 `X-BitPro-MCP-Token`；Paper 生命周期补 `/advance`。
+- 根目录清理：删除 `README.zh-CN.md` 存根；Electron/优化总结/AKShare 笔记移入
+  `docs/archive/` 并附索引说明。
+- `docs/index.md` 重建：新增页面合同区、修正 active 合同指向 `contracts/active.md`、
+  移除失效的 `frontend/README.md` 链接。
+- 修复 GitHub 不识别的 `{#isolation-database}` 自定义锚点，3 处入站链接改用自然锚点
+  `#7-隔离库`；`todo.md` 封存为历史快照并加显著 banner；strategies README 路由改为
+  `POST /api/strategies`；登录门禁页删除 Wave 占位措辞；AGENTS.md 验证节补隔离库前置。
+- 验证：自研链接检查脚本扫描 269 个内部链接 0 死链；`git diff --check` 通过；
+  纯文档变更，未触碰代码与服务。
+
+## DX worktree clarification docs (#7)（2026-08-24）
+
+- README 新增「仓库布局」：产品树为 worktree `StockPro-bitpro-a-share`（`main`）；
+  主目录 `StockPro` 的 `codex/bitpro-a-share-rebuild-design` 设计分支仅作归档，
+  不再用于日常开发或开 PR，动手前先 `git worktree list` 确认所在树。
+- 纯文档变更；验证为 `git diff --check`。
+
+## DX isolation DB and A-share run_demo (#18, #19)（2026-08-24）
+
+- 新增一键脚本 `scripts/setup_isolation_db.sh`：Docker Compose profile `isolation`
+  或 SQL/`provision_isolation_db.py` 创建 `stockpro_bitpro_rebase_dev`。
+- `scripts/check.sh` 在 `DATABASE_URL` 缺失或非隔离时退出，并指向该 setup 命令与
+  `docs/deployment.md#isolation-database`。也可从 `backend/.env` 读取 URL。
+- `scripts/run_demo.py` 改为 A 股 Paper：`AShareSpotBroker`、`600000.SH`、CNY
+  现金账本、T+1、100 股；可选 `--list-instances` 只读列出隔离库 Paper。不再使用
+  SQLite `crypto_data.db`、Kairos、BTC/USDT、OKX。
+- 未改 BitPro，未加产品页。下一步：Eva 跑 setup 后重跑 `/api/health`、
+  `/api/health/storage` 与 `./scripts/check.sh`。
+
 ## Shell nav and workbench state machine (#14, #11)（2026-08-23）
 
 - 前端壳层继续使用 BitPro IA：首页 / 行情 / 股票池 / 因子 / 策略 / 回测 / 模拟 / 盯盘 /

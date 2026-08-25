@@ -3,31 +3,33 @@
 > 基础路径：`/api`
 > 本地地址：`http://localhost:4445`
 > 运行时完整契约：`http://localhost:4445/docs` 或 `/openapi.json`
-> 更新日期：2026-07-29
+> 更新日期：2026-08-24（对照 `backend/app/api/api.py` 路由注册表核验）
 
-本文说明稳定接口域、鉴权、状态语义和写操作边界。请求/响应字段持续由 FastAPI OpenAPI 生成，避免在手写文档中复制一份容易过期的完整 Schema。
+本文说明稳定接口域、鉴权、状态语义和写操作边界。请求/响应字段由 FastAPI OpenAPI 生成，本文不复制完整 Schema，只给出域级地图和约定。
 
 ## 1. 基本约定
 
 - JSON 请求使用 `Content-Type: application/json`。
-- 除健康和登录接口外，业务接口都需要认证。
-- Web 管理员和访客使用 Bearer Token。
+- 除健康检查外，业务接口都需要认证。
+- Web 用户使用 Bearer Token；Agent 走独立 MCP Token（见第 8 节）。
 - 所有时间字段都应包含时区；交易日使用 `YYYY-MM-DD`。
-- 股票标识优先使用带市场身份的标准符号，不能依赖六位代码猜交易所。
-- 分页、排序和过滤参数以 OpenAPI 为准。
+- 股票标识优先使用带市场身份的标准符号（如 `600000.SH`），不依赖六位代码猜交易所。
 - 缺失、无权限、过期、质量失败和真正的数值 0 是不同语义。
 
-## 2. 健康接口
+## 2. 健康与能力发现
 
-健康接口无需登录：
+无需登录：
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| `GET` | `/api/health/health` | 后端进程健康 |
-| `GET` | `/api/health/storage` | PostgreSQL 连接与存储状态 |
-| `GET` | `/api/health/report` | 汇总诊断 |
-| `GET` | `/api/health/dns-diagnostic` | Provider DNS 诊断 |
-| `GET` | `/api/health/dashscope-endpoint` | DashScope 端点诊断 |
+| `GET` | `/api/health` | 后端进程健康 |
+| `GET` | `/api/health/storage` | PostgreSQL 连接与迁移状态 |
+
+需要登录：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/capabilities` | 启用的市场、Paper 运行时、live=false 等运行边界 |
 
 健康接口是只读诊断，不应触发迁移、同步、bootstrap、Paper 恢复或策略执行。
 
@@ -45,154 +47,120 @@ Content-Type: application/json
 }
 ```
 
-响应返回 `access_token`、有效期、角色和权限。后续请求：
+响应返回 `access_token`、有效期、角色和权限。后续请求携带：
 
 ```http
 Authorization: Bearer <access_token>
 ```
 
-验证当前身份：
-
-```http
-GET /api/auth/me
-Authorization: Bearer <access_token>
-```
-
-### 访客登录
-
-管理员先创建带有效期和回测配额的访客码，访客调用：
-
-```http
-POST /api/auth/guest/login
-Content-Type: application/json
-
-{
-  "code": "<guest-code>"
-}
-```
-
-访客默认只读，只在返回权限允许的范围内运行回测。
-
-### 管理端安全接口
+其余鉴权路由：
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| `POST` | `/api/auth/guest-codes` | 创建访客码 |
-| `GET` | `/api/auth/guest-codes` | 列出访客码 |
-| `DELETE` | `/api/auth/guest-codes/{id}` | 撤销访客码 |
-| `POST` | `/api/auth/mcp-agent-tokens` | 创建 Agent Token |
-| `GET` | `/api/auth/mcp-agent-tokens` | 列出 Agent Token 元数据 |
-| `DELETE` | `/api/auth/mcp-agent-tokens/{id}` | 撤销 Agent Token |
+| `GET` | `/api/auth/me` | 验证当前身份 |
+| `POST` | `/api/auth/logout` | 登出 |
+| `POST` | `/api/auth/guest/login` | 访客码登录 |
 
-Token/访客码明文只应在必要时展示一次，禁止写入仓库、日志或截图。
+访客默认只读。当前版本没有管理访客码/Agent Token 的 HTTP 管理端点；Token 与访客码通过服务端配置或引导流程发放。Token 明文只在发放时展示一次，禁止写入仓库、日志或截图。
 
 ## 4. 业务接口域
 
+下表对照当前路由注册表（`backend/app/api/api.py`）：
+
 | 接口域 | 代表路径 | 说明 |
 | --- | --- | --- |
-| 工作流发现 | `/api/workflow/capabilities` | 客户端先确认阶段、能力和真实交易边界 |
-| 首次就绪 | `/api/workflow/onboarding-readiness` | 只读检查安全、存储、Provider、封存数据与后续主线状态 |
-| 市场研究 | `/api/market/*` | 概览、情绪、涨停生态、板块、事件、日历和 PostgreSQL 自选清单 |
-| 股票与图表 | `/api/stocks/*`、`/api/charts/*` | 搜索、筛选、日线和分时 |
-| 因子 | `/api/factors/*`、`/api/factor-*` | 定义、版本、计算、快照、指标与相关性 |
-| 股票池 | `/api/pools/*`、`/api/pool-snapshots/*` | 股票池、成员、快照和回测草稿 |
-| 策略 | `/api/strategy/*` | 策略目录、版本、验证、快速运行与回放 |
-| 回测 | `/api/backtest/*` | 任务、运行、指标、序列、订单、成交和比较 |
-| Paper | `/api/paper/*` | 实例、周期、事件、K 线和模拟账户 |
-| 盯盘 | `/api/watch/*` | 观察上下文、告警确认、版本化规则创建/预览/显式评估；评估只写告警与站内通知，不触发订单 |
-| 监控 | `/api/monitor/*` | 运行、数据和风险健康 |
-| 复盘 | `/api/review/*` | 交易日记录、组装、保存和封存 |
-| 数据中心 | `/api/data/*` | 数据集、快照、质量、同步、Provider、计划及隔离扩展数据导入导出 |
-| 数据任务 | `/api/data-hub/*`、`/api/data-dev/*` | 任务、日志、质量报告和开发任务 |
-| AI | `/api/ai/*` | 能力发现、个股和批量分析 |
-| 本地验收 | `/api/acceptance/*` | 本地恢复、性能和备份演练 |
+| 行情研究 | `/api/market/overview`、`/api/market/instruments*`、`/api/market/watchlist` | 概览、标的搜索、日线/分时/盘口与自选清单 |
+| 股票池 | `/api/pools/*`、`/api/pool-snapshots*` | 股票池、成员、生成、快照 |
+| 因子 | `/api/factors*`、`/api/factor-versions*/validate|compute`、`/api/factor-snapshots*`、`/api/factor-runs`、`/api/factor-correlations` | 定义、版本验证、计算、快照、指标与相关性 |
+| 策略 | `/api/strategies*` | 目录、不可变版本、`/validate`、`/{id}/quick-run` |
+| 回测 | `/api/backtest/configuration|runs*`、`POST /run|matrix|walk-forward|jobs` | 异步任务、运行证据、指标、序列、订单、成交、持仓 |
+| Paper 模拟 | `/api/paper/instances*` | 实例生命周期、事件、K 线与模拟账户 |
+| 盯盘 | `/api/watch/context|alerts*|rules*` | 观察上下文、告警确认、版本化规则的创建/预览/显式评估 |
+| 信号 | `/api/signals*` | 信号列表、详情与确认 |
+| 监控 | `/api/monitor/summary|strategies|data|risk|notifications` | 运行、数据、风险与通知健康 |
+| 复盘 | `/api/review/dates|{trade_date}|{trade_date}/assemble|seal` | 交易日记录、组装、保存和封存 |
+| 数据中心 | `/api/data/status|datasets|snapshots|providers|schedules|jobs|quality|exchange/*` | 数据集、快照、质量、同步、Provider、计划及扩展数据导入导出 |
+| AI 研发 | `/api/ai/config|tasks*`、`/api/ai/iterations/{id}/promote-candidate` | AI 研究任务循环与候选晋级 |
 
-旧接口仍可能为页面兼容存在。新客户端优先使用页面当前调用的工作流接口和 OpenAPI，不要仅凭旧文档猜路由。
+已移除的旧域：`/api/workflow/*`、`/api/stocks/*`、`/api/charts/*`、`/api/data-hub/*`、`/api/data-dev/*`、`/api/acceptance/*` 不存在；新客户端不要引用。完整字段以 OpenAPI 为准。
 
 ## 5. 常用读取示例
 
 ```bash
 TOKEN='<bearer-token>'
 
-curl -fsS \
-  -H "Authorization: Bearer ${TOKEN}" \
-  http://127.0.0.1:4445/api/workflow/capabilities
+curl -fsS -H "Authorization: Bearer ${TOKEN}" \
+  http://127.0.0.1:4445/api/capabilities
 
-curl -fsS \
-  -H "Authorization: Bearer ${TOKEN}" \
+curl -fsS -H "Authorization: Bearer ${TOKEN}" \
   http://127.0.0.1:4445/api/market/overview
 
-curl -fsS \
-  -H "Authorization: Bearer ${TOKEN}" \
-  http://127.0.0.1:4445/api/data/status
+curl -fsS -H "Authorization: Bearer ${TOKEN}" \
+  'http://127.0.0.1:4445/api/paper/instances?scope=business'
 
-curl -fsS \
-  -H "Authorization: Bearer ${TOKEN}" \
-  http://127.0.0.1:4445/api/backtest/jobs
+curl -fsS -H "Authorization: Bearer ${TOKEN}" \
+  http://127.0.0.1:4445/api/data/status
 ```
 
 不要把真实 Token 直接写进 shell 历史、脚本或文档。
 
 ## 6. 异步任务
 
-回测、全市场同步、因子计算和部分数据任务可能异步执行。典型模式：
+回测、全市场同步、因子计算等重任务异步执行。典型模式：
 
-1. `POST` 创建任务，返回 `202 Accepted` 和任务标识。
-2. 客户端轮询任务详情或列表。
-3. 终态为完成、失败或取消。
-4. 失败任务保留错误和日志；重试创建新的可审计尝试。
+1. `POST` 创建任务，返回任务标识；
+2. 客户端轮询任务详情或列表；
+3. 终态为完成、失败或取消；
+4. 失败任务保留错误和日志；重试会创建新的可审计尝试。
 
 回测示例入口：
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | `POST` | `/api/backtest/jobs` | 创建异步回测 |
-| `GET` | `/api/backtest/jobs` | 查询任务 |
-| `GET` | `/api/backtest/jobs/{id}` | 查询单个任务 |
-| `GET` | `/api/backtest/jobs/{id}/logs` | 查询日志 |
-| `POST` | `/api/backtest/jobs/{id}/cancel` | 取消任务 |
-| `POST` | `/api/backtest/jobs/{id}/retry` | 重试失败/取消任务 |
+| `GET` | `/api/backtest/runs` | 查询运行与结果证据 |
+| `GET` | `/api/backtest/runs/{id}` | 单次运行详情 |
+| `POST` | `/api/backtest/jobs/{job_id}/cancel` | 取消任务 |
+| `POST` | `/api/backtest/jobs/{job_id}/retry` | 重试失败/取消任务 |
 
 字段、合法状态和错误响应以 OpenAPI 为准。
 
-## 7. 数据与快照写操作
+## 7. 写操作边界
 
 以下操作会调用外部 Provider、写入大量 PG 数据或改变研究状态，执行前必须确认目标和影响：
 
-- `/api/data/history/sync-all`
-- `/api/data/realtime/sync`
-- `/api/data/market-evidence/sync`
-- `/api/data/snapshots`
-- `/api/data/snapshots/{id}/seal`
-- `/api/data/schedules/daily/run`
-- `/api/factor-compute-runs`
-- `/api/pools/{id}/generate`
-- `/api/pool-snapshots/{id}/backtests`
+- `/api/data/sync`：外部数据同步
+- `/api/data/quality/run`：质量检查
+- `/api/data/exchange/imports`、`/api/data/exchange/http-imports`：扩展数据导入
+- `/api/factor-versions/{id}/compute`：因子计算
+- `/api/pools/{id}/generate` 与快照封存类 POST
+- `/api/review/{trade_date}/seal`：复盘封存
+- Paper 生命周期 POST（见第 8 节）
 
-数据同步接口不应被健康检查或页面 GET 隐式调用。封存快照后，后续更正通过新分区和新快照表达，不修改历史证据。
+数据同步接口不应被健康检查或页面 GET 隐式调用。封存后的更正通过新分区和新快照表达，不修改历史证据。
 
-## 8. Paper 写操作
+## 8. Paper 模拟写操作
 
-Paper 实例控制：
-
-| 方法 | 路径 |
-| --- | --- |
-| `POST` | `/api/paper/instances` |
-| `POST` | `/api/paper/instances/{id}/start` |
-| `POST` | `/api/paper/instances/{id}/pause` |
-| `POST` | `/api/paper/instances/{id}/resume` |
-| `POST` | `/api/paper/instances/{id}/stop` |
-| `POST` | `/api/paper/instances/{id}/cycles` |
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `POST` | `/api/paper/instances` | 创建实例 |
+| `POST` | `/api/paper/instances/{id}/start` | 启动 |
+| `POST` | `/api/paper/instances/{id}/pause` | 暂停 |
+| `POST` | `/api/paper/instances/{id}/resume` | 恢复 |
+| `POST` | `/api/paper/instances/{id}/stop` | 停止 |
+| `POST` | `/api/paper/instances/{id}/advance` | 推进一个模拟周期 |
 
 这些接口只改变模拟运行状态，不允许真实券商订单、资金划转或账户诊断。
 
 ## 9. Agent / MCP
 
-`stockpro-mcp-v1` 使用独立的 Agent Token：
+`stockpro-mcp-v1` 使用独立的 Agent Token，请求头默认：
 
 ```http
-X-StockPro-MCP-Token: <one-time-token>
+X-BitPro-MCP-Token: <agent-token>
 ```
+
+头名可经服务端 `BITPRO_MCP_AUTH_HEADER` 配置，客户端应以部署配置为准。
 
 规则：
 
