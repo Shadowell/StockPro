@@ -3525,3 +3525,7 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 默认 AI 工作台支持任务创建、启动、迭代详情、候选保存和现有策略诊断；模型未配置明确失败，不生成 mock，不自动运行完整回测、不创建/控制 Paper、不显示星球、OKX 持仓或自动实盘入口。AI 页 `tsc`、零警告 lint、Mock E2E 和安全审计通过。
 - 真实管理员浏览器显示 `DashScope / Qwen · qwen3.6-plus · unavailable`，四个 BitPro 工作区、A 股研究配置和“封存证据研究 / Quick 回测 only / 不自动创建 Paper”门控可见；控制台无业务错误，未启动任务、未生成候选、未写 Paper。
 - AI 切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过；最终路由标题同步为“AI策略助手”。
+- 信号中心完成当前 BitPro 2050 行源码导入。OKX Signal Bot/webhook/保证金/自动发送实现设为不可达 named source；默认页面恢复通道配置、信号策略列表、策略信号主表、投递记录和详情抽屉，但唯一读取当前信号与告警 API。
+- 通道配置只读汇总 delivery 状态，策略列表按不可变版本/Paper lineage 聚合，管理员只能把 `new` 信号确认为 confirmed；页面没有买入、卖出、下单或真实发送动作。信号/盯盘 E2E、`tsc`、零警告 lint 和安全审计通过。
+- 真实管理员浏览器显示 BitPro 四段信号工作台；当前 PostgreSQL 审计范围没有策略信号或投递记录，页面如实显示空状态，没有自动构造行或触发任何写操作，控制台无业务错误。
+- 信号切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过。
