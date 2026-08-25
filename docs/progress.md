@@ -1,5 +1,68 @@
 # Progress Log
 
+## 运营闭环恢复 + 7策略晋级模拟盘（2026-08-25）
+
+本轮在 BitPro-first 重建底座上恢复生产级运营能力，并完成首轮 A 股策略研究晋级。
+
+### 运营层恢复
+- 移植 `KlineSyncService`（按交易日全市场拉取）与 `DailyReferenceSyncService`
+  （日终链：交易日历门禁→日线同步→快照封存→辅助分区→Universe→因子计划→行情证据，
+  PG advisory lock 防并发，`dataset_orchestration_runs` 全量留痕）。
+- 新增 `AshareSchedulerService`（APScheduler，Asia/Shanghai）：盘后 17:30 日终链、
+  每小时 Paper 兜底推进、每日三次运营心跳；经 FastAPI lifespan 挂载，
+  `ENABLE_SCHEDULER` 显式开关。
+- 修复两处高延迟隧道性能缺陷：批量写入统一 page_size=2000；sync_metadata 刷新从
+  逐标的 2 次 RTT 改为聚合批量（全市场单日写入 2.6 小时 → 30 秒）。
+- 补齐 2025-01~2025-07 共 103 个交易日的全市场日线缺口（TuShare 按日回填）。
+
+### Qlib 数据模块
+- `QlibExportService`：已发布日线分区 → 标准 Qlib bin 布局
+  （calendars/instruments/features，NaN 表达缺失，增量刷新）。
+- 503 交易日 × 5,550 标的导出验证通过；`/api/data/qlib/status|export` 端点
+  与数据中心「Qlib导出」页签；日终链成功后自动增量刷新。
+
+### 前端补齐
+- 设置中心全部端点落地（notify/飞书 webhook/LLM 模型配置与连通性测试/
+  MCP Agent Token（SHA-256 存储、明文仅返回一次）/访客邀请码管理）；
+  新增迁移 `202608240001_settings_and_agent_tokens.sql`。
+- 监控页新增「日终调度」面板（任务注册状态、盘后 cron、日线水位、管理员手动触发）。
+- 登录页管理员登录 Tab 前置并设为默认模式。
+- client.ts 删除 7 个无引用的币圈 API 块（约 210 行）。
+
+### 大扫除
+- 删除 40+ 个 import 即崩的隔离文件（exchange/strategies/workers/local_db/
+  旧 scheduler_service/agent 包等）与根目录三套平行遗产。
+- 防回归测试改为断言彻底移除（而非隔离）；安全扫描 0 活跃命中。
+
+### 策略研究与晋级
+- 新研究 12 个 Strategy API v1 策略 + 3 个参数变体（动量/趋势/均值回归/低波动/
+  量价/多因子/布林/隔日反转/新高/小市值因子等方向），全部通过 AST 沙箱验证。
+- 建立「全市场流动性 Top500」股票池（快照 #9）、研究协议 v3（训练/验证/样本外
+  三段 + 容量/回撤/夏普阈值，封存不可变）与因子快照 #8（94 因子）。
+- **7 个策略通过全部 11 项晋级门禁并上线模拟盘**（快照 #35 全参考数据绑定）：
+
+| 策略 | 方向 | 完整回测 | 门禁 |
+| --- | --- | --- | --- |
+| 连板晋级隔日T | 打板 | +56.8% 夏普4.33 回撤9.0% | 全过 |
+| 多因子风险预算 | 多因子 | +65.0% 夏普3.15 回撤15.9% | 全过 |
+| 均值回归 三日超跌反弹 | 均值回归 | +46.7% 夏普3.07 回撤14.3% | 全过 |
+| 高度板隔日T | 打板 | +35.5% 夏普2.72 回撤13.3% | 全过 |
+| 首板放量隔日T | 打板/量能 | +31.1% 夏普2.87 回撤9.3% | 全过 |
+| 尾盘强势 | 日内强势 | +77.7% 夏普5.00 回撤10.8% | 全过 |
+| 隔日T超跌 低开高走反抽 | 日内反转 | +12.0% 夏普0.91 回撤13.6% | 全过 |
+
+- 约 15 个候选被门禁真实拒绝（多数卡在训练段风控），拒绝证据逐段留档
+  `backtest_protocol_evaluations`。参数变体研究入库供后续窗口复用。
+
+### 已知边界
+- 模拟盘当前为封存快照回放模式（recorded_replay）；实时盘中行情接入不在本轮范围。
+- `rebuild/tests` 部分验收测试依赖重建期环境，本轮验证以 `backend/tests`（61 项全绿）
+  + 前端 tsc/build 为准。
+- 生产部署未触发：工作在 `codex/ashare-operations-restore` 分支，合并 main 前需
+  完成与最新 main 的集成验证。
+
+---
+
 ## 文档全量整治（2026-08-24）
 
 - 修正 6 处错误健康路径 `/api/health/health` → `/api/health`（README、deployment、
