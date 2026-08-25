@@ -106,25 +106,25 @@ export default function Home() {
                 <Activity className="h-3 w-3" />
                 Market Command
               </div>
-              <h1 className="mt-0.5 text-xl font-bold text-white">A股市场总览</h1>
+              <h1 className="mt-0.5 text-xl font-bold text-white">市场大盘</h1>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
             <span className="flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-1.5 font-medium text-emerald-300">
               <Database className="h-3.5 w-3.5" />
-              POSTGRESQL EVIDENCE
+              POSTGRESQL MARKET DATA
             </span>
             <span className="rounded-md border border-slate-600/45 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-300">
               CN A-SHARE
             </span>
             <span className="rounded-md border border-slate-600/45 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-400">
-              {overview?.data_status?.toUpperCase() || 'LOADING'}
+              DAILY MARKET PULSE
             </span>
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-l-2 border-blue-500/40 pl-3 text-xs text-gray-500">
-          <p>封存市场证据与 PostgreSQL 行情缓存的只读操作台；缺失字段保持不可用。</p>
+          <p>聚合 PostgreSQL A 股行情的大盘广度、成交活跃度和强弱排行；点击榜单标的后进入行情页查看 K 线详情。</p>
           <button
             type="button"
             onClick={() => void load()}
@@ -137,7 +137,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="space-y-4 px-4 py-4 pb-7 sm:px-6">
+      <main className="space-y-5 px-6 py-5 pb-7">
         {loading && <LoadingState />}
         {!loading && error && (
           <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">
@@ -148,6 +148,7 @@ export default function Home() {
 
         {!loading && !error && overview && (
           <>
+            <section data-testid="market-universe-panel" className="space-y-4">
             <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
               <PanelTitle icon={TrendingUp} title="主要指数" detail={`${overview.indices.length} 个缓存指数`} />
               {overview.indices.length ? (
@@ -218,7 +219,9 @@ export default function Home() {
                 </div>
               </section>
             </div>
+            </section>
 
+            <section data-testid="native-data-panel" className="space-y-4">
             <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
               <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
                 <PanelTitle icon={Layers3} title="板块资金" detail="同一封存快照" />
@@ -268,6 +271,7 @@ export default function Home() {
               <span className="flex items-center gap-1.5"><Database className="h-3.5 w-3.5" />{overview.source_label}</span>
               <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" />交易日 {overview.trade_date || '—'} · 更新 {overview.source_updated_at ? new Date(overview.source_updated_at).toLocaleString('zh-CN') : '—'}</span>
             </footer>
+            </section>
           </>
         )}
       </main>

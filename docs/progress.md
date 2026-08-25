@@ -3488,3 +3488,14 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - StockPro 专用 Runner 已固定提供 Node.js 22 / npm 10，满足项目 Node.js 18+
   与 npm 9+ 合同；部署改为本机版本门禁，继续使用干净的 `npm ci` 和完整前端构建，
   避免发布依赖第三方 Action 归档下载可用性。
+
+## 2026-08-25 BitPro 当前基线 1:1 重移植（进行中）
+
+- 用户否决近似复刻，要求以 BitPro 为唯一事实基准直接移植，再只做 A 股领域替换；旧版“已完成”结论因此重新打开。
+- 当前 BitPro `main` 固定为 `aecd03f75d0ef11e18d219da97fecae9613f2a64`。导入器、来源测试、完成审计和总控计划已同步到该提交；导入器只接受 `codex/*` 分支并从 Git object database 读取，不读取 BitPro 未提交工作区。
+- 首轮差异盘点确认目标前端 50 个同路径文件中只有 25 个字节级相同；策略、回测、监控、数据和 AI 研发等关键页面仍显著偏离，不能继续声称 1:1 完成。
+- 首页第一条 TDD 切片把 BitPro 的“市场大盘”外层合同、三枚运行状态标记和两个原生面板边界恢复到 A 股页面，同时保留真实 `/api/market/overview`、PostgreSQL 来源状态及缺失值语义。
+- 当前来源导入仅完成 dry-run，尚未覆盖应用树；`docs/reference/bitpro-baseline/source.json` 仍保留旧导入事实，直到当前 BitPro 应用真正导入后才更新，避免把计划冒充完成状态。
+- 重启验收发现 `restart.sh` 仍探测已经删除的 `/api/health/health`，而当前唯一健康接口 `/api/health` 正常返回 200。新增脚本合同测试完成 RED→GREEN 后，第二次干净重启通过前端 4444、后端 4445 和健康门禁。
+- 真实浏览器使用管理员会话读取本地 PostgreSQL 首页：标题、三枚 A 股状态标记、4 个真实指数、市场宽度、涨跌停生态、空板块资金原因和策略→回测→模拟入口均可见；未使用请求拦截或 DOM 注入。
+- 首页 Mock Playwright 桌面/390px 共 2 项通过，Vite 生产构建与本轮文件零警告 lint 通过。全量 `tsc` 当前被任务前既有的未跟踪 `frontend/src/pages/liveTrading/` 半套 BitPro 文件阻断；该目录保留不删，下一切片补齐来源模块并接 A 股 API 适配后再恢复全量类型门禁。

@@ -16,7 +16,7 @@ if __package__ in {None, ""}: sys.path.insert(0, str(Path(__file__).resolve().pa
 from rebuild.capture_baseline import capture_baseline
 from rebuild.verify_paper_continuity import compare_continuity
 
-BITPRO_SOURCE_SHA="00517963e90f463e608289b0277fe598bd82d9bf"
+BITPRO_SOURCE_SHA="aecd03f75d0ef11e18d219da97fecae9613f2a64"
 REQUIRED_ROUTES={"/","/market","/pools","/factors","/strategy","/backtest","/paper","/watch","/signals","/monitor","/review","/data","/ai-lab"}
 
 @dataclass(frozen=True)

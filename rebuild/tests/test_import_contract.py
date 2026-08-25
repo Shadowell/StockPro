@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 
-SOURCE_SHA = "00517963e90f463e608289b0277fe598bd82d9bf"
-TARGET_ROOT = Path("/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share")
+SOURCE_SHA = "aecd03f75d0ef11e18d219da97fecae9613f2a64"
+TARGET_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_REPO = Path("/Users/jie.feng/Dev/Github/Private/BitPro")
 
 
@@ -41,6 +41,7 @@ def test_import_contract_keeps_governance_and_excludes_runtime_data(
     import_manifest: dict[str, object],
 ) -> None:
     assert import_manifest["source_sha"] == SOURCE_SHA
+    assert import_manifest["target_branch"].startswith("codex/")
     assert import_manifest["source_archive"] == "git-object-database"
     assert import_manifest["copied_roots"] == [
         "backend",

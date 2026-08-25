@@ -36,6 +36,12 @@ test.beforeEach(async ({ page }) => {
 test('home keeps BitPro density with A-share facts', async ({ page }) => {
   await page.goto('/')
 
+  await expect(page.getByRole('heading', { name: '市场大盘' })).toBeVisible()
+  await expect(page.getByText('POSTGRESQL MARKET DATA', { exact: true })).toBeVisible()
+  await expect(page.getByText('CN A-SHARE', { exact: true })).toBeVisible()
+  await expect(page.getByText('DAILY MARKET PULSE', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('market-universe-panel')).toBeVisible()
+  await expect(page.getByTestId('native-data-panel')).toBeVisible()
   for (const heading of ['主要指数', '市场宽度', '涨停生态', '板块资金', '主线状态']) {
     await expect(page.getByRole('heading', { name: heading })).toBeVisible()
   }

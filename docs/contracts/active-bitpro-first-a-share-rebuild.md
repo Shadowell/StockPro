@@ -1,14 +1,14 @@
 # BitPro-first A股整仓重建设计合同
 
-- 状态：已完成；Wave 0–6、生产切换与 post-deploy 验收全部通过
+- 状态：2026-08-25 重新打开；旧基线 Wave 0–6 已交付，但当前 BitPro 1:1 一致性不成立，正在整仓重移植
 - 批准日期：2026-08-22
 - StockPro 基线：`99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`
-- BitPro 固定来源：`00517963e90f463e608289b0277fe598bd82d9bf`
-- 目标分支：`codex/bitpro-a-share-rebase`
+- BitPro 固定来源：`aecd03f75d0ef11e18d219da97fecae9613f2a64`（2026-08-25 重新钉住的当前 `main`）
+- 目标分支：`codex/ashare-operations-restore`
 - 目标 worktree：`/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share`
-- 生产应用合并 SHA：`4c7fe5194cae7abf6c07a8be005bbfb573b032d8`
-- 生产部署 SHA：`381ec5429114a52af71aae7948834a3f6538f366`
-- 成功部署：GitHub Actions run `32647137727`
+- 上一轮生产应用合并 SHA：`4c7fe5194cae7abf6c07a8be005bbfb573b032d8`（仅作历史回滚证据）
+- 上一轮生产部署 SHA：`381ec5429114a52af71aae7948834a3f6538f366`（不代表当前复刻完成）
+- 上一轮成功部署：GitHub Actions run `32647137727`
 
 ## 1. 目标
 
@@ -36,7 +36,7 @@ StockPro 当前启用 A股、ETF 和指数；为中国期货、美国股票和�
 6. 不提供带版本号的 API 路径、旧入口、兼容 Router 或长期双合同。
 7. 历史记录中的旧合同版本字段只作为只读审计元数据保留，不形成旧 API。
 8. BitPro 继续定位数字资产；StockPro 承载传统金融，并预留期货领域。
-9. 最终生产切换前必须再次取得明确确认。
+9. 普通代码切片按仓库 GitHub Delivery Rule 自动交付；涉及生产数据迁移、Paper 重置或真实交易能力时必须停在安全门禁。
 
 ## 3. 仓库、分支和导入边界
 

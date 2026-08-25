@@ -1,6 +1,6 @@
 # 当前合同入口
 
-当前活跃合同为 [BitPro-first A股整仓重建设计合同](active-bitpro-first-a-share-rebuild.md)，状态为“设计已批准，实施计划已编制，实现尚未开始”。
+当前活跃合同为 [BitPro-first A股整仓重建设计合同](active-bitpro-first-a-share-rebuild.md)，状态为“设计已批准，正在按当前 BitPro 基线重新整仓移植”。
 
 以下内容是已完成并被新方向取代的历史合同。它继续保留作为旧 StockPro UI 改造的决策记录；其中“不得复制 BitPro 业务页面源码”的约束不再适用于已获用户明确批准的整仓重建。
 

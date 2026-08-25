@@ -1,4 +1,10 @@
-from rebuild.audit_completion import audit
+from rebuild.audit_completion import BITPRO_SOURCE_SHA, audit
+
+
+def test_completion_audit_is_pinned_to_current_bitpro_baseline():
+    assert BITPRO_SOURCE_SHA == "aecd03f75d0ef11e18d219da97fecae9613f2a64"
+
+
 def test_completion_audit_fails_when_any_requirement_lacks_evidence():
     requirements=[{"id":"API-001","required":True},{"id":"PAPER-001","required":True}];result=audit(requirements,{"API-001":{"status":"passed"}})
     assert result.passed is False and result.blockers==("PAPER-001",)
