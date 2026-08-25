@@ -42,7 +42,8 @@ StockPro 当前启用 A股、ETF 和指数；为中国期货、美国股票和�
 
 当前 BitPro `App.tsx`、`MainLayout.tsx` 与 `index.css` 的逐字基线副本保存在
 `frontend/src/_quarantine/*.disabled`。StockPro 活动壳层只允许 A 股路由映射、中文领域文案、
-Paper-only 安全边界和真实数据状态差异；套利、链上、真实交易与 ARC 不得因 1:1 复刻被重新注册。
+Paper-only 安全边界和真实数据状态差异；真实交易不得因 1:1 复刻被重新注册。BitPro 的套利、
+链上、订单流、ARC 和交易深链必须解析到明确的 A 股 Owner 能力，不能展示数字资产实现。
 
 ### 3.1 隔离方式
 
@@ -130,9 +131,11 @@ Wave 0 当前证据：启动入口仅注册 `/api/health` 与 `/api/auth/me` 两
 | 数据 | `/data` | TuShare/AKShare、快照、质量、同步和扩展交换 |
 | 因子库 | `/factors` | 因子定义、计算、诊断、快照和策略输入 |
 | AI研发 | `/ai-lab` | 策略研发、优化和门控后的候选保存 |
-| 套利中心 | 隐藏期货预留 | 未来期现、跨期和跨市场价差 |
-| 链上研究 | 不进入产品 | 继续属于 BitPro |
-| ARC Console | 不进入产品 | 不属于 StockPro 产品能力 |
+| 套利中心 | `/strategy`（旧 `/arbitrage` 跳转） | A 股策略家族与价差研究，不保留跨所/资金费率语义 |
+| 链上研究 | `/data`（旧 `/onchain` 跳转） | 资金流、股东、机构与基本面数据 |
+| 订单流 | `/market`（旧 `/orderflow` 跳转） | A 股盘口、成交额、交易日与来源证据 |
+| ARC Console | `/ai-lab`（旧 `/arc` 跳转） | A 股 AI 研究任务、证据与失败状态 |
+| 交易/Paper | `/paper`（旧 `/trading`、`/live` 跳转） | A 股模拟盘现金账本；不注册真实下单 |
 | 数字资产实盘 | 不注册 | 无真实交易入口 |
 
 ### 5.3 页面继承标准
@@ -143,6 +146,8 @@ Wave 0 当前证据：启动入口仅注册 `/api/health` 与 `/api/auth/me` 两
 - 只替换领域字段、数据源和交易语义，不随意降低信息密度。
 - 所有页面覆盖 Loading、Empty、Partial、Stale、Error 和权限不足。
 - 真实数据为空时展示诚实空态，不为视觉效果创建业务记录。
+- 固定 BitPro 前端树的每个源文件必须由 `frontend-parity.json` 证明为字节级一致或带固定
+  源哈希的 A 股适配；未分类、源漂移、目标缺失或空适配契约均阻断完成审计。
 
 ## 6. 统一当前 API 合同
 

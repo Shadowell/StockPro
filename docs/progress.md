@@ -1,5 +1,21 @@
 # Progress Log
 
+## BitPro 逐文件复刻对账（2026-08-26）
+
+- 新增机器可执行的前端 parity 审计；对固定 BitPro SHA `2e4b90c3` 的 78 个
+  TypeScript/TSX/CSS 源文件逐项核对。当前结果为 41 个字节级一致、37 个固定源哈希的
+  A 股适配、0 个未分类，审计产物纳入 completion gate `PARITY-001`。
+- 12 个不再保持同路径的 BitPro 源文件以逐字 `.disabled` 参考副本保存；活动产品通过
+  manifest 将其映射到 A 股行情、股票池、数据、策略、模拟盘与 AI 工作台，不把隔离副本
+  计作功能完成证明。
+- 旧 `/live`、`/trading`、`/arbitrage`、`/onchain`、`/orderflow`、`/arc` 深链分别解析到
+  A 股模拟盘、策略、数据、行情和 AI Owner 页面；`/live-real` 继续明确不可用，侧栏不显示
+  实盘、链上、ARC、套利或期货入口。
+- focused Python 6 项、TypeScript、零告警 lint、生产构建、25 项 Mock Playwright 全绿；
+  前后端已干净重启，`4444`/`4445` 监听且 `/api/health` 返回 `rebuild_safe`。
+- 仍未完成：真实数据库全量 `scripts/check.sh`、最终桌面/移动端截图对照、Paper 连续性、
+  生产部署与 deployed SHA 验收；本目标尚未关闭，也未推送或部署。
+
 ## 运营闭环恢复 + 7策略晋级模拟盘（2026-08-25）
 
 本轮在 BitPro-first 重建底座上恢复生产级运营能力，并完成首轮 A 股策略研究晋级。

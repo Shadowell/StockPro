@@ -1,5 +1,6 @@
 [
   {"id":"BASE-001","required":true,"description":"BitPro fixed source provenance"},
+  {"id":"PARITY-001","required":true,"description":"Every BitPro frontend source file is exact or has a pinned A-share adaptation contract"},
   {"id":"API-001","required":true,"description":"Only current /api contract"},
   {"id":"DB-001","required":true,"description":"PostgreSQL sole runtime truth"},
   {"id":"PAPER-001","required":true,"description":"Per-environment Paper continuity"},

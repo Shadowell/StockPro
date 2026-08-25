@@ -45,8 +45,9 @@ def _e2e_evidence(path:Path)->dict[str,object]:
     return {"status":"passed"if expected>0 and failed==0 else"failed","expected":expected,"failed":failed,"sha256":_sha(path)}
 
 def collect(root:Path,mode:str,production_manifest:Path|None=None,production_canary:Path|None=None)->dict[str,dict[str,object]]:
-    artifacts=root/".codex-artifacts/rebuild";safety_path=artifacts/"safety.json";junit=artifacts/"backend-tests.xml";e2e=root/"frontend/test-results/e2e-results.json"
+    artifacts=root/".codex-artifacts/rebuild";safety_path=artifacts/"safety.json";parity_path=artifacts/"frontend-parity.json";junit=artifacts/"backend-tests.xml";e2e=root/"frontend/test-results/e2e-results.json"
     safety=json.loads(safety_path.read_text())if safety_path.exists()else{};pytest_ev=_pytest_evidence(junit);e2e_ev=_e2e_evidence(e2e)
+    parity=json.loads(parity_path.read_text())if parity_path.exists()else{}
     source_manifest_path=root/"docs/reference/bitpro-baseline/source.json";source_manifest=json.loads(source_manifest_path.read_text())if source_manifest_path.exists()else{};source_repo=Path(str(source_manifest.get("source_repo")or""));source_fields_ok=source_manifest.get("source_sha")==BITPRO_SOURCE_SHA and set(source_manifest.get("copied_roots")or[])=={"backend","frontend","packages","scripts","tests"}
     try:subprocess.run(["git","cat-file","-e",f"{BITPRO_SOURCE_SHA}^{{commit}}"],cwd=source_repo,check=True,capture_output=True);base_status="passed"if source_fields_ok else"failed"
     except (subprocess.CalledProcessError,OSError):base_status="failed"
@@ -72,6 +73,7 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
         deployed=json.loads(production_manifest.read_text());canary=json.loads(production_canary.read_text());comparison=dict(deployed.get("comparison_to_pre")or{});deploy_ok=bool(comparison.get("passed"))and int(deployed.get("counts",{}).get("migrations",0))==38 and bool(deployed.get("deployed_sha"))and bool(canary.get("passed"));deploy_evidence={"status":"passed"if deploy_ok else"failed","deployed_sha":deployed.get("deployed_sha"),"migrations":deployed.get("counts",{}).get("migrations"),"manifest_comparison":comparison,"canary_routes":len(canary.get("routes",[])),"canary_passed":canary.get("passed")}
     return {
         "BASE-001":{"status":base_status,"source_sha":BITPRO_SOURCE_SHA,"manifest_sha256":_sha(source_manifest_path)if source_manifest_path.exists()else None},
+        "PARITY-001":{"status":"passed"if parity.get("passed")and int(parity.get("counts",{}).get("source",0))>0 else"failed","counts":parity.get("counts",{}),"blockers":parity.get("blockers",[]),"manifest_sha256":_sha(parity_path)if parity_path.exists()else None},
         "API-001":{"status":"passed"if safety.get("passed")and int(safety.get("active_versioned_api_routes",1))==0 else"failed","safety_sha256":_sha(safety_path)if safety_path.exists()else None},
         "DB-001":db_evidence,
         "PAPER-001":paper_ev,
