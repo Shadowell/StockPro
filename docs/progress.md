@@ -3543,3 +3543,4 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - BitPro 201 行 FactorLab 原文件已逐字保存为 `_quarantine/BitProFactorLab.tsx.disabled`。它依赖 BitPro 独有的 ML task/trial/provider 与 SQLite 控制面，当前不能直接注册；默认 A 股因子页继续使用 PostgreSQL 目录、指标成熟、运行、相关性、快照和值浏览合同，不用空 API 伪装 ML 功能。
 - 因子 `tsc`、零警告 lint 和 Mock E2E 通过；pending Rank IC 仍保持 null 并显示原因，页面加载 mutation 0。
 - BitPro 对应盯盘源码 `WatchMarket.tsx`（765 行）与 `LiveAccountSummaryPanels` 已原样导入但未注册；默认 `/watch` 保持当前 A 股五工作区，只读 Paper 信号/订单/成交/规则/告警。TypeScript 与安全审计通过，活动 live 路由仍为 0。
+- BitPro 当前 `App.tsx`、`MainLayout.tsx` 与 `index.css` 已逐字保存为 `_quarantine/BitPro*.disabled` 基线；活动 App/MainLayout 保留 A 股 13 个 Owner 路由和 Paper-only 安全差异。BitPro 的 livePulse、progressShimmer、rowFadeIn 与 reduced-motion 动效已原样补入活动 `index.css`。

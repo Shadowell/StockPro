@@ -40,6 +40,10 @@ StockPro 当前启用 A股、ETF 和指数；为中国期货、美国股票和�
 
 ## 3. 仓库、分支和导入边界
 
+当前 BitPro `App.tsx`、`MainLayout.tsx` 与 `index.css` 的逐字基线副本保存在
+`frontend/src/_quarantine/*.disabled`。StockPro 活动壳层只允许 A 股路由映射、中文领域文案、
+Paper-only 安全边界和真实数据状态差异；套利、链上、真实交易与 ARC 不得因 1:1 复刻被重新注册。
+
 ### 3.1 隔离方式
 
 - 从当前 StockPro `main` 创建 `codex/bitpro-a-share-rebase`。
