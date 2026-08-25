@@ -35,6 +35,7 @@ def audit(requirements:list[dict[str,object]],evidence:Mapping[str,Mapping[str,o
     return CompletionAuditResult(not blockers,tuple(rows),tuple(blockers),evidence)
 
 def _sha(path:Path)->str:return hashlib.sha256(path.read_bytes()).hexdigest()
+def expected_migration_count(root:Path)->int:return len(tuple((root/"backend/postgres/migrations").glob("*.sql")))
 def _pytest_evidence(path:Path)->dict[str,object]:
     if not path.exists():return {"status":"missing","reason":"backend junit missing"}
     root=ET.parse(path).getroot();suites=[root]if root.tag=="testsuite"else list(root.findall("testsuite"));tests=sum(int(suite.attrib.get("tests",0))for suite in suites);failures=sum(int(suite.attrib.get("failures",0))+int(suite.attrib.get("errors",0))for suite in suites)
@@ -51,7 +52,7 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
     source_manifest_path=root/"docs/reference/bitpro-baseline/source.json";source_manifest=json.loads(source_manifest_path.read_text())if source_manifest_path.exists()else{};source_repo=Path(str(source_manifest.get("source_repo")or""));source_fields_ok=source_manifest.get("source_sha")==BITPRO_SOURCE_SHA and set(source_manifest.get("copied_roots")or[])=={"backend","frontend","packages","scripts","tests"}
     try:subprocess.run(["git","cat-file","-e",f"{BITPRO_SOURCE_SHA}^{{commit}}"],cwd=source_repo,check=True,capture_output=True);base_status="passed"if source_fields_ok else"failed"
     except (subprocess.CalledProcessError,OSError):base_status="failed"
-    database_url=os.environ.get("DATABASE_URL","");db_ok=database_url.startswith("postgresql://")and database_url.endswith("/stockpro_bitpro_rebase_dev")
+    expected_migrations=expected_migration_count(root);database_url=os.environ.get("DATABASE_URL","");db_ok=database_url.startswith("postgresql://")and database_url.endswith("/stockpro_bitpro_rebase_dev")
     db_evidence:dict[str,object]={"status":"failed"if not db_ok else"passed","target":"stockpro_bitpro_rebase_dev"if db_ok else"invalid"}
     paper_ev:dict[str,object]={"status":"missing"}
     if db_ok:
@@ -59,7 +60,7 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
             import psycopg
             with psycopg.connect(database_url,options="-c default_transaction_read_only=on")as connection:
                 with connection.cursor()as cursor:cursor.execute("SELECT count(*) FROM schema_migrations");migrations=int(cursor.fetchone()[0]);cursor.execute("SELECT count(*) FROM instrument_definitions WHERE asset_class='future'");future_count=int(cursor.fetchone()[0])
-            db_evidence.update({"status":"passed"if migrations==38 else"failed","migrations":migrations})
+            db_evidence.update({"status":"passed"if migrations==expected_migrations else"failed","migrations":migrations,"expected_migrations":expected_migrations})
             baseline=json.loads((artifacts/"baseline.json").read_text());current=capture_baseline(database_url,root);continuity=compare_continuity(baseline,current);paper_ev={"status":"passed"if continuity.passed else"failed","differences":[asdict(item)for item in continuity.differences],"counts":current["paper"]}
         except Exception as error:db_evidence={"status":"failed","error":str(error)};future_count=-1
     else:future_count=-1
@@ -70,7 +71,7 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
     active_total=sum(int(safety.get(key,0))for key in("registered_private_exchange_routes","active_sqlite_repository","active_versioned_api_routes","registered_live_routes","registered_crypto_jobs"))
     deploy_evidence:dict[str,object]={"status":"pending_final_confirmation"if mode=="pre-deploy"else"missing"}
     if mode=="post-deploy"and production_manifest and production_canary and production_manifest.exists()and production_canary.exists():
-        deployed=json.loads(production_manifest.read_text());canary=json.loads(production_canary.read_text());comparison=dict(deployed.get("comparison_to_pre")or{});deploy_ok=bool(comparison.get("passed"))and int(deployed.get("counts",{}).get("migrations",0))==38 and bool(deployed.get("deployed_sha"))and bool(canary.get("passed"));deploy_evidence={"status":"passed"if deploy_ok else"failed","deployed_sha":deployed.get("deployed_sha"),"migrations":deployed.get("counts",{}).get("migrations"),"manifest_comparison":comparison,"canary_routes":len(canary.get("routes",[])),"canary_passed":canary.get("passed")}
+        deployed=json.loads(production_manifest.read_text());canary=json.loads(production_canary.read_text());comparison=dict(deployed.get("comparison_to_pre")or{});deploy_ok=bool(comparison.get("passed"))and int(deployed.get("counts",{}).get("migrations",0))==expected_migrations and bool(deployed.get("deployed_sha"))and bool(canary.get("passed"));deploy_evidence={"status":"passed"if deploy_ok else"failed","deployed_sha":deployed.get("deployed_sha"),"migrations":deployed.get("counts",{}).get("migrations"),"expected_migrations":expected_migrations,"manifest_comparison":comparison,"canary_routes":len(canary.get("routes",[])),"canary_passed":canary.get("passed")}
     return {
         "BASE-001":{"status":base_status,"source_sha":BITPRO_SOURCE_SHA,"manifest_sha256":_sha(source_manifest_path)if source_manifest_path.exists()else None},
         "PARITY-001":{"status":"passed"if parity.get("passed")and int(parity.get("counts",{}).get("source",0))>0 else"failed","counts":parity.get("counts",{}),"blockers":parity.get("blockers",[]),"manifest_sha256":_sha(parity_path)if parity_path.exists()else None},

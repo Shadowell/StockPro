@@ -54,7 +54,9 @@ for (const [viewport, width, height] of viewports) {
     await page.goto(base + route);
     await page.getByTestId('main-layout').waitFor({ timeout: 120000 });
     await page.locator('[data-operator-page]').waitFor({ timeout: 120000 });
-    try { await page.waitForLoadState('networkidle', { timeout: 120000 }); } catch {}
+    // Operator pages intentionally poll health/runtime evidence, so networkidle is
+    // not a valid readiness signal. The shell and page contract above are the gates.
+    await page.waitForTimeout(300);
     const file = `${slug}-${viewport}.png`;
     await page.screenshot({ path: `${dir}/${file}`, fullPage: true });
     captures.push({ route, viewport, url: page.url(), artifact: file, captured_at: new Date().toISOString(), duration_ms: Date.now() - started, source_updated_at: null, console_errors: errors, writes });
