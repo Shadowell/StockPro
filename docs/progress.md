@@ -3529,3 +3529,7 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 通道配置只读汇总 delivery 状态，策略列表按不可变版本/Paper lineage 聚合，管理员只能把 `new` 信号确认为 confirmed；页面没有买入、卖出、下单或真实发送动作。信号/盯盘 E2E、`tsc`、零警告 lint 和安全审计通过。
 - 真实管理员浏览器显示 BitPro 四段信号工作台；当前 PostgreSQL 审计范围没有策略信号或投递记录，页面如实显示空状态，没有自动构造行或触发任何写操作，控制台无业务错误。
 - 信号切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过。
+- 复盘中心完成当前 BitPro 671 行源码导入；默认页面恢复“复盘中心”页头、KPI、策略分层评分矩阵、策略好坏榜、复盘结论和证据时间线，并唯一读取当前交易日 review/items/metrics。
+- 评分矩阵只按持久化 metric code 分组，榜单只消费 strategy/performance evidence；GET 不自动 assemble/save/seal，sealed 仍不可改。复盘页 `tsc`、零警告 lint 和 Mock E2E 通过。
+- 真实管理员浏览器读取 sealed 复盘 `2025-01-02`：14 个证据对象、14 个指标、5 个风险事件、14 组评分矩阵、策略/表现榜、已封存总结与完整市场→股票池→策略→风险→订单→成交→权益时间线可见；`writes_performed=false`，控制台无业务错误。
+- 复盘切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过；最终路由标题同步为“复盘中心”。
