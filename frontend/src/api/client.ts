@@ -158,7 +158,7 @@ export const operationsCurrentApi = {
 };
 
 export const monitorCurrentApi = {
-  summary: async (scope: 'business' | 'audit' = 'business'): Promise<MonitorSummary> => apiClient.get('/monitor/summary', { params: { scope } }),
+  summary: async (scope: 'business' | 'audit' = 'business'): Promise<MonitorSummary> => apiClient.get('/monitor/summary', { params: { scope }, timeout: 60_000 }),
 };
 
 export const reviewCurrentApi = {

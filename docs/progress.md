@@ -3513,3 +3513,7 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 真实管理员浏览器从 PostgreSQL 首屏读取 20/79 个 run：18 个完成、2 个失败，收益/回撤/Sharpe/成交与创建时间均来自当前 API；BitPro 左侧筛选、排序、对比和加载更多可见，未生成演示数据。
 - 首次详情验收发现 BitPro 原实现并发读取 core+五类 ledger，在远程 PostgreSQL 下 6 个请求同时超过 30 秒。新增 RED 浏览器合同后改为核心详情先打开、完整证据显式按需串行加载；真实核心详情已显示策略收益 20.81%、回撤 19.56%、Sharpe 1.55、沪深300基准和 A 股审计模块。移动端筛选 key 警告同时修复。
 - 回测完整前端生产构建、零警告 lint 和 25/25 Mock 浏览器矩阵通过；最终路由合同标题同步为当前 BitPro 的“回测”。
+- 监控页从 26 行薄壳升级为当前 BitPro 2386 行参考实现加 A 股默认工作台。默认 `/monitor` 复用 BitPro 的页头、双总览、折叠监控配置、运行区和指标卡节奏，但唯一读取 `/api/monitor/summary`；原 OKX/实盘实现作为不可达 named source 保留，安全扫描标记 quarantine，未注册任何 live 路由。
+- A 股监控显示 Paper 实例、运行中、健康异常、活动告警、整体状态、服务、Dataset、通知投递、逐实例生命周期/健康/心跳/权益/账本差异，以及服务/数据和调度证据；真实券商、USDT、多空比、资金费率和强平模块不渲染。监控 `tsc`、零警告 lint、Mock E2E 与安全审计通过。
+- 真实管理员浏览器显示 22 个 Paper、21 个 running、6 个健康异常、200 个活动告警、762 个 delivered 通知、3 项服务证据和完整实例表；可见 fresh/failed/exhausted 与 running/stopped 独立，控制台没有数字资产/实盘请求。慢查询窗口提升到 60 秒并用 in-flight ref 阻止 30 秒轮询重叠。
+- 监控切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过。
