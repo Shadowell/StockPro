@@ -25,25 +25,29 @@ const base = process.env.CAPTURE_BASE;
 const dir = process.env.CAPTURE_OUTPUT;
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext();
-const page = await context.newPage();
-await page.goto(base + '/');
-await page.waitForFunction(() =>
+const loginPage = await context.newPage();
+await loginPage.goto(base + '/');
+await loginPage.waitForFunction(() =>
   document.querySelector('[data-testid="main-layout"]') ||
   [...document.querySelectorAll('h1')].some((item) => item.textContent?.includes('登录 StockPro')),
   { timeout: 120000 },
 );
-if (await page.getByRole('heading', { name: '登录 StockPro' }).isVisible()) {
-  await page.getByRole('button', { name: '管理员登录' }).click();
-  await page.getByText('管理员账号').locator('..').locator('input').fill(process.env.STOCKPRO_CAPTURE_USERNAME || 'admin');
-  await page.getByText('密码', { exact: true }).locator('..').locator('input').fill(process.env.STOCKPRO_CAPTURE_PASSWORD || '');
-  await page.getByRole('button', { name: '进入工作台' }).click();
-  await page.getByTestId('main-layout').waitFor({ timeout: 120000 });
+if (await loginPage.getByRole('heading', { name: '登录 StockPro' }).isVisible()) {
+  await loginPage.getByRole('button', { name: '管理员登录' }).click();
+  await loginPage.getByText('管理员账号').locator('..').locator('input').fill(process.env.STOCKPRO_CAPTURE_USERNAME || 'admin');
+  await loginPage.getByText('密码', { exact: true }).locator('..').locator('input').fill(process.env.STOCKPRO_CAPTURE_PASSWORD || '');
+  await loginPage.getByRole('button', { name: '进入工作台' }).click();
+  await loginPage.getByTestId('main-layout').waitFor({ timeout: 120000 });
 }
+await loginPage.close();
 const captures = [];
 for (const [viewport, width, height] of viewports) {
-  await page.setViewportSize({ width, height });
   for (const [slug, route] of routes) {
     console.error(`[capture] ${viewport} ${route}`);
+    // Use a fresh page for every route so chart instances, timers, and listeners
+    // from a previous operator workspace cannot contaminate later captures.
+    const page = await context.newPage();
+    await page.setViewportSize({ width, height });
     const errors = [];
     const writes = [];
     const onConsole = (message) => { if (message.type() === 'error') errors.push(message.text()); };
@@ -55,13 +59,26 @@ for (const [viewport, width, height] of viewports) {
     await page.getByTestId('main-layout').waitFor({ timeout: 120000 });
     await page.locator('[data-operator-page]').waitFor({ timeout: 120000 });
     // Operator pages intentionally poll health/runtime evidence, so networkidle is
-    // not a valid readiness signal. The shell and page contract above are the gates.
+    // not a valid readiness signal. Require the visible loading contract to settle
+    // into either real data or an honest empty/error state before capturing.
+    await page.waitForTimeout(500);
+    await page.waitForFunction(() => {
+      if (document.querySelector('.animate-pulse')) return false;
+      const pending = /(正在加载|加载中|读取中)/;
+      return ![...document.querySelectorAll('body *')].some((element) => {
+        if (!pending.test(element.textContent || '')) return false;
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      });
+    }, { timeout: 120000 });
     await page.waitForTimeout(300);
     const file = `${slug}-${viewport}.png`;
     await page.screenshot({ path: `${dir}/${file}`, fullPage: true });
     captures.push({ route, viewport, url: page.url(), artifact: file, captured_at: new Date().toISOString(), duration_ms: Date.now() - started, source_updated_at: null, console_errors: errors, writes });
     page.off('console', onConsole);
     page.off('request', onRequest);
+    await page.close();
   }
 }
 await browser.close();
