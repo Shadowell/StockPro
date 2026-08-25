@@ -1,288 +1,612 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { Activity, BarChart3, BookOpen, Database, Star, TrendingUp } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
-import { researchApi } from '../api/client'
-import MarketWatchlist from '../components/MarketWatchlist'
-import OrderBookChart from '../components/OrderBookChart'
-import SymbolSearch from '../components/SymbolSearch'
-import type { Kline, OrderBook } from '../types'
-import type {
-  DailyBarsResponse,
-  InstrumentContract,
-  InstrumentDetailView,
-  MarketWatchlistEntry,
-  OrderBookView,
-} from '../types/research'
-import { formatAshareSymbol } from '../utils/ashareSymbol'
+import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
+import { RefreshCw, TrendingUp } from 'lucide-react';
+import clsx from 'clsx';
+import { useStore } from '../stores/useStore';
+import { marketApi, fundingApi } from '../api/client';
+import {
+  useTickerWebSocket,
+  useKlineWebSocket,
+  useOrderbookWebSocket,
+  type RealtimeTicker,
+} from '../hooks/useWebSocket';
+import OrderBookChart from '../components/OrderBookChart';
+import SymbolSearch from '../components/SymbolSearch';
+import type { FundingRate, Kline, OrderBook } from '../types';
+import { formatTimeframeLabel } from '../utils/timeframe';
 
+const KlineChart = lazy(() => import('../components/KlineChart'));
 
-const KlineChart = lazy(() => import('../components/KlineChart'))
-type AssetFilter = 'all' | 'stock' | 'etf' | 'index'
-type MarketTab = 'chart' | 'orderbook' | 'watchlist' | 'evidence'
+const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
+const REFRESH_INTERVALS: Record<string, number> = {
+  '1m': 10_000,
+  '5m': 15_000,
+  '15m': 30_000,
+  '1h': 60_000,
+  '4h': 120_000,
+  '1d': 300_000,
+};
 
-const numberValue = (value: string | number | null | undefined) => {
-  const parsed = Number(value)
-  return value == null || !Number.isFinite(parsed) ? null : parsed
+/** 1m：拉取最近 6h（360 根）；默认视口约 2h 实盘（120 根），可左滑看更早 */
+const KLINE_LIMIT_1M = 360;
+const VISIBLE_1M_REAL_BARS = 120;
+const MIN_KLINES_TO_RENDER = 20;
+const MARKET_EMA_PERIODS = [5, 10, 20, 30];
+const RECENT_TRADES_LIMIT = 24;
+
+type MarketType = 'swap' | 'spot';
+
+type MarketTradeRow = {
+  id?: string | number;
+  timestamp?: number;
+  datetime?: string;
+  side?: string;
+  price?: number;
+  amount?: number;
+  cost?: number;
+};
+
+type MarketDataCacheEntry = {
+  klines?: Kline[];
+  marketIndicators?: Record<string, Array<number | null>>;
+  marketIndicatorTimestamps?: number[];
+  orderbook?: OrderBook | null;
+  trades?: MarketTradeRow[];
+  lastUpdateMs?: number;
+};
+
+function symbolBase(symbol: string): string {
+  return String(symbol || '').split('/')[0].replace(/-USDT-SWAP$/i, '').toUpperCase();
 }
 
-const formatNumber = (value: string | number | null | undefined, digits = 2) => {
-  const parsed = numberValue(value)
-  return parsed == null ? '—' : parsed.toLocaleString('zh-CN', { maximumFractionDigits: digits })
+function symbolForMarketType(symbol: string, marketType: MarketType): string {
+  const base = symbolBase(symbol) || 'BTC';
+  return marketType === 'swap' ? `${base}/USDT:USDT` : `${base}/USDT`;
 }
 
-const formatPct = (value: string | number | null | undefined) => {
-  const parsed = numberValue(value)
-  return parsed == null ? '—' : `${parsed >= 0 ? '+' : ''}${parsed.toFixed(2)}%`
+function marketDataCacheKey(exchange: string, symbol: string, timeframe: string): string {
+  return [exchange, symbol, timeframe].join('|');
 }
 
+function formatMarketCompact(value: number | null | undefined, digits = 2): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  if (abs >= 1e8) return `${(value / 1e8).toFixed(2)}亿`;
+  if (abs >= 1e4) return `${(value / 1e4).toFixed(2)}万`;
+  return value.toLocaleString(undefined, { maximumFractionDigits: digits });
+}
 
-export default function Market() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<AssetFilter>('all')
-  const [options, setOptions] = useState<InstrumentContract[]>([])
-  const [searching, setSearching] = useState(false)
-  const [selected, setSelected] = useState<InstrumentDetailView | null>(null)
-  const [daily, setDaily] = useState<DailyBarsResponse | null>(null)
-  const [orderBook, setOrderBook] = useState<OrderBookView | null>(null)
-  const [watchlist, setWatchlist] = useState<MarketWatchlistEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+function formatFundingRatePct(rate: number | null | undefined): string {
+  if (rate == null || !Number.isFinite(rate)) return '—';
+  return `${(rate * 100).toFixed(4)}%`;
+}
 
-  const symbol = searchParams.get('symbol') || ''
-  const tab = (searchParams.get('tab') as MarketTab | null) || 'chart'
+function formatTradeTime(timestamp?: number): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return '—';
+  return new Date(timestamp).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+export function BitProMarketSource() {
+  const { selectedExchange, selectedSymbol, setSelectedSymbol } = useStore();
+  const [klines, setKlines] = useState<Kline[]>([]);
+  const [marketIndicators, setMarketIndicators] = useState<Record<string, Array<number | null>>>({});
+  const [marketIndicatorTimestamps, setMarketIndicatorTimestamps] = useState<number[]>([]);
+  const [orderbook, setOrderbook] = useState<OrderBook | null>(null);
+  const [recentTrades, setRecentTrades] = useState<MarketTradeRow[]>([]);
+  const [fundingRate, setFundingRate] = useState<FundingRate | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [allSymbols, setAllSymbols] = useState<string[]>([]);
+  const [marketType, setMarketType] = useState<MarketType>('swap');
+  const [timeframe, setTimeframe] = useState('1m');
+  const selectedSymbolMatchesMarketType = marketType === 'swap'
+    ? selectedSymbol.includes(':') || /-SWAP$/i.test(selectedSymbol)
+    : !selectedSymbol.includes(':') && !/-SWAP$/i.test(selectedSymbol);
+
+  const { ticker, isConnected } = useTickerWebSocket(selectedExchange, selectedSymbol);
+  const { kline: wsKline } = useKlineWebSocket(selectedExchange, selectedSymbol, timeframe);
+  const { orderbook: wsOrderbook } = useOrderbookWebSocket(selectedExchange, selectedSymbol);
+
+  // 价格闪烁动画状态
+  const prevPriceRef = useRef<number>(0);
+  const [priceFlash, setPriceFlash] = useState<'up' | 'down' | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // 刷新按钮旋转动画（1s）
+  const [refreshSpin, setRefreshSpin] = useState(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // 自动刷新相关
+  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const marketDataRequestSeqRef = useRef(0);
+  const marketLoadingRequestSeqRef = useRef(0);
+  const marketDataCacheRef = useRef<Map<string, MarketDataCacheEntry>>(new Map());
 
   useEffect(() => {
-    if (!query.trim()) {
-      setOptions([])
-      return
-    }
-    const timer = window.setTimeout(() => {
-      setSearching(true)
-      researchApi.searchInstruments(query, filter === 'all' ? null : filter, 30)
-        .then((response) => setOptions(response.items))
-        .catch(() => setOptions([]))
-        .finally(() => setSearching(false))
-    }, 180)
-    return () => window.clearTimeout(timer)
-  }, [filter, query])
+    let cancelled = false;
+    marketApi.getSymbols(selectedExchange, 'USDT', marketType)
+      .then((res) => {
+        if (cancelled) return;
+        const symbols = res.symbols || [];
+        const normalizedSymbol = symbolForMarketType(selectedSymbol, marketType);
+        const fallbackSymbol = symbols.find((symbol) => symbolBase(symbol) === symbolBase(selectedSymbol)) || symbols[0];
+        const nextSymbol = symbols.includes(normalizedSymbol)
+          ? normalizedSymbol
+          : (fallbackSymbol || normalizedSymbol);
 
-  const loadWatchlist = async () => {
-    try {
-      setWatchlist((await researchApi.watchlist()).items)
-    } catch {
-      setWatchlist([])
-    }
-  }
-
-  useEffect(() => {
-    void loadWatchlist()
-  }, [])
-
-  useEffect(() => {
-    if (!symbol) {
-      setSelected(null)
-      setDaily(null)
-      setOrderBook(null)
-      return
-    }
-    let cancelled = false
-    setLoading(true)
-    setError('')
-    Promise.all([
-      researchApi.instrumentDetail(symbol),
-      researchApi.dailyBars(symbol, 500),
-      researchApi.orderBook(symbol),
-    ])
-      .then(([detail, bars, depth]) => {
-        if (cancelled) return
-        setSelected(detail)
-        setDaily(bars)
-        setOrderBook(depth)
-        setQuery(detail.instrument.name || detail.instrument.symbol)
+        setAllSymbols(symbols);
+        if (nextSymbol && nextSymbol !== selectedSymbol) {
+          setSelectedSymbol(nextSymbol);
+        }
       })
-      .catch((requestError: any) => {
-        if (!cancelled) setError(requestError?.response?.data?.detail || requestError?.message || '证券详情读取失败')
+      .catch(console.error);
+    return () => { cancelled = true; };
+  }, [selectedExchange, selectedSymbol, setSelectedSymbol, marketType]);
+
+  const applyMarketDataCacheEntry = useCallback(function applyMarketDataCacheEntry(entry?: MarketDataCacheEntry | null): boolean {
+    if (!entry?.klines?.length) return false;
+    setKlines(entry.klines);
+    setMarketIndicators(entry.marketIndicators || {});
+    setMarketIndicatorTimestamps(entry.marketIndicatorTimestamps || []);
+    setOrderbook(entry.orderbook || null);
+    setRecentTrades(entry.trades || []);
+    if (entry.lastUpdateMs) setLastUpdate(new Date(entry.lastUpdateMs));
+    return true;
+  }, []);
+
+  const updateMarketDataCache = useCallback((cacheKey: string, patch: MarketDataCacheEntry) => {
+    const next = {
+      ...(marketDataCacheRef.current.get(cacheKey) || {}),
+      ...patch,
+    };
+    marketDataCacheRef.current.set(cacheKey, next);
+  }, []);
+
+  const fetchData = useCallback((quiet = false) => {
+    if (!selectedSymbol || !selectedSymbolMatchesMarketType) return;
+
+    const requestSeq = ++marketDataRequestSeqRef.current;
+    const isStaleMarketDataRequest = () => requestSeq !== marketDataRequestSeqRef.current;
+    const cacheKey = marketDataCacheKey(selectedExchange, selectedSymbol, timeframe);
+    if (!quiet) {
+      setLoading(true);
+      marketLoadingRequestSeqRef.current = requestSeq;
+    }
+
+    const klineLimit = timeframe === '1m' ? KLINE_LIMIT_1M : 200;
+    const klineRequest = marketApi.getKlines(selectedExchange, selectedSymbol, timeframe, klineLimit);
+    const indicatorsRequest = marketApi.getTechnicalIndicators(
+      selectedExchange,
+      selectedSymbol,
+      timeframe,
+      klineLimit,
+      undefined,
+      undefined,
+      MARKET_EMA_PERIODS
+    );
+    const orderbookRequest = marketApi.getOrderbook(selectedExchange, selectedSymbol, 20);
+    const tradesRequest = marketApi.getTrades(selectedExchange, selectedSymbol, RECENT_TRADES_LIMIT);
+    const fundingRequest = marketType === 'swap'
+      ? fundingApi.getRate(selectedExchange, selectedSymbol).catch(() => null)
+      : Promise.resolve(null);
+
+    klineRequest.then((klinesData) => {
+      if (isStaleMarketDataRequest()) return;
+      const lastUpdateMs = Date.now();
+      setKlines(klinesData);
+      setLastUpdate(new Date(lastUpdateMs));
+      updateMarketDataCache(cacheKey, {
+        klines: klinesData,
+        lastUpdateMs,
+      });
+    })
+      .catch((error) => {
+        if (!isStaleMarketDataRequest()) console.error(error);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!quiet && marketLoadingRequestSeqRef.current === requestSeq) setLoading(false);
+      });
+
+    indicatorsRequest
+      .then((indicatorsData) => {
+        if (isStaleMarketDataRequest()) return;
+        setMarketIndicators(indicatorsData.series || {});
+        setMarketIndicatorTimestamps(indicatorsData.timestamps || []);
+        updateMarketDataCache(cacheKey, {
+          marketIndicators: indicatorsData.series || {},
+          marketIndicatorTimestamps: indicatorsData.timestamps || [],
+        });
       })
-    return () => { cancelled = true }
-  }, [symbol])
+      .catch((error) => {
+        if (!isStaleMarketDataRequest()) console.error(error);
+      });
 
-  const klines = useMemo<Kline[]>(() => (daily?.items || []).map((bar) => ({
-    timestamp: new Date(`${bar.date}T00:00:00+08:00`).getTime(),
-    open: Number(bar.open),
-    high: Number(bar.high),
-    low: Number(bar.low),
-    close: Number(bar.close),
-    volume: Number(bar.volume),
-    quote_volume: bar.turnover == null ? undefined : Number(bar.turnover),
-  })), [daily])
+    orderbookRequest
+      .then((orderbookData) => {
+        if (isStaleMarketDataRequest()) return;
+        setOrderbook(orderbookData);
+        updateMarketDataCache(cacheKey, { orderbook: orderbookData });
+      })
+      .catch((error) => {
+        if (!isStaleMarketDataRequest()) console.error(error);
+      });
 
-  const depth = useMemo<OrderBook | null>(() => {
-    if (!selected || !orderBook || orderBook.data_status === 'empty') return null
-    return {
-      exchange: selected.instrument.exchange,
-      symbol: selected.instrument.symbol,
-      bids: orderBook.bids,
-      asks: orderBook.asks,
+    tradesRequest
+      .then((tradesData) => {
+        if (isStaleMarketDataRequest()) return;
+        const rows = Array.isArray(tradesData) ? tradesData : [];
+        setRecentTrades(rows);
+        updateMarketDataCache(cacheKey, { trades: rows });
+      })
+      .catch((error) => {
+        if (!isStaleMarketDataRequest()) console.error(error);
+      });
+
+    fundingRequest
+      .then((fundingData) => {
+        if (isStaleMarketDataRequest()) return;
+        setFundingRate(fundingData);
+      })
+      .catch(() => {
+        if (isStaleMarketDataRequest()) return;
+        setFundingRate(null);
+      });
+  }, [selectedExchange, selectedSymbol, selectedSymbolMatchesMarketType, timeframe, marketType, updateMarketDataCache]);
+
+
+  // 初始加载 & 参数变化时重新拉取
+  useEffect(() => {
+    if (!selectedSymbol) return;
+    const cacheKey = marketDataCacheKey(selectedExchange, selectedSymbol, timeframe);
+    const cachedEntry = marketDataCacheRef.current.get(cacheKey);
+    if (!applyMarketDataCacheEntry(cachedEntry)) {
+      setKlines([]);
+      setMarketIndicators({});
+      setMarketIndicatorTimestamps([]);
+      setOrderbook(null);
+      setRecentTrades([]);
+      setFundingRate(null);
     }
-  }, [orderBook, selected])
+    fetchData(Boolean(cachedEntry?.klines?.length));
+  }, [applyMarketDataCacheEntry, fetchData, selectedExchange, selectedSymbol, timeframe]);
 
-  const selectInstrument = (instrument: InstrumentContract) => {
-    setSearchParams({ symbol: instrument.symbol, tab: 'chart' })
-  }
+  // K 线 / 订单簿自动轮询
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    const base = REFRESH_INTERVALS[timeframe] || 15_000;
+    const pollMs = isConnected ? Math.max(base, 30_000) : base;
+    intervalRef.current = setInterval(() => fetchData(true), pollMs);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [fetchData, timeframe, isConnected]);
 
-  const changeTab = (next: MarketTab) => {
-    const params = new URLSearchParams(searchParams)
-    params.set('tab', next)
-    setSearchParams(params)
-  }
+  // WebSocket kline 增量更新（主驱动）
+  useEffect(() => {
+    if (!wsKline || !selectedSymbol) return;
+    const bar = wsKline as any;
+    if (!bar.timestamp) return;
+    setKlines((prev) => {
+      if (prev.length === 0) return prev;
+      const next = [...prev];
+      const last = next[next.length - 1];
+      const sameTs = last && Number(last.timestamp) === Number(bar.timestamp);
+      if (sameTs) {
+        const vol = Number(bar.volume ?? 0);
+        const cl = Number(bar.close);
+        const qv =
+          bar.quote_volume != null && Number.isFinite(Number(bar.quote_volume))
+            ? Number(bar.quote_volume)
+            : cl * vol;
+        next[next.length - 1] = {
+          ...last,
+          open: Number(bar.open),
+          high: Number(bar.high),
+          low: Number(bar.low),
+          close: cl,
+          volume: vol,
+          quote_volume: qv,
+          timestamp: Number(bar.timestamp),
+        } as any;
+      } else {
+        const vol = Number(bar.volume ?? 0);
+        const cl = Number(bar.close);
+        const qv =
+          bar.quote_volume != null && Number.isFinite(Number(bar.quote_volume))
+            ? Number(bar.quote_volume)
+            : cl * vol;
+        next.push({
+          open: Number(bar.open),
+          high: Number(bar.high),
+          low: Number(bar.low),
+          close: cl,
+          volume: vol,
+          quote_volume: qv,
+          timestamp: Number(bar.timestamp),
+        } as any);
+      }
+      return next.slice(-(timeframe === '1m' ? KLINE_LIMIT_1M : 200));
+    });
+    setLastUpdate(new Date());
+  }, [wsKline, selectedSymbol, timeframe]);
 
-  const selectWatchlistSymbol = (nextSymbol: string) => {
-    setSearchParams({ symbol: nextSymbol, tab: 'chart' })
-  }
+  // WebSocket orderbook 增量更新（主驱动）
+  useEffect(() => {
+    if (!wsOrderbook) return;
+    setOrderbook(wsOrderbook as any);
+    setLastUpdate(new Date());
+  }, [wsOrderbook]);
+
+  const handleManualRefresh = () => {
+    fetchData(false);
+    setRefreshSpin(true);
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => setRefreshSpin(false), 1000);
+  };
+
+  // 实时价格 & OKX App 口径涨跌幅：优先用后端按 OKX sodUtc0 计算的当日涨跌幅。
+  const lastKline = klines[klines.length - 1];
+  const liveTicker = ticker as RealtimeTicker | null;
+  const currentPrice = liveTicker?.last || lastKline?.close || 0;
+  const priceChange = liveTicker?.changePercentToday ?? liveTicker?.change_percent_today ?? liveTicker?.changePercent ?? liveTicker?.change_percent ?? 0;
+  const high24h = liveTicker?.high;
+  const low24h = liveTicker?.low;
+  const volume24h = liveTicker?.baseVolume ?? liveTicker?.volume;
+  const quoteVolume24h = liveTicker?.quoteVolume ?? liveTicker?.quote_volume;
+  const markPrice = liveTicker?.markPrice ?? liveTicker?.mark_price;
+  const fundingRateValue = fundingRate?.currentRate;
+  const nextFundingLabel = fundingRate?.nextFundingTime
+    ? new Date(fundingRate.nextFundingTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
+    : null;
+
+  // 价格变化时触发闪烁
+  useEffect(() => {
+    if (currentPrice <= 0) return;
+    const prev = prevPriceRef.current;
+    if (prev > 0 && prev !== currentPrice) {
+      const direction = currentPrice > prev ? 'up' : 'down';
+      setPriceFlash(direction);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => setPriceFlash(null), 600);
+    }
+    prevPriceRef.current = currentPrice;
+    return () => { if (flashTimerRef.current) clearTimeout(flashTimerRef.current); };
+  }, [currentPrice]);
+
+  const priceFlashClass = priceFlash === 'up'
+    ? 'bg-green-500/20 text-green-400'
+    : priceFlash === 'down'
+      ? 'bg-red-500/20 text-red-400'
+      : 'text-white';
 
   return (
-    <div className="h-full overflow-y-auto bg-crypto-bg text-gray-100">
-      <header className="border-b border-crypto-border/70 bg-slate-950/35 px-4 py-4 sm:px-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-500/25 bg-blue-500/10">
-              <TrendingUp className="h-5 w-5 text-blue-300" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-300/80">
-                <Activity className="h-3 w-3" />
-                Market Terminal
-              </div>
-              <h1 className="mt-0.5 text-xl font-bold text-white">A股行情</h1>
-            </div>
-          </div>
-
-          <div className="flex w-full flex-col gap-2 xl:w-[640px]">
-            <div className="flex gap-2">
-              {(['all', 'stock', 'etf', 'index'] as const).map((item) => (
-                <button key={item} type="button" onClick={() => setFilter(item)} className={`rounded-md border px-2.5 py-1 text-[11px] ${filter === item ? 'border-blue-500/40 bg-blue-500/10 text-blue-200' : 'border-crypto-border text-gray-500'}`}>
-                  {{ all: '全部', stock: '股票', etf: 'ETF', index: '指数' }[item]}
-                </button>
-              ))}
-            </div>
-            <SymbolSearch query={query} onQueryChange={setQuery} options={options} loading={searching} onSelect={selectInstrument} />
-          </div>
+    <div className="h-full overflow-y-auto p-6">
+      {/* 顶部工具栏 */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <TrendingUp className="w-6 h-6 text-blue-400" />
+          <h1 className="text-2xl font-bold text-white">行情</h1>
         </div>
-      </header>
 
-      <main className="space-y-4 px-4 py-4 pb-7 sm:px-6">
-        {!symbol && (
-          <div className="rounded-xl border border-dashed border-crypto-border bg-crypto-card/60 p-10 text-center">
-            <BarChart3 className="mx-auto h-8 w-8 text-gray-600" />
-            <div className="mt-3 text-sm font-semibold text-gray-300">选择股票、ETF 或指数</div>
-            <div className="mt-1 text-xs text-gray-600">只读取 PostgreSQL 行情缓存，不自动同步 Provider。</div>
+        {/* 右侧工具区 — 刷新 · 连接状态 */}
+        <div className="market-action-strip flex flex-wrap items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card/80 p-1 shadow-sm shadow-black/10">
+          {/* 刷新按钮 */}
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={loading}
+            className={clsx(
+              'flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-all duration-200',
+              'text-gray-400 hover:bg-white/[0.06] hover:text-white',
+              loading && 'opacity-50 cursor-not-allowed',
+            )}
+            title="刷新行情"
+          >
+            <RefreshCw className={clsx('h-4 w-4 shrink-0', refreshSpin && 'animate-spin')} />
+            刷新
+          </button>
+
+          {/* 连接状态呼吸灯 */}
+          <div
+            className={clsx(
+              'market-connection-pill flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium',
+              isConnected ? 'bg-emerald-500/10 text-emerald-300' : 'bg-white/[0.03] text-gray-500'
+            )}
+          >
+            <span className="relative flex h-2 w-2">
+              {isConnected && (
+                <span className="absolute inset-0 rounded-full bg-[#2ebd85] animate-ping opacity-50" />
+              )}
+              <span
+                className={clsx(
+                  'relative inline-flex h-2 w-2 rounded-full',
+                  isConnected ? 'bg-[#2ebd85]' : 'bg-gray-500'
+                )}
+              />
+            </span>
+            <span>{isConnected ? '实时' : '离线'}</span>
           </div>
-        )}
-        {loading && <div className="h-40 animate-pulse rounded-xl border border-crypto-border bg-crypto-card" />}
-        {error && <div className="rounded-xl border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
 
-        {!loading && !error && selected && (
-          <>
-            <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold text-white">{selected.instrument.name || selected.instrument.symbol}</h2>
-                    <span className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 font-mono text-[10px] text-gray-500">{formatAshareSymbol(selected.instrument.symbol)}</span>
-                    <span className="rounded border border-blue-500/25 bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-200">{selected.instrument.asset_class.toUpperCase()}</span>
-                    <span className="rounded border border-crypto-border px-1.5 py-0.5 text-[10px] text-gray-400">{selected.instrument.lot_size}股</span>
-                  </div>
-                  <div className="mt-3 flex items-end gap-3">
-                    <span className="font-mono text-2xl font-semibold tabular-nums text-white">{formatNumber(selected.latest_price)}</span>
-                    <span className={`font-mono text-sm font-semibold ${numberValue(selected.change_pct) != null && Number(selected.change_pct) >= 0 ? 'text-up' : 'text-down'}`}>{formatPct(selected.change_pct)}</span>
-                  </div>
+        </div>
+      </div>
+
+      {loading && klines.length < MIN_KLINES_TO_RENDER ? (
+        <div className="flex-1 flex items-center justify-center text-gray-400">
+          加载中...
+        </div>
+      ) : (
+        <div className="grid min-h-[720px] grid-cols-1 gap-4 lg:grid-cols-4">
+          {/* K线图区域：flex 竖向占满格子高度，否则子元素 height:100% 失效，ECharts 主图会被压成一条 */}
+          <div className="lg:col-span-3 bg-crypto-card border border-crypto-border rounded-lg p-4 min-h-0 h-full flex flex-col">
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+              <div className="market-detail-controls flex min-w-0 flex-wrap items-center gap-3">
+                {/* 市场类型 */}
+                <div
+                  className="market-type-toggle flex overflow-hidden rounded-lg border border-crypto-border bg-crypto-card"
+                  data-active-market={marketType === 'swap' ? 'swap' : 'spot'}
+                >
+                  {([
+                    { value: 'swap', label: '合约' },
+                    { value: 'spot', label: '现货' },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setMarketType(option.value)}
+                      className={clsx(
+                        'h-9 px-3 text-xs font-semibold transition-colors',
+                        marketType === option.value
+                          ? 'bg-blue-600 text-white shadow-sm shadow-blue-900/30'
+                          : 'text-gray-500 hover:bg-gray-800/60 hover:text-gray-300'
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
-                  {[
-                    ['代码.市场', formatAshareSymbol(selected.instrument.symbol)],
-                    ['交易所', selected.instrument.exchange],
-                    ['计价货币', selected.instrument.currency],
-                    ['交易日历', selected.instrument.session_calendar || '—'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-lg border border-crypto-border bg-crypto-bg/50 px-3 py-2">
-                      <div className="text-gray-600">{label}</div><div className="mt-1 font-mono text-gray-300">{value || '—'}</div>
-                    </div>
+
+                {/* 交易对搜索 */}
+                <SymbolSearch
+                  value={selectedSymbol}
+                  onChange={setSelectedSymbol}
+                  allSymbols={allSymbols}
+                  marketType={marketType}
+                />
+              </div>
+              <div className="flex min-w-[13rem] flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
+                <div className={clsx(
+                  'inline-flex rounded px-2 py-0.5 text-2xl font-bold leading-none tabular-nums transition-all duration-500',
+                  priceFlashClass
+                )}>
+                  ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <span className={clsx('text-sm font-medium tabular-nums', priceChange >= 0 ? 'text-up' : 'text-down')}>
+                  {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
+                </span>
+                {lastUpdate && (
+                  <span className="text-[10px] text-gray-600 tabular-nums">
+                    {lastUpdate.toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+              <div className="market-detail-timeframe-controls ml-auto flex flex-wrap items-center justify-end gap-3">
+                {/* 时间周期 */}
+                <div className="flex bg-crypto-card border border-crypto-border rounded-lg overflow-hidden">
+                  {TIMEFRAMES.map((tf) => (
+                    <button
+                      key={tf}
+                      onClick={() => setTimeframe(tf)}
+                      className={clsx(
+                        'px-3 py-1.5 text-xs font-medium transition-colors',
+                        timeframe === tf
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/60'
+                      )}
+                    >
+                      {formatTimeframeLabel(tf)}
+                    </button>
                   ))}
                 </div>
               </div>
-            </section>
-
-            <div className="flex overflow-x-auto rounded-lg border border-crypto-border bg-crypto-card p-1">
-              {([
-                ['chart', 'K线', BarChart3],
-                ['orderbook', '盘口', BookOpen],
-                ['watchlist', '自选', Star],
-                ['evidence', '证据', Database],
-              ] as const).map(([id, label, Icon]) => (
-                <button key={id} type="button" onClick={() => changeTab(id)} className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-4 text-xs font-medium ${tab === id ? 'bg-blue-500/15 text-blue-200' : 'text-gray-500 hover:text-gray-200'}`}>
-                  <Icon className="h-3.5 w-3.5" />{label}
-                </button>
-              ))}
+              <div className="flex basis-full flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
+                <span className="tabular-nums">24h 高 <span className="text-gray-200">{formatMarketCompact(high24h, 4)}</span></span>
+                <span className="tabular-nums">24h 低 <span className="text-gray-200">{formatMarketCompact(low24h, 4)}</span></span>
+                <span className="tabular-nums">24h 量 <span className="text-gray-200">{formatMarketCompact(volume24h)}</span></span>
+                <span className="tabular-nums">24h 额 <span className="text-gray-200">{formatMarketCompact(quoteVolume24h)}</span></span>
+                {marketType === 'swap' && (
+                  <>
+                    <span className="tabular-nums">标记价 <span className="text-gray-200">{formatMarketCompact(markPrice, 4)}</span></span>
+                    <span className="tabular-nums">资金费率 <span className={clsx(Number(fundingRateValue || 0) >= 0 ? 'text-up' : 'text-down')}>{formatFundingRatePct(fundingRateValue)}</span></span>
+                    {nextFundingLabel && (
+                      <span className="tabular-nums">下次结算 <span className="text-gray-200">{nextFundingLabel}</span></span>
+                    )}
+                  </>
+                )}
+                <span className="ml-auto tabular-nums">共 {klines.length} 根K线</span>
+              </div>
             </div>
-
-            {tab === 'chart' && (
-              <section className="rounded-xl border border-crypto-border bg-crypto-card p-3">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500">
-                  <span>日线 · 未复权研究价格</span>
-                  <span>{daily?.source_label || '—'} · {daily?.data_status || 'empty'}</span>
-                </div>
-                {klines.length ? (
-                  <Suspense fallback={<div className="h-[460px] animate-pulse rounded-lg bg-crypto-bg" />}>
-                    <KlineChart data={klines} symbol={selected.instrument.symbol} height={460} showEMA showVolume defaultShowLastBars={120} />
+            <div className="flex-1 min-h-0 flex flex-col gap-2">
+              <div className="flex-1 min-h-[280px] min-w-0">
+                {klines.length >= MIN_KLINES_TO_RENDER ? (
+                  <Suspense
+                    fallback={
+                      <div className="flex h-full items-center justify-center text-gray-400">
+                        图表加载中...
+                      </div>
+                    }
+                  >
+                    <KlineChart
+                      data={klines}
+                      symbol={selectedSymbol}
+                      height="100%"
+                      showVolume
+                      showEMA
+                      showRSI={true}
+                      showMACD={true}
+                      emaPeriods={MARKET_EMA_PERIODS}
+                      indicatorSeries={marketIndicators}
+                      indicatorTimestamps={marketIndicatorTimestamps}
+                      showRealCandles
+                      defaultShowLastRealBars={
+                        timeframe === '1m' ? VISIBLE_1M_REAL_BARS : undefined
+                      }
+                    />
                   </Suspense>
                 ) : (
-                  <div className="flex h-72 items-center justify-center rounded-lg border border-dashed border-crypto-border text-xs text-gray-500">当前证券没有日线缓存</div>
+                  <div className="flex h-full items-center justify-center text-gray-400">
+                    K线数据加载中...
+                  </div>
                 )}
-              </section>
-            )}
+              </div>
+            </div>
+          </div>
 
-            {tab === 'orderbook' && (
-              <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
-                <OrderBookChart data={depth} unavailableReason={orderBook?.unavailable_reason || '当前证券没有盘口缓存'} />
-              </section>
-            )}
+          {/* 订单簿 + 最近成交 */}
+          <div className="bg-crypto-card border border-crypto-border rounded-lg p-4 overflow-hidden min-h-0 h-full flex flex-col gap-4 lg:min-h-0">
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <h2 className="mb-3 text-lg font-semibold text-white">订单簿</h2>
+              <OrderBookChart data={orderbook} maxRows={10} />
+            </div>
+            <div className="min-h-[220px] flex-1 overflow-hidden border-t border-crypto-border pt-3">
+              <h2 className="mb-3 text-lg font-semibold text-white">最近成交</h2>
+              <div className="grid grid-cols-3 pb-2 text-xs text-gray-400">
+                <span>时间</span>
+                <span className="text-right">价格</span>
+                <span className="text-right">数量</span>
+              </div>
+              <div className="max-h-[260px] space-y-0.5 overflow-y-auto pr-1">
+                {recentTrades.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-gray-500">暂无成交数据</div>
+                ) : (
+                  recentTrades.map((trade, index) => {
+                    const side = String(trade.side || '').toLowerCase();
+                    const isBuy = side === 'buy';
+                    const isSell = side === 'sell';
+                    return (
+                      <div
+                        key={`${trade.id ?? index}-${trade.timestamp ?? index}`}
+                        className="grid grid-cols-3 py-1 text-xs tabular-nums"
+                      >
+                        <span className="text-gray-500">{formatTradeTime(trade.timestamp)}</span>
+                        <span className={clsx('text-right', isBuy ? 'text-up' : isSell ? 'text-down' : 'text-gray-300')}>
+                          {formatMarketCompact(trade.price, 4)}
+                        </span>
+                        <span className="text-right text-gray-300">{formatMarketCompact(trade.amount)}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-            {tab === 'watchlist' && (
-              <MarketWatchlist
-                items={watchlist}
-                selected={selected.instrument}
-                onAdd={async () => {
-                  await researchApi.addWatchlist(selected.instrument.symbol)
-                  await loadWatchlist()
-                }}
-                onDelete={async (entryId) => {
-                  await researchApi.deleteWatchlist(entryId)
-                  await loadWatchlist()
-                }}
-                onSelect={selectWatchlistSymbol}
-              />
-            )}
-
-            {tab === 'evidence' && (
-              <section className="grid gap-3 rounded-xl border border-crypto-border bg-crypto-card p-4 sm:grid-cols-2 xl:grid-cols-4">
-                {[
-                  ['行情来源', 'PostgreSQL realtime cache'],
-                  ['更新时间', selected.source_updated_at ? new Date(selected.source_updated_at).toLocaleString('zh-CN') : '—'],
-                  ['复权口径', '未复权成交价'],
-                  ['交易日历', selected.instrument.session_calendar || '—'],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-3"><div className="text-[11px] text-gray-600">{label}</div><div className="mt-1 text-xs text-gray-300">{value}</div></div>
-                ))}
-              </section>
-            )}
-          </>
-        )}
-      </main>
     </div>
-  )
+  );
 }
+
+export { default } from '../components/AshareMarketWorkspace';

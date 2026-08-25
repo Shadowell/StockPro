@@ -3538,3 +3538,5 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 
 - BitPro 本地 `main` 前进到 `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`。相对 `aecd03f7` 仅新增 `docs/research/strategy-analysis-2026-08-26-0008-favorites-core-loss-attribution.md` 并更新 BitPro 文档索引/进度，前端、后端、packages、scripts 和 tests 应用树无变化。
 - StockPro 来源测试、导入器、完成审计、活动合同和总控计划已重新钉住该提交；未静默漂移，也未把 BitPro 未提交工作区作为来源。
+- 行情模块完成当前 BitPro 610 行 `Market.tsx` 原样导入；原 A 股 Market Terminal 机械迁入独立 `AshareMarketWorkspace` 并保持默认导出，继续使用股票/ETF/指数、PostgreSQL 日线、CNY、100股、盘口空态、自选和证据 API。BitPro OKX 页面仅作为 named reference，不执行。
+- 行情 `tsc`、零警告 lint 和 Mock E2E 通过；搜索贵州茅台、K线和盘口空态合同保持不变。
