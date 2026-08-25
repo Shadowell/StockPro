@@ -3521,3 +3521,7 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 默认数据加载先读 `/data/status`，再用 `Promise.allSettled` 读取 datasets/snapshots/jobs/providers/quality/imports；八个工作区覆盖总览、研究数据、行情覆盖、同步任务、Qlib、数据源、质量和导入导出。数据页 `tsc`、零警告 lint、Mock E2E 和安全审计通过。
 - 真实管理员浏览器显示 PostgreSQL 10 个研究数据集、2,777,870 条发布记录、34 个封存快照、Provider restricted、GET Provider 调用 0、16,989 个质量问题和 0 个暂存导入；八个工作区与真实快照列表可见，控制台无业务错误。
 - 数据切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过；最终路由标题同步为当前 BitPro 的“数据管理中心”。
+- AI 研发完成当前 BitPro 2907 行 AILab 及 AutoAgent/ResearchWorkbench/Orbit/support 全套源码导入。旧 `/api/v2`、Orbit 和自动交易实现设为不可达 named source；默认页面恢复“AI策略助手”页头与自动交易Agent/AI自主交易/新策略研发/现有策略优化四卡导航，唯一使用当前 `/api/ai/*` 和策略合同。
+- 默认 AI 工作台支持任务创建、启动、迭代详情、候选保存和现有策略诊断；模型未配置明确失败，不生成 mock，不自动运行完整回测、不创建/控制 Paper、不显示星球、OKX 持仓或自动实盘入口。AI 页 `tsc`、零警告 lint、Mock E2E 和安全审计通过。
+- 真实管理员浏览器显示 `DashScope / Qwen · qwen3.6-plus · unavailable`，四个 BitPro 工作区、A 股研究配置和“封存证据研究 / Quick 回测 only / 不自动创建 Paper”门控可见；控制台无业务错误，未启动任务、未生成候选、未写 Paper。
+- AI 切片的生产构建、零警告 lint、25/25 Mock 浏览器矩阵、强制重启和 `/api/health` 均通过；最终路由标题同步为“AI策略助手”。

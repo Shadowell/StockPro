@@ -218,6 +218,17 @@ export const aiCurrentApi={
   promote:async(iterationId:string):Promise<Record<string,unknown>>=>apiClient.post(`/ai/iterations/${encodeURIComponent(iterationId)}/promote-candidate`),
 };
 
+const unavailableResearchWorkbench = (): Promise<any> => Promise.reject(new Error('StockPro 使用当前 /api/ai 研究合同'));
+export const researchWorkbenchApi = {
+  summary: unavailableResearchWorkbench,
+  candidates: unavailableResearchWorkbench,
+  createMandate: (_payload: Record<string, any>) => unavailableResearchWorkbench(),
+  createJob: (_mandateId: string, _payload: Record<string, any>) => unavailableResearchWorkbench(),
+  runJob: (_jobId: string, _payload: Record<string, any>) => unavailableResearchWorkbench(),
+  requestPaperPromotion: (_payload: Record<string, any>) => unavailableResearchWorkbench(),
+  approvePaperPromotion: (_promotionId: string, _payload: Record<string, any>) => unavailableResearchWorkbench(),
+};
+
 function extractApiErrorDetail(data: unknown): unknown {
   if (!data) return undefined;
   if (typeof data === 'string') return data.slice(0, 500);
