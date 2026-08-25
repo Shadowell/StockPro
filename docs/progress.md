@@ -2,6 +2,20 @@
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 
+### 生产交付
+
+- 功能分支 `8c2537b4` 已通过 merge commit `88427d40` 进入 `main`；GitHub Actions
+  `Deploy StockPro` run `32879473170` 成功，部署记录 SHA 与 `main` 一致。
+- 生产应用 39/39 migrations，systemd/Nginx 均 active，内网和公网 `/api/health`、
+  `/api/health/storage`、HTTPS 首页全绿。此轮生产业务计数仍为 0，未把隔离库的
+  22 个 Paper 实例迁入生产，也未伪造数据。
+- 生产 HTTPS 经真实管理员登录后的 13 路由 × 桌面/390px 只读 canary 全部通过：
+  page errors 0、API 5xx 0、横向溢出 0。
+- post-deploy production manifest、canary、final completion audit SHA-256 分别为
+  `854d60709b976fa8ef0f5f015dce4c36899336d495e3106315c53124e7ecc920`、
+  `a0ed5669e435d0fa68276f635b7de1a9351b603e5126b3c717ef028f3cf45511`、
+  `7e58b064709be76552017cde23297f06a46cd6282c61611ee2a21a4b1c4b8937`；10 项要求全部 passed。
+
 - 新增机器可执行的前端 parity 审计；对固定 BitPro SHA `2e4b90c3` 的 78 个
   TypeScript/TSX/CSS 源文件逐项核对。当前结果为 41 个字节级一致、37 个固定源哈希的
   A 股适配、0 个未分类，审计产物纳入 completion gate `PARITY-001`。
