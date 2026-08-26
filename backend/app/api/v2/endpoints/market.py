@@ -66,7 +66,9 @@ async def get_klines(
     start: Optional[int] = Query(None, description="开始时间戳(毫秒)"),
     end: Optional[int] = Query(None, description="结束时间戳(毫秒)"),
 ):
-    return ok(await market_domain_service.get_klines(exchange, symbol, timeframe, limit, start, end))
+    payload = await market_domain_service.get_klines_payload(exchange, symbol, timeframe, limit, start, end)
+    meta = {key: value for key, value in payload.items() if key != "items"}
+    return ok(payload.get("items", []), meta=meta)
 
 
 @router.get("/indicators")
@@ -107,7 +109,9 @@ async def get_trades(
     symbol: str = Query(..., description="A 股证券代码"),
     limit: int = Query(50, ge=1, le=500),
 ):
-    return ok(await market_domain_service.get_trades(exchange, symbol, limit))
+    payload = await market_domain_service.get_trades_payload(exchange, symbol, limit)
+    meta = {key: value for key, value in payload.items() if key != "items"}
+    return ok(payload.get("items", []), meta=meta)
 
 
 @router.get("/symbols")
