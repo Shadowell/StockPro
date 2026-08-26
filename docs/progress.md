@@ -98,6 +98,18 @@
   hash。新增 2 项父进程测试。真实只读演练中，策略 224 在 snapshot 10 / pool 5 的 20 个标的、
   485 个交易日上成功生成 283 个意图和 485 条记录，随后 A 股内核完成 283 单/33 成交，
   策略收益 15.21%、最大回撤 23.60%、质量警告 0；该演练未持久化结果，也未修改 Paper。
+- BitPro 原异步回测合同现已接通 PostgreSQL：`run_job`、job 查询/列表、取消和恢复沿用前端
+  原路径；任务状态为 pending/running/cancelling/success/failed/cancelled/interrupted，进程重启后
+  遗留 active job 只读呈现 interrupted，用户显式恢复时创建带 parent/attempt 的新任务，普通
+  启动不隐式改库。进度按阶段变化/至少 5%/最长 5 秒节流，逐日取消检查使用同进程 Event，
+  避免 485 次 SSH/PG 往返。结果在同一事务内先建立 running/unsealed 父记录，写入订单、成交、
+  日权益、日持仓、指标、归因、日志和策略 record，全部成功后最后一步 success+sealed；中途错误
+  由数据库不可变触发器和事务整体回滚。
+- 真实全链路 rollback 演练成功写入 1 个 job、1 个 sealed run、283 单、33 成交、485 权益、
+  4,844 持仓、41 指标、17 归因、485 自定义记录，job 最终 success 并返回 result id；演练结束后
+  job/run 均为 0 残留，Paper 仍为 22。前端创建入口已恢复管理员可见，从 configuration 动态读取
+  snapshot 10 / pool 5 的 2023-01-03~2025-01-02 可用范围，隐藏尚未恢复的批量入口，成本文案改为
+  A 股买卖佣金、最低 5 元、卖出印花税和人民币；sealed 历史记录不再暴露删除按钮。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

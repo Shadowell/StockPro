@@ -195,7 +195,7 @@ export type BacktestPrefsV1 = {
   slippageBps?: number;
 };
 
-export const ASHARE_BACKTEST_COSTS = { makerFeeBps: 3, takerFeeBps: 8, slippageBps: 10 } as const;
+export const ASHARE_BACKTEST_COSTS = { makerFeeBps: 3, takerFeeBps: 3, slippageBps: 10 } as const;
 
 export type JobProgressState = {
   currentBar: number;
@@ -313,12 +313,12 @@ export function createBacktestInstance(
       initialCapital:
         typeof partial.initialCapital === 'number' && partial.initialCapital > 0
           ? partial.initialCapital
-          : 10000,
+          : 1_000_000,
       timeframeMode: partial.timeframeMode || 'strategy',
-      timeframe: partial.timeframe || '15m',
+      timeframe: partial.timeframe || '1d',
       timeframes: Array.isArray(partial.timeframes) && partial.timeframes.length > 0
         ? partial.timeframes
-        : ['5m', '15m', '1h'],
+        : ['1d'],
       makerFeeBps:
         typeof partial.makerFeeBps === 'number' && partial.makerFeeBps >= 0
           ? partial.makerFeeBps

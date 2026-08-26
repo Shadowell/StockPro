@@ -17,6 +17,7 @@ import AnimatedNumber from '../components/AnimatedNumber';
 import { getTradeSideDisplay } from '../utils/tradeSide';
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS, SELECTED_SEGMENT_COUNT_CLASS } from '../utils/selectionStyles';
 import type { Kline } from '../types';
+import { useAuth } from '../auth/AuthProvider';
 import { BacktestResult, BacktestHistoryItem, BacktestHistoryDeleteTarget, HistoryAssetFilter, BacktestView, BacktestStatusFilter, BacktestSortMode, BACKTEST_PREFS_KEY, BACKTEST_INSTANCES_KEY, SELECTED_BACKTEST_INSTANCE_KEY, ACTIVE_BACKTEST_JOB_KEY, ISO_DATE, BACKTEST_HISTORY_PAGE_SIZE, BACKTEST_WIZARD_STEPS, HISTORY_ASSET_FILTERS, BACKTEST_STATUS_FILTERS, BACKTEST_TIMEFRAME_OPTIONS, BACKTEST_TIMEFRAME_MODES, BacktestPrefsV1, BacktestInstanceStatus, BacktestTimeframeMode, BacktestInstanceConfig, BacktestInstance, todayDateInputValue, clampIsoDateToToday, defaultBacktestDateRange, defaultBatchBacktestDateRange, loadBacktestPrefs, createBacktestInstance, createBacktestDraft, quickDateRange, backtestDateValidationMessage, loadBacktestInstances, persistableBacktestInstances, backtestInstanceStatusMeta, backtestDataQualityStatusMeta, backtestInstanceActionStatusLabel, backtestInstanceActionButtonClass, backtestInstanceActionStatusTone, backtestInstanceActionStatusIcon, backtestInstanceStatusBucket, backtestInstanceReturn, backtestInstanceDrawdown, backtestInstanceWinRate, backtestInstanceCanContinue, strategySymbols, strategyBenchmarkSymbol, strategyTradeSymbols, strategyTimeframe, backtestTimeframeLabel, backtestEffectiveTimeframe, backtestEffectiveTimeframes, backtestInstanceTimeframes, finiteNumber, backtestTradeNotional, backtestTradeMargin, formatBacktestTradeMoney, formatBacktestTradeLeverage, backtestRequestMatchesInstance, strategyAssetClass, strategyAssetClassById, inferStrategyAssetClassFromName, backtestResultAssetClass, backtestInstanceAssetClass, strategyNameColorClass, strategyAssetBadgeClass, strategyIsBacktestSelectable, strategyBacktestCostDefaults, symbolSummary, strategyMatchesBacktestSearch, backtestInstanceMatchesSearch, strategyNameById, backtestStrategyDisplayName, formatDateTime, timeframeMs, buildBacktestTradeMarkers, normalizeBacktestKline, historyDetailToBacktestResult, backtestHistorySignature, backtestHistoryIdentity, backtestInstanceHistoryIdentities, historyItemToBacktestInstance, backtestHistoryItemFromInstance, backtestInstanceLogs, backtestStatusDialogContent, dateToStartMs, dateToEndMs, buildCryptoBacktestPerformanceMetrics, backtestSortDirectionFor, nextBacktestSortMode, backtestApiSortBy, backtestApiSortDir, compareNullableBacktestMetric, BacktestSortArrow, BacktestWizardStep, Field, StatRow } from './backtest/backtestSupport';
 
 const WatchKlineChart = lazy(() => import('../components/WatchKlineChart'));
@@ -28,7 +29,9 @@ const BacktestCompareDialog = lazy(() => import('./backtest/BacktestCompareDialo
 // 类型定义
 // ============================================
 export default function Backtest() {
-  const canCreateBacktest = false;
+  const { isAdmin } = useAuth();
+  const canCreateBacktest = isAdmin;
+  const canBatchBacktest = false;
   const { strategies, fetchStrategies } = useStore();
   const [initialBt] = useState(loadBacktestPrefs);
   const [view, setView] = useState<BacktestView>('dashboard');
@@ -80,6 +83,13 @@ export default function Backtest() {
   const [backtestLogTarget, setBacktestLogTarget] = useState<BacktestInstance | null>(null);
   const [localBacktestDeleteTarget, setLocalBacktestDeleteTarget] = useState<BacktestInstance | null>(null);
   const [cancelBacktestTarget, setCancelBacktestTarget] = useState<BacktestInstance | null>(null);
+  const [availableConfigurations, setAvailableConfigurations] = useState<Array<{
+    datasetSnapshotId: number;
+    poolSnapshotId: number;
+    startDate: string;
+    endDate: string;
+    memberCount: number;
+  }>>([]);
 
   const [themeAlert, setThemeAlert] = useState<{
     open: boolean;
@@ -406,9 +416,14 @@ export default function Backtest() {
   }, []);
 
   const addBacktestInstance = () => {
+    const available = availableConfigurations[0];
     setCreateDraft(createBacktestDraft({
-      startDate,
-      initialCapital,
+      startDate: available?.startDate || startDate,
+      endDate: available?.endDate || endDate,
+      initialCapital: 1_000_000,
+      timeframeMode: 'single',
+      timeframe: '1d',
+      timeframes: ['1d'],
     }));
     setStrategySearchQuery('');
     setCreateStep(1);
@@ -718,6 +733,18 @@ export default function Backtest() {
   useEffect(() => { fetchStrategies(); }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void backtestApi.getConfiguration()
+      .then((response) => {
+        if (!cancelled) setAvailableConfigurations(response.items || []);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableConfigurations([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     instancesRef.current = backtestInstances;
   }, [backtestInstances]);
 
@@ -989,6 +1016,13 @@ export default function Backtest() {
       showThemeAlert('回测日期无效', dateError, 'warning');
       return;
     }
+    const sealedConfiguration = availableConfigurations.find(
+      (item) => item.startDate <= runConfig.startDate && item.endDate >= runConfig.endDate,
+    );
+    if (!sealedConfiguration) {
+      showThemeAlert('没有可用封存快照', `当前没有覆盖 ${runConfig.startDate} 至 ${runConfig.endDate} 的 sealed 数据与股票池。`, 'warning');
+      return;
+    }
 
     let instanceId = selectedInstance?.id || '';
     if (configOverride) {
@@ -1046,6 +1080,8 @@ export default function Backtest() {
         maker_fee_bps: effectiveMakerFeeBps,
         taker_fee_bps: effectiveTakerFeeBps,
         slippage_bps: effectiveSlippageBps,
+        dataset_snapshot_id: sealedConfiguration.datasetSnapshotId,
+        pool_snapshot_id: sealedConfiguration.poolSnapshotId,
       });
       try {
         sessionStorage.setItem(ACTIVE_BACKTEST_JOB_KEY, jobId);
@@ -1166,6 +1202,12 @@ export default function Backtest() {
         const defaults = strategyBacktestCostDefaults(strategyInfo);
         const effectiveTimeframes = backtestEffectiveTimeframes(target.config, strategyInfo);
         const effectiveTimeframe = backtestEffectiveTimeframe(target.config, strategyInfo);
+        const sealedConfiguration = availableConfigurations.find(
+          (item) => item.startDate <= target.config.startDate && item.endDate >= target.config.endDate,
+        );
+        if (!sealedConfiguration) {
+          throw new Error(`没有覆盖 ${target.config.startDate} 至 ${target.config.endDate} 的 sealed 数据与股票池`);
+        }
         const { jobId: newJobId } = await backtestApi.runJob({
           strategy_id: target.config.selectedStrategy,
           exchange: 'SSE',
@@ -1178,6 +1220,8 @@ export default function Backtest() {
           maker_fee_bps: target.config.makerFeeBps ?? defaults.makerFeeBps,
           taker_fee_bps: target.config.takerFeeBps ?? defaults.takerFeeBps,
           slippage_bps: target.config.slippageBps ?? defaults.slippageBps,
+          dataset_snapshot_id: sealedConfiguration.datasetSnapshotId,
+          pool_snapshot_id: sealedConfiguration.poolSnapshotId,
         });
         try {
           sessionStorage.setItem(ACTIVE_BACKTEST_JOB_KEY, newJobId);
@@ -1850,7 +1894,7 @@ export default function Backtest() {
               </p>
             </div>
             {canCreateBacktest && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <button
+              {canBatchBacktest && <button
                 type="button"
                 aria-label="创建批量回测实例"
                 onClick={() => setBatchBacktestConfirmOpen(true)}
@@ -1863,12 +1907,14 @@ export default function Backtest() {
                   <ListChecks className="h-4 w-4" />
                 )}
                 批量回测
-              </button>
+              </button>}
               <button
                 type="button"
                 aria-label="创建回测实例"
                 onClick={addBacktestInstance}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-500/70 bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-950/25 transition-colors hover:border-blue-400 hover:bg-blue-500"
+                disabled={availableConfigurations.length === 0}
+                title={availableConfigurations.length === 0 ? '正在读取 sealed 回测配置' : '创建 A 股回测'}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-500/70 bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-950/25 transition-colors hover:border-blue-400 hover:bg-blue-500 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
               >
                 <Plus className="h-4 w-4" />
                 创建回测
@@ -2180,17 +2226,17 @@ export default function Backtest() {
                                             继续
                                           </button>
                                         )}
-                                        <button
+                                        {!instance.isPersistedHistory && !instance.historyId && <button
                                           type="button"
-                                          aria-label={instance.isPersistedHistory || instance.historyId ? '删除记录' : '删除实例'}
+                                          aria-label="删除本地实例"
                                           onClick={() => deleteBacktestUnifiedRecord(instance)}
                                           disabled={historyRecordBusy}
-                                          title={instance.isPersistedHistory || instance.historyId ? '删除落库记录' : '删除本地实例'}
+                                          title="删除本地实例"
                                           className={backtestInstanceActionButtonClass('red')}
                                         >
                                           {historyRecordBusy && deletingHistoryId === instance.historyId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                                           删除
-                                        </button>
+                                        </button>}
                                       </>
                                     )}
                                   </div>
@@ -2938,20 +2984,20 @@ export default function Backtest() {
                         )}
                       </div>
                     </Field>
-                    <Field label="Maker 手续费 (bps)">
+                    <Field label="买入佣金 (bps，最低 5 元)">
                       <input
                         type="number"
                         value={draftEffectiveMakerFeeBps}
-                        onChange={(event) => updateCreateDraft({ makerFeeBps: Math.max(0, Number(event.target.value)) })}
+                        disabled
                         step="0.1"
                         className="w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 py-3 text-sm text-white"
                       />
                     </Field>
-                    <Field label="Taker 手续费 (bps)">
+                    <Field label="卖出佣金 (bps，另收 5bps 印花税)">
                       <input
                         type="number"
                         value={draftEffectiveTakerFeeBps}
-                        onChange={(event) => updateCreateDraft({ takerFeeBps: Math.max(0, Number(event.target.value)) })}
+                        disabled
                         step="0.1"
                         className="w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 py-3 text-sm text-white"
                       />
@@ -2976,8 +3022,9 @@ export default function Backtest() {
                     <StatRow label="策略" value={draftStrategyInfo?.name || '未选择'} color={strategyNameColorClass(draftAssetClass)} />
                     <StatRow label="资产类型" value={draftAssetClass === 'etf' ? 'ETF' : '股票'} />
                     <StatRow label="区间" value={`${createDraft.startDate} 至 ${createDraft.endDate}`} />
-                    <StatRow label="初始资金" value={`$${fmt(createDraft.initialCapital)}`} />
-                    <StatRow label="Maker/Taker" value={`${fmt(draftEffectiveMakerFeeBps)}/${fmt(draftEffectiveTakerFeeBps)} bps`} />
+                    <StatRow label="初始资金" value={`¥${fmt(createDraft.initialCapital)}`} />
+                    <StatRow label="买/卖佣金" value={`${fmt(draftEffectiveMakerFeeBps)}/${fmt(draftEffectiveTakerFeeBps)} bps`} />
+                    <StatRow label="卖出印花税" value="5.00 bps" />
                     <StatRow label="滑点" value={`${fmt(draftEffectiveSlippageBps)} bps`} />
                   </div>
                 </div>

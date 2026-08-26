@@ -2631,6 +2631,19 @@ export const agentApi = {
 // ============================================
 
 export const backtestApi = {
+  getConfiguration: (): Promise<{
+    items: Array<{
+      datasetSnapshotId: number;
+      datasetSnapshotName: string;
+      poolSnapshotId: number;
+      poolName: string;
+      startDate: string;
+      endDate: string;
+      memberCount: number;
+      knowledgeCutoffAt?: string | null;
+    }>;
+  }> => getReq('/backtest/configuration'),
+
   runSync: (data: Record<string, unknown>): Promise<any> =>
     postReq('/backtest/run_sync', data, { timeout: BACKTEST_RUN_SYNC_TIMEOUT_MS }),
 

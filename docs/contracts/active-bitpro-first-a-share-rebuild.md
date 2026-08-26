@@ -294,8 +294,10 @@ BitPro 页面使用其成熟 ViewModel；适配层从现有 PostgreSQL 对象生
 15. 合并 `main`、Actions 部署和生产验收。
 
 当前第 8 步已恢复 A 股日线撮合、费用和指标内核；异步任务持久化、取消/恢复、
-策略运行时、结果写入与 BitPro 回测 UI 接线尚未完成，因此不能把历史只读结果页视为
-回测功能完成。
+策略隔离 worker、sealed 输入解析、结果原子写入与 BitPro 回测 UI 单任务入口已经接通。
+当前写合同为 `/api/v2/backtest/run_job`、`/job/{id}`、`/jobs`、`/job/{id}/cancel|resume`
+和 `/configuration`；历史结果在全部子证据写完后才切换为 success+sealed，不提供物理删除。
+批量回测、完整权限/配额压力验收和生产部署证据尚未完成，因此不能把该步骤视为最终关闭。
 
 每个页面切片遵循：
 

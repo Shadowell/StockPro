@@ -42,6 +42,37 @@ class PostgresBacktestInputGateway:
                 row = cursor.fetchone()
         return dict(row) if row else None
 
+    def list_configurations(self, limit: int = 20) -> list[dict]:
+        required = sorted({*COVERAGE_DATASETS, "suspensions", "corporate_actions"})
+        with self._connect() as connection:
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    WITH coverage AS (
+                        SELECT s.id,s.name,s.knowledge_cutoff_at,s.manifest_hash,
+                               COUNT(DISTINCT i.dataset_code) FILTER (WHERE i.dataset_code=ANY(%s)) AS dataset_count,
+                               MAX(p.start_date) FILTER (WHERE i.dataset_code=ANY(%s)) AS start_date,
+                               MIN(p.end_date) FILTER (WHERE i.dataset_code=ANY(%s)) AS end_date
+                        FROM dataset_snapshots s
+                        JOIN dataset_snapshot_items i ON i.snapshot_id=s.id
+                        JOIN dataset_partitions p ON p.id=i.partition_id
+                        WHERE s.status='sealed'
+                        GROUP BY s.id
+                    )
+                    SELECT c.id AS dataset_snapshot_id,c.name AS dataset_snapshot_name,c.start_date,c.end_date,
+                           c.knowledge_cutoff_at,c.manifest_hash AS dataset_manifest_hash,
+                           ps.id AS pool_snapshot_id,p.name AS pool_name,ps.member_count,
+                           ps.manifest_hash AS pool_manifest_hash
+                    FROM coverage c
+                    JOIN stock_pool_snapshots ps ON ps.dataset_snapshot_id=c.id AND ps.status='sealed'
+                    JOIN stock_pools p ON p.id=ps.pool_id
+                    WHERE c.dataset_count=%s AND c.start_date<=c.end_date
+                    ORDER BY c.id DESC,ps.id DESC LIMIT %s
+                    """,
+                    (required, required, required, len(required), max(1, min(int(limit), 100))),
+                )
+                return [dict(row) for row in cursor.fetchall()]
+
     def resolve_snapshot(self, *, start_date: str, end_date: str, snapshot_id: int | None, required_datasets: set[str]) -> dict:
         with self._connect() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
