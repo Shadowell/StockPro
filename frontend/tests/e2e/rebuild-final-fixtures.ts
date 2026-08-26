@@ -9,7 +9,13 @@ export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' =
     else if (path === '/api/v2/system/health') data = { status: 'healthy', project: 'StockPro', database: 'postgresql', private_exchange: false }
     else if (path === '/api/v2/market/tickers') data = []
     else if (path === '/api/v2/market/native-sentiment') data = { core: [], pipeline: { security_master: { rows: 0, from: '', to: '' }, daily_bars: { rows: 0, from: '', to: '' } } }
-    else if (path === '/api/v2/market/symbols') data = { symbols: [] }
+    else if (path === '/api/v2/market/symbols') data = {
+      symbols: ['600519.SH', '000001.SZ'],
+      instruments: [
+        { symbol: '600519.SH', name: '贵州茅台', display_name: '贵州茅台 600519.SH', asset_class: 'stock', exchange: 'SSE' },
+        { symbol: '000001.SZ', name: '平安银行', display_name: '平安银行 000001.SZ', asset_class: 'stock', exchange: 'SZSE' },
+      ],
+    }
     else if (path === '/api/v2/market/klines' || path === '/api/v2/market/trades') data = []
     else if (path === '/api/v2/market/indicators') data = { source: 'backend_derived_from_ohlcv', data_source: 'market_klines', timestamps: [], series: {} }
     else if (path === '/api/v2/market/orderbook') data = { bids: [], asks: [], source: 'unavailable' }
@@ -25,6 +31,20 @@ export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' =
     else if (path === '/api/v2/monitor/active_strategies' || path === '/api/v2/monitor/alerts') data = []
     else if (path === '/api/v2/monitor/long-short-ratio') data = { ratio: null, source: 'unavailable' }
     else if (path === '/api/v2/monitor/open-interest') data = { open_interest: null, source: 'unavailable' }
+    else if (path === '/api/v2/sync/config') data = {
+      default_symbols: ['000001.SZ', '600519.SH'],
+      instruments: [
+        { symbol: '000001.SZ', name: '平安银行', display_name: '平安银行 000001.SZ', asset_class: 'stock', exchange: 'SZSE' },
+        { symbol: '600519.SH', name: '贵州茅台', display_name: '贵州茅台 600519.SH', asset_class: 'stock', exchange: 'SSE' },
+      ],
+      symbols_count: 2,
+      default_timeframes: ['1d'],
+      default_history_days: 500,
+    }
+    else if (path === '/api/v2/sync/status') data = { is_running: false, current_job: null, summary: { total_records: 0, exchanges: ['CN'], symbols_count: 2, pairs: 0 }, details: [] }
+    else if (path === '/api/v2/sync/table-stats') data = { tables: [], total_records: 0, total_pairs: 0, market_stats: { swap: { total_records: 0, total_pairs: 0, total_symbols: 0 }, spot: { total_records: 0, total_pairs: 0, total_symbols: 2 } } }
+    else if (path === '/api/v2/sync/schedule') data = { enabled: true, interval_minutes: 1440, history_days: 500, symbols: [], timeframes: ['1d'], next_run_at: '2026-08-27T18:10:00+08:00' }
+    else if (path === '/api/v2/sync/jobs') data = { jobs: [] }
     else if (path === '/api/v2/review/summary') data = { overview: { review_window: '24h', bucket: '1h', updated_at: null, strategy_count: 0, sample_strategy_count: 0, overall_return_pct: 0, median_return_pct: 0, max_drawdown_pct: 0, observe_count: 0, review_count: 0, sample_health_pct: 0 }, groups: [], leaderboard: { observe: [], review: [] }, heatmap: [], tags: [], next_actions: [] }
     else if (path === '/api/v2/data/status') data = { storage: 'postgresql', provider_state: 'restricted', datasets: 0, published_partitions: 0, published_rows: 0, sealed_snapshots: 0, sync_jobs: 0, quality_issues: 0, staged_imports: 0, provider_calls_performed: 0 }
     else if (path.startsWith('/api/v2/data/')) data = { items: [], total: 0, provider_calls_performed: 0 }
@@ -40,9 +60,6 @@ export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' =
     else if (path === '/api/v2/onchain/summary') data = { status: 'partial', as_of: null, source: { provider: 'PostgreSQL A-share datasets', auth_required: false, endpoints: {} }, source_status: { capital_flow: 'catalogued', shareholders: 'catalogued', fundamentals: 'catalogued' }, kpis: {}, chains: [], protocols: [], fees: [], stablecoins: [], stablecoin_chains: [], yield_pools: [], warnings: [], empty_reason: '当前 PostgreSQL 已登记股东、资金流和基本面数据域，但尚未形成可验证的冻结快照。明细适配完成前保持诚实空态，不用模拟数据填充。' }
     else if (path === '/api/v2/orderflow/stream-status') data = { enabled: false, connected: false, subscribed_count: 0, total_ingested: 0, total_filtered: 0, buffer_size: 0, reconnects: 0, last_msg_at: null, last_flush_at: null, last_error: 'A-share tick Provider not configured', min_notional_usdt: 0, inst_ids: [] }
     else if (path.startsWith('/api/v2/orderflow/')) data = []
-    else if (path === '/api/v2/sync/status') data = { is_running: false, current_job: null, summary: { total_records: 0, exchanges: ['CN'], symbols_count: 0, pairs: 0 }, details: [] }
-    else if (path === '/api/v2/sync/table-stats') data = []
-    else if (path === '/api/v2/sync/config') data = { enabled: false, schedules: [] }
     else if (path.startsWith('/api/v2/research-workbench/')) data = { items: [], total: 0, status: 'unavailable' }
 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })

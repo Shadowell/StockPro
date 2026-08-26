@@ -328,6 +328,11 @@ BitPro 版式直接继承不等于保留数字资产品牌：活动 HTML 标题�
 最终 DEPLOY-001 同时绑定生产 manifest SHA 与浏览器 canary SHA；即使旧 canary 自身通过，SHA
 不同也必须失败，禁止用旧页面证据证明新部署。
 
+数据中心不再保留 BitPro 三标的默认清单。当前 A 股适配必须每日全量同步 TuShare `stock_basic`
+（L/P/D，退市 `T*` 独立命名空间）、最近开放交易日 `daily` 与 `daily_basic`，单事务写入
+`instrument_definitions`、`stock_history` 和 `all_stocks_realtime`。所有活动页面的证券标识采用
+中文名称主标签、标准代码次标签；同步任务使用 PostgreSQL 唯一 running 台账避免并发重复。
+
 每个页面切片遵循：
 
 ```text

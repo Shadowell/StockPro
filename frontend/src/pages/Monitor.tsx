@@ -17,6 +17,8 @@ import type {
   LiveExecutionPosition,
   LiveExecutionStrategy,
 } from '../api/client';
+import { useSymbolNames } from '../hooks/useSymbolNames';
+import { formatSymbolLabel } from '../utils/symbolDisplay';
 
 interface Alert {
   id: number;
@@ -2266,6 +2268,7 @@ function LiveStrategyMonitorCard({
 }) {
   const symbols = strategy.tradeSymbols?.length ? strategy.tradeSymbols : strategy.symbols || [];
   const visibleSymbols = symbols.slice(0, 4);
+  const symbolNames = useSymbolNames(visibleSymbols);
   const hiddenSymbolCount = Math.max(0, symbols.length - visibleSymbols.length);
   const strategyOrders = orders.filter(order => order.sourceStrategyId === strategy.strategyId);
   const displayOrders = strategyOrders.length > 0 ? strategyOrders : orders.slice(0, 3);
@@ -2336,7 +2339,7 @@ function LiveStrategyMonitorCard({
         <div className="min-w-0 flex flex-1 items-center gap-1.5 overflow-hidden">
           {visibleSymbols.map(symbol => (
             <span key={symbol} className="max-w-[74px] truncate rounded border border-crypto-border px-1.5 py-0.5">
-              {symbol}
+              {formatSymbolLabel(symbol, symbolNames[symbol])}
             </span>
           ))}
           {hiddenSymbolCount > 0 && (

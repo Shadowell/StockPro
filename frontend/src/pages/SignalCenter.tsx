@@ -30,6 +30,8 @@ import {
 } from '../api/client';
 import CryptoSelect from '../components/CryptoSelect';
 import { getTradeSideDisplay } from '../utils/tradeSide';
+import { useSymbolNames } from '../hooks/useSymbolNames';
+import { formatSymbolLabel } from '../utils/symbolDisplay';
 
 const statusTabs = [
   { key: 'all', label: '全部' },
@@ -269,11 +271,12 @@ function compactText(value: unknown, maxLength = 180): string {
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 
-function summarizeSymbols(symbols?: string[]): string {
+function summarizeSymbols(symbols: string[] | undefined, names: Record<string, string>): string {
   const list = symbols || [];
   if (list.length === 0) return '未配置交易品种';
-  if (list.length <= 3) return list.join(', ');
-  return `${list.slice(0, 3).join(', ')} 等 ${list.length} 个`;
+  const labels = list.map((symbol) => formatSymbolLabel(symbol, names[symbol]));
+  if (labels.length <= 3) return labels.join(', ');
+  return `${labels.slice(0, 3).join(', ')} 等 ${labels.length} 个`;
 }
 
 function compactName(value: string, fallback: string): string {
@@ -414,6 +417,8 @@ export default function SignalCenter() {
   const [form, setForm] = useState<ChannelFormState>(() => emptyChannelForm());
   const [editForm, setEditForm] = useState<ChannelFormState>(() => emptyChannelForm());
   const [testForm, setTestForm] = useState<ChannelTestFormState>(() => defaultChannelTestForm());
+  const signalSymbols = useMemo(() => Array.from(new Set(signalStrategies.flatMap((strategy) => strategy.symbols || []))), [signalStrategies]);
+  const signalSymbolNames = useSymbolNames(signalSymbols);
 
   const selectedStrategy = useMemo(
     () => signalStrategies.find((strategy) => strategy.strategyId === selectedStrategyId) || null,
@@ -1403,7 +1408,7 @@ export default function SignalCenter() {
                             {compactName(strategy.strategyName, `策略 #${strategy.strategyId}`)}
                           </div>
                           <div className="mt-1 text-xs text-gray-500">
-                            #{strategy.strategyId} · {strategy.status || 'unknown'} · {summarizeSymbols(strategy.symbols)}
+                            #{strategy.strategyId} · {strategy.status || 'unknown'} · {summarizeSymbols(strategy.symbols, signalSymbolNames)}
                           </div>
                         </button>
                         {started ? (
@@ -1491,7 +1496,7 @@ export default function SignalCenter() {
                             {compactName(strategy.strategyName, `策略 #${strategy.strategyId}`)}
                           </div>
                           <div className="mt-1 text-xs text-gray-500">
-                            #{strategy.strategyId} · {strategy.status || 'unknown'} · {summarizeSymbols(strategy.symbols)}
+                            #{strategy.strategyId} · {strategy.status || 'unknown'} · {summarizeSymbols(strategy.symbols, signalSymbolNames)}
                           </div>
                         </button>
                         <button

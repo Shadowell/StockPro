@@ -1,0 +1,301 @@
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
+sys.path.insert(0, str(BACKEND_ROOT))
+
+from app.domain.instruments.provider import TushareAshareProvider  # noqa: E402
+from app.domain.instruments.scheduler import AshareDailySyncScheduler  # noqa: E402
+from app.domain.instruments.service import AshareInstrumentSyncService  # noqa: E402
+from app.api.v2.endpoints import market as market_endpoint  # noqa: E402
+from app.api.v2.endpoints import sync as sync_endpoint  # noqa: E402
+from app import main as main_module  # noqa: E402
+
+
+class FakeProvider:
+    def fetch_instruments(self):
+        return [
+            {
+                "ts_code": "600519.SH",
+                "symbol": "600519",
+                "name": "贵州茅台",
+                "industry": "白酒",
+                "market": "主板",
+                "exchange": "SSE",
+                "list_status": "L",
+                "list_date": "20010827",
+                "delist_date": None,
+                "is_hs": "H",
+            },
+            {
+                "ts_code": "000001.SZ",
+                "symbol": "000001",
+                "name": "平安银行",
+                "industry": "银行",
+                "market": "主板",
+                "exchange": "SZSE",
+                "list_status": "L",
+                "list_date": "19910403",
+                "delist_date": None,
+                "is_hs": "S",
+            },
+            {
+                "ts_code": "T600018.SH",
+                "symbol": "600018",
+                "name": "上港集箱（退）",
+                "industry": "港口",
+                "market": "主板",
+                "exchange": "SSE",
+                "list_status": "D",
+                "list_date": "20000719",
+                "delist_date": "20061009",
+                "is_hs": None,
+            },
+        ]
+
+    def latest_open_trade_date(self):
+        return "20260826"
+
+    def fetch_daily(self, trade_date: str):
+        assert trade_date == "20260826"
+        return [
+            {
+                "ts_code": "600519.SH",
+                "trade_date": trade_date,
+                "open": 1500.0,
+                "high": 1520.0,
+                "low": 1490.0,
+                "close": 1510.0,
+                "pct_chg": 1.25,
+                "vol": 123.0,
+                "amount": 18600.0,
+            }
+        ]
+
+    def fetch_daily_basic(self, trade_date: str):
+        assert trade_date == "20260826"
+        return [
+            {
+                "ts_code": "600519.SH",
+                "turnover_rate": 0.42,
+                "volume_ratio": 1.1,
+                "pe": 24.5,
+                "pb": 7.8,
+                "total_mv": 1_900_000_000.0,
+                "circ_mv": 1_900_000_000.0,
+            }
+        ]
+
+
+class FakeRepository:
+    def __init__(self, run_id=17):
+        self.run_id = run_id
+        self.completed = None
+        self.failed = None
+
+    def begin_run(self, trigger: str):
+        self.trigger = trigger
+        return self.run_id
+
+    def complete_run(self, run_id, instruments, daily_rows, trade_date):
+        self.completed = {
+            "run_id": run_id,
+            "instruments": instruments,
+            "daily_rows": daily_rows,
+            "trade_date": trade_date,
+        }
+        return {
+            "run_id": run_id,
+            "status": "success",
+            "instrument_count": len(instruments),
+            "daily_count": len(daily_rows),
+            "trade_date": trade_date,
+        }
+
+    def fail_run(self, run_id, error):
+        self.failed = (run_id, str(error))
+
+
+def test_full_a_share_sync_persists_names_and_daily_rows_atomically():
+    repository = FakeRepository()
+    result = AshareInstrumentSyncService(repository=repository, provider=FakeProvider()).sync_all(trigger="manual")
+
+    assert result == {
+        "run_id": 17,
+        "status": "success",
+        "instrument_count": 3,
+        "daily_count": 1,
+        "trade_date": "2026-08-26",
+    }
+    assert repository.trigger == "manual"
+    assert repository.failed is None
+    maotai = next(item for item in repository.completed["instruments"] if item["symbol"] == "600519.SH")
+    assert maotai["name"] == "贵州茅台"
+    retired = next(item for item in repository.completed["instruments"] if item["symbol"] == "T600018.SH")
+    assert retired["list_status"] == "D"
+    assert repository.completed["daily_rows"][0]["storage_symbol"] == "SH_600519"
+    assert repository.completed["daily_rows"][0]["name"] == "贵州茅台"
+    assert repository.completed["daily_rows"][0]["volume"] == 12300
+    assert repository.completed["daily_rows"][0]["amount"] == 18_600_000.0
+
+
+def test_full_a_share_sync_reuses_running_database_gate():
+    repository = FakeRepository(run_id=None)
+    result = AshareInstrumentSyncService(repository=repository, provider=FakeProvider()).sync_all(trigger="scheduled")
+
+    assert result == {"status": "locked", "trigger": "scheduled"}
+    assert repository.completed is None
+
+
+def test_full_a_share_sync_fails_without_trade_date_rows():
+    class EmptyDailyProvider(FakeProvider):
+        def fetch_daily(self, trade_date: str):
+            return []
+
+    repository = FakeRepository()
+    try:
+        AshareInstrumentSyncService(repository=repository, provider=EmptyDailyProvider()).sync_all(trigger="scheduled")
+    except RuntimeError as error:
+        assert "daily" in str(error)
+    else:
+        raise AssertionError("an open-day sync without daily rows must fail")
+    assert repository.completed is None
+    assert repository.failed and repository.failed[0] == 17
+
+
+def test_tushare_provider_fetches_all_listing_states_and_latest_open_day():
+    class Frame:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def to_dict(self, orient):
+            assert orient == "records"
+            return self.rows
+
+    class Pro:
+        def __init__(self):
+            self.statuses = []
+
+        def stock_basic(self, **kwargs):
+            self.statuses.append(kwargs["list_status"])
+            return Frame([{"ts_code": f"00000{len(self.statuses)}.SZ", "name": f"证券{len(self.statuses)}"}])
+
+        def trade_cal(self, **_):
+            return Frame([{"cal_date": "20260825"}, {"cal_date": "20260826"}])
+
+        def daily(self, **kwargs):
+            return Frame([{"ts_code": "000001.SZ", "trade_date": kwargs["trade_date"]}])
+
+        def daily_basic(self, **kwargs):
+            return Frame([{"ts_code": "000001.SZ", "trade_date": kwargs["trade_date"]}])
+
+    pro = Pro()
+    provider = TushareAshareProvider(client=pro)
+
+    assert len(provider.fetch_instruments()) == 3
+    assert pro.statuses == ["L", "P", "D"]
+    assert provider.latest_open_trade_date() == "20260826"
+    assert provider.fetch_daily("20260826")[0]["trade_date"] == "20260826"
+    assert provider.fetch_daily_basic("20260826")[0]["trade_date"] == "20260826"
+
+
+def test_daily_scheduler_registers_one_coalesced_a_share_job():
+    class Scheduler:
+        def __init__(self):
+            self.jobs = []
+            self.running = False
+
+        def add_job(self, func, trigger, **kwargs):
+            self.jobs.append((func, trigger, kwargs))
+
+        def start(self):
+            self.running = True
+
+        def shutdown(self, wait=False):
+            self.running = False
+
+    scheduler = Scheduler()
+    configured = SimpleNamespace(
+        A_SHARE_DAILY_SYNC_ENABLED=True,
+        A_SHARE_DAILY_SYNC_HOUR=18,
+        A_SHARE_DAILY_SYNC_MINUTE=10,
+        A_SHARE_DAILY_SYNC_TIMEZONE="Asia/Shanghai",
+        TUSHARE_TOKEN="configured",
+    )
+    service = SimpleNamespace(sync_all=lambda **_: {"status": "success"})
+    daily = AshareDailySyncScheduler(
+        service=service,
+        configured_settings=configured,
+        scheduler=scheduler,
+        trigger_factory=lambda **kwargs: kwargs,
+    )
+
+    daily.start()
+
+    assert scheduler.running is True
+    assert len(scheduler.jobs) == 1
+    _, trigger, options = scheduler.jobs[0]
+    assert trigger == {"hour": 18, "minute": 10, "timezone": "Asia/Shanghai"}
+    assert options["id"] == "a-share-daily-instrument-sync"
+    assert options["coalesce"] is True
+    assert options["max_instances"] == 1
+
+
+def test_data_config_lists_repository_instruments_with_chinese_names(monkeypatch):
+    instruments = [
+        {"symbol": "000001.SZ", "name": "平安银行", "display_name": "平安银行 000001.SZ", "asset_class": "stock"},
+        {"symbol": "600519.SH", "name": "贵州茅台", "display_name": "贵州茅台 600519.SH", "asset_class": "stock"},
+    ]
+    repository = SimpleNamespace(list_instruments=lambda **_: instruments, latest_run=lambda: {"status": "success"})
+    monkeypatch.setattr(sync_endpoint, "instrument_repository", repository)
+
+    payload = asyncio.run(sync_endpoint.config())["data"]
+
+    assert payload["default_symbols"] == ["000001.SZ", "600519.SH"]
+    assert payload["instruments"] == instruments
+    assert payload["symbols_count"] == 2
+
+
+def test_market_symbols_returns_name_first_instrument_contract(monkeypatch):
+    instruments = [
+        {"symbol": "600519.SH", "name": "贵州茅台", "display_name": "贵州茅台 600519.SH", "asset_class": "stock"}
+    ]
+    service = SimpleNamespace(get_instruments=lambda *_args, **_kwargs: instruments)
+    async def get_instruments(*args, **kwargs):
+        return service.get_instruments(*args, **kwargs)
+    monkeypatch.setattr(market_endpoint.market_domain_service, "get_instruments", get_instruments)
+
+    payload = asyncio.run(market_endpoint.get_symbols(exchange="CN", quote="CNY", market_type="stock"))["data"]
+
+    assert payload == {"symbols": ["600519.SH"], "instruments": instruments}
+
+
+def test_market_symbol_name_lookup_returns_input_and_canonical_aliases(monkeypatch):
+    async def lookup_names(symbols):
+        assert symbols == ["SH_600519", "000001.SZ"]
+        return {"SH_600519": "贵州茅台", "600519.SH": "贵州茅台", "000001.SZ": "平安银行"}
+    monkeypatch.setattr(market_endpoint.market_domain_service, "lookup_names", lookup_names)
+
+    payload = asyncio.run(market_endpoint.lookup_symbol_names(symbols="SH_600519,000001.SZ"))["data"]
+
+    assert payload["names"]["600519.SH"] == "贵州茅台"
+    assert payload["names"]["000001.SZ"] == "平安银行"
+
+
+def test_application_lifespan_starts_and_stops_daily_a_share_scheduler(monkeypatch):
+    events = []
+    scheduler = SimpleNamespace(start=lambda: events.append("start"), stop=lambda: events.append("stop"))
+    monkeypatch.setattr(main_module, "a_share_daily_sync_scheduler", scheduler)
+
+    async def exercise():
+        async with main_module.safe_lifespan(None):
+            events.append("running")
+
+    asyncio.run(exercise())
+
+    assert events == ["start", "running", "stop"]

@@ -34,11 +34,16 @@ from app.api.v2.endpoints.arc import router as arc_router
 from app.api.v2.endpoints.agent import router as agent_router
 from app.api.v2.endpoints.signals import router as signals_router
 from app.api.v2.endpoints.research_workbench import router as research_workbench_router
+from app.domain.instruments.scheduler import a_share_daily_sync_scheduler
 
 
 @asynccontextmanager
 async def safe_lifespan(_: FastAPI):
-    yield
+    a_share_daily_sync_scheduler.start()
+    try:
+        yield
+    finally:
+        a_share_daily_sync_scheduler.stop()
 
 
 def create_app() -> FastAPI:

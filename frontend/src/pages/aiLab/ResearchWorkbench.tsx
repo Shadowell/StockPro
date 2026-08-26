@@ -19,6 +19,8 @@ import CryptoSelect from '../../components/CryptoSelect';
 import ThemeDialog from '../../components/ThemeDialog';
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS } from '../../utils/selectionStyles';
 import { marketApi, researchWorkbenchApi } from '../../api/client';
+import { useSymbolNames } from '../../hooks/useSymbolNames';
+import { formatSymbolLabel } from '../../utils/symbolDisplay';
 
 type StageId = 'proposal' | 'research' | 'results' | 'paper';
 type StageTone = 'idle' | 'active' | 'passed' | 'blocked' | 'human' | 'failed';
@@ -308,13 +310,15 @@ export default function ResearchWorkbench() {
   const dataGaps = candidates.filter((candidate) => list(field(candidate, 'dataGaps', 'data_gaps')).length > 0);
   const pendingApprovals = promotions.filter((promotion) => field(promotion, 'status') === 'pending_paper_approval');
   const observingPromotions = promotions.filter((promotion) => ['paper_observing', 'paper_degraded', 'paper_review_required'].includes(String(field(promotion, 'status'))));
+  const mandateNameSymbols = useMemo(() => Array.from(new Set([...mandateSymbolOptions, ...mandateSymbols])), [mandateSymbolOptions, mandateSymbols]);
+  const mandateSymbolNames = useSymbolNames(mandateNameSymbols);
   const visibleMandateSymbols = useMemo(() => {
     const query = mandateSymbolSearch.trim().toUpperCase();
-    return Array.from(new Set([...mandateSymbolOptions, ...mandateSymbols]))
-      .filter((symbol) => !query || symbol.toUpperCase().includes(query))
+    return mandateNameSymbols
+      .filter((symbol) => !query || symbol.toUpperCase().includes(query) || String(mandateSymbolNames[symbol] || '').toUpperCase().includes(query))
       .sort((left, right) => left.localeCompare(right))
       .slice(0, 120);
-  }, [mandateSymbolOptions, mandateSymbolSearch, mandateSymbols]);
+  }, [mandateNameSymbols, mandateSymbolNames, mandateSymbolSearch]);
 
   const stageStates = useMemo<Record<StageId, { tone: StageTone; count: number }>>(() => {
     const connectionFailed = field(connection, 'status') === 'unavailable';
@@ -615,11 +619,11 @@ export default function ResearchWorkbench() {
               <div className="max-h-40 min-h-[6rem] overflow-y-auto p-1" aria-live="polite">
                 {mandateSymbolsLoading ? <p className="px-2 py-3 text-xs text-gray-500">正在读取 StockPro 市场接口中的真实 A 股标的…</p> : mandateSymbolsError ? <p role="alert" className="px-2 py-3 text-xs leading-relaxed text-amber-100">{mandateSymbolsError}</p> : visibleMandateSymbols.length ? visibleMandateSymbols.map((symbol) => {
                   const selected = mandateSymbols.includes(symbol);
-                  return <button key={symbol} type="button" aria-pressed={selected} onClick={() => toggleMandateSymbol(symbol)} className={clsx('flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs transition-colors', selected ? SELECTED_SEGMENT_CLASS : 'text-gray-300 hover:bg-white/[0.045] hover:text-white')}><span className={clsx('inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border', selected ? 'border-yellow-400 bg-yellow-500 text-yellow-950' : 'border-crypto-border')}>{selected && <Check size={11} />}</span><span className="min-w-0 truncate font-mono" title={symbol}>{symbol}</span></button>;
+                  return <button key={symbol} type="button" aria-pressed={selected} onClick={() => toggleMandateSymbol(symbol)} className={clsx('flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs transition-colors', selected ? SELECTED_SEGMENT_CLASS : 'text-gray-300 hover:bg-white/[0.045] hover:text-white')}><span className={clsx('inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border', selected ? 'border-yellow-400 bg-yellow-500 text-yellow-950' : 'border-crypto-border')}>{selected && <Check size={11} />}</span><span className="min-w-0 truncate" title={formatSymbolLabel(symbol, mandateSymbolNames[symbol])}>{formatSymbolLabel(symbol, mandateSymbolNames[symbol])}</span></button>;
                 }) : <p className="px-2 py-3 text-xs text-gray-500">没有匹配的真实标的；请修改搜索词或手动加入完整统一格式。</p>}
               </div>
             </div>
-            <div className="mt-2 flex flex-wrap gap-1.5" aria-label="已选标的">{mandateSymbols.map((symbol) => <button key={symbol} type="button" onClick={() => toggleMandateSymbol(symbol)} className={clsx('inline-flex max-w-full items-center gap-1 rounded border px-2 py-1 font-mono text-[11px] hover:border-yellow-300', SELECTED_SEGMENT_BORDER_CLASS)}><span className="truncate">{symbol}</span><XCircle size={12} className="shrink-0" aria-label={`移除 ${symbol}`} /></button>)}</div>
+            <div className="mt-2 flex flex-wrap gap-1.5" aria-label="已选标的">{mandateSymbols.map((symbol) => <button key={symbol} type="button" onClick={() => toggleMandateSymbol(symbol)} className={clsx('inline-flex max-w-full items-center gap-1 rounded border px-2 py-1 text-[11px] hover:border-yellow-300', SELECTED_SEGMENT_BORDER_CLASS)}><span className="truncate">{formatSymbolLabel(symbol, mandateSymbolNames[symbol])}</span><XCircle size={12} className="shrink-0" aria-label={`移除 ${formatSymbolLabel(symbol, mandateSymbolNames[symbol])}`} /></button>)}</div>
             <div className="mt-2 flex min-w-0 gap-2"><input value={customMandateSymbol} onChange={(event) => setCustomMandateSymbol(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustomMandateSymbol(); } }} className="h-8 min-w-0 flex-1 rounded border border-crypto-border bg-crypto-card px-2 font-mono text-xs text-gray-100 placeholder:text-gray-600" placeholder="自定义标的（回车加入）" aria-label="手动加入完整统一格式标的" /><button type="button" onClick={addCustomMandateSymbol} disabled={!customMandateSymbol.trim()} className="shrink-0 rounded border border-crypto-border px-2 text-xs text-gray-300 hover:border-blue-400 hover:text-blue-100 disabled:cursor-not-allowed disabled:opacity-45">加入</button></div>
           </section>
           <div className="grid grid-cols-2 gap-3"><label className="block text-xs text-gray-400">周期<CryptoSelect value={mandateTimeframe} onChange={(event) => setMandateTimeframe(event.target.value)} wrapperClassName="mt-1"><option value="15m">15M</option><option value="1h">1H</option><option value="4h">4H</option><option value="1d">1D</option></CryptoSelect></label><label className="block text-xs text-gray-400">研究类型<CryptoSelect value={mandateCategory} onChange={(event) => setMandateCategory(event.target.value)} wrapperClassName="mt-1"><option value="cta">CTA</option><option value="mean_reversion">均值回归</option><option value="grid">网格</option></CryptoSelect></label></div>

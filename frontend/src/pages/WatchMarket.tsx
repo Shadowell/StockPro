@@ -28,6 +28,8 @@ import {
   type WatchlistItem,
 } from '../api/client';
 import type { Kline, Ticker } from '../types';
+import SymbolCell from '../components/SymbolCell';
+import { useSymbolNames } from '../hooks/useSymbolNames';
 
 const WatchKlineChart = lazy(() => import('../components/WatchKlineChart'));
 
@@ -74,10 +76,6 @@ function fmtTime(value?: string | number | null): string {
   const date = typeof value === 'number' ? new Date(value) : new Date(value);
   if (Number.isNaN(date.getTime())) return '--';
   return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
-
-function symbolBase(symbol: string): string {
-  return symbol.split('/', 1)[0] || symbol;
 }
 
 function normalizeWatchSymbolKey(symbol?: string | null): string {
@@ -323,7 +321,7 @@ function WatchSymbolTile({
     return wsTicker ? ({ ...market.ticker, ...wsTicker } as Ticker) : market.ticker;
   }, [market?.ticker, wsTicker]);
 
-  const base = symbolBase(symbol);
+  const symbolNames = useSymbolNames([symbol]);
   const last = tickerLast(ticker);
   const mark = tickerMark(ticker);
   const displayPrice = mark ?? last;
@@ -355,12 +353,12 @@ function WatchSymbolTile({
               <div className="watchTileChartSummary mb-2 rounded-md border border-white/[0.06] bg-black/35 px-2 py-1.5">
                 <div className="watchTileTitleRow mb-1.5 flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate text-base font-black leading-5 tracking-normal text-white">{base}USDT</span>
-                      <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-yellow-300">永续</span>
+                    <div className="flex items-start gap-1.5">
+                      <SymbolCell symbol={symbol} name={ticker?.name} names={symbolNames} compact className="min-w-0" />
+                      <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-blue-300">A股</span>
                       <span className={clsx('h-1.5 w-1.5 rounded-full', isConnected ? 'bg-green-400' : 'bg-gray-500')} />
                     </div>
-                    <div className="mt-0.5 truncate text-[10px] leading-4 text-gray-500">{exchangeLabel} · {symbol} · {timeframe.toUpperCase()}</div>
+                    <div className="mt-0.5 truncate text-[10px] leading-4 text-gray-500">{exchangeLabel} · {timeframe.toUpperCase()}</div>
                   </div>
                   <button
                     onClick={() => {

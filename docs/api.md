@@ -139,6 +139,14 @@ curl -fsS -H "Authorization: Bearer ${TOKEN}" \
 
 数据同步接口不应被健康检查或页面 GET 隐式调用。封存后的更正通过新分区和新快照表达，不修改历史证据。
 
+当前全量 A 股同步合同：
+
+- `GET /api/v2/sync/config`：返回当前全部证券及中文名称，不提供硬编码默认三只。
+- `GET /api/v2/sync/schedule`：返回每日计划、下一运行时间和最近运行证据。
+- `POST /api/v2/sync/instruments`：管理员显式触发一次全量证券主数据 + 最近交易日日线同步。
+- `GET /api/v2/market/symbols`：返回 `symbols` 与带 `name/display_name` 的 `instruments`。
+- `GET /api/v2/market/symbol-names`：批量只读名称解析，访客页面也可调用。
+
 ## 8. Paper 模拟写操作
 
 | 方法 | 路径 | 用途 |

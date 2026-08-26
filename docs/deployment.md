@@ -41,6 +41,9 @@ cp backend/.env.example backend/.env
 - 将 `DATABASE_URL` 指向隔离库 `stockpro_bitpro_rebase_dev`（见下方 [隔离库](#7-隔离库)）；
 - 需要连服务器研究库时再配置 `DATABASE_SSH_HOST`，不要把 `stockpro_dev` / 生产库交给 `./scripts/check.sh`；
 - 按需填写 `TUSHARE_TOKEN` 和 `QWEN_API_KEY`；
+- 生产全量 A 股每日同步需设置 `A_SHARE_DAILY_SYNC_ENABLED=true`；默认北京时间 18:10，
+  可用 `A_SHARE_DAILY_SYNC_HOUR`、`A_SHARE_DAILY_SYNC_MINUTE` 和
+  `A_SHARE_DAILY_SYNC_TIMEZONE` 调整；启用但缺少 `TUSHARE_TOKEN` 时后端 fail-fast；
 - 首次运行建议保持实时同步、策略执行和启动期写操作关闭。
 
 然后初始化：

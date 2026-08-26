@@ -29,6 +29,9 @@ import DynamicPoolPanel from './DynamicPoolPanel';
 import CryptoSelect from '../../components/CryptoSelect';
 import { SELECTED_SEGMENT_CLASS } from '../../utils/selectionStyles';
 import SymbolIcon from '../../components/SymbolIcon';
+import SymbolCell from '../../components/SymbolCell';
+import { useSymbolNames } from '../../hooks/useSymbolNames';
+import { formatSymbolLabel } from '../../utils/symbolDisplay';
 import StrategyParameterSections from '../../components/StrategyParameterSections';
 import ThemeDialog from '../../components/ThemeDialog';
 import { marketApi, settingsApi, type WatchTradeMarker } from '../../api/client';
@@ -998,6 +1001,7 @@ export default function InstanceMonitor({
     () => collectSimulationReviewSymbols(strategyInfo, dashboard, trades),
     [dashboard, strategyInfo, trades],
   );
+  const simulationReviewSymbolNames = useSymbolNames(simulationReviewSymbols);
   const simulationReviewStrategyId = Number(strategyInfo?.id ?? dashboard?.system?.strategyId ?? 0) || 0;
   const simulationReviewStrategyName =
     strategyInfo?.name || dashboard?.system?.strategy || headlineTitle || '模拟策略';
@@ -1699,7 +1703,7 @@ export default function InstanceMonitor({
               )}
               {sys && (
                 <span className="text-xs text-gray-500">
-                  {sys.strategy} · {sys.symbol} · {formatTimeframeLabel(sys.timeframe)}
+                  {sys.strategy} · {formatSymbolLabel(sys.symbol, simulationReviewSymbolNames[sys.symbol])} · {formatTimeframeLabel(sys.timeframe)}
                 </span>
               )}
             </div>
@@ -2080,7 +2084,7 @@ export default function InstanceMonitor({
                             <TrendingUp className="h-3.5 w-3.5" />
                           </button>
                           <SymbolIcon symbol={row.symbol} size="xs" />
-                          <span>{row.symbol}</span>
+                          <SymbolCell symbol={row.symbol} names={simulationReviewSymbolNames} compact />
                         </div>
                       </td>
                       <td className={clsx('py-2 pr-2 text-center font-semibold', sideDisplay.className)}>{sideDisplay.label}</td>
@@ -2261,7 +2265,7 @@ export default function InstanceMonitor({
                             {t.symbol ? (
                               <span className="inline-flex items-center gap-2">
                                 <SymbolIcon symbol={String(t.symbol)} size="xs" />
-                                <span>{t.symbol}</span>
+                                <SymbolCell symbol={String(t.symbol)} names={simulationReviewSymbolNames} compact />
                               </span>
                             ) : '—'}
                           </td>
@@ -2400,7 +2404,7 @@ export default function InstanceMonitor({
                   >
                     {simulationReviewSymbols.map((symbol) => (
                       <option key={symbol} value={symbol}>
-                        {symbol}
+                        {formatSymbolLabel(symbol, simulationReviewSymbolNames[symbol])}
                       </option>
                     ))}
                   </CryptoSelect>

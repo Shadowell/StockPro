@@ -15,6 +15,8 @@ import {
   type OrderflowStreamStatus,
 } from '../api/client';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { useSymbolNames } from '../hooks/useSymbolNames';
+import { formatSymbolLabel } from '../utils/symbolDisplay';
 
 const SYMBOL_OPTIONS = [
   '600519.SH',
@@ -65,6 +67,7 @@ function fmtTime(ts: number): string {
 export default function OrderFlow() {
   const { upColor, downColor } = useSettingsStore((s) => s.getColors());
   const [symbol, setSymbol] = useState(SYMBOL_OPTIONS[0]);
+  const symbolNames = useSymbolNames(SYMBOL_OPTIONS);
   const [hours, setHours] = useState(6);
   const [threshold, setThreshold] = useState(50_000);
   const [barMinutes, setBarMinutes] = useState(5);
@@ -329,7 +332,7 @@ export default function OrderFlow() {
         >
           {SYMBOL_OPTIONS.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {formatSymbolLabel(s, symbolNames[s])}
             </option>
           ))}
         </select>
@@ -414,7 +417,7 @@ export default function OrderFlow() {
       {/* 气泡图 */}
       <div className="rounded border border-crypto-border bg-crypto-card p-3">
         <div className="mb-1 text-xs text-gray-500">
-          大单时间轴 · 气泡大小 = 单笔成交额（{symbol}）
+          大单时间轴 · 气泡大小 = 单笔成交额（{formatSymbolLabel(symbol, symbolNames[symbol])}）
         </div>
         <div ref={bubbleRef} className="h-72 w-full" />
         {trades.length === 0 && !loading && (

@@ -17,6 +17,8 @@ import ResearchWorkbench from './aiLab/ResearchWorkbench';
 import AutoAgentPanel from './aiLab/AutoAgentPanel';
 import OrbitPostPanel from './aiLab/OrbitPostPanel';
 import { GoalCriteria, Iteration, TaskInfo, StrategyOptimizerConfig, StrategyOptimizationRun, AutoAgentSchedulerConfig, AutonomousTraderConfig, AutonomousTraderInstance, LLMModelConfig, OrbitAutoPostConfig, OrbitCandidate, OrbitPostRecord, OrbitLoginStatus, AutonomousNumericConfigKey, AssistantTab, MarketType, HUNTER_GOAL, AI_RESEARCH_MARKETS, AI_RESEARCH_DEFAULT_TIMEFRAME, AUTONOMOUS_HERMES_MODEL, AUTONOMOUS_HERMES_PROVIDER_LABEL, AUTONOMOUS_TRADER_DEFAULT_CONFIG, AUTO_AGENT_RUN_STORAGE_KEY, AUTO_AGENT_DEFAULT_SYMBOLS, AUTO_AGENT_DEFAULT_SCHEDULER, ORBIT_AUTO_POST_DEFAULT_CONFIG, getTaskId, isActiveResearchTask, readRememberedTaskId, rememberTaskId, forgetRememberedTaskId, normalizeTaskInfo, getResearchTaskTitle, researchMarketForTask, apiSymbolScopeForMarket, autonomousSymbolsFromText, autonomousStatusText, autonomousStatusClass, formatAutonomousLogTime, autonomousLogLevelClass, autonomousLogTitle, autonomousLogSummary, autonomousLogChips, normalizeAutonomousNumericInput, autonomousInstanceConfigItems, autonomousConfigFromInstance, autonomousParameterCardClass, autonomousRiskParameterCardClass, HUNTER_PROMPT, ACTION_LABELS, formatDateTime, DEFAULT_BACKTEST_DATE_RANGE, DatePickerField, finiteNumber, fmtNumber, fmtPct, unwrapApiData, normalizeOrbitAutoPostConfig, orbitConfigPayload, signedMarketTone, targetTone, riskTone, metricToneTextClass, getCandidateQuality, ResearchPipeline, StrategyOptimizerPipeline, optimizerStatusText, getOptimizerRunTitle, canDeleteOptimizerRun, RadarChart, MetricCard } from './aiLab/aiLabSupport';
+import { useSymbolNames } from '../hooks/useSymbolNames';
+import { formatSymbolLabel } from '../utils/symbolDisplay';
 
 const api = axios.create({ baseURL: '/api/v2', timeout: 120000 });
 api.interceptors.response.use((r) => r.data, (e) => Promise.reject(e));
@@ -925,6 +927,12 @@ export default function AILab() {
   );
   const latestAutonomousLog = selectedAutonomousLogs[0] || null;
   const autonomousConfiguredSymbols = autonomousSymbolsFromText(autonomousConfig.symbolsText);
+  const aiDisplayedSymbols = useMemo(() => Array.from(new Set([
+    ...autonomousConfiguredSymbols,
+    ...autonomousInstances.flatMap((item) => item.symbols || []),
+    ...autonomousSymbolsFromText(autonomousEditConfig?.symbolsText || ''),
+  ])), [autonomousConfiguredSymbols.join(','), autonomousEditConfig?.symbolsText, autonomousInstances]);
+  const aiSymbolNames = useSymbolNames(aiDisplayedSymbols);
   const autonomousModelOptions = Array.from(new Set([
     AUTONOMOUS_HERMES_MODEL,
     ...(autonomousModelConfig?.models?.length ? autonomousModelConfig.models : []),
@@ -1676,14 +1684,14 @@ export default function AILab() {
                   disabled={!autonomousConfig.restrictSymbols}
                   rows={4}
                   className="mt-1 w-full resize-y rounded-lg border border-crypto-border bg-crypto-bg px-3 py-2 text-sm leading-relaxed text-gray-100 focus:border-yellow-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-45"
-                  placeholder={autonomousConfig.restrictSymbols ? 'BTC/USDT:USDT, ETH/USDT:USDT, SOL/USDT:USDT' : '关闭时使用系统默认 OKX USDT 永续候选池'}
+                  placeholder={autonomousConfig.restrictSymbols ? '600519.SH, 000001.SZ, 300750.SZ' : '关闭时使用系统全量 A 股候选池'}
                 />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {autonomousConfig.restrictSymbols ? (
                     <>
                       {autonomousConfiguredSymbols.slice(0, 8).map((symbol) => (
                         <span key={symbol} className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-0.5 text-[10px] text-gray-400">
-                          {symbol}
+                          {formatSymbolLabel(symbol, aiSymbolNames[symbol])}
                         </span>
                       ))}
                       {autonomousConfiguredSymbols.length > 8 && (
@@ -1784,7 +1792,7 @@ export default function AILab() {
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {(item.symbols || []).slice(0, 6).map((symbol) => (
                                 <span key={symbol} className="rounded-md border border-crypto-border bg-crypto-card px-2 py-0.5 text-[10px] text-gray-400">
-                                  {symbol}
+                                  {formatSymbolLabel(symbol, aiSymbolNames[symbol])}
                                 </span>
                               ))}
                               {(item.symbols || []).length > 6 && (
@@ -2789,11 +2797,11 @@ export default function AILab() {
             </label>
 
             <div>
-              <div className="text-xs text-gray-400">合约标的池</div>
+              <div className="text-xs text-gray-400">A 股标的池</div>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {autonomousSymbolsFromText(autonomousEditConfig.symbolsText).map((symbol) => (
                   <span key={symbol} className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-0.5 text-[10px] text-gray-400">
-                    {symbol}
+                    {formatSymbolLabel(symbol, aiSymbolNames[symbol])}
                   </span>
                 ))}
               </div>

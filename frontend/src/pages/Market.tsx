@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react'
 import { RefreshCw, TrendingUp } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../stores/useStore';
-import { marketApi } from '../api/client';
+import { marketApi, type MarketInstrument } from '../api/client';
 import OrderBookChart from '../components/OrderBookChart';
 import SymbolSearch from '../components/SymbolSearch';
 import type { Kline, OrderBook } from '../types';
@@ -77,6 +77,7 @@ export default function Market() {
   const [recentTrades, setRecentTrades] = useState<MarketTradeRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [allSymbols, setAllSymbols] = useState<string[]>([]);
+  const [allInstruments, setAllInstruments] = useState<MarketInstrument[]>([]);
   const [marketType, setMarketType] = useState<MarketType>('stock');
   const [timeframe, setTimeframe] = useState('1d');
   const selectedSymbolMatchesMarketType = Boolean(selectedSymbol);
@@ -106,6 +107,7 @@ export default function Market() {
         const nextSymbol = symbols.includes(selectedSymbol) ? selectedSymbol : symbols[0];
 
         setAllSymbols(symbols);
+        setAllInstruments(res.instruments || []);
         if (nextSymbol && nextSymbol !== selectedSymbol) {
           setSelectedSymbol(nextSymbol);
         }
@@ -365,6 +367,7 @@ export default function Market() {
                   value={selectedSymbol}
                   onChange={setSelectedSymbol}
                   allSymbols={allSymbols}
+                  instruments={allInstruments}
                   marketType={marketType}
                 />
               </div>

@@ -1477,9 +1477,28 @@ export const marketApi = {
     cost?: number;
   }>> => getReq('/market/trades', { params: { exchange, symbol, limit } }),
 
-  getSymbols: (exchange: string, quote = 'CNY', marketType = 'stock'): Promise<{ symbols: string[] }> =>
+  getSymbols: (exchange: string, quote = 'CNY', marketType = 'stock'): Promise<{ symbols: string[]; instruments: MarketInstrument[] }> =>
     getReq('/market/symbols', { params: { exchange, quote, market_type: marketType } }),
 };
+
+export interface MarketInstrument {
+  symbol: string;
+  name: string;
+  displayName?: string;
+  exchange?: string;
+  assetClass?: string;
+  industry?: string | null;
+  board?: string | null;
+  listStatus?: string;
+}
+
+export async function lookupSymbolNames(symbols: string[]): Promise<Record<string, string>> {
+  const unique = Array.from(new Set(symbols.map((item) => String(item || '').trim()).filter(Boolean)));
+  if (!unique.length) return {};
+  const chunks = Array.from({ length: Math.ceil(unique.length / 500) }, (_, index) => unique.slice(index * 500, (index + 1) * 500));
+  const responses = await Promise.all(chunks.map((chunk) => getReq<{ names: Record<string, string>; total: number }>('/market/symbol-names', { params: { symbols: chunk.join(',') } })));
+  return Object.assign({}, ...responses.map((response) => response.names || {}));
+}
 
 // ============================================
 // 资金费率 API
@@ -1919,6 +1938,8 @@ export interface DataSyncJobsResponse {
 
 export interface DataSyncConfigResponse {
   defaultSymbols: string[];
+  instruments?: MarketInstrument[];
+  symbolsCount?: number;
   defaultTimeframes: string[];
   defaultHistoryDays: number;
 }

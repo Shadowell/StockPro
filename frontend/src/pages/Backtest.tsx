@@ -18,6 +18,8 @@ import { getTradeSideDisplay } from '../utils/tradeSide';
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS, SELECTED_SEGMENT_COUNT_CLASS } from '../utils/selectionStyles';
 import type { Kline } from '../types';
 import { useAuth } from '../auth/AuthProvider';
+import { useSymbolNames } from '../hooks/useSymbolNames';
+import { formatSymbolLabel } from '../utils/symbolDisplay';
 import { BacktestResult, BacktestHistoryItem, BacktestHistoryDeleteTarget, HistoryAssetFilter, BacktestView, BacktestStatusFilter, BacktestSortMode, BACKTEST_PREFS_KEY, BACKTEST_INSTANCES_KEY, SELECTED_BACKTEST_INSTANCE_KEY, ACTIVE_BACKTEST_JOB_KEY, ISO_DATE, BACKTEST_HISTORY_PAGE_SIZE, BACKTEST_WIZARD_STEPS, HISTORY_ASSET_FILTERS, BACKTEST_STATUS_FILTERS, BACKTEST_TIMEFRAME_OPTIONS, BACKTEST_TIMEFRAME_MODES, BacktestPrefsV1, BacktestInstanceStatus, BacktestTimeframeMode, BacktestInstanceConfig, BacktestInstance, todayDateInputValue, clampIsoDateToToday, defaultBacktestDateRange, defaultBatchBacktestDateRange, loadBacktestPrefs, createBacktestInstance, createBacktestDraft, quickDateRange, backtestDateValidationMessage, loadBacktestInstances, persistableBacktestInstances, backtestInstanceStatusMeta, backtestDataQualityStatusMeta, backtestInstanceActionStatusLabel, backtestInstanceActionButtonClass, backtestInstanceActionStatusTone, backtestInstanceActionStatusIcon, backtestInstanceStatusBucket, backtestInstanceReturn, backtestInstanceDrawdown, backtestInstanceWinRate, backtestInstanceCanContinue, strategySymbols, strategyBenchmarkSymbol, strategyTradeSymbols, strategyTimeframe, backtestTimeframeLabel, backtestEffectiveTimeframe, backtestEffectiveTimeframes, backtestInstanceTimeframes, finiteNumber, backtestTradeNotional, backtestTradeMargin, formatBacktestTradeMoney, formatBacktestTradeLeverage, backtestRequestMatchesInstance, strategyAssetClass, strategyAssetClassById, inferStrategyAssetClassFromName, backtestResultAssetClass, backtestInstanceAssetClass, strategyNameColorClass, strategyAssetBadgeClass, strategyIsBacktestSelectable, strategyBacktestCostDefaults, symbolSummary, strategyMatchesBacktestSearch, backtestInstanceMatchesSearch, strategyNameById, backtestStrategyDisplayName, formatDateTime, timeframeMs, buildBacktestTradeMarkers, normalizeBacktestKline, historyDetailToBacktestResult, backtestHistorySignature, backtestHistoryIdentity, backtestInstanceHistoryIdentities, historyItemToBacktestInstance, backtestHistoryItemFromInstance, backtestInstanceLogs, backtestStatusDialogContent, dateToStartMs, dateToEndMs, buildCryptoBacktestPerformanceMetrics, backtestSortDirectionFor, nextBacktestSortMode, backtestApiSortBy, backtestApiSortDir, compareNullableBacktestMetric, BacktestSortArrow, BacktestWizardStep, Field, StatRow } from './backtest/backtestSupport';
 
 const WatchKlineChart = lazy(() => import('../components/WatchKlineChart'));
@@ -216,6 +218,7 @@ export default function Backtest() {
     });
     return Array.from(symbols);
   }, [result?.trades]);
+  const tradeChartSymbolNames = useSymbolNames(tradeChartSymbols);
   const [selectedTradeChartSymbol, setSelectedTradeChartSymbol] = useState('');
   const [tradeChartKlines, setTradeChartKlines] = useState<Kline[]>([]);
   const [tradeChartLoading, setTradeChartLoading] = useState(false);
@@ -1319,7 +1322,7 @@ export default function Backtest() {
                     : 'border-crypto-border bg-crypto-card/75 text-gray-500 hover:border-blue-500/40 hover:bg-blue-500/10 hover:text-gray-200',
                 )}
               >
-                {symbol}
+                {formatSymbolLabel(symbol, tradeChartSymbolNames[symbol])}
               </button>
             ))}
           </div>

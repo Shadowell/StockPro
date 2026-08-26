@@ -32,6 +32,7 @@ import {
   type ArcPipelineView,
   type ArcStageStatus,
 } from '../api/client';
+import SymbolCell from '../components/SymbolCell';
 
 const MISSION_POLL_MS = 5000;
 const PROGRESS_POLL_MS = 3000;
@@ -461,8 +462,9 @@ function MissionRow({
           </span>
         )}
       </div>
-      <div className="mt-1.5 truncate text-[10px] text-gray-500">
-        {mission.symbol} · {mission.timeframe} · {stateLabel(mission.state)}
+      <div className="mt-1.5 flex min-w-0 items-center gap-2 text-[10px] text-gray-500">
+        <SymbolCell symbol={mission.symbol} compact className="min-w-0" />
+        <span className="shrink-0">· {mission.timeframe} · {stateLabel(mission.state)}</span>
       </div>
       <div className="mt-2 h-1.5 w-full rounded-full bg-crypto-bg">
         <div

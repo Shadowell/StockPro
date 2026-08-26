@@ -2,6 +2,8 @@
 export interface Ticker {
   exchange: string;
   symbol: string;
+  name?: string;
+  displayName?: string;
   last: number;
   bid?: number;
   ask?: number;

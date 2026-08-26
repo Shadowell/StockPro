@@ -19,14 +19,12 @@ import {
   TrendingUp,
   AlertCircle,
   Info,
-  Plus,
   X,
   ListChecks,
 } from 'lucide-react';
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS } from '../utils/selectionStyles';
 import {
   dataSyncApi,
-  marketApi,
   okxNativeSyncApi,
   type DataSyncConfigResponse,
   type DataSyncJobSummary,
@@ -42,6 +40,7 @@ import {
 import { useStore } from '../stores/useStore';
 import ThemeDialog from '../components/ThemeDialog';
 import SymbolIcon, { extractSymbolBase } from '../components/SymbolIcon';
+import SymbolCell from '../components/SymbolCell';
 import { formatTimeframeLabel } from '../utils/timeframe';
 
 // ============================================
@@ -233,15 +232,6 @@ function getSyncTargetKey(symbol: string, timeframe: string): string {
   return `${symbol}_${timeframe}`;
 }
 
-function normalizeUsdtCandidate(value: string): string | null {
-  const raw = String(value || '').trim().toUpperCase();
-  const okxSwapMatch = raw.match(/^([A-Z0-9]{1,30})-USDT-SWAP$/);
-  if (okxSwapMatch) return `${okxSwapMatch[1]}/USDT:USDT`;
-  if (/^[A-Z0-9]{1,30}\/USDT:USDT$/.test(raw)) return raw;
-  if (!/^[A-Z0-9]{1,30}\/USDT$/.test(raw)) return null;
-  return raw;
-}
-
 function formatDuration(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return '-';
   if (seconds < 60) return `${seconds.toFixed(1)}秒`;
@@ -381,8 +371,8 @@ export default function DataManager() {
   const [addSymbolInput, setAddSymbolInput] = useState('');
   const [addSymbolSearch, setAddSymbolSearch] = useState('');
   const [addSymbolSelections, setAddSymbolSelections] = useState<string[]>([]);
-  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
-  const [loadingAvailableSymbols, setLoadingAvailableSymbols] = useState(false);
+  const availableSymbols: string[] = [];
+  const loadingAvailableSymbols = false;
   const [addSymbolError, setAddSymbolError] = useState('');
   const [addingSymbol, setAddingSymbol] = useState(false);
   const [syncAddedSymbolHistory, setSyncAddedSymbolHistory] = useState(true);
@@ -650,31 +640,6 @@ export default function DataManager() {
     }
   };
 
-  const openAddSymbolDialog = async () => {
-    setAddSymbolInput('');
-    setAddSymbolSearch('');
-    setAddSymbolSelections([]);
-    setAddSymbolError('');
-    setAvailableSymbols([]);
-    setSyncAddedSymbolHistory(true);
-    setAddSymbolHistoryDays(SYNC_HISTORY_DAYS);
-    setShowAddSymbolDialog(true);
-    setLoadingAvailableSymbols(true);
-    try {
-      const swapRes = await marketApi.getSymbols(selectedExchange, 'USDT', 'swap');
-      const normalized = Array.from(new Set(
-        [...(swapRes.symbols || [])]
-          .map((symbol) => normalizeUsdtCandidate(symbol))
-          .filter((symbol): symbol is string => typeof symbol === 'string' && isUsdtSwapSymbol(symbol))
-      )).sort((a, b) => a.localeCompare(b));
-      setAvailableSymbols(normalized);
-    } catch (e) {
-      setAddSymbolError(`加载交易对失败: ${getErrorMessage(e)}`);
-    } finally {
-      setLoadingAvailableSymbols(false);
-    }
-  };
-
   const handleAddSymbol = async () => {
     if (addingSymbol) return;
 
@@ -786,6 +751,7 @@ export default function DataManager() {
   ]));
   const allTimeframes = discoveredTimeframes.length > 0 ? discoveredTimeframes : TIMEFRAME_ORDER;
   const configuredSymbols: string[] = config?.defaultSymbols || [];
+  const instrumentBySymbol = new Map((config?.instruments || []).map((item) => [item.symbol, item]));
   const syncedSymbols = dedupeSymbols([
     ...tableStats
       .filter((s) => s.exchange === selectedExchange && s.recordCount > 0)
@@ -829,9 +795,14 @@ export default function DataManager() {
   const configuredVisibleMarketSymbols = configuredSymbols.filter((s) =>
     dataMarketType === 'swap' ? isUsdtSwapSymbol(s) : !isUsdtSwapSymbol(s)
   );
-  const filteredSymbols = visibleMarketSymbols.filter((s) =>
-    filterSymbol ? s.toLowerCase().includes(filterSymbol.toLowerCase()) : true
-  );
+  const searchText = filterSymbol.trim().toLowerCase();
+  const filteredSymbols = visibleMarketSymbols.filter((symbol) => {
+    if (!searchText) return true;
+    const instrument = instrumentBySymbol.get(symbol);
+    return symbol.toLowerCase().includes(searchText)
+      || String(instrument?.name || '').toLowerCase().includes(searchText);
+  });
+  const displayedSymbols = filteredSymbols.slice(0, 200);
   const removeSymbolSearchText = removeSymbolSearch.trim().toLowerCase();
   const removeSymbolCandidates = configuredVisibleMarketSymbols.filter((symbol) => {
     if (!removeSymbolSearchText) return true;
@@ -1320,7 +1291,7 @@ export default function DataManager() {
         <div className="flex items-center gap-3 shrink-0">
           <div className="relative flex-shrink-0">
             <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input type="text" placeholder="搜索币种..."
+            <input type="text" placeholder="搜索中文名称或股票代码..."
               value={filterSymbol} onChange={(e) => setFilterSymbol(e.target.value)}
               className="h-9 bg-gray-800 border border-crypto-border rounded-lg pl-9 pr-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition w-44" />
           </div>
@@ -1364,22 +1335,10 @@ export default function DataManager() {
             ))}
           </div>
           <div className="flex-1" />
-          <button onClick={() => void openAddSymbolDialog()}
-            className="h-9 px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-medium flex items-center gap-1.5 transition">
-            <Plus className="w-3.5 h-3.5" /> 增加交易对
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setRemoveSymbolSearch('');
-              setShowRemoveSymbolDialog(true);
-            }}
-            disabled={configuredVisibleMarketSymbols.length === 0}
-            className="h-9 px-3 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-medium flex items-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Trash2 className="w-3.5 h-3.5" /> 删除交易对
-          </button>
-          <span className="text-xs text-gray-500">当前显示 {dataMarketLabel(dataMarketType)} · 共 {filteredSymbols.length} 个交易对</span>
+          <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+            全量 A 股由每日同步统一维护
+          </span>
+          <span className="text-xs text-gray-500">当前显示 {dataMarketLabel(dataMarketType)} · 共 {filteredSymbols.length} 个标的</span>
         </div>
 
         {/* ========== 交易对卡片列表 ========== */}
@@ -1392,9 +1351,8 @@ export default function DataManager() {
           <div className="h-full min-h-64 flex items-center justify-center text-sm text-gray-500">
             暂无匹配的交易对
           </div>
-        ) : filteredSymbols.map((symbol) => {
+        ) : displayedSymbols.map((symbol) => {
           const coin = getCoinBase(symbol);
-          const swapSymbol = isUsdtSwapSymbol(symbol);
           const total = symbolTotalRecords(symbol);
           const filled = symbolFilledTf(symbol);
           const isExpanded = expandedSymbol === symbol;
@@ -1402,17 +1360,14 @@ export default function DataManager() {
           const configuredSymbol = configuredSymbolSet.has(symbol);
 
           return (
-            <div key={symbol} className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden hover:border-gray-600 transition-all">
+            <div key={symbol} data-testid={`data-symbol-${symbol}`} className="bg-crypto-card border border-crypto-border rounded-xl overflow-hidden hover:border-gray-600 transition-all">
               {/* 卡片头部 */}
               <div className="flex items-center px-5 py-3.5 cursor-pointer select-none gap-5"
                    onClick={() => setExpandedSymbol(isExpanded ? null : symbol)}>
                 {/* 证券标识 */}
-                <div className="flex items-center gap-3 w-32 flex-shrink-0">
+                <div className="flex items-center gap-3 w-44 flex-shrink-0">
                   <SymbolIcon symbol={symbol} base={coin} size="md" shape="rounded" />
-                  <div>
-                    <div className="text-sm font-semibold text-white">{symbol}</div>
-                    <div className="text-[10px] text-gray-500">{swapSymbol ? '期货预留' : 'A股日线'}</div>
-                  </div>
+                  <SymbolCell symbol={symbol} name={instrumentBySymbol.get(symbol)?.name} />
                 </div>
 
                 {/* 周期数据条 — 单行 flex，避免 6 个周期在 grid-cols-5 下折成两行 */}
