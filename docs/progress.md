@@ -127,6 +127,22 @@
   `000333.SZ` 返回 180 根日线、最新价 75.32、1 个持仓和 1 个成交标记。前端仍使用 BitPro 原
   持仓卡/K线/成交点/订单表布局，但改为股数、T+1 可用、CNY 市值/浮盈、A股现金模式，移除
   永续、USDT、保证金、强平、杠杆和 OKX 文案；真实浏览器写请求、API 错误和 console error 均为 0。
+- Paper 显式周期推进已恢复为 `paper-runtime.v2`：管理员只能通过 `/live/advance` 或详情页
+  “推进下一交易日”按钮处理 sealed 下一日期，页面读取和服务启动都不自动推进。每个日期先锁定
+  instance 并用 `(paper_instance_id,cycle_key)` 幂等开周期，再批量执行上一日信号、隔离回放当前
+  `stockpro.v1` 策略、持久化当日新信号、公司行动、现金/持仓/订单/成交/账本/权益/事件和游标，
+  最终核对 cash ledger 差额为 0 后才 success；任一异常整事务回滚。隔离父进程同时支持 sealed
+  factor snapshot，只把 `available_at <= simulated_at` 的最新因子截面注入事件。
+- 真实 rollback 验收一：Paper `790604654` 从 2025-08-04 推进到 2025-08-05，新增一条权益、
+  无信号/订单/成交、ledger difference 0，36.82 秒完成。验收二：Paper `1479743622` 的 498 条
+  待处理空仓目标信号经批量 SQL 在 22.37 秒内全部收敛，无伪订单/成交，权益与账本对齐。
+  故意让 worker 抛错后，cycle 行 0、权益行 0、游标仍为 2025-08-04，证明失败原子回滚。
+- 干净重启后的真实管理员浏览器验收确认：Paper 详情可显示“推进下一交易日”、A 股标的、股数、
+  CNY 市值和最新价；数字资产/合约/杠杆/平仓文案、非 GET 请求、console error 与失败资源请求均为
+  0。实例卡片先规范并去重 `.SH/.SZ/.BJ` 标的，A 股代码只使用本地字母回退图标，不再请求币种
+  CDN。Paper 基线仍为 22 instances、137 cash ledger、115 trades、51 positions、1008 equity、
+  2080 events、1019 cycles，两次 2025-08-05 rollback 探针 cycle 为 0；75 项后端/重建测试、前端
+  production build、零警告 lint 与 `git diff --check` 全部通过。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

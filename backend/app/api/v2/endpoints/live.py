@@ -1,13 +1,19 @@
 """Read-only A-share Paper implementation for BitPro's original live workspace."""
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 from app.core.contracts import ok
 from app.domain.paper import paper_domain_service
+from app.domain.paper.cycle import PaperCycleService
+from app.domain.paper.cycle_repository import PostgresPaperCycleRepository
+from app.domain.backtest.strategy_process import StrategyProcessRunner
 
 
 router = APIRouter()
+paper_cycle_service = PaperCycleService(PostgresPaperCycleRepository(), StrategyProcessRunner())
 
 
 class PaperCreateRequest(BaseModel):
@@ -25,6 +31,10 @@ class PaperInstanceAction(BaseModel):
 
 class PaperStopAction(PaperInstanceAction):
     clear_metrics: bool = False
+
+
+class PaperAdvanceAction(PaperInstanceAction):
+    max_dates: int = Field(default=1, ge=1, le=260)
 
 
 def _require_write(request: Request) -> None:
@@ -95,6 +105,15 @@ async def stop_paper_instance(body: PaperStopAction, request: Request):
         raise HTTPException(status_code=422, detail="禁止清空模拟盘历史、指标、成交、持仓或权益曲线")
     try:
         return ok(await paper_domain_service.stop(body.instance_id))
+    except ValueError as exc:
+        raise _translate(exc) from exc
+
+
+@router.post("/advance")
+async def advance_paper_instance(body: PaperAdvanceAction, request: Request):
+    _require_write(request)
+    try:
+        return ok(await asyncio.to_thread(paper_cycle_service.advance, body.instance_id, max_dates=body.max_dates))
     except ValueError as exc:
         raise _translate(exc) from exc
 

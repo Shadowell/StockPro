@@ -21,19 +21,26 @@ class FakePaperService:
     async def stop(self, instance_id): return {"id": int(instance_id), "status": "stopped"}
 
 
+class FakeCycleService:
+    def advance(self, instance_id, *, max_dates=1): return {"instance_id": instance_id, "processed_dates": ["2025-08-05"], "pending_remaining": 10, "max_dates": max_dates}
+
+
 def test_paper_lifecycle_routes_preserve_bitpro_live_contract(monkeypatch):
     monkeypatch.setattr(endpoint, "paper_domain_service", FakePaperService())
+    monkeypatch.setattr(endpoint, "paper_cycle_service", FakeCycleService())
     client = TestClient(create_app())
     candidates = client.get("/api/v2/live/candidates")
     created = client.post("/api/v2/live/instances", json={"name": "A 股模拟", "qualifying_backtest_run_id": "run-1", "initial_cash": 1_000_000, "start": True})
     paused = client.post("/api/v2/live/pause", json={"instance_id": 23})
     resumed = client.post("/api/v2/live/resume", json={"instance_id": 23})
     stopped = client.post("/api/v2/live/stop", json={"instance_id": 23, "clear_metrics": False})
+    advanced = client.post("/api/v2/live/advance", json={"instance_id": 23, "max_dates": 1})
     assert candidates.json()["data"][0]["strategy_id"] == 186
     assert created.status_code == 201 and created.json()["data"]["status"] == "running"
     assert paused.json()["data"]["status"] == "paused"
     assert resumed.json()["data"]["status"] == "running"
     assert stopped.json()["data"]["status"] == "stopped"
+    assert advanced.json()["data"]["processed_dates"] == ["2025-08-05"]
 
 
 def test_stop_rejects_any_request_to_clear_paper_history(monkeypatch):

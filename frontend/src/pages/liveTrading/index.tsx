@@ -544,6 +544,7 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
   const [dismissedAutoPreferredInstanceIds, setDismissedAutoPreferredInstanceIds] =
     useState<Set<string>>(loadDismissedAutoPreferredInstanceIds);
   const [loading, setLoading] = useState(false);
+  const [paperAdvanceBusy, setPaperAdvanceBusy] = useState(false);
 
   const [config, setConfig] = useState(() => {
     const mode: TradeMode =
@@ -1760,6 +1761,39 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
     }
   };
 
+  const handleAdvancePaper = async () => {
+    if (readOnly || !activeInstanceId || paperAdvanceBusy) return;
+    const qid = toLiveApiInstanceId(activeInstanceId);
+    if (qid == null) return;
+    setPaperAdvanceBusy(true);
+    try {
+      const result = await liveApi.advance(qid, 1);
+      const [dash, evts, curve, tradePayload] = await Promise.all([
+        liveApi.getDashboard(qid),
+        liveApi.getEvents(30, undefined, qid),
+        liveApi.getEquityCurve(qid),
+        liveApi.getStrategyTrades(Number(qid), 100),
+      ]);
+      setDashboard(dash);
+      setEvents(Array.isArray(evts) ? evts : evts?.events || []);
+      setEquityCurve(Array.isArray(curve) ? curve : []);
+      setTrades(normalizeStrategyTradesResponse(tradePayload));
+      await loadStrategies();
+      openAlertDialog({
+        title: result.processedDates?.length ? '周期推进完成' : '当前已到 sealed 快照末端',
+        content: result.processedDates?.length
+          ? `已处理 ${result.processedDates.join('、')}；信号 ${result.signalCount || 0}，订单 ${result.orderCount || 0}，成交 ${result.tradeCount || 0}。`
+          : '没有新的 sealed 交易日，实例和全部历史保持不变。',
+        tone: 'default',
+      });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      openAlertDialog({ title: '周期推进失败', content: String(e?.response?.data?.detail || e?.message), tone: 'danger' });
+    } finally {
+      setPaperAdvanceBusy(false);
+    }
+  };
+
   const handleClosePaperPosition = async (position: PaperPositionCloseRequest) => {
     if (readOnly) return;
     if (!activeInstanceId) {
@@ -2036,6 +2070,8 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
             }}
             onPauseResume={handlePauseResume}
             onStop={handleMonitorStop}
+            onAdvance={handleAdvancePaper}
+            advanceBusy={paperAdvanceBusy}
             onClosePosition={handleClosePaperPosition}
             onDeletePaper={
               paperInstanceKey(activeInstanceId)

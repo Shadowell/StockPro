@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 from typing import Any
+from datetime import datetime
 
 import psutil
 
@@ -60,6 +61,16 @@ class StrategyProcessRunner:
         series: dict[str, dict[str, list[Any]]] = {
             symbol: {field: [] for field in FIELDS} for symbol in symbols
         }
+        factor_values: dict[str, dict[str, dict[str, Any]]] = {}
+        factor_available: dict[str, datetime] = {}
+        for row in bundle.get("factor_values") or []:
+            trade_date = str(row.get("trade_date") or "")[:10]
+            if not trade_date:
+                continue
+            available_at = datetime.fromisoformat(str(row.get("available_at") or f"{trade_date}T17:30:00+08:00").replace("Z", "+00:00"))
+            factor_available[trade_date] = max(factor_available.get(trade_date, available_at), available_at)
+            factor_values.setdefault(trade_date, {}).setdefault(str(row["factor_code"]), {})[str(row["symbol"])] = row.get("processed_value")
+        factor_dates = sorted(factor_values)
         events: list[dict] = []
         for ordinal, trade_date in enumerate(calendar):
             bars: dict[str, dict[str, Any]] = {}
@@ -71,14 +82,17 @@ class StrategyProcessRunner:
                     series[symbol][field].append(value)
                 if row and series[symbol]["close"][ordinal] is not None:
                     bars[symbol] = {field: series[symbol][field][ordinal] for field in FIELDS}
+            simulated_at = f"{trade_date}T15:00:00+08:00"
+            simulated_dt = datetime.fromisoformat(simulated_at)
+            eligible_factor_dates = [day for day in factor_dates if day <= trade_date and factor_available[day] <= simulated_dt]
             events.append(
                 {
                     "trade_date": trade_date,
-                    "simulated_at": f"{trade_date}T15:00:00+08:00",
-                    "available_at": f"{trade_date}T15:00:00+08:00",
+                    "simulated_at": simulated_at,
+                    "available_at": simulated_at,
                     "previous_date": calendar[ordinal - 1] if ordinal else None,
                     "bars": bars,
-                    "factors": {},
+                    "factors": factor_values[eligible_factor_dates[-1]] if eligible_factor_dates else {},
                 }
             )
         if not events:
@@ -101,8 +115,8 @@ class StrategyProcessRunner:
             "series": series,
             "limits": self.limits,
             "dataset_snapshot_id": bundle["dataset_snapshot"]["id"],
-            "factor_snapshot_id": None,
-            "factor_snapshot_info": None,
+            "factor_snapshot_id": (bundle.get("factor_snapshot") or {}).get("id"),
+            "factor_snapshot_info": bundle.get("factor_snapshot"),
             "knowledge_cutoff_at": str(bundle["dataset_snapshot"].get("knowledge_cutoff_at")),
         }
         result = self._run_worker(worker_payload)

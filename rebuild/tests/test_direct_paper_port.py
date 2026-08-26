@@ -53,6 +53,16 @@ def test_bitpro_live_workspace_maps_a_share_paper_instances_and_dashboard():
     assert dashboard["positions"][0]["symbol"] == "600519.SH"
 
 
+def test_paper_instance_symbols_are_canonical_and_deduplicated():
+    repository = FakePaperRepository()
+    repository.list_instances = lambda: [{
+        **FakePaperRepository().list_instances()[0],
+        "symbols": ["SH_600519", "600519.SH", "SZ_000333", "000333.SZ"],
+    }]
+    items = asyncio.run(PaperDomainService(repository).list_instances())
+    assert items[0]["symbols"] == ["600519.SH", "000333.SZ"]
+
+
 def test_paper_lifecycle_creates_from_eligible_backtest_and_preserves_history():
     repository = FakePaperRepository()
     service = PaperDomainService(repository)
@@ -75,12 +85,15 @@ def test_bitpro_paper_ui_uses_admin_lifecycle_and_a_share_candidates():
     page = (BACKEND_ROOT.parent / "frontend/src/pages/liveTrading/index.tsx").read_text()
     wizard = (BACKEND_ROOT.parent / "frontend/src/pages/liveTrading/CreateWizard.tsx").read_text()
     constants = (BACKEND_ROOT.parent / "frontend/src/pages/liveTrading/constants.ts").read_text()
+    symbol_icon = (BACKEND_ROOT.parent / "frontend/src/components/SymbolIcon.tsx").read_text()
     assert "const readOnly = !isAdmin" in page
     assert "liveApi.getPaperCandidates()" in page
     assert "liveApi.createPaperInstance" in page
+    assert "liveApi.advance(qid, 1)" in page
     assert "模拟初始资金 (CNY)" in wizard
     assert "DEFAULT_PAPER_TIMEFRAME = '1d'" in constants
     assert "DEFAULT_PAPER_INITIAL_EQUITY = 1_000_000" in constants
+    assert "if (isAShareSymbol) return null" in symbol_icon
 
 
 def test_watch_workspace_reads_real_paper_accounts_positions_orders_and_market():

@@ -1724,6 +1724,9 @@ export const liveApi = {
   resume: (instanceId?: string | number): Promise<any> =>
     postReq('/live/resume', instanceId != null ? { instance_id: instanceId } : {}),
 
+  advance: (instanceId: string | number, maxDates = 1): Promise<any> =>
+    postReq('/live/advance', { instance_id: instanceId, max_dates: maxDates }),
+
   closePaperPosition: (payload: {
     instanceId?: string | number;
     symbol: string;

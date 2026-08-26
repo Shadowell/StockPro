@@ -46,32 +46,49 @@ def _attribute_path(node: ast.AST) -> str:
     return ""
 
 
-def _safe_local_containers(tree: ast.AST) -> set[str]:
-    safe_initializers: set[str] = set()
+def _container_literal(value: ast.AST) -> bool:
+    return isinstance(value, (ast.List, ast.Dict, ast.Set, ast.ListComp, ast.DictComp, ast.SetComp)) or (
+        isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id in {"dict", "list", "set", "sorted"}
+    )
+
+
+def _safe_container_functions(tree: ast.AST) -> set[str]:
+    safe_functions: set[str] = set()
+    for function in [node for node in getattr(tree, "body", []) if isinstance(node, ast.FunctionDef)]:
+        local_containers = {
+            target.id
+            for node in ast.walk(function)
+            if isinstance(node, (ast.Assign, ast.AnnAssign)) and _container_literal(node.value)
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+            if isinstance(target, ast.Name)
+        }
+        returns = [node.value for node in ast.walk(function) if isinstance(node, ast.Return)]
+        if returns and all(value is not None and (_container_literal(value) or (isinstance(value, ast.Name) and value.id in local_containers)) for value in returns):
+            safe_functions.add(function.name)
+    return safe_functions
+
+
+def _safe_local_containers(tree: ast.AST, safe_container_functions: set[str]) -> set[str]:
+    safe_initializer_counts: Counter[str] = Counter()
     store_counts = Counter(
         node.id
         for node in ast.walk(tree)
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
     )
-    literal_nodes = (ast.List, ast.Dict, ast.Set, ast.ListComp, ast.DictComp, ast.SetComp)
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         value = node.value
-        safe_value = isinstance(value, literal_nodes) or (
+        safe_value = _container_literal(value) or (
             isinstance(value, ast.Call)
             and isinstance(value.func, ast.Name)
-            and value.func.id in {"dict", "list", "set"}
-        ) or (
-            isinstance(value, ast.Call)
-            and isinstance(value.func, ast.Name)
-            and value.func.id in {"get_current_data", "get_factor_values", "get_price"}
+            and value.func.id in {"get_current_data", "get_factor_values", "get_price"} | safe_container_functions
         )
         if not safe_value:
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        safe_initializers.update(target.id for target in targets if isinstance(target, ast.Name))
-    return {name for name in safe_initializers if store_counts[name] == 1}
+        safe_initializer_counts.update(target.id for target in targets if isinstance(target, ast.Name))
+    return {name for name, count in safe_initializer_counts.items() if count > 0 and store_counts[name] == count}
 
 
 def _is_safe_method_receiver(receiver: ast.AST, safe_local_containers: set[str], reassigned_names: set[str]) -> bool:
@@ -100,7 +117,8 @@ def validate_strategy_python(code: str) -> dict[str, Any]:
         }
 
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-    safe_local_containers = _safe_local_containers(tree)
+    safe_container_functions = _safe_container_functions(tree)
+    safe_local_containers = _safe_local_containers(tree, safe_container_functions)
     reassigned_names = {
         node.id
         for node in ast.walk(tree)

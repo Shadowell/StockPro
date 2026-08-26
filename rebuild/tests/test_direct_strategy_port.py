@@ -129,6 +129,25 @@ def test_strategy_validator_allows_only_known_safe_container_methods():
     assert validate_strategy_python(code)["valid"] is True
 
 
+def test_strategy_validator_tracks_pure_helper_container_returns_without_opening_receiver_bypass():
+    safe = VALID_CODE.replace(
+        "def initialize(context):",
+        "def _scores():\n    values = {}\n    values['600519.SH'] = 1.0\n    return values\n\ndef initialize(context):",
+    ).replace(
+        "record(held=len(context.portfolio.positions))",
+        "scores = _scores()\n    record(score=scores.get('600519.SH'))",
+    )
+    unsafe = VALID_CODE.replace(
+        "def initialize(context):",
+        "def _client(context):\n    return context.http\n\ndef initialize(context):",
+    ).replace(
+        "record(held=len(context.portfolio.positions))",
+        "client = _client(context)\n    client.get('https://example.com')",
+    )
+    assert validate_strategy_python(safe)["valid"] is True
+    assert validate_strategy_python(unsafe)["valid"] is False
+
+
 def test_strategy_writes_create_immutable_versions_and_archive():
     repository = FakeStrategyRepository()
     service = StrategyDomainService(repository)

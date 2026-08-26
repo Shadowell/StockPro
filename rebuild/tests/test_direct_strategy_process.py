@@ -62,3 +62,24 @@ def test_parent_process_rejects_unsafe_code_before_worker_launch():
     unsafe = "import os\n" + VALID_CODE
     with pytest.raises(ValueError, match="策略代码未通过验证"):
         StrategyProcessRunner().run(bundle(unsafe))
+
+
+def test_parent_process_attaches_only_factor_values_available_by_event_time():
+    code = """
+def initialize(context):
+    set_benchmark('000300.SH')
+
+def handle_data(context, data):
+    values = get_factor_values('momentum_5d')
+    if values.get('600000.SH') is not None:
+        record(factor=values.get('600000.SH'))
+"""
+    evidence = bundle(code)
+    evidence["factor_snapshot"] = {"id": 8, "manifest_hash": "factor-hash", "knowledge_cutoff_at": "2026-08-25T00:00:00+08:00"}
+    evidence["factor_values"] = [
+        {"trade_date": "2025-01-02", "available_at": "2025-01-03T14:00:00+08:00", "factor_code": "momentum_5d", "symbol": "600000.SH", "processed_value": 0.25},
+    ]
+    result = StrategyProcessRunner().run(evidence)
+    assert len(result["records"]) == 1
+    assert result["records"][0]["simulated_at"] == "2025-01-03T15:00:00+08:00"
+    assert result["records"][0]["payload"] == {"factor": 0.25}

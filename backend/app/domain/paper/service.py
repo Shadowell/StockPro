@@ -5,6 +5,7 @@ import asyncio
 from datetime import date, datetime, timezone
 
 from app.domain.paper.repository import PaperRepository
+from app.services.ashare_execution import explicit_instrument_key
 
 
 class PaperDomainService:
@@ -30,10 +31,15 @@ class PaperDomainService:
         initial = cls._number(row.get("initial_cash")); current = cls._number(row.get("current_equity"), initial)
         strategy_name = str(row.get("strategy_name") or row.get("name") or "")
         strategy_type = "momentum" if ("动量" in strategy_name or "趋势" in strategy_name) else ("mean_reversion" if ("回归" in strategy_name or "反转" in strategy_name or "超跌" in strategy_name) else ("multi_factor" if "因子" in strategy_name else ("event" if ("打板" in strategy_name or "涨停" in strategy_name) else "other")))
+        symbols = []
+        for raw_symbol in row.get("symbols") or []:
+            symbol = explicit_instrument_key(raw_symbol)
+            if symbol and symbol not in symbols:
+                symbols.append(symbol)
         return {
             "id": int(row.get("id")), "name": str(row.get("name") or "A股模拟实例"),
             "description": str(row.get("strategy_name") or "PostgreSQL Paper"), "status": str(row.get("status") or "stopped"),
-            "exchange": "CN", "symbols": list(row.get("symbols") or []), "created_at": row.get("created_at"),
+            "exchange": "CN", "symbols": symbols, "created_at": row.get("created_at"),
             "total_pnl": current - initial, "return_pct": ((current - initial) / initial * 100) if initial else 0,
             "max_drawdown": cls._number(row.get("max_drawdown")) * 100, "total_trades": int(cls._number(row.get("trade_count"))),
             "config": {"is_paper_trading": True, "asset_class": "stock", "strategy_type": strategy_type, "timeframe": "1d", "initial_capital": initial, "paper_instance_uuid": str(row.get("instance_uuid") or "")},
@@ -93,7 +99,16 @@ class PaperDomainService:
         initial = self._number(row.get("initial_cash")); current = self._number(curve[-1].get("equity") if curve else row.get("cash_balance"), initial)
         change = current - initial; change_pct = change / initial * 100 if initial else 0
         max_drawdown = max((self._number(point.get("drawdown")) for point in curve), default=0) * 100
-        normalized_positions = [{"symbol": p.get("symbol"), "name": p.get("name"), "side": "long", "amount": self._number(p.get("quantity")), "free": self._number(p.get("available_quantity")), "entry_price": self._number(p.get("avg_cost")), "mark_price": self._number(p.get("last_price")), "notional": self._number(p.get("market_value")), "unrealized_pnl": (self._number(p.get("last_price")) - self._number(p.get("avg_cost"))) * self._number(p.get("quantity"))} for p in positions]
+        position_by_symbol = {}
+        for position in positions:
+            symbol = explicit_instrument_key(position.get("symbol"))
+            quantity = self._number(position.get("quantity"))
+            if not symbol or quantity <= 0:
+                continue
+            candidate = {"symbol": symbol, "name": position.get("name"), "side": "long", "amount": quantity, "free": self._number(position.get("available_quantity")), "entry_price": self._number(position.get("avg_cost")), "mark_price": self._number(position.get("last_price")), "notional": self._number(position.get("market_value")), "unrealized_pnl": (self._number(position.get("last_price")) - self._number(position.get("avg_cost"))) * quantity}
+            if symbol not in position_by_symbol or quantity > self._number(position_by_symbol[symbol].get("amount")):
+                position_by_symbol[symbol] = candidate
+        normalized_positions = list(position_by_symbol.values())
         symbols = list(row.get("symbols") or [])
         return {"system": {"state": row.get("status"), "uptime": "-", "exchange": "CN", "symbol": symbols[0] if symbols else "", "symbols": symbols, "timeframe": "1d", "strategy": row.get("strategy_name") or row.get("name"), "strategy_id": int(row.get("id")), "dry_run": True, "mode": "paper"}, "equity": {"initial": initial, "current": current, "peak": max([initial, *[self._number(p.get("equity")) for p in curve]]), "change": change, "change_pct": change_pct}, "performance": {"total_pnl": change, "total_pnl_pct": change_pct, "win_rate": 0, "profit_factor": 0, "gross_profit": 0, "gross_loss": 0, "total_trades": len(trades), "max_drawdown": max_drawdown, "sharpe_ratio": 0}, "risk": {"circuit_breaker": False, "current_drawdown": max_drawdown, "daily_loss": 0}, "positions": normalized_positions, "account": {"unrealized_pnl": sum(self._number(p["unrealized_pnl"]) for p in normalized_positions)}, "recent_events": events, "feishu": {"enabled": False}}
 
