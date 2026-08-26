@@ -91,7 +91,8 @@ def test_direct_port_boots_only_safe_a_share_routes(
     try:
         from app.main import create_app
 
-        paths = {route.path for route in create_app().routes}
+        schema = create_app().openapi()
+        paths = set(schema["paths"])
     finally:
         sys.path.remove(str(backend_root))
 
@@ -120,12 +121,7 @@ def test_direct_port_boots_only_safe_a_share_routes(
     assert "/api/v2/backtest/run_running_strategies" in paths
     assert not any(path.startswith(("/api/v2/live/deploy", "/api/v2/live/positions/close")) for path in paths)
 
-    strategy_methods = {
-        method
-        for route in create_app().routes
-        if route.path == "/api/v2/strategies"
-        for method in (route.methods or set())
-    }
+    strategy_methods = {method.upper() for method in schema["paths"]["/api/v2/strategies"]}
     assert {"GET", "POST"}.issubset(strategy_methods)
 
 

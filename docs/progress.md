@@ -1,5 +1,28 @@
 # Progress Log
 
+## GitHub #23 A 股数据集同步与封存底座（2026-08-26）
+
+- 从本地 `origin/main`/`HEAD` `ca5c3220` 开始 #23 最小纵向切片；当前会话无法创建 Git
+  分支或访问 GitHub 写接口时，先保持 worktree 内本地实现与验证，不继续 #25。
+- 新增只读 `ashare-dataset-foundation.v1` 合同，列出 security/calendar/EOD/复权/估值/
+  停牌/涨跌停/公司行动/基准 9 个 canonical A 股研究数据集，读取 PostgreSQL
+  definitions、entitlements、partitions、watermarks 和 sealed snapshots 汇总封存前置状态。
+- `/api/v2/sync/ashare/dataset-foundation` 不接 Provider、不写库、不触发同步或 Paper 变更；
+  只有所有 required dataset 均有分区、无 blocking quality issue 且进入 sealed snapshot 时才
+  标记 research snapshot ready。
+- 新增 additive migration `202608260001_ashare_dataset_foundation.sql`，注册 canonical 数据集、
+  只读本地缓存/禁止导出的 source entitlement，以及默认 disabled 的 A 股日终计划。
+- 修复 `app.domain.sync` 包级 eager import，避免只读 A 股 backend 导入 foundation API 时加载
+  dormant exchange/ccxt 同步依赖；安全测试改为通过 OpenAPI paths 检查注册路由，兼容新版
+  FastAPI lazy router 且不放宽禁用路径断言。
+- 本地服务已干净重启，后端 `http://127.0.0.1:4445/api/health` 与前端 `http://127.0.0.1:4444/`
+  均返回 200；启动环境显式禁用 bootstrap、scheduler、realtime sync、strategy execution 和
+  Paper recovery。
+- 完整 `./scripts/check.sh` 通过：frontend frozen install、type check、production build、
+  bundle budget、零告警 lint、`npm audit` 0 vulnerabilities、backend compileall、128 项
+  A 股后端测试、runtime safety `safe active=0 quarantined=57`、Mock E2E 26 项和
+  `git diff --check` 全部通过。
+
 ## BitPro 原代码直接移植重置（2026-08-26）
 
 - 用户否决了 `116f543f` 的“页面映射 + A 股重写”结果：它不是所要求的
