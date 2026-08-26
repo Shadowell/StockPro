@@ -1,4 +1,5 @@
 import sys
+from datetime import date
 from pathlib import Path
 
 
@@ -6,6 +7,59 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from app.domain.market.service import MarketDomainService
+from app.domain.market.repository import MarketRepository
+
+
+class _FakeCursor:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def execute(self, query, params=()):
+        self.query = query
+        self.params = params
+
+    def fetchall(self):
+        return self.rows
+
+
+class _FakeConnection:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def set_session(self, **kwargs):
+        self.session_kwargs = kwargs
+
+    def cursor(self):
+        return _FakeCursor(self.rows)
+
+
+def test_market_repository_daily_klines_return_status_payload_and_items() -> None:
+    repo = MarketRepository(
+        "postgresql://example.invalid/db",
+        connection_factory=lambda *_args, **_kwargs: _FakeConnection(
+            [(date(2026, 8, 26), 10, 11, 9, 10.5, 1000, 2000)]
+        ),
+    )
+
+    payload = repo.get_klines_with_status("SSE", "600519.SH", "1d", 100)
+
+    assert payload["data_status"] == "ok"
+    assert payload["unavailable_reason"] is None
+    assert payload["symbol"] == "600519.SH"
+    assert payload["items"][0]["trade_date"] == "2026-08-26"
+    assert repo.get_klines("SSE", "600519.SH", "1d", 100) == payload["items"]
 
 
 def test_market_domain_builds_timestamp_aligned_ema_series() -> None:
@@ -86,12 +140,11 @@ def test_market_page_shows_ticker_stats_recent_trades_and_subchart_indicators() 
     chart_source = open("frontend/src/components/KlineChart.tsx", encoding="utf-8").read()
     client_source = open("frontend/src/api/client.ts", encoding="utf-8").read()
 
-    assert "24h 高" in market_source
-    assert "24h 低" in market_source
-    assert "24h 量" in market_source
-    assert "24h 额" in market_source
-    assert "资金费率" in market_source
-    assert "fundingApi.getRate" in market_source
+    assert "当日高" in market_source
+    assert "当日低" in market_source
+    assert "成交量" in market_source
+    assert "成交额" in market_source
+    assert "fundingApi.getRate" not in market_source
     assert "最近成交" in market_source
     assert "marketApi.getTrades" in market_source
     assert "getTrades:" in client_source

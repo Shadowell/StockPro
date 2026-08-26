@@ -281,7 +281,7 @@ class MarketRepository:
             with connection.cursor() as cursor:
                 cursor.execute(query, tuple(params))
                 rows = list(reversed(cursor.fetchall()))
-        return [
+        items = [
             {
                 "timestamp": int(datetime.combine(row[0], datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000),
                 "open": float(row[1]),

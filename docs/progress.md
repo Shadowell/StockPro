@@ -1,5 +1,19 @@
 # Progress Log
 
+## 直接生产部署与行情指标修复（2026-08-26）
+
+- 用户明确要求本次不走 GitHub Actions，直接把当前 `main` 部署到 `stockpro` 服务器；按现有
+  workflow 的同步范围同步 `backend/`、`frontend/dist/`、`deploy/`、`scripts/`，保留生产
+  `.env`、数据库、日志和 venv。
+- 生产部署脚本成功执行，PostgreSQL 迁移新增应用
+  `202608260001_a_share_daily_instrument_sync` 与 `202608260002_realtime_market_cache`，后端、
+  Nginx、本机入口和 HTTPS 域名健康检查通过。
+- 部署后日志暴露 `/api/v2/market/indicators` 在日线 K 线分支的 payload 形状错误：
+  `get_klines_with_status()` 提前返回 list，`get_klines()` 读取 `["items"]` 触发 TypeError。
+  已修复为日线分支统一返回 `{items,data_status,unavailable_reason}`，并补充回归测试。
+- 验证：`tests/test_market_chart_indicators.py` 9 项通过，相关后端 market 模块 compileall 通过。
+  生产库当前主数据表仍为空，需要管理员触发 A 股全量同步后再复核中文名与全市场数量。
+
 ## GitHub #25 A 股实时/分钟/盘口/逐笔缓存底座（2026-08-26）
 
 - 从最新 `origin/main` 派生 `codex/issue-25-realtime-cache`，先做 #25 最小纵向切片：新增只读
