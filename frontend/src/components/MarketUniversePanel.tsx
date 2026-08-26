@@ -19,7 +19,7 @@ import {
   Zap,
   WifiOff,
 } from 'lucide-react';
-import { fundingApi, healthApi, marketApi } from '../api/client';
+import { healthApi, marketApi } from '../api/client';
 import type { FundingRate } from '../types';
 import { TOP50_SYMBOLS } from './SymbolSearch';
 import SymbolIcon, { extractSymbolBase } from './SymbolIcon';
@@ -145,9 +145,6 @@ const TRADFI_SYMBOLS = [
   'EWY/USDT:USDT',
 ] as const;
 
-const HOME_FUNDING_SYMBOLS = MARKET_TAB_SYMBOLS.futures.slice(0, 24);
-const HOME_TICKER_SCOPE = { quote: 'USDT', marketType: 'swap' } as const;
-const EXTREME_FUNDING_RATE = 0.0005;
 
 type HomeTickerRankingKey = 'hot' | 'new' | 'tradfi' | 'gainers' | 'losers';
 type HomeRankingKey = HomeTickerRankingKey | 'funding';
@@ -217,14 +214,6 @@ interface TickerData {
   sector_key: string;
   sector_name: string;
   taxonomy_version: string;
-}
-
-interface FundingSentimentStats {
-  count: number;
-  avgFundingRate: number | null;
-  positiveFundingRatio: number | null;
-  extremeFundingCount: number;
-  score: number | null;
 }
 
 interface MarketSentimentMetric {
@@ -320,11 +309,6 @@ function formatSignedPercent(value: number): string {
 function clampScore(value: number): number {
   if (!Number.isFinite(value)) return 50;
   return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function formatPercent(value: number | null | undefined, digits = 2): string {
-  if (value == null || !Number.isFinite(value)) return '—';
-  return `${value.toFixed(digits)}%`;
 }
 
 function formatRatio(value: number | null | undefined, digits = 1): string {
@@ -747,43 +731,6 @@ const SENTIMENT_TONE_CLASSES: Record<MarketSentimentMetric['tone'], { border: st
   },
 };
 
-function fundingRateNumber(rate: FundingRate): number | null {
-  const raw = rate.currentRate;
-  return typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
-}
-
-function buildFundingSentimentStats(rates: FundingRate[]): FundingSentimentStats {
-  const values = rates
-    .map(fundingRateNumber)
-    .filter((value): value is number => value != null);
-  const count = values.length;
-
-  if (count === 0) {
-    return {
-      count: 0,
-      avgFundingRate: null,
-      positiveFundingRatio: null,
-      extremeFundingCount: 0,
-      score: null,
-    };
-  }
-
-  const avgFundingRate = values.reduce((sum, value) => sum + value, 0) / count;
-  const positiveFundingRatio = (values.filter((value) => value > 0).length / count) * 100;
-  const extremeFundingCount = values.filter((value) => Math.abs(value) >= EXTREME_FUNDING_RATE).length;
-  const pressureFromAverage = avgFundingRate * 10000 * 8;
-  const pressureFromPositive = (positiveFundingRatio - 50) * 0.45;
-  const pressureFromExtremes = (extremeFundingCount / count) * 18;
-
-  return {
-    count,
-    avgFundingRate,
-    positiveFundingRatio,
-    extremeFundingCount,
-    score: clampScore(50 + pressureFromAverage + pressureFromPositive + pressureFromExtremes),
-  };
-}
-
 function sentimentLabel(score: number): string {
   if (score >= 72) return '风险偏好强';
   if (score >= 58) return '偏多活跃';
@@ -794,11 +741,11 @@ function sentimentLabel(score: number): string {
 
 function HomeMarketSummaryModule({
   sentiment,
-  fundingStatus,
+  evidenceStatus,
   overviewCards,
 }: {
   sentiment: MarketSentimentModel;
-  fundingStatus: 'idle' | 'loading' | 'ready' | 'error';
+  evidenceStatus: 'loading' | 'ready' | 'error';
   overviewCards: ReactNode;
 }) {
   const prefersReducedMotion = useReducedMotion();
@@ -826,7 +773,7 @@ function HomeMarketSummaryModule({
             全部 A 股
           </span>
           <span className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-gray-400">
-            市场证据 {fundingStatus === 'loading' ? '读取中' : fundingStatus === 'ready' ? '已接入' : fundingStatus === 'error' ? '读取失败' : '待读取'}
+            市场证据 {evidenceStatus === 'loading' ? '读取中' : evidenceStatus === 'ready' ? '已接入' : '读取失败'}
           </span>
         </div>
       </div>
@@ -926,8 +873,6 @@ export default function MarketUniversePanel({
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [activeTab, setActiveTab] = useState<MarketTabKey>('futures');
   const [homeRankingKey, setHomeRankingKey] = useState<HomeRankingKey>('hot');
-  const [fundingRates, setFundingRates] = useState<FundingRate[]>([]);
-  const [fundingStatus, setFundingStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
   const { tickers: wsTickers, isConnected: wsConnected } = useTickersWebSocket(selectedExchange, false);
   const sparklineCache = useRef<Record<string, number[]>>({});
@@ -1016,7 +961,7 @@ export default function MarketUniversePanel({
         return;
       }
       const tickersData = isSummary
-        ? await marketApi.getAllTickers(selectedExchange, HOME_TICKER_SCOPE)
+        ? await marketApi.getAllTickers(selectedExchange)
         : await marketApi.getTickers(selectedExchange, requestedSymbols);
       setTickers(mapTickerData(tickersData as RealtimeTicker[]));
     } catch (err) {
@@ -1075,29 +1020,6 @@ export default function MarketUniversePanel({
   useEffect(() => {
     if (wsConnected) setApiStatus('connected');
   }, [wsConnected]);
-
-  useEffect(() => {
-    if (!isSummary) return;
-
-    let cancelled = false;
-    setFundingStatus('loading');
-    fundingApi.getRates(selectedExchange, HOME_FUNDING_SYMBOLS)
-      .then((rates) => {
-        if (cancelled) return;
-        setFundingRates(Array.isArray(rates) ? rates : []);
-        setFundingStatus('ready');
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error('Failed to fetch home funding rates:', err);
-        setFundingRates([]);
-        setFundingStatus('error');
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isSummary, selectedExchange]);
 
   const displayedTickers = useMemo(() => {
     if (isSummary) return [...tickers];
@@ -1225,19 +1147,16 @@ export default function MarketUniversePanel({
     };
   }, [displayedTickers]);
 
-  const fundingStats = useMemo(() => buildFundingSentimentStats(fundingRates), [fundingRates]);
-
   const marketSentiment = useMemo<MarketSentimentModel>(() => {
     const breadthScore = marketOverview.breadthPct;
     const avgChangeScore = clampScore(50 + marketOverview.avgChange * 5);
     const concentrationScore = clampScore(50 + marketOverview.topTurnoverConcentration * 70);
     const heatScore = clampScore(breadthScore * 0.42 + avgChangeScore * 0.38 + concentrationScore * 0.2);
 
-    const leverageScore = fundingStats.score;
-    const longShortScore = clampScore(50 + (marketOverview.breadthPct - 50) * 0.7 + marketOverview.avgChange * 4);
+    const activityScore = clampScore(35 + Math.min(marketOverview.total, 100) * 0.25 + marketOverview.topTurnoverConcentration * 40);
+    const breadthBalanceScore = clampScore(50 + (marketOverview.breadthPct - 50) * 0.8 + marketOverview.avgChange * 4);
     const riskPreferenceScore = clampScore(
-      45
-      + marketOverview.newListingTurnoverRatio * 180
+      50
       + Math.max(0, marketOverview.topGainerAvg) * 2.2
       + Math.min(0, marketOverview.topLoserAvg) * 0.8,
     );
@@ -1245,8 +1164,8 @@ export default function MarketUniversePanel({
 
     const weightedComponents = [
       { score: heatScore, weight: 0.3 },
-      { score: leverageScore, weight: leverageScore == null ? 0 : 0.2 },
-      { score: longShortScore, weight: 0.22 },
+      { score: activityScore, weight: 0.2 },
+      { score: breadthBalanceScore, weight: 0.22 },
       { score: riskPreferenceScore, weight: 0.18 },
       { score: macroScore, weight: 0.1 },
     ];
@@ -1265,22 +1184,22 @@ export default function MarketUniversePanel({
         icon: <Flame className="h-4 w-4" />,
       },
       {
-        key: 'leverage',
-        label: '杠杆情绪',
-        score: leverageScore,
-        status: fundingStats.count > 0 ? `均值 ${formatPercent((fundingStats.avgFundingRate ?? 0) * 100, 4)}` : '资金费率暂无',
-        detail: fundingStats.count > 0 ? `市场活跃度 ${formatRatio(fundingStats.positiveFundingRatio)}` : '等待 A 股市场证据',
-        meta: `极端资金费率 ${fundingStats.extremeFundingCount} 个`,
+        key: 'activity',
+        label: '成交活跃',
+        score: activityScore,
+        status: marketOverview.totalTurnover > 0 ? `Top5 集中 ${formatRatio(marketOverview.topTurnoverConcentration * 100)}` : '等待成交证据',
+        detail: `覆盖 ${marketOverview.total} 个 A 股标的`,
+        meta: `活跃标的 ${marketOverview.turnoverLeader?.displayName || '—'}`,
         tone: 'amber',
         icon: <Zap className="h-4 w-4" />,
       },
       {
-        key: 'crowding',
-        label: '多空拥挤',
-        score: longShortScore,
-        status: marketOverview.breadthPct >= 55 ? '多头占优' : marketOverview.breadthPct <= 45 ? '空头占优' : '多空均衡',
+        key: 'breadth',
+        label: '涨跌广度',
+        score: breadthBalanceScore,
+        status: marketOverview.breadthPct >= 55 ? '上涨家数占优' : marketOverview.breadthPct <= 45 ? '下跌家数占优' : '涨跌均衡',
         detail: `上涨占比 ${formatRatio(marketOverview.breadthPct)}`,
-        meta: '账户多空比待接入后替换为真实拥挤度',
+        meta: `上涨 ${marketOverview.gainers} · 下跌 ${marketOverview.losers} · 平盘 ${marketOverview.flat}`,
         tone: 'blue',
         icon: <Compass className="h-4 w-4" />,
       },
@@ -1288,17 +1207,17 @@ export default function MarketUniversePanel({
         key: 'risk',
         label: '风险偏好',
         score: riskPreferenceScore,
-        status: marketOverview.newListingTurnoverRatio >= 0.08 ? '小币活跃' : '主流主导',
-        detail: `新币成交占比 ${formatRatio(marketOverview.newListingTurnoverRatio * 100)}`,
+        status: riskPreferenceScore >= 58 ? '进攻偏好' : riskPreferenceScore <= 42 ? '防御偏好' : '风险中性',
+        detail: `领涨均值 ${formatSignedPercent(marketOverview.topGainerAvg)}`,
         meta: `Top5 涨幅均值 ${formatSignedPercent(marketOverview.topGainerAvg)}`,
         tone: 'violet',
         icon: <Sparkles className="h-4 w-4" />,
       },
       {
         key: 'macro',
-        label: '宏观事件',
+        label: '交易日证据',
         score: macroScore,
-        status: '仅提醒',
+        status: apiStatus === 'connected' ? 'PostgreSQL 已连接' : '数据连接异常',
         detail: 'A 股交易日历已由 PostgreSQL 维护',
         meta: '事件临近时提醒，不直接纳入短线信号',
         tone: 'rose',
@@ -1309,10 +1228,10 @@ export default function MarketUniversePanel({
     return {
       score,
       label: sentimentLabel(score),
-      summary: `热度 ${heatScore} · 杠杆 ${leverageScore ?? '—'} · 多空 ${longShortScore} · 风险偏好 ${riskPreferenceScore}`,
+      summary: `热度 ${heatScore} · 活跃 ${activityScore} · 广度 ${breadthBalanceScore} · 风险偏好 ${riskPreferenceScore}`,
       components,
     };
-  }, [fundingStats, marketOverview]);
+  }, [apiStatus, marketOverview]);
 
   const homeRankings = useMemo<Record<HomeTickerRankingKey, TickerData[]>>(() => ({
     hot: marketOverview.hotRanking,
@@ -1321,12 +1240,7 @@ export default function MarketUniversePanel({
     gainers: marketOverview.gainerRanking,
     losers: marketOverview.loserRanking,
   }), [marketOverview]);
-  const homeFundingRanking = useMemo(() => (
-    [...fundingRates]
-      .filter((item) => Number.isFinite(item.currentRate))
-      .sort((a, b) => b.currentRate - a.currentRate)
-      .slice(0, HOME_RANKING_LIMIT)
-  ), [fundingRates]);
+  const homeFundingRanking: FundingRate[] = [];
   const activeHomeRankingItems = homeRankingKey === 'funding' ? [] : homeRankings[homeRankingKey];
 
   const activeTabMeta = isSummary ? HOME_SUMMARY_META : MARKET_TAB_META[activeTab];
@@ -1476,7 +1390,7 @@ export default function MarketUniversePanel({
         <>
           <HomeMarketSummaryModule
             sentiment={marketSentiment}
-            fundingStatus={fundingStatus}
+            evidenceStatus={loading ? 'loading' : apiStatus === 'connected' ? 'ready' : 'error'}
             overviewCards={homeOverviewCards}
           />
           <MarketSectorHeatmap tickers={displayedTickers}

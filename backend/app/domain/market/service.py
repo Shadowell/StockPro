@@ -217,7 +217,7 @@ class MarketDomainService:
     async def get_trades(self, exchange_name: str, symbol: str, limit: int = 50) -> List[Dict]:
         return await asyncio.to_thread(self.repo.get_trades, exchange_name, symbol, limit)
 
-    async def get_symbols(self, exchange_name: str, quote: str = "USDT", market_type: str = "spot") -> List[str]:
+    async def get_symbols(self, exchange_name: str, quote: str = "CNY", market_type: str = "stock") -> List[str]:
         asset_class = (market_type or "stock").strip().lower()
         if asset_class not in {"stock", "etf", "index", "all"}:
             asset_class = "stock"

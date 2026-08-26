@@ -1089,7 +1089,7 @@ export default function MainLayout() {
   const activeSettings = settingsTabs.find((tab) => tab.id === activeSettingsTab) || settingsTabs[0];
 
   return (
-    <div className="flex h-screen bg-crypto-bg">
+    <div data-testid="main-layout" className="flex h-screen bg-crypto-bg">
       {/* 侧边栏 */}
       <aside className="w-16 shrink-0 bg-crypto-card border-r border-crypto-border flex flex-col overflow-hidden">
         {/* Logo */}
@@ -1174,7 +1174,9 @@ export default function MainLayout() {
               </div>
             }
           >
-            <Outlet />
+            <div data-operator-page={location.pathname} className="contents">
+              <Outlet />
+            </div>
           </Suspense>
         </PageErrorBoundary>
       </main>

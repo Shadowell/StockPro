@@ -28,7 +28,7 @@ def _parse_periods(raw: str, param_name: str = "ema_periods") -> List[int]:
 @router.get("/ticker")
 async def get_ticker(
     exchange: str = Query(..., description="交易所"),
-    symbol: str = Query(..., description="交易对"),
+    symbol: str = Query(..., description="A 股证券代码"),
 ):
     return ok(await market_domain_service.get_ticker(exchange, symbol))
 
@@ -36,9 +36,9 @@ async def get_ticker(
 @router.get("/tickers")
 async def get_tickers(
     exchange: str = Query(..., description="交易所"),
-    symbols: Optional[str] = Query(None, description="逗号分隔交易对"),
-    quote: Optional[str] = Query(None, description="按计价币种筛选，例如 USDT"),
-    market_type: Optional[str] = Query(None, description="按市场类型筛选，例如 swap"),
+    symbols: Optional[str] = Query(None, description="逗号分隔 A 股证券代码"),
+    quote: Optional[str] = Query(None, description="兼容字段；A 股固定为 CNY"),
+    market_type: Optional[str] = Query(None, description="资产类型：stock/etf/index/all"),
     offset: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=500),
 ):
@@ -48,7 +48,7 @@ async def get_tickers(
     if market_type:
         symbol_list = await market_domain_service.get_symbols(
             exchange,
-            (quote or "USDT").strip().upper(),
+            (quote or "CNY").strip().upper(),
             market_type.strip().lower(),
         )
     items = await market_domain_service.get_tickers(exchange, symbol_list)
@@ -60,7 +60,7 @@ async def get_tickers(
 @router.get("/klines")
 async def get_klines(
     exchange: str = Query(..., description="交易所"),
-    symbol: str = Query(..., description="交易对"),
+    symbol: str = Query(..., description="A 股证券代码"),
     timeframe: str = Query("1h", description="周期"),
     limit: int = Query(100, ge=1, le=1000),
     start: Optional[int] = Query(None, description="开始时间戳(毫秒)"),
@@ -72,7 +72,7 @@ async def get_klines(
 @router.get("/indicators")
 async def get_technical_indicators(
     exchange: str = Query(..., description="交易所"),
-    symbol: str = Query(..., description="交易对"),
+    symbol: str = Query(..., description="A 股证券代码"),
     timeframe: str = Query("1h", description="周期"),
     limit: int = Query(100, ge=1, le=1000),
     start: Optional[int] = Query(None, description="开始时间戳(毫秒)"),
@@ -95,7 +95,7 @@ async def get_technical_indicators(
 @router.get("/orderbook")
 async def get_orderbook(
     exchange: str = Query(..., description="交易所"),
-    symbol: str = Query(..., description="交易对"),
+    symbol: str = Query(..., description="A 股证券代码"),
     limit: int = Query(20, ge=1, le=1000),
 ):
     return ok(await market_domain_service.get_orderbook(exchange, symbol, limit))
@@ -104,7 +104,7 @@ async def get_orderbook(
 @router.get("/trades")
 async def get_trades(
     exchange: str = Query(..., description="交易所"),
-    symbol: str = Query(..., description="交易对"),
+    symbol: str = Query(..., description="A 股证券代码"),
     limit: int = Query(50, ge=1, le=500),
 ):
     return ok(await market_domain_service.get_trades(exchange, symbol, limit))
@@ -113,8 +113,8 @@ async def get_trades(
 @router.get("/symbols")
 async def get_symbols(
     exchange: str = Query(..., description="交易所"),
-    quote: str = Query("USDT", description="计价币种"),
-    market_type: str = Query("spot", description="市场类型: spot/swap/future/all"),
+    quote: str = Query("CNY", description="计价币种，A 股固定为 CNY"),
+    market_type: str = Query("stock", description="资产类型: stock/etf/index/all"),
 ):
     symbols = await market_domain_service.get_symbols(exchange, quote, market_type)
     return ok({"symbols": symbols})

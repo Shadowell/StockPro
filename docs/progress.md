@@ -181,6 +181,22 @@
   事务回滚；未禁用触发器，也未篡改 success 状态。29 个 job lineage 和 18 个 QA run 作为隔离库
   审计证据保留，当前 backtest jobs/logs/runs 为 64/955/380。Paper 基线仍为 22 instances、137
   ledger、115 trades、51 positions、1008 equity、2080 events、1019 cycles，未受批量压力影响。
+- 最新真实管理员路由矩阵覆盖 `/`、行情、策略、回测、套利、基本面、模拟、信号、盯盘、资金流、
+  复盘、监控、数据、因子、AI研发和 ARC 共 16 个活动页面；全部在 8 秒观察窗内退出加载态，非 GET
+  请求、失败资源和 console error 均为 0。矩阵定位并修复首页情绪卡残留：保留 BitPro 原结构，
+  将资金费率/杠杆/多空/新币改为 A 股成交活跃、涨跌广度、风险偏好和交易日证据，首页不再调用
+  funding API，也不再发送 `quote=USDT/marketType=swap`。复验中相关可见词和相关请求 URL 均为 0，
+  A 股新指标可见，复盘页“实盘”只保留在“不会读取真实账户”的合规边界说明中。
+- 恢复 `d959a016` 中被精确 BitPro 导入删除的 PostgreSQL migration runner 与 39 个原 SQL 迁移；
+  当前文件清单与隔离库 `schema_migrations` 均为 39。根 `pytest.ini` 只收集活动 `rebuild/tests`，
+  旧 `tests/` 的数字资产/实盘/torch/ccxt 用例保留为不可达参考，不再冒充当前门禁；默认 pytest
+  现为 116/116。后端 requirements 恢复 PostgreSQL、Tushare、AkShare 的 A 股运行集合，不再递归
+  引用包含 ccxt/aiosqlite/Kairos/torch 的旧 base requirements。
+- 恢复冻结 frontend lockfile、`@bitpro/ui`、Playwright、bundle budget 与双模式 E2E 脚本；25 条
+  Mock E2E 已逐项更新为当前 16 路由、管理员/访客权限、错误边界、空态、双视口和 A 股禁词合同，
+  25/25 通过。增强后的 `./scripts/check.sh` 已一次性通过 frozen install、类型检查、production
+  build、bundle budget、零警告 lint、生产依赖审计 0 vulnerability、116 pytest、安全扫描 active 0、
+  25 E2E 和 diff whitespace，不再以“只编译”冒充全量门禁。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

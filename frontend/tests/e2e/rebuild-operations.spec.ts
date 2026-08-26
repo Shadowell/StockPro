@@ -1,0 +1,3 @@
+import { expect, test } from '@playwright/test'
+import { installFinalFixtures } from './rebuild-final-fixtures'
+test('signals watch orderflow and review remain one read-only Paper evidence chain',async({page})=>{await installFinalFixtures(page);const writes:string[]=[];page.on('request',r=>{if(['POST','PUT','PATCH','DELETE'].includes(r.method()))writes.push(r.url())});for(const [route,label] of [['/signals','信号中心'],['/watch','盯盘'],['/orderflow','A 股资金流 · 大单微观结构'],['/review','复盘中心']]){await page.goto(route);await expect(page.getByText(label,{exact:true}).first()).toBeVisible()}expect(writes).toEqual([])})

@@ -56,6 +56,7 @@ function AppRoutes() {
         <Route path="factorlab" element={<FactorLab />} />
         <Route path="ai-lab" element={<AILab />} />
         <Route path="arc" element={<ArcConsole />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   )

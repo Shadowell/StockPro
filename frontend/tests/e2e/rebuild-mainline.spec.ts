@@ -1,0 +1,3 @@
+import { expect, test } from '@playwright/test'
+import { installFinalFixtures } from './rebuild-final-fixtures'
+test('strategy backtest Paper is the only execution mainline',async({page})=>{await installFinalFixtures(page);await page.goto('/strategy');await expect(page.getByRole('heading',{name:'策略中心'})).toBeVisible();await page.getByRole('navigation').getByText('回测',{exact:true}).click();await expect(page).toHaveURL('/backtest');await expect(page.getByRole('heading',{name:'回测',exact:true})).toBeVisible();await page.getByRole('navigation').getByText('模拟',{exact:true}).click();await expect(page).toHaveURL('/live');await expect(page.getByText('策略实例控制台')).toBeVisible();await expect(page.getByText(/实盘部署|USDT|OKX/)).toHaveCount(0)})

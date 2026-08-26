@@ -1,0 +1,3 @@
+import { expect, test } from '@playwright/test'
+import { installFinalFixtures } from './rebuild-final-fixtures'
+test('guest reads every owner page without mutation requests', async ({ page }) => { await installFinalFixtures(page,'guest'); const writes:string[]=[]; page.on('request',r=>{if(['POST','PUT','PATCH','DELETE'].includes(r.method()))writes.push(r.url())}); for(const route of ['/','/market','/strategy','/backtest','/live','/watch','/signals','/orderflow','/monitor','/review','/data','/factorlab','/onchain','/ai-lab']){await page.goto(route);await expect(page.getByTestId('main-layout')).toBeVisible()} expect(writes).toEqual([]); await expect(page.getByRole('button',{name:/创建回测实例|创建批量回测实例|推进下一交易日/})).toHaveCount(0) })

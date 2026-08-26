@@ -1,21 +1,26 @@
 """
 BitPro 配置管理
 """
-import os
-from typing import List, Optional
-from pydantic_settings import BaseSettings
+from typing import Annotated, List, Optional
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from pydantic import field_validator
 import json
+from pathlib import Path
 
 
 class Settings(BaseSettings):
     """应用配置"""
+    model_config = SettingsConfigDict(
+        env_file=str(Path(__file__).resolve().parents[2] / ".env"),
+        case_sensitive=True,
+        extra="ignore",
+    )
     
     # API 配置
-    PROJECT_NAME: str = "BitPro"
+    PROJECT_NAME: str = "StockPro"
     
     # CORS 配置
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:8888", "http://127.0.0.1:8888"]
+    BACKEND_CORS_ORIGINS: Annotated[List[str], NoDecode] = ["http://localhost:4444", "http://127.0.0.1:4444"]
     
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
@@ -28,7 +33,14 @@ class Settings(BaseSettings):
     
     # 数据库配置
     DB_PATH: Optional[str] = None
-    DATABASE_URL: Optional[str] = None
+    DATABASE_URL: str
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def postgres_only(cls, value: str) -> str:
+        if not value.startswith(("postgresql://", "postgresql+psycopg://")):
+            raise ValueError("StockPro requires PostgreSQL")
+        return value
     
     # 日志配置
     LOG_LEVEL: str = "INFO"
@@ -99,11 +111,5 @@ class Settings(BaseSettings):
     SYNC_INTERVAL_FUNDING: int = 60
     SYNC_INTERVAL_KLINE: int = 300
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = "ignore"
-
-
 # 全局配置实例
 settings = Settings()

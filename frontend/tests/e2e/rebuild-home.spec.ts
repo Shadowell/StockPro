@@ -1,0 +1,4 @@
+import { expect, test } from '@playwright/test'
+import { installFinalFixtures } from './rebuild-final-fixtures'
+test('home keeps BitPro density with A-share market facts',async({page})=>{await installFinalFixtures(page);await page.goto('/');for(const heading of ['市场大盘','A 股市场概览 · 大盘广度指数','板块热度图','A 股市场证据'])await expect(page.getByText(heading,{exact:true}).first()).toBeVisible();for(const label of ['成交活跃','涨跌广度','风险偏好','交易日证据'])await expect(page.getByText(label,{exact:true}).first()).toBeVisible();await expect(page.getByText(/资金费率|杠杆情绪|多空拥挤|USDT|OKX/)).toHaveCount(0)})
+test('home remains readable on a narrow viewport',async({page})=>{await installFinalFixtures(page);await page.setViewportSize({width:390,height:844});await page.goto('/');await expect(page.getByRole('heading',{name:'市场大盘'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)})

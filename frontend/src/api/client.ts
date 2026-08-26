@@ -1407,10 +1407,7 @@ export const marketApi = {
       params: { exchange, symbols: symbols?.join(','), offset: 0, limit: 500 },
     }),
 
-  getAllTickers: async (
-    exchange: string,
-    scope: { quote: string; marketType: 'spot' | 'swap' | 'future' | 'all' },
-  ): Promise<Ticker[]> => {
+  getAllTickers: async (exchange: string): Promise<Ticker[]> => {
     const items: Ticker[] = [];
     const limit = 500;
     let offset = 0;
@@ -1418,7 +1415,7 @@ export const marketApi = {
 
     do {
       const page = await getPagedReq<Ticker[]>('/market/tickers', {
-        params: { exchange, quote: scope.quote, marketType: scope.marketType, offset, limit },
+        params: { exchange, offset, limit },
       });
       const rows = Array.isArray(page.data) ? page.data : [];
       items.push(...rows);
@@ -1480,7 +1477,7 @@ export const marketApi = {
     cost?: number;
   }>> => getReq('/market/trades', { params: { exchange, symbol, limit } }),
 
-  getSymbols: (exchange: string, quote = 'USDT', marketType = 'spot'): Promise<{ symbols: string[] }> =>
+  getSymbols: (exchange: string, quote = 'CNY', marketType = 'stock'): Promise<{ symbols: string[] }> =>
     getReq('/market/symbols', { params: { exchange, quote, market_type: marketType } }),
 };
 
