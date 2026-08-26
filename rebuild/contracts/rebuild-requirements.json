@@ -8,5 +8,6 @@
   {"id":"UI-001","required":true,"description":"BitPro page contracts desktop and mobile"},
   {"id":"ASHARE-001","required":true,"description":"A-share execution semantics"},
   {"id":"FUTURE-001","required":true,"description":"Futures reserved and hidden"},
+  {"id":"AUTH-001","required":true,"description":"Production administrator authentication and secure cookies"},
   {"id":"DEPLOY-001","required":true,"description":"Actions SHA and production health"}
 ]

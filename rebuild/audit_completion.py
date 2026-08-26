@@ -45,6 +45,21 @@ def _e2e_evidence(path:Path)->dict[str,object]:
     payload=json.loads(path.read_text());stats=payload.get("stats",{});failed=int(stats.get("unexpected",0));expected=int(stats.get("expected",0))
     return {"status":"passed"if expected>0 and failed==0 else"failed","expected":expected,"failed":failed,"sha256":_sha(path)}
 
+def _auth_evidence(root:Path,mode:str,deployed:Mapping[str,object]|None=None)->dict[str,object]:
+    middleware=(root/"backend/app/core/auth_middleware.py").read_text()if(root/"backend/app/core/auth_middleware.py").exists()else""
+    service=root/"backend/app/domain/auth/service.py";repository=root/"backend/app/domain/auth/repository.py";mcp=root/"backend/app/domain/auth/mcp_tokens.py"
+    implementation_ready=all(path.exists()for path in(service,repository,mcp))and"app.domain.auth.service"in middleware and"app.services.auth_service"not in middleware and"app.services.mcp_token_service"not in middleware
+    if mode=="pre-deploy":return {"status":"passed"if implementation_ready else"failed","implementation_ready":implementation_ready}
+    manifest=dict(deployed or {});auth=dict(manifest.get("auth")or{})
+    fields={
+        "auth_enabled":bool(auth.get("enabled",manifest.get("auth_enabled"))),
+        "username_configured":bool(auth.get("username_configured")),
+        "password_hash_configured":bool(auth.get("password_hash_configured")),
+        "token_secret_configured":bool(auth.get("token_secret_configured")),
+        "cookie_secure":bool(auth.get("cookie_secure")),
+    }
+    return {"status":"passed"if implementation_ready and all(fields.values())else"failed","implementation_ready":implementation_ready,**fields}
+
 def collect(root:Path,mode:str,production_manifest:Path|None=None,production_canary:Path|None=None)->dict[str,dict[str,object]]:
     artifacts=root/".codex-artifacts/rebuild";safety_path=artifacts/"safety.json";parity_path=artifacts/"frontend-parity.json";junit=artifacts/"backend-tests.xml";e2e=root/"frontend/test-results/e2e-results.json"
     safety=json.loads(safety_path.read_text())if safety_path.exists()else{};pytest_ev=_pytest_evidence(junit);e2e_ev=_e2e_evidence(e2e)
@@ -69,9 +84,9 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
     real_ui_ok=(set(real_capture.get("routes")or[])==REQUIRED_ROUTES and len(captures)==len(REQUIRED_ROUTES)*2 and real_capture.get("deployed_sha")==current_sha and all(item.get("deployed_sha")==current_sha and not item.get("console_errors")and not item.get("writes")for item in captures))
     ui_ok=real_ui_ok and e2e_ev["status"]=="passed"
     active_total=sum(int(safety.get(key,0))for key in("registered_private_exchange_routes","active_sqlite_repository","active_versioned_api_routes","registered_live_routes","registered_crypto_jobs"))
-    deploy_evidence:dict[str,object]={"status":"pending_final_confirmation"if mode=="pre-deploy"else"missing"}
+    deploy_evidence:dict[str,object]={"status":"pending_final_confirmation"if mode=="pre-deploy"else"missing"};deployed_manifest:dict[str,object]={}
     if mode=="post-deploy"and production_manifest and production_canary and production_manifest.exists()and production_canary.exists():
-        deployed=json.loads(production_manifest.read_text());canary=json.loads(production_canary.read_text());comparison=dict(deployed.get("comparison_to_pre")or{});deploy_ok=bool(comparison.get("passed"))and int(deployed.get("counts",{}).get("migrations",0))==expected_migrations and bool(deployed.get("deployed_sha"))and bool(canary.get("passed"));deploy_evidence={"status":"passed"if deploy_ok else"failed","deployed_sha":deployed.get("deployed_sha"),"migrations":deployed.get("counts",{}).get("migrations"),"expected_migrations":expected_migrations,"manifest_comparison":comparison,"canary_routes":len(canary.get("routes",[])),"canary_passed":canary.get("passed")}
+        deployed=json.loads(production_manifest.read_text());deployed_manifest=dict(deployed);canary=json.loads(production_canary.read_text());comparison=dict(deployed.get("comparison_to_pre")or{});deploy_ok=bool(comparison.get("passed"))and int(deployed.get("counts",{}).get("migrations",0))==expected_migrations and bool(deployed.get("deployed_sha"))and bool(canary.get("passed"));deploy_evidence={"status":"passed"if deploy_ok else"failed","deployed_sha":deployed.get("deployed_sha"),"migrations":deployed.get("counts",{}).get("migrations"),"expected_migrations":expected_migrations,"manifest_comparison":comparison,"canary_routes":len(canary.get("routes",[])),"canary_passed":canary.get("passed")}
     return {
         "BASE-001":{"status":base_status,"source_sha":BITPRO_SOURCE_SHA,"manifest_sha256":_sha(source_manifest_path)if source_manifest_path.exists()else None},
         "PARITY-001":{"status":"passed"if parity.get("passed")and int(parity.get("counts",{}).get("source",0))>0 else"failed","counts":parity.get("counts",{}),"blockers":parity.get("blockers",[]),"manifest_sha256":_sha(parity_path)if parity_path.exists()else None},
@@ -82,6 +97,7 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
         "UI-001":{"status":"passed"if ui_ok else"failed","routes":sorted(routes),"real_capture":real_ui_ok,"capture_sha256":_sha(capture_path)if capture_path.exists()else None,"e2e":e2e_ev},
         "ASHARE-001":{"status":"passed"if pytest_ev["status"]=="passed"else"failed","backend_tests":pytest_ev},
         "FUTURE-001":{"status":"passed"if future_count==0 and e2e_ev["status"]=="passed"else"failed","future_records":future_count,"routes_hidden":True},
+        "AUTH-001":_auth_evidence(root,mode,deployed_manifest),
         "DEPLOY-001":deploy_evidence,
     }
 
