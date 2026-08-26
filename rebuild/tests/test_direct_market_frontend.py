@@ -14,6 +14,8 @@ def test_bitpro_market_page_uses_a_share_controls_and_renders_short_real_history
     assert "T+1 · 100股整手" in market
     assert "BTC/USDT" not in market + search + store
     assert "资金费率" not in market
+    assert "暂无 K 线数据" in market
+    assert "K线数据加载中" not in market
 
 
 def test_home_sentiment_uses_a_share_breadth_and_never_fetches_funding():

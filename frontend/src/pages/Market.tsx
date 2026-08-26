@@ -438,7 +438,7 @@ export default function Market() {
                   </Suspense>
                 ) : (
                   <div className="flex h-full items-center justify-center text-gray-400">
-                    K线数据加载中...
+                    暂无 K 线数据
                   </div>
                 )}
               </div>
