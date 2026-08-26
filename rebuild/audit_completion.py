@@ -60,6 +60,28 @@ def _auth_evidence(root:Path,mode:str,deployed:Mapping[str,object]|None=None)->d
     }
     return {"status":"passed"if implementation_ready and all(fields.values())else"failed","implementation_ready":implementation_ready,**fields}
 
+def _deployment_evidence(deployed:Mapping[str,object],canary:Mapping[str,object],*,expected_migrations:int)->dict[str,object]:
+    comparison=dict(deployed.get("comparison_to_pre")or{})
+    deployed_sha=str(deployed.get("deployed_sha")or"")
+    canary_sha=str(canary.get("deployed_sha")or"")
+    deploy_ok=(
+        bool(comparison.get("passed"))
+        and int(dict(deployed.get("counts")or{}).get("migrations",0))==expected_migrations
+        and bool(deployed_sha)
+        and bool(canary.get("passed"))
+        and canary_sha==deployed_sha
+    )
+    return {
+        "status":"passed"if deploy_ok else"failed",
+        "deployed_sha":deployed_sha or None,
+        "canary_sha":canary_sha or None,
+        "migrations":dict(deployed.get("counts")or{}).get("migrations"),
+        "expected_migrations":expected_migrations,
+        "manifest_comparison":comparison,
+        "canary_routes":len(canary.get("routes",[])),
+        "canary_passed":canary.get("passed"),
+    }
+
 def collect(root:Path,mode:str,production_manifest:Path|None=None,production_canary:Path|None=None)->dict[str,dict[str,object]]:
     artifacts=root/".codex-artifacts/rebuild";safety_path=artifacts/"safety.json";parity_path=artifacts/"frontend-parity.json";junit=artifacts/"backend-tests.xml";e2e=root/"frontend/test-results/e2e-results.json"
     safety=json.loads(safety_path.read_text())if safety_path.exists()else{};pytest_ev=_pytest_evidence(junit);e2e_ev=_e2e_evidence(e2e)
@@ -86,7 +108,7 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
     active_total=sum(int(safety.get(key,0))for key in("registered_private_exchange_routes","active_sqlite_repository","active_versioned_api_routes","registered_live_routes","registered_crypto_jobs"))
     deploy_evidence:dict[str,object]={"status":"pending_final_confirmation"if mode=="pre-deploy"else"missing"};deployed_manifest:dict[str,object]={}
     if mode=="post-deploy"and production_manifest and production_canary and production_manifest.exists()and production_canary.exists():
-        deployed=json.loads(production_manifest.read_text());deployed_manifest=dict(deployed);canary=json.loads(production_canary.read_text());comparison=dict(deployed.get("comparison_to_pre")or{});deploy_ok=bool(comparison.get("passed"))and int(deployed.get("counts",{}).get("migrations",0))==expected_migrations and bool(deployed.get("deployed_sha"))and bool(canary.get("passed"));deploy_evidence={"status":"passed"if deploy_ok else"failed","deployed_sha":deployed.get("deployed_sha"),"migrations":deployed.get("counts",{}).get("migrations"),"expected_migrations":expected_migrations,"manifest_comparison":comparison,"canary_routes":len(canary.get("routes",[])),"canary_passed":canary.get("passed")}
+        deployed=json.loads(production_manifest.read_text());deployed_manifest=dict(deployed);canary=json.loads(production_canary.read_text());deploy_evidence=_deployment_evidence(deployed,canary,expected_migrations=expected_migrations)
     return {
         "BASE-001":{"status":base_status,"source_sha":BITPRO_SOURCE_SHA,"manifest_sha256":_sha(source_manifest_path)if source_manifest_path.exists()else None},
         "PARITY-001":{"status":"passed"if parity.get("passed")and int(parity.get("counts",{}).get("source",0))>0 else"failed","counts":parity.get("counts",{}),"blockers":parity.get("blockers",[]),"manifest_sha256":_sha(parity_path)if parity_path.exists()else None},

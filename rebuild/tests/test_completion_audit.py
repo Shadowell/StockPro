@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from rebuild.audit_completion import BITPRO_SOURCE_SHA, _auth_evidence, audit, expected_migration_count
+from rebuild.audit_completion import BITPRO_SOURCE_SHA, _auth_evidence, _deployment_evidence, audit, expected_migration_count
 
 
 def test_completion_audit_is_pinned_to_current_bitpro_baseline():
@@ -36,3 +36,12 @@ def test_postdeploy_auth_requires_every_secure_production_field(tmp_path: Path):
     enabled=_auth_evidence(tmp_path,"post-deploy",{"auth":{"enabled":True,"username_configured":True,"password_hash_configured":True,"token_secret_configured":True,"cookie_secure":True}})
     assert disabled["status"]=="failed"
     assert enabled["status"]=="passed"
+
+
+def test_postdeploy_rejects_canary_captured_from_a_different_sha():
+    deployed={"deployed_sha":"new-sha","counts":{"migrations":39},"comparison_to_pre":{"passed":True}}
+    matching={"passed":True,"deployed_sha":"new-sha","routes":["/"]}
+    stale={"passed":True,"deployed_sha":"old-sha","routes":["/"]}
+
+    assert _deployment_evidence(deployed,matching,expected_migrations=39)["status"]=="passed"
+    assert _deployment_evidence(deployed,stale,expected_migrations=39)["status"]=="failed"
