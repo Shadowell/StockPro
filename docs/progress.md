@@ -79,6 +79,11 @@
   回放日期由封存交易日历与明确的停牌/基准证据驱动，全市场缺 bar 的交易日不会消失。
   辅助涨跌停、停牌、公司行动和基准数据出现裸代码时 fail-closed，缺失基准日保持未知并
   记录质量证据，不伪造成 0% 收益。新增反例后 direct-port 内核测试为 19 项，原 45 项继续全绿。
+- 回测恢复的第二个底层切片已直接移入 StockPro `stockpro.v1` 隔离 worker：用户策略只获得
+  安全 builtins、日线 history/current data、调度、委托意图和 record 接口，事件序号之前的
+  series 才可见；worker 输出只包含可序列化意图、记录、日志、基准和运行选项。新增 2 项
+  direct-port 测试验证 A 股意图携带同一 `simulated_at/available_at` 证据，并验证 history
+  不读取未来值。父进程资源信封、快照读取、任务持久化和 API/UI 接线继续在后续切片完成。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 
