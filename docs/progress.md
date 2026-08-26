@@ -1,5 +1,19 @@
 # Progress Log
 
+## BitPro 原代码直接移植重置（2026-08-26）
+
+- 用户否决了 `116f543f` 的“页面映射 + A 股重写”结果：它不是所要求的
+  BitPro 原代码主体，不再作为当前实现基础，只保留为生产回滚点。
+- 新分支 `codex/bitpro-direct-port` 从当前 `origin/main` 建立；提交 `8f269c09`
+  使用 BitPro 固定源 `2e4b90c3` 直接覆盖 `backend/frontend/packages/scripts/tests`。
+  五个根目录 checksum 对比零差异，BitPro 前端原样 build/lint 通过。
+- 第二个切片只做启动安全封锁：BitPro 页面、组件和业务源文件继续原位保留；
+  StockPro 当前后端入口不导入 SQLite、交易所、下单、调度器、WebSocket 或策略引擎，
+  并移除 `/live-real` 实盘入口。安全扫描五类 active 计数均为 0，76 个 BitPro
+  数字资产源文件等待在原位逐项改为 A 股实现。
+- 安全后端只启动 `4445` 的 health/auth 读取端点，前端保持 BitPro 原导航和工作台结构。
+  下一步从行情与数据层开始，在这份原代码上将字段、API 和数据源换为 A 股。
+
 ## BitPro 逐文件复刻对账（2026-08-26）
 
 ### 生产交付

@@ -47,7 +47,6 @@ function AppRoutes() {
         <Route path="arbitrage" element={<ArbitrageCenter />} />
         <Route path="onchain" element={<OnchainResearch />} />
         <Route path="live" element={<LiveTrading modeScope="paper" />} />
-        <Route path="live-real" element={<LiveTrading modeScope="live" />} />
         <Route path="signals" element={<SignalCenter />} />
         <Route path="watch" element={<WatchMarket />} />
         <Route path="orderflow" element={<OrderFlow />} />

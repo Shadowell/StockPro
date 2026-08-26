@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     BITPRO_MCP_API_TOKEN: Optional[str] = None
     BITPRO_MCP_AUTH_HEADER: str = "X-BitPro-MCP-Token"
     BITPRO_REMOTE_MCP_ENABLED: bool = False
-    BITPRO_REMOTE_MCP_PATH: str = "/api/v2/mcp"
+    BITPRO_REMOTE_MCP_PATH: str = "/api/mcp"
     BITPRO_REMOTE_MCP_REQUIRE_TOKEN: bool = True
 
     # HyperTrade 研究机构服务（仅由 BitPro 服务端读取，绝不下发给浏览器）

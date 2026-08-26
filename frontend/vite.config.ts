@@ -6,10 +6,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    port: 8888,
+    port: 4444,
     proxy: {
       '/api': {
-        target: 'http://localhost:8889',
+        target: process.env.VITE_DEV_API_PROXY_TARGET || 'http://127.0.0.1:4445',
         changeOrigin: true,
         ws: true,  // 代理 WebSocket
       },
