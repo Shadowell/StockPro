@@ -91,7 +91,7 @@ function formatTradeTime(timestamp?: number): string {
   });
 }
 
-export function BitProMarketSource() {
+export default function Market() {
   const { selectedExchange, selectedSymbol, setSelectedSymbol } = useStore();
   const [klines, setKlines] = useState<Kline[]>([]);
   const [marketIndicators, setMarketIndicators] = useState<Record<string, Array<number | null>>>({});
@@ -608,5 +608,3 @@ export function BitProMarketSource() {
     </div>
   );
 }
-
-export { default } from '../components/AshareMarketWorkspace';

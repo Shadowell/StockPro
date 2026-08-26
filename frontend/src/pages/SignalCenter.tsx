@@ -30,9 +30,6 @@ import {
 } from '../api/client';
 import CryptoSelect from '../components/CryptoSelect';
 import { getTradeSideDisplay } from '../utils/tradeSide';
-import { operationsCurrentApi } from '../api/client';
-import { useAuth } from '../auth/AuthProvider';
-import type { OperationAlert, OperationSignal } from '../types/operations';
 
 const statusTabs = [
   { key: 'all', label: '全部' },
@@ -380,7 +377,7 @@ function restoredSignalStrategyIds(
   return restored;
 }
 
-export function BitProSignalCenterSource() {
+export default function SignalCenter() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeStatus, setActiveStatus] = useState('all');
   const [signals, setSignals] = useState<StrategySignal[]>([]);
@@ -2048,108 +2045,6 @@ export function BitProSignalCenterSource() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function ashareSignalSymbol(value: string): string {
-  const match = value.match(/^(SH|SZ|BJ)_(\d{6})$/);
-  return match ? `${match[2]}.${match[1]}` : value;
-}
-
-function ashareSignalTime(value: unknown): string {
-  if (!value) return '--';
-  const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? String(value).slice(0, 19) : date.toLocaleString('zh-CN', { hour12: false });
-}
-
-export default function SignalCenter() {
-  const { role } = useAuth();
-  const [signals, setSignals] = useState<OperationSignal[]>([]);
-  const [alerts, setAlerts] = useState<OperationAlert[]>([]);
-  const [selected, setSelected] = useState<OperationSignal | null>(null);
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('all');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [signalResult, alertResult] = await Promise.all([
-        operationsCurrentApi.signals('audit'),
-        operationsCurrentApi.alerts(''),
-      ]);
-      setSignals(signalResult.items);
-      setAlerts(alertResult.items);
-      setError('');
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.detail || requestError?.message || '信号证据读取失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { void load(); }, []);
-
-  const visible = useMemo(() => signals.filter((item) => (
-    (status === 'all' || item.status === status) &&
-    (!query.trim() || `${item.symbol} ${item.signal_type} ${item.paper_instance_id}`.toLowerCase().includes(query.trim().toLowerCase()))
-  )), [query, signals, status]);
-  const strategyRows = useMemo(() => {
-    const rows = new Map<string, { id: string; paper: string; count: number; pending: number }>();
-    for (const item of signals) {
-      const id = String(item.strategy_version_id || '--');
-      const current = rows.get(id) || { id, paper: String(item.paper_instance_id || '--'), count: 0, pending: 0 };
-      current.count += 1;
-      if (item.status === 'new') current.pending += 1;
-      rows.set(id, current);
-    }
-    return [...rows.values()];
-  }, [signals]);
-  const deliveryCounts = useMemo(() => alerts.reduce<Record<string, number>>((counts, item) => {
-    const key = item.status || 'unknown';
-    counts[key] = (counts[key] || 0) + 1;
-    return counts;
-  }, {}), [alerts]);
-
-  const acknowledge = async () => {
-    if (!selected || role !== 'admin') return;
-    const next = await operationsCurrentApi.acknowledgeSignal(selected.id);
-    setSelected(next);
-    setSignals((items) => items.map((item) => item.id === next.id ? next : item));
-  };
-
-  return (
-    <div className="h-full overflow-y-auto bg-crypto-bg p-6 text-gray-100">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-bold tracking-normal">信号中心</h1><p className="mt-1 text-xs text-gray-500">A 股策略信号、Paper lineage、人工确认和通知投递审计</p></div>
-        <button type="button" onClick={() => void load()} disabled={loading} className="flex items-center gap-1.5 rounded-xl border border-crypto-border bg-crypto-card px-3 py-2 text-xs text-gray-400 disabled:opacity-50"><RefreshCw className={clsx('h-3.5 w-3.5', loading && 'animate-spin')} />刷新</button>
-      </header>
-      {error && <div className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</div>}
-
-      <div className="mb-6 grid gap-4 xl:grid-cols-2">
-        <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
-          <div className="mb-4"><h2 className="truncate text-base font-semibold">通道配置</h2><p className="mt-1 text-[11px] text-gray-500">当前只读展示通知投递状态；StockPro 不注册自动交易 webhook</p></div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{Object.entries(deliveryCounts).map(([key, value]) => <div key={key} className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-3"><div className="text-[10px] text-gray-600">{key}</div><div className="mt-1 font-mono text-lg">{value}</div></div>)}{Object.keys(deliveryCounts).length === 0 && <div className="col-span-full py-6 text-center text-xs text-gray-500">暂无投递状态</div>}</div>
-        </section>
-        <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
-          <div className="mb-4"><h2 className="text-base font-semibold">信号策略列表</h2><p className="mt-1 text-[11px] text-gray-500">仅展示已产生 Paper 信号的不可变策略版本</p></div>
-          <div className="max-h-64 space-y-2 overflow-y-auto">{strategyRows.map((item) => <div key={item.id} className="grid grid-cols-[1fr_100px_70px] items-center gap-3 rounded-lg border border-crypto-border bg-crypto-bg/50 px-3 py-2 text-xs"><div className="min-w-0"><div className="truncate font-mono text-gray-300">{item.id}</div><div className="truncate font-mono text-[10px] text-gray-600">Paper {item.paper}</div></div><span className="text-gray-400">{item.count} 条信号</span><span className={item.pending > 0 ? 'text-amber-300' : 'text-emerald-300'}>{item.pending} 待确认</span></div>)}{strategyRows.length === 0 && <div className="py-6 text-center text-xs text-gray-500">暂无信号策略</div>}</div>
-        </section>
-      </div>
-
-      <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div><h2 className="text-lg font-semibold">策略信号</h2><p className="mt-1 text-[11px] text-gray-500">信号是研究/Paper 证据，不代表订单或成交</p></div>
-          <div className="flex flex-wrap gap-2"><select aria-label="信号状态" value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-lg border border-crypto-border bg-crypto-bg px-3 py-2 text-xs"><option value="all">全部状态</option><option value="new">待确认</option><option value="confirmed">已确认</option><option value="ordered">已下达</option><option value="closed">已关闭</option></select><label className="relative"><Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-600" /><input aria-label="搜索信号" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="证券 / 类型 / Paper ID" className="w-64 rounded-lg border border-crypto-border bg-crypto-bg py-2 pl-9 pr-3 text-xs" /></label></div>
-        </div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-xs"><thead className="border-b border-crypto-border text-[10px] text-gray-600"><tr>{['证券','信号','状态','策略版本','Paper 实例','时间','证据'].map((label) => <th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead><tbody className="divide-y divide-crypto-border/60">{visible.map((item) => <tr key={item.id} data-testid="signal-row" data-paper-instance-id={item.paper_instance_id} onClick={() => setSelected(item)} className="cursor-pointer hover:bg-white/[.03]"><td className="px-3 py-2.5 font-mono">{ashareSignalSymbol(item.symbol)}</td><td className="px-3 py-2.5 text-blue-200">{item.signal_type}</td><td className="px-3 py-2.5">{item.status}</td><td className="max-w-44 truncate px-3 py-2.5 font-mono text-gray-500">{item.strategy_version_id}</td><td className="max-w-44 truncate px-3 py-2.5 font-mono text-gray-500">{item.paper_instance_id}</td><td className="px-3 py-2.5 text-gray-500">{ashareSignalTime(item.signal_time)}</td><td className="px-3 py-2.5"><button type="button" className="rounded border border-blue-500/30 px-2 py-1 text-[10px] text-blue-300">查看</button></td></tr>)}</tbody></table></div>
-      </section>
-
-      <section className="mt-6 rounded-xl border border-crypto-border bg-crypto-card p-4"><h2 className="mb-3 text-sm font-semibold">投递记录</h2>{alerts.length ? <div className="grid gap-2 md:grid-cols-2">{alerts.slice(0, 20).map((item) => <div key={item.id} className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-3"><div className="flex justify-between gap-2"><span className="text-xs text-gray-200">{item.title}</span><span className="text-[10px] text-gray-600">{item.status}</span></div><div className="mt-1 text-[10px] text-gray-500">{item.category} · {ashareSignalTime(item.triggered_at)}</div></div>)}</div> : <div className="text-xs text-gray-500">暂无投递证据</div>}</section>
-
-      {selected && <div className="fixed inset-0 z-50 flex justify-end bg-black/65"><aside className="h-full w-full max-w-xl overflow-y-auto border-l border-crypto-border bg-slate-950 p-5"><div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold">信号详情</h2><p className="mt-1 font-mono text-[10px] text-gray-600">{selected.id}</p></div><button type="button" aria-label="关闭信号详情" onClick={() => setSelected(null)}><X className="h-4 w-4" /></button></div><div className="mt-4 space-y-2 text-xs">{[['证券', ashareSignalSymbol(selected.symbol)], ['信号', selected.signal_type], ['状态', selected.status], ['Paper 实例', selected.paper_instance_id], ['策略版本', selected.strategy_version_id], ['证据时间', ashareSignalTime(selected.signal_time)]].map(([label, value]) => <div key={label} className="rounded-lg border border-crypto-border bg-crypto-bg/50 p-3"><div className="text-[10px] text-gray-600">{label}</div><div className="mt-1 break-all font-mono text-gray-300">{value}</div></div>)}</div><div className="mt-4"><div className="mb-2 text-sm font-semibold">Payload evidence</div><pre className="max-h-96 overflow-auto rounded-lg border border-crypto-border bg-crypto-bg p-3 text-[11px] text-gray-400">{JSON.stringify(selected.evidence, null, 2)}</pre></div>{role === 'admin' && selected.status === 'new' && <button type="button" onClick={() => void acknowledge()} className="mt-4 rounded bg-blue-600 px-3 py-2 text-xs font-semibold">确认信号</button>}</aside></div>}
     </div>
   );
 }

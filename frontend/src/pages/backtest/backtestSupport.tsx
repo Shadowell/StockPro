@@ -103,7 +103,7 @@ export type BacktestHistoryDeleteTarget = {
   items: BacktestHistoryItem[];
 };
 
-export type StrategyAssetClass = 'stock' | 'etf';
+export type StrategyAssetClass = 'spot' | 'contract';
 export type HistoryAssetFilter = 'all' | StrategyAssetClass;
 export type BacktestView = 'dashboard' | 'detail';
 export type BacktestStatusFilter = 'all' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -119,7 +119,7 @@ export type BacktestSortMode =
 export type BacktestSortField = 'created' | 'return' | 'drawdown' | 'win_rate';
 export type BacktestSortDirection = 'asc' | 'desc';
 
-export type BacktestPerformanceMetrics = {
+export type CryptoBacktestPerformanceMetrics = {
   annualizedVolatility: number | null;
   sortinoRatio: number | null;
   calmarRatio: number | null;
@@ -147,18 +147,18 @@ export const SELECTED_BACKTEST_INSTANCE_KEY = 'bitpro_backtest_selected_instance
 /** @deprecated 旧版单任务恢复 key；新页面使用 BACKTEST_INSTANCES_KEY 保存多个实例。 */
 export const ACTIVE_BACKTEST_JOB_KEY = 'bitpro_backtest_active_job';
 export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-export const BACKTEST_BENCHMARK_SYMBOL = '000300.SH';
+export const BACKTEST_BENCHMARK_SYMBOL = 'BTC/USDT';
 export const BACKTEST_HISTORY_PAGE_SIZE = 20;
 export const BACKTEST_WIZARD_STEPS = [
   { step: 1, title: '选择策略', desc: '策略与资金模式' },
   { step: 2, title: '配置参数', desc: '区间、资金与成本' },
-  { step: 3, title: '确认运行', desc: '异步任务并行运行' },
+  { step: 3, title: '执行回测', desc: '异步任务并行运行' },
   { step: 4, title: '查看结果', desc: '绩效、交易与历史' },
 ] as const;
 export const HISTORY_ASSET_FILTERS: Array<{ value: HistoryAssetFilter; label: string }> = [
   { value: 'all', label: '全部' },
-  { value: 'stock', label: '股票' },
-  { value: 'etf', label: 'ETF' },
+  { value: 'spot', label: '现货' },
+  { value: 'contract', label: '合约' },
 ];
 export const BACKTEST_STATUS_FILTERS: Array<{ value: BacktestStatusFilter; label: string }> = [
   { value: 'all', label: '全部' },
@@ -174,10 +174,12 @@ export const BACKTEST_SORT_CONTROLS: Array<{ field: BacktestSortField; label: st
   { field: 'created', label: '创建时间' },
 ];
 export const BACKTEST_TIMEFRAME_OPTIONS = [
+  { value: '1m', label: '1M' },
   { value: '5m', label: '5M' },
   { value: '15m', label: '15M' },
   { value: '30m', label: '30M' },
-  { value: '60m', label: '60M' },
+  { value: '1h', label: '1H' },
+  { value: '4h', label: '4H' },
   { value: '1d', label: '1D' },
 ] as const;
 export const BACKTEST_TIMEFRAME_MODES: Array<{ value: BacktestTimeframeMode; label: string; hint: string }> = [
@@ -193,16 +195,16 @@ export type BacktestPrefsV1 = {
   symbol?: string;
   startDate?: string;
   initialCapital?: number;
-  /** @deprecated execution costs now reset to A-share defaults for each new run. */
+  /** @deprecated execution costs now reset to OKX defaults for each new run. */
   makerFeeBps?: number;
-  /** @deprecated execution costs now reset to A-share defaults for each new run. */
+  /** @deprecated execution costs now reset to OKX defaults for each new run. */
   takerFeeBps?: number;
-  /** @deprecated execution costs now reset to A-share defaults for each new run. */
+  /** @deprecated execution costs now reset to OKX defaults for each new run. */
   slippageBps?: number;
 };
 
-export const ASHARE_STOCK_BACKTEST_COSTS = { makerFeeBps: 3, takerFeeBps: 8, slippageBps: 5 } as const;
-export const ASHARE_ETF_BACKTEST_COSTS = { makerFeeBps: 3, takerFeeBps: 3, slippageBps: 3 } as const;
+export const OKX_SPOT_BACKTEST_COSTS = { makerFeeBps: 8, takerFeeBps: 10, slippageBps: 1 } as const;
+export const OKX_SWAP_BACKTEST_COSTS = { makerFeeBps: 2, takerFeeBps: 5, slippageBps: 1 } as const;
 
 export type JobProgressState = {
   currentBar: number;
@@ -215,7 +217,6 @@ export type BacktestTimeframeMode = 'strategy' | 'single' | 'matrix';
 
 export type BacktestInstanceConfig = {
   selectedStrategy: number | null;
-  runMode: 'quick' | 'full';
   startDate: string;
   endDate: string;
   initialCapital: number;
@@ -316,18 +317,17 @@ export function createBacktestInstance(
         partial.selectedStrategy != null && Number.isFinite(Number(partial.selectedStrategy))
           ? Number(partial.selectedStrategy)
           : null,
-      runMode: partial.runMode === 'full' ? 'full' : 'quick',
       startDate: clampIsoDateToToday(partial.startDate, range.start),
       endDate: clampIsoDateToToday(partial.endDate, range.end),
       initialCapital:
         typeof partial.initialCapital === 'number' && partial.initialCapital > 0
           ? partial.initialCapital
-          : 1_000_000,
+          : 10000,
       timeframeMode: partial.timeframeMode || 'strategy',
-      timeframe: partial.timeframe || '1d',
+      timeframe: partial.timeframe || '15m',
       timeframes: Array.isArray(partial.timeframes) && partial.timeframes.length > 0
         ? partial.timeframes
-        : ['30m', '60m', '1d'],
+        : ['5m', '15m', '1h'],
       makerFeeBps:
         typeof partial.makerFeeBps === 'number' && partial.makerFeeBps >= 0
           ? partial.makerFeeBps
@@ -407,7 +407,6 @@ export function normalizeBacktestInstance(raw: any, index: number): BacktestInst
         cfg.selectedStrategy != null && Number.isFinite(Number(cfg.selectedStrategy))
           ? Number(cfg.selectedStrategy)
           : null,
-      runMode: cfg.runMode === 'full' ? 'full' : 'quick',
       startDate: clampIsoDateToToday(typeof cfg.startDate === 'string' ? cfg.startDate : undefined, range.start),
       endDate: clampIsoDateToToday(typeof cfg.endDate === 'string' ? cfg.endDate : undefined, range.end),
       initialCapital:
@@ -415,14 +414,14 @@ export function normalizeBacktestInstance(raw: any, index: number): BacktestInst
           ? cfg.initialCapital
           : Number(cfg.initialCapital) > 0
             ? Number(cfg.initialCapital)
-            : 1_000_000,
+            : 10000,
       timeframeMode: (['strategy', 'single', 'matrix'] as BacktestTimeframeMode[]).includes(cfg.timeframeMode)
         ? cfg.timeframeMode
         : 'strategy',
-      timeframe: typeof cfg.timeframe === 'string' && cfg.timeframe ? cfg.timeframe : '1d',
+      timeframe: typeof cfg.timeframe === 'string' && cfg.timeframe ? cfg.timeframe : '15m',
       timeframes: Array.isArray(cfg.timeframes) && cfg.timeframes.length > 0
         ? cfg.timeframes.map((value: unknown) => String(value)).filter(Boolean)
-        : ['30m', '60m', '1d'],
+        : ['5m', '15m', '1h'],
       makerFeeBps:
         cfg.makerFeeBps != null && Number(cfg.makerFeeBps) >= 0 ? Number(cfg.makerFeeBps) : null,
       takerFeeBps:
@@ -816,7 +815,8 @@ export function backtestRequestMatchesInstance(request: Record<string, unknown> 
 export function strategyIsContract(strategy: any | null | undefined): boolean {
   if (!strategy) return false;
   const cfg = strategy.config && typeof strategy.config === 'object' ? strategy.config as Record<string, unknown> : {};
-  if (String(cfg.assetClass ?? cfg.asset_class ?? '').toLowerCase() === 'etf') return true;
+  if (String(cfg.marketType ?? cfg.market_type ?? '').toLowerCase() === 'swap') return true;
+  if (String(cfg.instType ?? cfg.inst_type ?? '').toUpperCase() === 'SWAP') return true;
   const name = String(strategy.name || '');
   const symbols = [
     ...stringList(strategy.symbols),
@@ -824,19 +824,19 @@ export function strategyIsContract(strategy: any | null | undefined): boolean {
     ...stringList(cfg.tradeSymbols),
     ...stringList(cfg.trade_symbols),
   ];
-  return name.startsWith('[ETF]') || symbols.some((symbol) => /^(15|16|51|56|58)/.test(symbol.split('.')[0]));
+  return name.startsWith('[合约]') || symbols.some((s) => s.includes(':USDT') || s.endsWith('-SWAP'));
 }
 
 export function inferStrategyAssetClassFromName(name: unknown): StrategyAssetClass | null {
   const text = String(name || '').trim();
   if (!text) return null;
-  if (text.startsWith('[ETF]')) return 'etf';
-  if (text.startsWith('[股票]') || text.startsWith('[A股]')) return 'stock';
+  if (text.startsWith('[合约]') || text.includes('/USDT:USDT') || text.includes('-SWAP')) return 'contract';
+  if (text.startsWith('[现货]')) return 'spot';
   return null;
 }
 
 export function strategyAssetClass(strategy: any | null | undefined): StrategyAssetClass {
-  return strategyIsContract(strategy) ? 'etf' : 'stock';
+  return strategyIsContract(strategy) ? 'contract' : 'spot';
 }
 
 export function strategyAssetClassById(strategies: any[], strategyId: number | null | undefined): StrategyAssetClass {
@@ -851,7 +851,7 @@ export function backtestResultAssetClass(
 ): StrategyAssetClass {
   const strategy = strategies.find((s) => Number(s.id) === Number(result?.strategyId ?? strategyId));
   if (strategy) return strategyAssetClass(strategy);
-  return inferStrategyAssetClassFromName(result?.strategyName) || 'stock';
+  return inferStrategyAssetClassFromName(result?.strategyName) || 'spot';
 }
 
 export function backtestInstanceAssetClass(strategies: any[], instance: BacktestInstance): StrategyAssetClass {
@@ -860,16 +860,16 @@ export function backtestInstanceAssetClass(strategies: any[], instance: Backtest
   return (
     inferStrategyAssetClassFromName(instance.result?.strategyName) ||
     inferStrategyAssetClassFromName(instance.name) ||
-    'stock'
+    'spot'
   );
 }
 
 export function strategyNameColorClass(assetClass: StrategyAssetClass): string {
-  return assetClass === 'etf' ? 'text-[#FFAB73]' : 'text-yellow-300';
+  return assetClass === 'contract' ? 'text-[#FFAB73]' : 'text-yellow-300';
 }
 
 export function strategyAssetBadgeClass(assetClass: StrategyAssetClass): string {
-  return assetClass === 'etf'
+  return assetClass === 'contract'
     ? 'border-purple-500/30 bg-purple-500/10 text-purple-300'
     : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300';
 }
@@ -903,13 +903,13 @@ export function strategyIsBacktestSelectable(strategy: any | null | undefined): 
 }
 
 export function strategyBacktestCostDefaults(strategy: any | null | undefined) {
-  const isEtf = strategyIsContract(strategy);
-  const costs = isEtf ? ASHARE_ETF_BACKTEST_COSTS : ASHARE_STOCK_BACKTEST_COSTS;
+  const isContract = strategyIsContract(strategy);
+  const okxCosts = isContract ? OKX_SWAP_BACKTEST_COSTS : OKX_SPOT_BACKTEST_COSTS;
 
   return {
-    makerFeeBps: costs.makerFeeBps,
-    takerFeeBps: costs.takerFeeBps,
-    slippageBps: costs.slippageBps,
+    makerFeeBps: okxCosts.makerFeeBps,
+    takerFeeBps: okxCosts.takerFeeBps,
+    slippageBps: okxCosts.slippageBps,
   };
 }
 
@@ -922,7 +922,7 @@ export function symbolSummary(symbols: string[], max = 5): string {
 export function backtestStrategySearchText(strategy: any): string {
   const cfg = strategy?.config && typeof strategy.config === 'object' ? strategy.config : {};
   const symbols = [...strategySymbols(strategy), ...strategyTradeSymbols(strategy)];
-  const assetText = strategyIsContract(strategy) ? 'ETF 指数基金' : '股票 A股';
+  const assetText = strategyIsContract(strategy) ? '合约 contract swap perpetual futures' : '现货 spot';
   return [
     strategy?.name,
     strategy?.description,
@@ -972,7 +972,7 @@ export function backtestInstanceSearchText(
     instance.historyId,
     instance.activeJobId,
     instance.resumeJobId,
-    assetClass === 'etf' ? 'ETF 指数基金' : '股票 A股',
+    assetClass === 'contract' ? '合约 contract swap perpetual futures' : '现货 spot',
     statusMeta.label,
     instance.status,
     instance.result?.dataQualityStatus,
@@ -1373,7 +1373,6 @@ export function historyItemToBacktestInstance(item: BacktestHistoryItem, strateg
     status: normalizeBacktestHistoryStatus(item.status),
     config: {
       selectedStrategy: Number(item.strategyId),
-      runMode: (item as any).runMode === 'full' ? 'full' : 'quick',
       startDate: item.startDate,
       endDate: item.endDate,
       initialCapital: item.initialCapital,
@@ -1522,7 +1521,7 @@ export function backtestDurationDays(result: BacktestResult): number | null {
   return Math.max(1, (end - start) / 86_400_000);
 }
 
-export function buildBacktestPerformanceMetrics(result: BacktestResult): BacktestPerformanceMetrics {
+export function buildCryptoBacktestPerformanceMetrics(result: BacktestResult): CryptoBacktestPerformanceMetrics {
   const durationDays = backtestDurationDays(result);
   const annualizedVolatility = annualizedVolatilityFromEquityCurve(result.equityCurve || []);
   const tradePnlSamples = deriveBacktestTradePnlSamples(result.trades || [], result.totalTrades);

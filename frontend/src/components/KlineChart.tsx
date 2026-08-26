@@ -177,9 +177,6 @@ function toCandleTuple(bar: Kline): [number, number, number, number] | null {
 
 /** 从 BTC/USDT 或 BTC/USDT:USDT 解析基础币 / 计价货币 */
 function symbolUnits(sym: string): { base: string; quote: string } {
-  if (/^\d{6}\.(?:SH|SZ|BJ)$/i.test(sym.trim())) {
-    return { base: '股', quote: 'CNY' };
-  }
   const i = sym.indexOf('/');
   if (i < 0) return { base: sym.trim() || '—', quote: 'USDT' };
   const base = sym.slice(0, i).trim();
@@ -1380,7 +1377,7 @@ export default function KlineChart({
   };
 
   return (
-    <div style={wrapStyle} className="kline-chart relative" data-testid="kline-chart">
+    <div style={wrapStyle} className="kline-chart relative">
       {emaValueLabels.length > 0 && (
         <div className="kline-ema-value-strip pointer-events-none absolute left-4 top-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-[#161B22]/75 px-2 py-1 text-xs font-semibold shadow-sm shadow-black/20 backdrop-blur-sm">
           {emaValueLabels.map((item) => (

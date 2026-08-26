@@ -26,7 +26,6 @@ import {
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS } from '../utils/selectionStyles';
 import {
   dataSyncApi,
-  dataCurrentApi,
   marketApi,
   okxNativeSyncApi,
   type DataSyncConfigResponse,
@@ -40,10 +39,6 @@ import {
   type DataSyncTableStat,
   type OkxNativeSyncScheduleConfig,
 } from '../api/client';
-import { useAuth } from '../auth/AuthProvider';
-import type { DataJob, DataStatus, DatasetRecord, ExtensionImport, SnapshotRecord } from '../types/data';
-import ExtensionExchangePanel from './data/ExtensionExchangePanel';
-import QualityPanel from './data/QualityPanel';
 import { useStore } from '../stores/useStore';
 import ThemeDialog from '../components/ThemeDialog';
 import SymbolIcon, { extractSymbolBase } from '../components/SymbolIcon';
@@ -350,7 +345,7 @@ function getCoveragePercent(firstTs: number | null, lastTs: number | null, targe
 // 数据管理页面
 // ============================================
 
-export function BitProDataManagerSource() {
+export default function DataManager() {
   const { selectedExchange } = useStore();
 
   const [config, setConfig] = useState<DataSyncConfigResponse | null>(null);
@@ -2392,122 +2387,4 @@ export function BitProDataManagerSource() {
       />
     </div>
   );
-}
-
-const ASHARE_DATA_TABS = ['总览', '研究数据', '行情覆盖', '同步任务', 'Qlib导出', '数据源', '质量', '导入导出'] as const;
-type AshareDataTab = (typeof ASHARE_DATA_TABS)[number];
-
-export default function DataManager() {
-  const { role } = useAuth();
-  const [tab, setTab] = useState<AshareDataTab>('总览');
-  const [status, setStatus] = useState<DataStatus | null>(null);
-  const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
-  const [snapshots, setSnapshots] = useState<SnapshotRecord[]>([]);
-  const [jobs, setJobs] = useState<DataJob[]>([]);
-  const [providers, setProviders] = useState<Array<Record<string, any>>>([]);
-  const [quality, setQuality] = useState<Array<Record<string, any>>>([]);
-  const [imports, setImports] = useState<ExtensionImport[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const loadInFlight = useRef(false);
-
-  const load = useCallback(async () => {
-    if (loadInFlight.current) return;
-    loadInFlight.current = true;
-    setLoading(true);
-    try {
-      setStatus(await dataCurrentApi.status());
-      const [datasetResult, snapshotResult, jobResult, providerResult, qualityResult, importResult] = await Promise.allSettled([
-        dataCurrentApi.datasets(),
-        dataCurrentApi.snapshots(),
-        dataCurrentApi.jobs(),
-        dataCurrentApi.providers(),
-        dataCurrentApi.quality(),
-        dataCurrentApi.imports(),
-      ]);
-      if (datasetResult.status === 'fulfilled') setDatasets(datasetResult.value.items);
-      if (snapshotResult.status === 'fulfilled') setSnapshots(snapshotResult.value.items);
-      if (jobResult.status === 'fulfilled') setJobs(jobResult.value.items);
-      if (providerResult.status === 'fulfilled') setProviders(providerResult.value.items);
-      if (qualityResult.status === 'fulfilled') setQuality(qualityResult.value.items);
-      if (importResult.status === 'fulfilled') setImports(importResult.value.items);
-      setError('');
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.detail || requestError?.message || '数据中心读取失败');
-    } finally {
-      loadInFlight.current = false;
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const metrics = [
-    ['研究数据集', status?.datasets ?? '--', Database],
-    ['发布记录', status?.published_rows?.toLocaleString('zh-CN') ?? '--', BarChart3],
-    ['封存快照', status?.sealed_snapshots ?? '--', HardDrive],
-    ['Provider', status?.provider_state ?? '--', Activity],
-  ] as const;
-
-  return (
-    <div className="h-full overflow-y-auto bg-crypto-bg p-6 text-gray-100">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Database className="h-6 w-6 text-blue-400" />
-          <div><h1 className="text-xl font-bold text-white">数据管理中心</h1><p className="mt-1 text-xs text-gray-500">PostgreSQL · TuShare 主源 · AKShare 整类回退 · 封存证据</p></div>
-        </div>
-        <button type="button" onClick={() => void load()} disabled={loading} className="flex items-center gap-1.5 rounded-xl border border-crypto-border bg-crypto-card px-3 py-2 text-xs text-gray-400 disabled:opacity-50">
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />刷新
-        </button>
-      </header>
-      {error && <div className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</div>}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map(([label, value, Icon]) => <div key={label} className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="flex justify-between text-[11px] text-gray-500"><span>{label}</span><Icon className="h-4 w-4 text-blue-400/70" /></div><div className="mt-2 truncate font-mono text-2xl font-semibold">{value}</div></div>)}
-      </div>
-      <section className="rounded-xl border border-crypto-border bg-crypto-card">
-        <div role="tablist" className="flex overflow-x-auto border-b border-crypto-border p-2">
-          {ASHARE_DATA_TABS.map((item) => <button key={item} role="tab" aria-selected={tab === item} onClick={() => setTab(item)} className={`shrink-0 rounded-lg px-3 py-2 text-xs ${tab === item ? SELECTED_SEGMENT_CLASS : 'text-gray-500 hover:text-gray-300'}`}>{item}</button>)}
-        </div>
-        <div className="p-4">
-          {tab === '总览' && <AshareDataOverview status={status} snapshots={snapshots} />}
-          {tab === '研究数据' && <AshareDatasets items={datasets} />}
-          {tab === '行情覆盖' && <AshareCoverage items={datasets} />}
-          {tab === '同步任务' && <AshareJobs items={jobs} />}
-          {tab === 'Qlib导出' && <AshareQlib admin={role === 'admin'} />}
-          {tab === '数据源' && <AshareProviders items={providers} />}
-          {tab === '质量' && <QualityPanel items={quality} />}
-          {tab === '导入导出' && <ExtensionExchangePanel items={imports} admin={role === 'admin'} onChanged={() => void load()} />}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function AshareDataOverview({ status, snapshots }: { status: DataStatus | null; snapshots: SnapshotRecord[] }) {
-  return <div className="grid gap-4 xl:grid-cols-2"><div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><HardDrive className="h-4 w-4 text-blue-300" />封存研究快照</h2><div className="mt-3 space-y-2">{snapshots.slice(0, 8).map((item) => <div key={item.id} className="flex justify-between rounded-lg border border-crypto-border p-3 text-xs"><span>{item.name}</span><span className="text-emerald-300">{item.status} · {item.item_count}</span></div>)}</div></div><div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><ListChecks className="h-4 w-4 text-blue-300" />可信边界</h2><div className="mt-3 space-y-2 text-xs text-gray-500">{[['存储', status?.storage], ['Provider 状态', status?.provider_state], ['GET Provider 调用', status?.provider_calls_performed], ['质量问题', status?.quality_issues], ['暂存导入', status?.staged_imports]].map(([label, value]) => <div key={String(label)} className="flex justify-between border-b border-crypto-border py-2"><span>{label}</span><span className="font-mono text-gray-300">{value ?? '--'}</span></div>)}</div></div></div>;
-}
-
-function AshareDatasets({ items }: { items: DatasetRecord[] }) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="text-[10px] text-gray-600"><tr>{['代码/名称','主源','整类回退','分区','记录','Watermark','状态'].map((label) => <th key={label} className="border-b border-crypto-border px-3 py-2">{label}</th>)}</tr></thead><tbody>{items.map((item) => <tr key={item.id} className="border-b border-crypto-border/60"><td className="px-3 py-2"><div>{item.name}</div><div className="font-mono text-[10px] text-gray-600">{item.code}</div></td><td className="px-3 py-2">{item.primary_source}</td><td className="px-3 py-2">{item.fallback_source || '--'}</td><td className="px-3 py-2 font-mono">{item.partition_count}</td><td className="px-3 py-2 font-mono">{Number(item.row_count).toLocaleString()}</td><td className="px-3 py-2">{String(item.last_published_trade_date || '--')}</td><td className="px-3 py-2">{item.enabled ? 'enabled' : 'disabled'}</td></tr>)}</tbody></table></div>;
-}
-
-function AshareCoverage({ items }: { items: DatasetRecord[] }) {
-  return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{items.map((item) => <div key={item.id} className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4"><div className="text-xs font-semibold">{item.name}</div><div className="mt-2 font-mono text-lg">{Number(item.row_count).toLocaleString()}</div><div className="mt-1 text-[10px] text-gray-600">{item.partition_count} partitions · {item.last_published_trade_date || 'no watermark'}</div></div>)}</div>;
-}
-
-function AshareJobs({ items }: { items: DataJob[] }) {
-  return <div className="space-y-2">{items.map((item) => <div key={item.id} className="grid gap-2 rounded-lg border border-crypto-border bg-crypto-bg/50 p-3 text-xs md:grid-cols-[1fr_100px_100px_180px]"><span>{item.job_name}</span><span>{item.source}</span><span>{item.status}</span><span className="text-gray-600">{String(item.created_at || '').slice(0, 19)}</span></div>)}</div>;
-}
-
-function AshareProviders({ items }: { items: Array<Record<string, any>> }) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead><tr>{['Dataset','Source','权限','缓存策略','导出策略','检查时间'].map((label) => <th key={label} className="border-b border-crypto-border px-3 py-2 text-[10px] text-gray-600">{label}</th>)}</tr></thead><tbody>{items.map((item, index) => <tr key={`${item.dataset_code}-${index}`} className="border-b border-crypto-border/60"><td className="px-3 py-2">{item.dataset_code}</td><td className="px-3 py-2">{item.source}</td><td className="px-3 py-2">{item.permission_state}</td><td className="px-3 py-2">{item.cache_policy}</td><td className="px-3 py-2">{item.export_policy}</td><td className="px-3 py-2 text-gray-600">{String(item.checked_at || '').slice(0, 19)}</td></tr>)}</tbody></table></div>;
-}
-
-function AshareQlib({ admin }: { admin: boolean }) {
-  const [state, setState] = useState<Record<string, any> | null>(null);
-  const [busy, setBusy] = useState(false);
-  const load = async () => { try { setState(await dataCurrentApi.qlibStatus()); } catch { setState(null); } };
-  useEffect(() => { void load(); }, []);
-  const run = async () => { setBusy(true); try { await dataCurrentApi.qlibExport(true); await load(); } finally { setBusy(false); } };
-  return <div className="space-y-3"><div className="flex items-center justify-between"><h2 className="flex items-center gap-2 text-sm font-semibold"><Download className="h-4 w-4 text-blue-300" />Microsoft Qlib 数据导出</h2><button type="button" disabled={!admin || busy} onClick={() => void run()} className="rounded-lg border border-blue-500/35 bg-blue-500/10 px-3 py-2 text-xs text-blue-200 disabled:opacity-50">{busy ? '导出中…' : '全量导出'}</button></div><div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4 text-xs text-gray-500">{state?.exists ? `${state.instruments ?? '--'} 个标的 · ${state.calendar_days ?? '--'} 个交易日 · ${state.updated_at ?? '--'}` : '尚未生成 Qlib 导出；缺失值保持 NaN，不合成行情。'}</div></div>;
 }

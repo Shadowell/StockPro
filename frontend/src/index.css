@@ -84,6 +84,7 @@ body {
 
 /* ===== 工作台动效 ===== */
 
+/* 实时状态点呼吸 */
 @keyframes livePulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.35; transform: scale(0.78); }
@@ -93,6 +94,7 @@ body {
   animation: livePulse 2s ease-in-out infinite;
 }
 
+/* 进度条流光 */
 @keyframes progressShimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -109,6 +111,7 @@ body {
   animation: progressShimmer 1.6s linear infinite;
 }
 
+/* 表格行错峰淡入 */
 @keyframes rowFadeIn {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: none; }
