@@ -3778,8 +3778,10 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 生产认证启用前完成最后一层抗暴力破解加固：活动管理员/访客端点共享真实来源 IP 的
   15 分钟 10 次失败预算，耗尽后在调用认证服务前返回 429，成功登录清空预算；来源优先使用
   Nginx 覆盖的 `X-Real-IP`，不再信任客户端可伪造的 `X-Forwarded-For` 首项。会话 Cookie 从
-  SameSite=Lax 收紧为 HttpOnly + Secure（生产）+ SameSite=Strict。9 项聚焦认证测试覆盖预算、
-  窗口恢复、成功清空、端点 429、真实 IP 和 Cookie 属性。
+  SameSite=Lax 收紧为 HttpOnly + Secure（生产）+ SameSite=Strict。生产探针进一步发现
+  `create_app()` 未注册统一异常处理器会把合法的认证拒绝变成 500；入口现注册 `AppError` handler，
+  认证拒绝恢复为 401/403/429。10 项聚焦认证测试覆盖预算、窗口恢复、成功清空、端点 429、
+  真实 IP、Cookie 属性和应用级错误合同。
 - 配置样例、README 与部署手册改为当前 `BITPRO_AUTH_*`/Argon2 合同，删除明文默认管理员密码
   和已经失效的 Bearer Token 示例。生产密码只进入 macOS 钥匙串，服务器仅接收 Argon2 哈希与
   独立签名密钥。
