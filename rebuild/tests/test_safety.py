@@ -116,6 +116,7 @@ def test_direct_port_boots_only_safe_a_share_routes(
     assert not any(path.startswith(("/api/v2/trading", "/api/v2/funding")) for path in paths)
     assert "/api/v2/live/start" in paths
     assert "/api/v2/live/advance" in paths
+    assert "/api/v2/backtest/run_running_strategies" in paths
     assert not any(path.startswith(("/api/v2/live/deploy", "/api/v2/live/positions/close")) for path in paths)
 
     strategy_methods = {

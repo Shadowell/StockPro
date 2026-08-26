@@ -149,6 +149,15 @@
   difference 均为 0，单日分别耗时 17.55 秒、32.32 秒，并发完成窗口 44–45 秒。探针按精确 UUID
   清理 1 ledger、3 equity、5 events、3 cycles、1 instance 和 1 portfolio 后，七张核心表计数逐项
   恢复到测试前基线，候选回测重新可用，既有 22 个 Paper 及其历史没有变化。
+- 恢复 BitPro 原“批量回测”按钮、确认框和 `/backtest/run_running_strategies` 合同，只对管理员
+  开放。A 股适配以运行中 Paper 为来源，按策略 ID 去重并跳过暂停/无效版本，固定绑定确认框
+  显示的 sealed dataset/pool、1D、100 万 CNY 和 A 股成本参数，再复用普通 PostgreSQL 异步任务、
+  取消/恢复和原子结果链路。隔离库只读规划为 21 个 running Paper、18 个唯一有效策略、3 个重复
+  跳过；消除逐策略回读后的规划耗时从超过 30 秒降到 3.60 秒。18 个任务与 18 条队列日志改为
+  全批单事务持久化，真实 PostgreSQL rollback 压力耗时 0.70 秒、前后 `jobs=35/logs=756`，没有
+  半批残留，提交成功后才启动受两个 worker 槽约束的执行线程。真实浏览器确认框显示
+  2023-01-03 至 2025-01-02、100 万元、策略定义和异步实例，未出现 USDT/100U/OKX，写请求、
+  失败资源与 console error 均为 0；79 项后端/重建测试、production build 和零警告 lint 通过。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

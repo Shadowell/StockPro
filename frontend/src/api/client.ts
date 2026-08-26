@@ -2657,7 +2657,7 @@ export const backtestApi = {
   runSync: (data: Record<string, unknown>): Promise<any> =>
     postReq('/backtest/run_sync', data, { timeout: BACKTEST_RUN_SYNC_TIMEOUT_MS }),
 
-  /** 异步回测：立即返回 jobId，进度见 getJob（SQLite 持久化，刷新页面或服务重启后可继续轮询） */
+  /** 异步回测：立即返回 jobId，进度见 getJob（PostgreSQL 持久化，刷新页面或服务重启后可继续轮询） */
   runJob: (data: Record<string, unknown>): Promise<{ jobId: string }> =>
     postReq('/backtest/run_job', data),
 

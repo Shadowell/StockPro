@@ -42,7 +42,7 @@ class PaperDomainService:
             "exchange": "CN", "symbols": symbols, "created_at": row.get("created_at"),
             "total_pnl": current - initial, "return_pct": ((current - initial) / initial * 100) if initial else 0,
             "max_drawdown": cls._number(row.get("max_drawdown")) * 100, "total_trades": int(cls._number(row.get("trade_count"))),
-            "config": {"is_paper_trading": True, "asset_class": "stock", "strategy_type": strategy_type, "timeframe": "1d", "initial_capital": initial, "paper_instance_uuid": str(row.get("instance_uuid") or "")},
+            "config": {"is_paper_trading": True, "asset_class": "stock", "strategy_type": strategy_type, "timeframe": "1d", "initial_capital": initial, "paper_instance_uuid": str(row.get("instance_uuid") or ""), "validation_status": row.get("validation_status")},
         }
 
     async def list_instances(self) -> list[dict]:

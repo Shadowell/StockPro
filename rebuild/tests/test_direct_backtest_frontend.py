@@ -9,7 +9,9 @@ def test_bitpro_backtest_workbench_uses_a_share_history_semantics():
     support = (ROOT / "frontend/src/pages/backtest/backtestSupport.tsx").read_text(encoding="utf-8")
 
     assert "const canCreateBacktest = isAdmin" in page
-    assert "const canBatchBacktest = false" in page
+    assert "const canBatchBacktest = isAdmin" in page
+    assert "backtestApi.runRunningStrategies" in page
+    assert "datasetSnapshotId: sealedConfiguration.datasetSnapshotId" in page
     assert "backtestApi.getConfiguration()" in page
     assert "dataset_snapshot_id: sealedConfiguration.datasetSnapshotId" in page
     assert "pool_snapshot_id: sealedConfiguration.poolSnapshotId" in page

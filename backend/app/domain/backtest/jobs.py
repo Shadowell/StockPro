@@ -16,6 +16,7 @@ class BacktestCancelled(RuntimeError):
 
 class JobRepository(Protocol):
     def create(self, payload: dict, *, parent_job_id: str | None = None, attempt: int = 1, owner: dict | None = None) -> dict: ...
+    def create_many(self, payloads: list[dict], *, owner: dict | None = None) -> list[dict]: ...
     def get(self, job_id: str) -> dict | None: ...
     def list(self, **filters: Any) -> list[dict]: ...
     def transition(self, job_id: str, **patch: Any) -> dict: ...
@@ -65,6 +66,18 @@ class BacktestJobService:
         if self.auto_start:
             self.start(str(row["job_id"]))
         return self._public(row)
+
+    def create_jobs(self, payloads: list[dict], *, owner: dict | None = None) -> list[dict]:
+        if not 1 <= len(payloads) <= 50:
+            raise ValueError("单次批量回测任务数量必须在 1 到 50 之间")
+        rows = self.repository.create_many(payloads, owner=owner or {"role": "admin"})
+        for row in rows:
+            job_id = str(row["job_id"])
+            with self._lock:
+                self._cancel_events[job_id] = threading.Event()
+            if self.auto_start:
+                self.start(job_id)
+        return [self._public(row) for row in rows]
 
     def start(self, job_id: str) -> None:
         with self._lock:

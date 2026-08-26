@@ -44,7 +44,7 @@ class PaperRepository:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(f"""
                     SELECT {PAPER_ID_SQL} AS id,i.id AS instance_uuid,i.name,i.status,
-                           COALESCE(s.legacy_strategy_id,0) AS strategy_id,s.name AS strategy_name,
+                           COALESCE(s.legacy_strategy_id,0) AS strategy_id,s.name AS strategy_name,s.validation_status,
                            p.initial_cash,p.cash_balance,i.portfolio_id,i.dataset_snapshot_id,i.created_at,i.started_at,i.updated_at,
                            (SELECT e.equity FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id ORDER BY e.trade_date DESC,e.id DESC LIMIT 1) AS current_equity,
                            (SELECT MAX(e.drawdown) FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id) AS max_drawdown,
@@ -61,7 +61,7 @@ class PaperRepository:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(f"""
                     SELECT {PAPER_ID_SQL} AS id,i.id AS instance_uuid,i.name,i.status,
-                           COALESCE(s.legacy_strategy_id,0) AS strategy_id,s.name AS strategy_name,
+                           COALESCE(s.legacy_strategy_id,0) AS strategy_id,s.name AS strategy_name,s.validation_status,
                            p.initial_cash,p.cash_balance,i.portfolio_id,i.dataset_snapshot_id,i.created_at,i.started_at,i.updated_at,
                            (SELECT e.equity FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id ORDER BY e.trade_date DESC,e.id DESC LIMIT 1) AS current_equity,
                            (SELECT MAX(e.drawdown) FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id) AS max_drawdown,

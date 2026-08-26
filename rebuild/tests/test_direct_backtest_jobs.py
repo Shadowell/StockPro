@@ -25,6 +25,9 @@ class MemoryJobRepository:
         self.rows[job_id] = row
         return dict(row)
 
+    def create_many(self, payloads, *, owner=None):
+        return [self.create(payload, owner=owner) for payload in payloads]
+
     def get(self, job_id): return dict(self.rows[job_id]) if job_id in self.rows else None
     def list(self, **_): return [dict(row) for row in self.rows.values()]
     def transition(self, job_id, **patch): self.transition_count += 1; self.rows[job_id].update(patch); return dict(self.rows[job_id])
@@ -118,3 +121,11 @@ def test_jobs_left_active_by_process_restart_are_read_as_interrupted_and_resumab
     resumed = restarted_process.resume(created["job_id"])
     assert resumed["parent_job_id"] == created["job_id"]
     assert resumed["attempt"] == 2
+
+
+def test_batch_jobs_are_persisted_before_workers_start():
+    repository = MemoryJobRepository()
+    service = BacktestJobService(repository, SuccessfulExecutor(), auto_start=False)
+    created = service.create_jobs([{"strategy_id": 224}, {"strategy_id": 225}], owner={"role": "admin"})
+    assert [row["status"] for row in created] == ["pending", "pending"]
+    assert len(repository.rows) == 2

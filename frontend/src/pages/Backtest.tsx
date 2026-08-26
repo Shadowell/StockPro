@@ -31,7 +31,7 @@ const BacktestCompareDialog = lazy(() => import('./backtest/BacktestCompareDialo
 export default function Backtest() {
   const { isAdmin } = useAuth();
   const canCreateBacktest = isAdmin;
-  const canBatchBacktest = false;
+  const canBatchBacktest = isAdmin;
   const { strategies, fetchStrategies } = useStore();
   const [initialBt] = useState(loadBacktestPrefs);
   const [view, setView] = useState<BacktestView>('dashboard');
@@ -123,7 +123,12 @@ export default function Backtest() {
   const startDate = selectedInstance?.config.startDate ?? defaultBacktestDateRange().start;
   const endDate = selectedInstance?.config.endDate ?? defaultBacktestDateRange().end;
   const initialCapital = selectedInstance?.config.initialCapital ?? 10000;
-  const batchBacktestDefaults = useMemo(defaultBatchBacktestDateRange, []);
+  const batchBacktestDefaults = useMemo(() => {
+    const configuration = availableConfigurations[0];
+    return configuration
+      ? { start: configuration.startDate, end: configuration.endDate }
+      : defaultBatchBacktestDateRange();
+  }, [availableConfigurations]);
   const isCancelling = selectedInstance?.status === 'cancelling';
   const isRunning = selectedInstance?.status === 'running' || isCancelling;
   const jobProgress = selectedInstance?.jobProgress ?? null;
@@ -432,9 +437,20 @@ export default function Backtest() {
 
   const createBatchBacktestInstances = async () => {
     if (isBatchBacktestSubmitting) return;
+    const sealedConfiguration = availableConfigurations[0];
+    if (!sealedConfiguration) {
+      showThemeAlert('无法创建批量回测', '当前没有可用的 sealed A 股数据与股票池配置。', 'warning');
+      return;
+    }
     setIsBatchBacktestSubmitting(true);
     try {
-      const response = await backtestApi.runRunningStrategies();
+      const response = await backtestApi.runRunningStrategies({
+        startDate: sealedConfiguration.startDate,
+        endDate: sealedConfiguration.endDate,
+        initialCapital: 1_000_000,
+        datasetSnapshotId: sealedConfiguration.datasetSnapshotId,
+        poolSnapshotId: sealedConfiguration.poolSnapshotId,
+      });
       const createdInstances = (response.jobs || [])
         .map((job, index): BacktestInstance => {
           const instance = createBacktestInstance({
@@ -1898,7 +1914,7 @@ export default function Backtest() {
                 type="button"
                 aria-label="创建批量回测实例"
                 onClick={() => setBatchBacktestConfirmOpen(true)}
-                disabled={isBatchBacktestSubmitting}
+                disabled={isBatchBacktestSubmitting || availableConfigurations.length === 0}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-crypto-border bg-crypto-card px-4 py-2.5 text-sm font-semibold text-gray-200 transition-colors hover:border-blue-500/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isBatchBacktestSubmitting ? (
