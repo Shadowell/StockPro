@@ -47,8 +47,12 @@ if [ "$(pwd -P)" != "$TARGET_ROOT" ]; then
   exit 1
 fi
 TARGET_BRANCH="$(git branch --show-current)"
-if [[ "$TARGET_BRANCH" != codex/* ]]; then
-  echo "refusing to import outside a codex/* branch" >&2
+if [ "$MODE" = "apply" ] && [[ "$TARGET_BRANCH" != codex/* ]]; then
+  echo "refusing to apply outside a codex/* branch" >&2
+  exit 1
+fi
+if [ "$MODE" = "dry-run" ] && [ "$TARGET_BRANCH" != "main" ] && [[ "$TARGET_BRANCH" != codex/* ]]; then
+  echo "refusing to audit outside main or a codex/* branch" >&2
   exit 1
 fi
 if [ "$BITPRO_SOURCE_SHA" != "$PINNED_SOURCE_SHA" ]; then

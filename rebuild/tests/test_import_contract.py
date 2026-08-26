@@ -41,7 +41,7 @@ def test_import_contract_keeps_governance_and_excludes_runtime_data(
     import_manifest: dict[str, object],
 ) -> None:
     assert import_manifest["source_sha"] == SOURCE_SHA
-    assert import_manifest["target_branch"].startswith("codex/")
+    assert import_manifest["target_branch"] == "main" or import_manifest["target_branch"].startswith("codex/")
     assert import_manifest["source_archive"] == "git-object-database"
     assert import_manifest["copied_roots"] == [
         "backend",
