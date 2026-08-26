@@ -2,7 +2,6 @@ import { Suspense, useState, useRef, useEffect, useCallback } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import {
-  Waves,
   LayoutDashboard,
   TrendingUp,
   Code2,
@@ -34,6 +33,7 @@ import {
   RefreshCw,
   UsersRound,
   LibraryBig,
+  Landmark,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS } from '../utils/selectionStyles';
@@ -74,7 +74,7 @@ const navItems = [
   { path: '/backtest', icon: FlaskConical, label: '回测', allowedRoles: ['admin', 'guest'] },
   { path: '/live', icon: Activity, label: '模拟', allowedRoles: ['admin', 'guest'] },
   { path: '/watch', icon: ScanLine, label: '盯盘', allowedRoles: ['admin', 'guest'] },
-  { path: '/orderflow', icon: Waves, label: '资金流', allowedRoles: ['admin', 'guest'] },
+  { path: '/orderflow', icon: Landmark, label: '资金流', allowedRoles: ['admin', 'guest'] },
   { path: '/monitor', icon: Eye, label: '监控', allowedRoles: ['admin', 'guest'] },
   { path: '/review', icon: ClipboardList, label: '复盘', allowedRoles: ['admin', 'guest'] },
   { path: '/data', icon: Database, label: '数据', allowedRoles: ['admin', 'guest'] },
@@ -1098,22 +1098,41 @@ export default function MainLayout() {
         </div>
 
         {/* 导航 */}
-        <nav className="flex-1 overflow-y-auto py-4">
+        <nav className="flex-1 overflow-y-auto py-3" aria-label="主导航">
           {visibleNavItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
                 clsx(
-                  'flex flex-col items-center justify-center h-16 text-xs transition-colors overflow-hidden',
+                  'group relative mx-1 mb-1 flex h-[58px] flex-col items-center justify-center overflow-hidden rounded-lg border border-transparent px-1 text-[11px] font-medium leading-none transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40',
                   isActive
-                    ? 'text-blue-500 bg-blue-500/10'
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                    ? 'border-blue-400/25 bg-blue-500/[0.12] text-blue-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]'
+                    : 'text-gray-500 hover:border-white/10 hover:bg-white/[0.04] hover:text-gray-200'
                 )
               }
             >
-              <item.icon className="w-5 h-5 mb-1" />
-              {item.label}
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={clsx(
+                      'absolute left-0 top-2 h-10 w-0.5 rounded-r-full transition-opacity',
+                      isActive ? 'bg-blue-400 opacity-100' : 'bg-gray-600 opacity-0 group-hover:opacity-100'
+                    )}
+                  />
+                  <span
+                    className={clsx(
+                      'mb-1 flex h-7 w-7 items-center justify-center rounded-md border transition-colors',
+                      isActive
+                        ? 'border-blue-300/30 bg-blue-400/15 text-blue-200'
+                        : 'border-transparent text-gray-500 group-hover:border-white/10 group-hover:bg-white/[0.04] group-hover:text-gray-200'
+                    )}
+                  >
+                    <item.icon className="h-[18px] w-[18px]" />
+                  </span>
+                  <span className="max-w-[3.25rem] truncate text-center tracking-normal">{item.label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>

@@ -23,6 +23,18 @@
   A 股后端测试、runtime safety `safe active=0 quarantined=57`、Mock E2E 26 项和
   `git diff --check` 全部通过。
 
+## 资金流侧栏入口视觉调整（2026-08-26）
+
+- 基于最新 `origin/main` 的 `codex/redesign-capital-flow-nav` 分支，仅调整侧栏与资金流页面视觉。
+  `/orderflow` 的图标从抽象波纹改为 `Landmark`，并为侧栏导航项增加左侧活动状态条、图标底座、
+  更低噪声的 hover/focus 样式和固定高度，保持“资金流”中文标签、路由、权限和数据接口不变。
+- 已用当前分支在标准本地端口 `4444/4445` 启动前后端，截取侧栏验证，资金流入口无文字溢出；
+  前端检查、后端测试、安全检查和 mock E2E 均通过。
+- 根据页面截图继续统一 `/orderflow` 页面的外框规范：KPI、图表、明细表、错误提示、筛选控件和
+  分段按钮全部使用一致的 `rounded-xl` 外框，图表/表格容器裁剪内容，避免直角外露。
+- 同步修复 `test_direct_port_boots_only_safe_a_share_routes` 在新版 FastAPI 下读取 `_IncludedRouter`
+  的兼容性问题，改为以 OpenAPI paths 作为路由合同来源，安全断言保持不变。
+
 ## BitPro 原代码直接移植重置（2026-08-26）
 
 - 用户否决了 `116f543f` 的“页面映射 + A 股重写”结果：它不是所要求的
