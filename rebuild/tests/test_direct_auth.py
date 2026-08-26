@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 import pytest
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -18,6 +19,7 @@ from app.api.v2.endpoints import auth as auth_endpoint  # noqa: E402
 from app.domain.auth.service import ActiveAuthService  # noqa: E402
 from app.domain.auth.login_limiter import LoginAttemptLimiter, LoginRateLimitError  # noqa: E402
 from app.domain.auth.mcp_tokens import PostgresMcpTokenVerifier  # noqa: E402
+from app.main import create_app  # noqa: E402
 
 
 class FakeAuthRepository:
@@ -236,3 +238,28 @@ def test_login_source_uses_nginx_real_ip_instead_of_spoofable_forwarded_chain():
     )
 
     assert auth_endpoint._client_ip(request) == "198.51.100.50"
+
+
+def test_application_returns_typed_auth_error_instead_of_internal_error(monkeypatch):
+    class RejectingAuthService:
+        @staticmethod
+        def validate_admin_config(**_):
+            return None
+
+        @staticmethod
+        def login_admin(**_):
+            raise auth_endpoint.ActiveAuthError("管理员账号或密码错误", status_code=401)
+
+    monkeypatch.setattr(settings, "BITPRO_AUTH_ENABLED", True)
+    monkeypatch.setattr(settings, "BITPRO_ADMIN_USERNAME", "admin")
+    monkeypatch.setattr(settings, "BITPRO_ADMIN_PASSWORD_HASH", "configured")
+    monkeypatch.setattr(auth_endpoint, "auth_service", RejectingAuthService())
+    monkeypatch.setattr(auth_endpoint, "login_limiter", LoginAttemptLimiter())
+
+    response = TestClient(create_app(), raise_server_exceptions=False).post(
+        "/api/v2/auth/admin/login",
+        json={"username": "admin", "password": "wrong"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTH_ERROR"

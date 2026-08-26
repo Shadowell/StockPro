@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.auth_middleware import AuthMiddleware
+from app.core.errors import register_exception_handlers
 from app.api.v2.endpoints.auth import router as auth_router
 from app.api.v2.endpoints.market import router as market_router
 from app.api.v2.endpoints.strategy import router as strategy_router
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(AuthMiddleware)
+    register_exception_handlers(app)
 
     @app.get("/api/health")
     async def health() -> dict[str, object]:
