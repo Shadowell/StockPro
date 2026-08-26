@@ -18,6 +18,11 @@
   前端将合约/现货、USDT、资金费率和币种搜索原位换为股票/ETF/指数、人民币、
   T+1/100 股整手和 A 股代码搜索。真实接口返回 5,000 个证券、`600519.SH` 报价与日线。
   浏览器保持 BitPro 原 K 线/盘口/成交布局，写请求 0、API 5xx 0、console errors 0。
+- 策略目录切片已在 BitPro 原 `Strategy.tsx`、`StrategyDomainService` 和
+  `/api/v2/strategies` 上完成只读接入：PostgreSQL 128 个版本按名称取最新后展示 78 个 A 股策略，
+  BitPro 原分页、搜索、卡片和详情交互保留；现货/合约、马丁/做市、USDT 资金档改为
+  股票/ETF、动量趋势/均值回归/多因子/事件驱动和人民币资金档。未完成不可变版本写入前，
+  新建/编辑/删除和 AI 写策略按钮不展示，真实浏览器读取写请求 0、API 5xx 0、console errors 0。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

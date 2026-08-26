@@ -97,6 +97,7 @@ def test_direct_port_boots_only_write_free_safety_and_a_share_market_routes(
 
     assert {"/api/health", "/api/health/storage", "/api/auth/me", "/api/v2/auth/me"}.issubset(paths)
     assert "/api/v2/market/symbols" in paths
+    assert "/api/v2/strategies" in paths
     assert not any(path.startswith(("/api/live", "/api/trading", "/api/arbitrage")) for path in paths)
     assert not any(path.startswith(("/api/v2/live", "/api/v2/trading", "/api/v2/arbitrage", "/api/v2/funding")) for path in paths)
 

@@ -15,7 +15,6 @@ import StrategyParameterSections from '../components/StrategyParameterSections';
 import { getStrategyParameterSections } from '../utils/strategyConfigDisplay';
 import { formatTimeframeLabel } from '../utils/timeframe';
 import { SELECTED_SEGMENT_CLASS, SELECTED_SEGMENT_COUNT_CLASS } from '../utils/selectionStyles';
-import { useAuth } from '../auth/AuthProvider';
 
 function isStrategyRunningOrPaused(status: string | undefined): boolean {
   return status === 'running' || status === 'paused';
@@ -206,11 +205,11 @@ const STRATEGY_PAGE_SIZE = 18;
 type PageView = 'list' | 'editor' | 'detail';
 type ListTab = 'my' | 'plaza';
 type StrategyStatusFilter = 'all' | 'running' | 'paused' | 'not_started';
-type StrategyAssetClass = 'spot' | 'contract';
+type StrategyAssetClass = 'stock' | 'etf';
 type StrategyAssetFilter = 'all' | StrategyAssetClass;
-type StrategyTypeFilter = 'all' | 'cta' | 'martingale' | 'ai' | 'market_making';
-type StrategyTimeframeFilter = 'all' | '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '12h' | '1d';
-type StrategyCapitalFilter = 'all' | '100U' | '1000U';
+type StrategyTypeFilter = 'all' | 'momentum' | 'mean_reversion' | 'multi_factor' | 'event' | 'other';
+type StrategyTimeframeFilter = 'all' | '1d';
+type StrategyCapitalFilter = 'all' | '1000000CNY';
 
 const STATUS_FILTERS: Array<{
   value: StrategyStatusFilter;
@@ -227,8 +226,8 @@ const ASSET_FILTERS: Array<{
   label: string;
 }> = [
   { value: 'all', label: '全部' },
-  { value: 'spot', label: '现货' },
-  { value: 'contract', label: '合约' },
+  { value: 'stock', label: '股票' },
+  { value: 'etf', label: 'ETF' },
 ];
 
 const STRATEGY_TYPE_FILTERS: Array<{
@@ -236,10 +235,11 @@ const STRATEGY_TYPE_FILTERS: Array<{
   label: string;
 }> = [
   { value: 'all', label: '全部' },
-  { value: 'cta', label: 'CTA' },
-  { value: 'martingale', label: '马丁' },
-  { value: 'ai', label: 'AI' },
-  { value: 'market_making', label: '做市' },
+  { value: 'momentum', label: '动量趋势' },
+  { value: 'mean_reversion', label: '均值回归' },
+  { value: 'multi_factor', label: '多因子' },
+  { value: 'event', label: '事件驱动' },
+  { value: 'other', label: '其他' },
 ];
 
 const STRATEGY_TIMEFRAME_FILTERS: Array<{
@@ -247,13 +247,6 @@ const STRATEGY_TIMEFRAME_FILTERS: Array<{
   label: string;
 }> = [
   { value: 'all', label: '全部' },
-  { value: '1m', label: '1M' },
-  { value: '5m', label: '5M' },
-  { value: '15m', label: '15M' },
-  { value: '30m', label: '30M' },
-  { value: '1h', label: '1H' },
-  { value: '4h', label: '4H' },
-  { value: '12h', label: '12H' },
   { value: '1d', label: '1D' },
 ];
 
@@ -262,8 +255,7 @@ const STRATEGY_CAPITAL_FILTERS: Array<{
   label: string;
 }> = [
   { value: 'all', label: '全部' },
-  { value: '100U', label: '100U' },
-  { value: '1000U', label: '1000U' },
+  { value: '1000000CNY', label: '100万' },
 ];
 
 const MISSING_SELECTION_LOGIC = '该策略尚未补充核心标的说明。';
@@ -312,39 +304,13 @@ function getStrategyConfigArray(config: Record<string, unknown>, keys: string[])
   return [];
 }
 
-function isContractStrategySymbol(symbol: string): boolean {
-  const normalized = symbol.trim().toUpperCase();
-  return normalized.includes(':') || normalized.endsWith('-USDT-SWAP') || normalized.endsWith('-SWAP');
-}
-
 function inferStrategyAssetClass(strategy: StrategyType): StrategyAssetClass {
   const config = isRecord(strategy.config) ? strategy.config : {};
-  const marketType = readTextField(config, ['marketType', 'market_type']).toLowerCase();
-  const instType = readTextField(config, ['instType', 'inst_type']).toUpperCase();
-  if (['swap', 'future', 'futures', 'contract'].includes(marketType) || instType === 'SWAP') {
-    return 'contract';
-  }
-
-  const name = strategy.name.trim();
-  if (name.startsWith('[合约]')) return 'contract';
-  if (name.startsWith('[现货]')) return 'spot';
-
-  const symbols = [
-    ...(strategy.symbols || []),
-    ...getStrategyConfigArray(config, [
-      'symbol',
-      'symbols',
-      'tradeSymbols',
-      'trade_symbols',
-      'contractTradeSymbols',
-      'contract_trade_symbols',
-    ]),
-  ];
-  return symbols.some(isContractStrategySymbol) ? 'contract' : 'spot';
+  return readTextField(config, ['assetClass', 'asset_class']).toLowerCase() === 'etf' ? 'etf' : 'stock';
 }
 
 function strategyNameColorClass(assetClass: StrategyAssetClass): string {
-  return assetClass === 'contract' ? 'text-[#FFAB73]' : 'text-yellow-300';
+  return assetClass === 'etf' ? 'text-cyan-300' : 'text-yellow-300';
 }
 
 // ============================================
@@ -352,8 +318,7 @@ function strategyNameColorClass(assetClass: StrategyAssetClass): string {
 // ============================================
 export default function Strategy() {
   const navigate = useNavigate();
-  const { isGuest } = useAuth();
-  const canWriteStrategy = !isGuest;
+  const canWriteStrategy = false;
   const [strategies, setStrategies] = useState<StrategyType[]>([]);
   const [isLoadingStrategies, setIsLoadingStrategies] = useState(false);
   const [strategyListError, setStrategyListError] = useState<string | null>(null);
@@ -369,31 +334,24 @@ export default function Strategy() {
   });
   const [strategyAssetCounts, setStrategyAssetCounts] = useState<Record<StrategyAssetFilter, number>>({
     all: 0,
-    spot: 0,
-    contract: 0,
+    stock: 0,
+    etf: 0,
   });
   const [strategyTypeCounts, setStrategyTypeCounts] = useState<Record<StrategyTypeFilter, number>>({
     all: 0,
-    cta: 0,
-    martingale: 0,
-    ai: 0,
-    market_making: 0,
+    momentum: 0,
+    mean_reversion: 0,
+    multi_factor: 0,
+    event: 0,
+    other: 0,
   });
   const [strategyTimeframeCounts, setStrategyTimeframeCounts] = useState<Record<StrategyTimeframeFilter, number>>({
     all: 0,
-    '1m': 0,
-    '5m': 0,
-    '15m': 0,
-    '30m': 0,
-    '1h': 0,
-    '4h': 0,
-    '12h': 0,
     '1d': 0,
   });
   const [strategyCapitalCounts, setStrategyCapitalCounts] = useState<Record<StrategyCapitalFilter, number>>({
     all: 0,
-    '100U': 0,
-    '1000U': 0,
+    '1000000CNY': 0,
   });
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType | null>(null);
 
@@ -417,7 +375,7 @@ export default function Strategy() {
     description: '',
     scriptContent: EMPTY_STRATEGY_TEMPLATE.code,
     exchange: 'okx',
-    symbols: 'BTC/USDT',
+    symbols: '600519.SH',
     config: JSON.stringify(EMPTY_STRATEGY_TEMPLATE.defaultConfig, null, 2),
   });
 
@@ -428,8 +386,8 @@ export default function Strategy() {
   // AI 写策略
   const [showAiGen, setShowAiGen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
-  const [aiSymbol, setAiSymbol] = useState('BTC/USDT');
-  const [aiTimeframe, setAiTimeframe] = useState('1h');
+  const [aiSymbol, setAiSymbol] = useState('600519.SH');
+  const [aiTimeframe, setAiTimeframe] = useState('1d');
   const [aiGenerating, setAiGenerating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
@@ -481,31 +439,24 @@ export default function Strategy() {
         });
         setStrategyAssetCounts({
           all: result.assetCounts?.all ?? 0,
-          spot: result.assetCounts?.spot ?? 0,
-          contract: result.assetCounts?.contract ?? 0,
+          stock: result.assetCounts?.stock ?? 0,
+          etf: result.assetCounts?.etf ?? 0,
         });
         setStrategyTypeCounts({
           all: result.typeCounts?.all ?? 0,
-          cta: result.typeCounts?.cta ?? 0,
-          martingale: result.typeCounts?.martingale ?? 0,
-          ai: result.typeCounts?.ai ?? 0,
-          market_making: result.typeCounts?.market_making ?? 0,
+          momentum: result.typeCounts?.momentum ?? 0,
+          mean_reversion: result.typeCounts?.meanReversion ?? result.typeCounts?.mean_reversion ?? 0,
+          multi_factor: result.typeCounts?.multiFactor ?? result.typeCounts?.multi_factor ?? 0,
+          event: result.typeCounts?.event ?? 0,
+          other: result.typeCounts?.other ?? 0,
         });
         setStrategyTimeframeCounts({
           all: result.timeframeCounts?.all ?? 0,
-          '1m': result.timeframeCounts?.['1m'] ?? 0,
-          '5m': result.timeframeCounts?.['5m'] ?? 0,
-          '15m': result.timeframeCounts?.['15m'] ?? 0,
-          '30m': result.timeframeCounts?.['30m'] ?? 0,
-          '1h': result.timeframeCounts?.['1h'] ?? 0,
-          '4h': result.timeframeCounts?.['4h'] ?? 0,
-          '12h': result.timeframeCounts?.['12h'] ?? 0,
           '1d': result.timeframeCounts?.['1d'] ?? 0,
         });
         setStrategyCapitalCounts({
           all: result.capitalCounts?.all ?? 0,
-          '100U': result.capitalCounts?.['100U'] ?? 0,
-          '1000U': result.capitalCounts?.['1000U'] ?? 0,
+          '1000000CNY': result.capitalCounts?.['1000000CNY'] ?? 0,
         });
       })
       .catch((err: any) => {
@@ -587,8 +538,8 @@ export default function Strategy() {
       name: template.name,
       description: template.description,
       scriptContent: template.code,
-      exchange: 'okx',
-      symbols: 'BTC/USDT',
+      exchange: 'CN',
+      symbols: '600519.SH',
       config: JSON.stringify(template.defaultConfig, null, 2),
     });
     setView('editor');
@@ -605,8 +556,8 @@ export default function Strategy() {
       name: strategy.name,
       description: strategy.description || '',
       scriptContent: strategy.scriptContent || '',
-      exchange: strategy.exchange || 'okx',
-      symbols: strategy.symbols?.join(', ') || 'BTC/USDT',
+      exchange: strategy.exchange || 'CN',
+      symbols: strategy.symbols?.join(', ') || '600519.SH',
       config: JSON.stringify(strategy.config || {}, null, 2),
     });
     setView('editor');
@@ -749,12 +700,12 @@ export default function Strategy() {
           />
           <div className="flex items-center gap-3 mt-3">
             <CryptoSelect value={aiSymbol} onChange={e => setAiSymbol(e.target.value)} controlSize="xs" fullWidth={false}>
-              {['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'DOGE/USDT'].map(s => (
+              {['600519.SH', '000001.SZ', '300750.SZ', '510300.SH'].map(s => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </CryptoSelect>
             <CryptoSelect value={aiTimeframe} onChange={e => setAiTimeframe(e.target.value)} controlSize="xs" fullWidth={false}>
-              {['1m', '5m', '15m', '1h', '4h', '1d'].map(t => (
+              {['1d'].map(t => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </CryptoSelect>
@@ -1243,7 +1194,7 @@ export default function Strategy() {
     const displaySymbols = tradeSymbols.length > 0 ? tradeSymbols : selectedStrategy.symbols || [];
     const timeframe = readTextField(config, ['timeframe']);
     const assetClass = inferStrategyAssetClass(selectedStrategy);
-    const assetClassLabel = assetClass === 'contract' ? '合约' : '现货';
+    const assetClassLabel = assetClass === 'etf' ? 'ETF' : '股票';
     const parameterSections = getStrategyParameterSections(config);
 
     return (
@@ -1262,8 +1213,8 @@ export default function Strategy() {
               <div className="mb-1 flex items-center gap-2">
                 <span className={clsx(
                   'rounded-md px-2 py-0.5 text-xs font-semibold',
-                  assetClass === 'contract'
-                    ? 'bg-purple-500/15 text-purple-300'
+                  assetClass === 'etf'
+                    ? 'bg-cyan-500/15 text-cyan-300'
                     : 'bg-amber-500/15 text-amber-300',
                 )}>
                   {assetClassLabel}
@@ -1405,7 +1356,7 @@ export default function Strategy() {
           <div>
             <label className="block text-xs text-gray-400 mb-1.5">交易对（逗号分隔）</label>
             <input type="text" value={formData.symbols} onChange={e => setFormData({ ...formData, symbols: e.target.value })}
-              placeholder="BTC/USDT, ETH/USDT"
+              placeholder="600519.SH, 000001.SZ"
               className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
