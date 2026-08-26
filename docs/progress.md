@@ -3775,6 +3775,19 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 
 ## 2026-08-26 BitPro 基线同步
 
+- 生产认证启用前完成最后一层抗暴力破解加固：活动管理员/访客端点共享真实来源 IP 的
+  15 分钟 10 次失败预算，耗尽后在调用认证服务前返回 429，成功登录清空预算；来源优先使用
+  Nginx 覆盖的 `X-Real-IP`，不再信任客户端可伪造的 `X-Forwarded-For` 首项。会话 Cookie 从
+  SameSite=Lax 收紧为 HttpOnly + Secure（生产）+ SameSite=Strict。9 项聚焦认证测试覆盖预算、
+  窗口恢复、成功清空、端点 429、真实 IP 和 Cookie 属性。
+- 配置样例、README 与部署手册改为当前 `BITPRO_AUTH_*`/Argon2 合同，删除明文默认管理员密码
+  和已经失效的 Bearer Token 示例。生产密码只进入 macOS 钥匙串，服务器仅接收 Argon2 哈希与
+  独立签名密钥。
+- 干净重启定位到整仓导入删除 `scripts/database-tunnel.sh`、但 `restart.sh` 仍保留硬依赖的
+  运行时断链。按原 StockPro PostgreSQL-only 实现恢复 SSH ControlMaster 隧道脚本，并新增真实
+  行为测试覆盖无 SSH 主机时的直接 PostgreSQL 配置；6 项运行依赖测试通过。随后 `./restart.sh`
+  成功建立 `127.0.0.1:55432` 隔离库隧道，4445/4444 均完成干净启动和健康检查。
+
 - BitPro 本地 `main` 前进到 `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`。相对 `aecd03f7` 仅新增 `docs/research/strategy-analysis-2026-08-26-0008-favorites-core-loss-attribution.md` 并更新 BitPro 文档索引/进度，前端、后端、packages、scripts 和 tests 应用树无变化。
 - StockPro 来源测试、导入器、完成审计、活动合同和总控计划已重新钉住该提交；未静默漂移，也未把 BitPro 未提交工作区作为来源。
 - 行情模块完成当前 BitPro 610 行 `Market.tsx` 原样导入；原 A 股 Market Terminal 机械迁入独立 `AshareMarketWorkspace` 并保持默认导出，继续使用股票/ETF/指数、PostgreSQL 日线、CNY、100股、盘口空态、自选和证据 API。BitPro OKX 页面仅作为 named reference，不执行。

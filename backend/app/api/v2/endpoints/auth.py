@@ -1,6 +1,7 @@
 """Authentication endpoints for admin and temporary guest-code access."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Request, Response
@@ -9,10 +10,12 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.core.contracts import ok
 from app.core.errors import AppError
+from app.domain.auth.login_limiter import LoginAttemptLimiter, LoginRateLimitError
 from app.domain.auth.service import ActiveAuthConfigError, ActiveAuthError, active_auth_service as auth_service
 
 
 router = APIRouter()
+login_limiter = LoginAttemptLimiter(max_failures=10, window_seconds=15 * 60)
 
 
 class AuthRequestError(AppError):
@@ -41,7 +44,7 @@ class GuestCodeCreateRequest(BaseModel):
 
 
 def _client_ip(request: Request) -> str:
-    return request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
+    return request.headers.get("x-real-ip", "").strip() or (
         request.client.host if request.client else ""
     )
 
@@ -50,13 +53,24 @@ def _user_agent(request: Request) -> str:
     return request.headers.get("user-agent", "")
 
 
+def _login_key(request: Request) -> str:
+    return _client_ip(request) or "unknown"
+
+
+def _check_login_budget(key: str, now: datetime) -> None:
+    try:
+        login_limiter.check(key, now=now)
+    except LoginRateLimitError as exc:
+        raise AuthRequestError(str(exc), status_code=exc.status_code) from exc
+
+
 def _set_session_cookie(response: Response, session: dict) -> None:
     response.set_cookie(
         settings.BITPRO_AUTH_COOKIE_NAME,
         session["token"],
         httponly=True,
         secure=bool(settings.BITPRO_AUTH_COOKIE_SECURE),
-        samesite="lax",
+        samesite="strict",
         max_age=max(60, int((session.get("max_age") or 0) or 60 * 60 * 24)),
         path="/",
     )
@@ -105,6 +119,9 @@ async def me(request: Request):
 async def admin_login(payload: AdminLoginRequest, request: Request, response: Response):
     if not settings.BITPRO_AUTH_ENABLED:
         return ok(_public_session(None, auth_enabled=False))
+    login_key = _login_key(request)
+    now = datetime.now(timezone.utc)
+    _check_login_budget(login_key, now)
     try:
         auth_service.validate_admin_config(
             enabled=True,
@@ -120,8 +137,13 @@ async def admin_login(payload: AdminLoginRequest, request: Request, response: Re
             user_agent=_user_agent(request),
             session_hours=int(settings.BITPRO_ADMIN_SESSION_HOURS),
         )
-    except (ActiveAuthError, ActiveAuthConfigError) as exc:
+    except ActiveAuthError as exc:
+        if exc.status_code == 401:
+            login_limiter.record_failure(login_key, now=now)
+        raise AuthRequestError(str(exc), status_code=exc.status_code) from exc
+    except ActiveAuthConfigError as exc:
         raise AuthRequestError(str(exc), status_code=getattr(exc, "status_code", 503)) from exc
+    login_limiter.clear(login_key)
     _set_session_cookie(response, session)
     return ok(_public_session(session, auth_enabled=True))
 
@@ -130,6 +152,9 @@ async def admin_login(payload: AdminLoginRequest, request: Request, response: Re
 async def guest_login(payload: GuestLoginRequest, request: Request, response: Response):
     if not settings.BITPRO_AUTH_ENABLED:
         return ok(_public_session(None, auth_enabled=False))
+    login_key = _login_key(request)
+    now = datetime.now(timezone.utc)
+    _check_login_budget(login_key, now)
     try:
         session = auth_service.login_guest(
             payload.code,
@@ -137,7 +162,10 @@ async def guest_login(payload: GuestLoginRequest, request: Request, response: Re
             user_agent=_user_agent(request),
         )
     except ActiveAuthError as exc:
+        if exc.status_code == 401:
+            login_limiter.record_failure(login_key, now=now)
         raise AuthRequestError(str(exc), status_code=exc.status_code) from exc
+    login_limiter.clear(login_key)
     _set_session_cookie(response, session)
     return ok(_public_session(session, auth_enabled=True))
 

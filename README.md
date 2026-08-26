@@ -49,7 +49,9 @@ npm --prefix frontend install
 - 后端健康检查：`http://localhost:4445/api/health`
 - OpenAPI：`http://localhost:4445/docs`
 
-管理员账号密码取自 `backend/.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD`。不要把真实密钥或 `.env` 提交到 Git。
+管理员认证取自 `backend/.env` 的 `BITPRO_ADMIN_USERNAME`、Argon2
+`BITPRO_ADMIN_PASSWORD_HASH` 与 `BITPRO_AUTH_TOKEN_SECRET`；生产 HTTPS 还必须开启
+`BITPRO_AUTH_ENABLED` 和 `BITPRO_AUTH_COOKIE_SECURE`。不要把明文密码、真实密钥或 `.env` 提交到 Git。
 
 ### 日常运行
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import importlib
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -85,3 +87,29 @@ def test_frontend_has_wave_one_verification_scripts() -> None:
     assert "cross-env" in package["devDependencies"]
     lockfile = (PROJECT_ROOT / "frontend/package-lock.json").read_text(encoding="utf-8")
     assert "/Users/" not in lockfile
+
+
+def test_database_tunnel_helper_accepts_direct_postgres_configuration(tmp_path: Path) -> None:
+    source = PROJECT_ROOT / "scripts/database-tunnel.sh"
+    assert source.is_file(), "restart.sh requires the database tunnel helper"
+
+    sandbox = tmp_path / "stockpro"
+    (sandbox / "scripts").mkdir(parents=True)
+    (sandbox / "backend").mkdir()
+    shutil.copy2(source, sandbox / "scripts/database-tunnel.sh")
+    (sandbox / "backend/.env").write_text(
+        "DATABASE_URL=postgresql://stockpro@db.internal:5432/stockpro\n"
+        "DATABASE_SSH_HOST=\n",
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        ["bash", "scripts/database-tunnel.sh", "start"],
+        cwd=sandbox,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "直接连接" in completed.stdout

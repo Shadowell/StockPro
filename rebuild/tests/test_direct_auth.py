@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
+
+import pytest
+from starlette.requests import Request
+from starlette.responses import Response
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.core.config import settings  # noqa: E402
+from app.api.v2.endpoints import auth as auth_endpoint  # noqa: E402
 from app.domain.auth.service import ActiveAuthService  # noqa: E402
+from app.domain.auth.login_limiter import LoginAttemptLimiter, LoginRateLimitError  # noqa: E402
 from app.domain.auth.mcp_tokens import PostgresMcpTokenVerifier  # noqa: E402
 
 
@@ -89,3 +96,143 @@ def test_environment_mcp_token_remains_constant_time_fallback(monkeypatch):
     verified = PostgresMcpTokenVerifier(NoDatabase()).verify_token("env-mcp-probe")
     assert verified["token_source"] == "env"
     assert verified["scopes"] == ["R", "W", "L", "T"]
+
+
+def test_login_limiter_blocks_only_after_failed_attempt_budget_is_exhausted():
+    limiter = LoginAttemptLimiter(max_failures=2, window_seconds=60)
+    now = datetime(2026, 8, 26, tzinfo=timezone.utc)
+
+    limiter.check("203.0.113.10", now=now)
+    limiter.record_failure("203.0.113.10", now=now)
+    limiter.check("203.0.113.10", now=now)
+    limiter.record_failure("203.0.113.10", now=now)
+
+    try:
+        limiter.check("203.0.113.10", now=now)
+    except LoginRateLimitError as exc:
+        assert exc.status_code == 429
+    else:
+        raise AssertionError("two failures must exhaust the configured budget")
+
+
+def test_login_limiter_success_and_window_expiry_restore_attempts():
+    limiter = LoginAttemptLimiter(max_failures=1, window_seconds=60)
+    now = datetime(2026, 8, 26, tzinfo=timezone.utc)
+
+    limiter.record_failure("203.0.113.20", now=now)
+    limiter.clear("203.0.113.20")
+    limiter.check("203.0.113.20", now=now)
+
+    limiter.record_failure("203.0.113.20", now=now)
+    limiter.check("203.0.113.20", now=now + timedelta(seconds=61))
+
+
+def test_admin_login_endpoint_returns_429_after_source_exhausts_failure_budget(monkeypatch):
+    class RejectingAuthService:
+        calls = 0
+
+        @staticmethod
+        def validate_admin_config(**_):
+            return None
+
+        def login_admin(self, **_):
+            self.calls += 1
+            raise auth_endpoint.ActiveAuthError("管理员账号或密码错误", status_code=401)
+
+    service = RejectingAuthService()
+    monkeypatch.setattr(settings, "BITPRO_AUTH_ENABLED", True)
+    monkeypatch.setattr(settings, "BITPRO_ADMIN_USERNAME", "admin")
+    monkeypatch.setattr(settings, "BITPRO_ADMIN_PASSWORD_HASH", "configured")
+    monkeypatch.setattr(auth_endpoint, "auth_service", service)
+    monkeypatch.setattr(auth_endpoint, "login_limiter", LoginAttemptLimiter(max_failures=2, window_seconds=60))
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/auth/admin/login",
+            "headers": [],
+            "client": ("203.0.113.30", 443),
+            "scheme": "https",
+            "server": ("stockpro.notenap.com", 443),
+        }
+    )
+    payload = auth_endpoint.AdminLoginRequest(username="admin", password="wrong")
+
+    for _ in range(2):
+        with pytest.raises(auth_endpoint.AuthRequestError) as caught:
+            asyncio.run(auth_endpoint.admin_login(payload, request, Response()))
+        assert caught.value.status_code == 401
+
+    with pytest.raises(auth_endpoint.AuthRequestError) as caught:
+        asyncio.run(auth_endpoint.admin_login(payload, request, Response()))
+    assert caught.value.status_code == 429
+    assert service.calls == 2
+
+
+def test_admin_login_sets_strict_secure_http_only_session_cookie(monkeypatch):
+    class SuccessfulAuthService:
+        @staticmethod
+        def validate_admin_config(**_):
+            return None
+
+        @staticmethod
+        def login_admin(**_):
+            return {
+                "token": "signed-session-token",
+                "session_id": "session-id",
+                "role": "admin",
+                "authenticated": True,
+                "expires_at": "2026-08-27T00:00:00+00:00",
+                "max_age": 3600,
+            }
+
+    monkeypatch.setattr(settings, "BITPRO_AUTH_ENABLED", True)
+    monkeypatch.setattr(settings, "BITPRO_AUTH_COOKIE_SECURE", True)
+    monkeypatch.setattr(settings, "BITPRO_ADMIN_USERNAME", "admin")
+    monkeypatch.setattr(settings, "BITPRO_ADMIN_PASSWORD_HASH", "configured")
+    monkeypatch.setattr(auth_endpoint, "auth_service", SuccessfulAuthService())
+    monkeypatch.setattr(auth_endpoint, "login_limiter", LoginAttemptLimiter())
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/auth/admin/login",
+            "headers": [],
+            "client": ("203.0.113.40", 443),
+            "scheme": "https",
+            "server": ("stockpro.notenap.com", 443),
+        }
+    )
+    response = Response()
+
+    asyncio.run(
+        auth_endpoint.admin_login(
+            auth_endpoint.AdminLoginRequest(username="admin", password="correct"),
+            request,
+            response,
+        )
+    )
+
+    cookie = response.headers["set-cookie"]
+    assert "HttpOnly" in cookie
+    assert "Secure" in cookie
+    assert "SameSite=strict" in cookie
+
+
+def test_login_source_uses_nginx_real_ip_instead_of_spoofable_forwarded_chain():
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/auth/admin/login",
+            "headers": [
+                (b"x-real-ip", b"198.51.100.50"),
+                (b"x-forwarded-for", b"203.0.113.250, 198.51.100.50"),
+            ],
+            "client": ("127.0.0.1", 52341),
+            "scheme": "https",
+            "server": ("stockpro.notenap.com", 443),
+        }
+    )
+
+    assert auth_endpoint._client_ip(request) == "198.51.100.50"
