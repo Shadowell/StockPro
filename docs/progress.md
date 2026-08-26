@@ -3794,6 +3794,9 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
   登录门禁、Logo 字母及其他用户可见产品名机械替换为 `StockPro / A股`，并清理活动 AI 研究文案
   中的 USDT 永续标的提示。新增真实浏览器品牌合同，强制标题、登录 heading 和 Logo 可访问名称
   全部为 StockPro，且登录页不再出现 BitPro。
+- DEPLOY-001 完成审计新增生产证据 SHA 绑定：`production-canary.deployed_sha` 必须与
+  `production-manifest.deployed_sha` 完全一致；新增测试证明“canary 自身 passed 但来自旧 SHA”
+  仍被阻断，防止旧截图误证新部署。
 
 - BitPro 本地 `main` 前进到 `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`。相对 `aecd03f7` 仅新增 `docs/research/strategy-analysis-2026-08-26-0008-favorites-core-loss-attribution.md` 并更新 BitPro 文档索引/进度，前端、后端、packages、scripts 和 tests 应用树无变化。
 - StockPro 来源测试、导入器、完成审计、活动合同和总控计划已重新钉住该提交；未静默漂移，也未把 BitPro 未提交工作区作为来源。
