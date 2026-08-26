@@ -66,7 +66,7 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
     else:future_count=-1
     capture_path=artifacts/"real-ui"/"capture-index.json";real_capture=json.loads(capture_path.read_text())if capture_path.exists()else{};captures=list(real_capture.get("captures")or[]);routes={str(item.get("route")or"").split("?",1)[0]for item in captures}
     current_sha=subprocess.run(["git","rev-parse","HEAD"],cwd=root,check=True,capture_output=True,text=True).stdout.strip()
-    real_ui_ok=(set(real_capture.get("routes")or[])==REQUIRED_ROUTES and len(captures)==len(REQUIRED_ROUTES)*2 and real_capture.get("deployed_sha")==current_sha and all(not item.get("console_errors")and not item.get("writes")for item in captures))
+    real_ui_ok=(set(real_capture.get("routes")or[])==REQUIRED_ROUTES and len(captures)==len(REQUIRED_ROUTES)*2 and real_capture.get("deployed_sha")==current_sha and all(item.get("deployed_sha")==current_sha and not item.get("console_errors")and not item.get("writes")for item in captures))
     ui_ok=real_ui_ok and e2e_ev["status"]=="passed"
     active_total=sum(int(safety.get(key,0))for key in("registered_private_exchange_routes","active_sqlite_repository","active_versioned_api_routes","registered_live_routes","registered_crypto_jobs"))
     deploy_evidence:dict[str,object]={"status":"pending_final_confirmation"if mode=="pre-deploy"else"missing"}
