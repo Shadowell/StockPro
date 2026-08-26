@@ -9,7 +9,6 @@ import {
   Compass,
   Flame,
   Gauge,
-  Landmark,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -154,12 +153,9 @@ type HomeTickerRankingKey = 'hot' | 'new' | 'tradfi' | 'gainers' | 'losers';
 type HomeRankingKey = HomeTickerRankingKey | 'funding';
 
 const HOME_RANKING_TABS: { key: HomeRankingKey; label: string; desc: string; icon: ReactNode }[] = [
-  { key: 'hot', label: '热门榜', desc: '24h 成交额', icon: <Flame className="h-4 w-4 text-amber-300" /> },
-  { key: 'funding', label: '费率榜', desc: 'OKX 资金费率', icon: <Zap className="h-4 w-4 text-amber-300" /> },
-  { key: 'new', label: '新币榜', desc: '近期新增池', icon: <Sparkles className="h-4 w-4 text-sky-300" /> },
-  { key: 'tradfi', label: 'TradFi', desc: '股票/商品衍生品', icon: <Landmark className="h-4 w-4 text-violet-300" /> },
-  { key: 'gainers', label: '涨幅榜', desc: '24h 涨幅', icon: <TrendingUp className="h-4 w-4 text-emerald-300" /> },
-  { key: 'losers', label: '跌幅榜', desc: '24h 跌幅', icon: <TrendingDown className="h-4 w-4 text-rose-300" /> },
+  { key: 'hot', label: '成交额榜', desc: '当日成交额', icon: <Flame className="h-4 w-4 text-amber-300" /> },
+  { key: 'gainers', label: '涨幅榜', desc: '当日涨幅', icon: <TrendingUp className="h-4 w-4 text-emerald-300" /> },
+  { key: 'losers', label: '跌幅榜', desc: '当日跌幅', icon: <TrendingDown className="h-4 w-4 text-rose-300" /> },
 ];
 const HOME_TICKER_RANKING_GRID =
   'grid-cols-[minmax(300px,1.35fr)_112px_92px_120px_116px_124px_minmax(220px,0.9fr)]';
@@ -168,9 +164,9 @@ const HOME_RANKING_TABLE_HEADER_CLASS =
   'sticky top-0 z-10 grid items-center gap-x-3 border-y border-slate-500/25 bg-slate-800/80 px-4 py-2.5 text-xs font-semibold tracking-[0.04em] text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur';
 
 const MARKET_TABS: { key: MarketTabKey; label: string }[] = [
-  { key: 'futures', label: '合约' },
-  { key: 'crypto', label: '现货' },
-  { key: 'spot', label: '币币' },
+  { key: 'futures', label: '股票' },
+  { key: 'crypto', label: 'ETF' },
+  { key: 'spot', label: '指数' },
   { key: 'favorites', label: '自选' },
 ];
 
@@ -192,13 +188,13 @@ const MARKET_TAB_META: Record<MarketTabKey, { title: string; desc: string; accen
   },
   futures: {
     title: 'USDT 永续合约',
-    desc: '聚焦 OKX USDT 本位线性永续，适合观察合约标的的波动、成交和多空策略候选。',
+    desc: '聚焦 A 股现釗标的的涨跌、成交额和策略候选。',
     accent: 'text-emerald-300',
   },
 };
 
 const HOME_SUMMARY_META = {
-  title: 'OKX 市场榜单',
+  title: 'A 股市场榜单',
   desc: '聚合合约、新币、TradFi 和 24h 强弱排行，帮助先看市场氛围，再进入行情页查看具体 K 线。',
   accent: 'text-blue-300',
 };
@@ -568,7 +564,7 @@ function HomeRankingBoard({
             <div>
               <div className="text-sm font-semibold text-gray-100">{activeTab.label}明细</div>
               <div className="mt-0.5 text-[11px] text-gray-500">
-                {isFundingTab ? 'OKX funding' : 'OKX ticker'} · {activeTab.desc}
+                {isFundingTab ? 'A股证据' : 'PostgreSQL ticker'} · {activeTab.desc}
               </div>
             </div>
           </div>
@@ -630,7 +626,7 @@ function HomeRankingBoard({
                           {item.markPrice ? formatPrice(item.markPrice, quoteFromSymbol(item.symbol)) : '—'}
                         </span>
                         <span className="text-xs font-semibold uppercase text-gray-500">
-                          {item.exchange || 'OKX'}
+                          {item.exchange || 'CN'}
                         </span>
                       </button>
                     );
@@ -822,15 +818,15 @@ function HomeMarketSummaryModule({
           </div>
           <div>
             <div className="text-[9px] font-semibold uppercase tracking-[0.2em] text-blue-300/65">Market Intelligence</div>
-            <h2 className="mt-0.5 text-base font-semibold text-gray-100">OKX 市场概览 · 大盘情绪指数</h2>
+            <h2 className="mt-0.5 text-base font-semibold text-gray-100">A 股市场概览 · 大盘广度指数</h2>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <span className="rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-200">
-            全部 USDT 永续
+            全部 A 股
           </span>
           <span className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-gray-400">
-            资金费率 {fundingStatus === 'loading' ? '读取中' : fundingStatus === 'ready' ? '已接入' : fundingStatus === 'error' ? '读取失败' : '待读取'}
+            市场证据 {fundingStatus === 'loading' ? '读取中' : fundingStatus === 'ready' ? '已接入' : fundingStatus === 'error' ? '读取失败' : '待读取'}
           </span>
         </div>
       </div>
@@ -924,7 +920,7 @@ export default function MarketUniversePanel({
   const [activeCategory, setActiveCategory] = useState<MarketCategoryKey>('all');
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     const saved = localStorage.getItem('bitpro_favorites');
-    return saved ? new Set(JSON.parse(saved)) : new Set(['BTC/USDT', 'ETH/USDT', 'SOL/USDT']);
+    return saved ? new Set(JSON.parse(saved)) : new Set(['600519.SH', '000001.SZ', '300750.SZ']);
   });
   const [sortKey, setSortKey] = useState<SortKey>('volume');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -933,7 +929,7 @@ export default function MarketUniversePanel({
   const [fundingRates, setFundingRates] = useState<FundingRate[]>([]);
   const [fundingStatus, setFundingStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
-  const { tickers: wsTickers, isConnected: wsConnected } = useTickersWebSocket(selectedExchange);
+  const { tickers: wsTickers, isConnected: wsConnected } = useTickersWebSocket(selectedExchange, false);
   const sparklineCache = useRef<Record<string, number[]>>({});
   const prevPricesRef = useRef<Record<string, number>>({});
   const [priceFlashes, setPriceFlashes] = useState<Record<string, 'up' | 'down'>>({});
@@ -1273,7 +1269,7 @@ export default function MarketUniversePanel({
         label: '杠杆情绪',
         score: leverageScore,
         status: fundingStats.count > 0 ? `均值 ${formatPercent((fundingStats.avgFundingRate ?? 0) * 100, 4)}` : '资金费率暂无',
-        detail: fundingStats.count > 0 ? `正费率 ${formatRatio(fundingStats.positiveFundingRatio)}` : '等待 OKX 资金费率返回',
+        detail: fundingStats.count > 0 ? `市场活跃度 ${formatRatio(fundingStats.positiveFundingRatio)}` : '等待 A 股市场证据',
         meta: `极端资金费率 ${fundingStats.extremeFundingCount} 个`,
         tone: 'amber',
         icon: <Zap className="h-4 w-4" />,
@@ -1303,7 +1299,7 @@ export default function MarketUniversePanel({
         label: '宏观事件',
         score: macroScore,
         status: '仅提醒',
-        detail: 'OKX economic-calendar 待接入',
+        detail: 'A 股交易日历已由 PostgreSQL 维护',
         meta: '事件临近时提醒，不直接纳入短线信号',
         tone: 'rose',
         icon: <ShieldAlert className="h-4 w-4" />,
@@ -1397,7 +1393,7 @@ export default function MarketUniversePanel({
           <BarChart3 className="h-4 w-4" />
         </div>
         <div className="mt-2 text-2xl font-semibold tabular-nums text-gray-100">
-          {formatQuoteVolume(marketOverview.totalTurnover, displayedTickers[0]?.quote || 'USDT')}
+          {formatQuoteVolume(marketOverview.totalTurnover, displayedTickers[0]?.quote || 'CNY')}
         </div>
         <div className="mt-2 truncate text-xs text-gray-500">
           活跃 {marketOverview.turnoverLeader?.displayName || '—'}
@@ -1456,7 +1452,7 @@ export default function MarketUniversePanel({
           <BarChart3 className="h-4 w-4" />
         </div>
         <div className="mt-2 truncate text-2xl font-semibold tabular-nums text-gray-100">
-          {formatQuoteVolume(marketOverview.totalTurnover, displayedTickers[0]?.quote || 'USDT')}
+          {formatQuoteVolume(marketOverview.totalTurnover, displayedTickers[0]?.quote || 'CNY')}
         </div>
         <div className="mt-3 truncate text-xs text-gray-500">
           活跃 {marketOverview.turnoverLeader?.displayName || '—'}
@@ -1501,7 +1497,7 @@ export default function MarketUniversePanel({
           <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
             <MarketRankingPanel
               title="涨幅榜"
-              subtitle="OKX ticker · 24h 涨幅"
+              subtitle="PostgreSQL ticker · 当日涨幅"
               icon={<TrendingUp className="h-4 w-4 text-emerald-300" />}
               items={marketOverview.gainerRanking.slice(0, 5)}
               onSelect={onSelectSymbol}
@@ -1513,7 +1509,7 @@ export default function MarketUniversePanel({
             />
             <MarketRankingPanel
               title="热门榜"
-              subtitle="OKX ticker · 24h 成交额"
+              subtitle="PostgreSQL ticker · 当日成交额"
               icon={<Flame className="h-4 w-4 text-amber-300" />}
               items={marketOverview.hotRanking.slice(0, 5)}
               onSelect={onSelectSymbol}
@@ -1566,14 +1562,14 @@ export default function MarketUniversePanel({
               )}
             </div>
           </div>
-          <p className="mt-1 text-xs text-gray-500">合约、现货、币币和自选标的统一在行情页筛选。</p>
+          <p className="mt-1 text-xs text-gray-500">股票、ETF、指数和自选标的统一在行情页筛选。</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
             <input
               type="text"
-              placeholder="搜索币种..."
+              placeholder="搜索 A 股代码..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-48 rounded-lg border border-crypto-border bg-gray-800 py-1.5 pl-8 pr-3 text-sm text-white placeholder:text-gray-600 focus:border-blue-500 focus:outline-none"
@@ -1628,7 +1624,7 @@ export default function MarketUniversePanel({
       <div className="grid grid-cols-[40px_1fr_120px_88px_120px_120px_120px_1fr] items-center gap-x-1 border-b border-crypto-border/50 px-4 py-2 text-xs text-gray-500">
         <span />
         <button type="button" onClick={() => handleSort('name')} className="flex items-center text-left hover:text-gray-300">
-          {activeTab === 'futures' ? '合约' : '币种'} <SortIcon k="name" />
+          {activeTab === 'futures' ? '股票' : '证券'} <SortIcon k="name" />
         </button>
         <button type="button" onClick={() => handleSort('price')} className="flex items-center text-left hover:text-gray-300">
           最新价 <SortIcon k="price" />
@@ -1653,7 +1649,7 @@ export default function MarketUniversePanel({
           </div>
         ) : displayedTickers.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-gray-500">
-            {searchQuery ? `未找到 "${searchQuery}" 相关币种` : '暂无数据'}
+            {searchQuery ? `未找到 "${searchQuery}" 相关证券` : '暂无数据'}
           </div>
         ) : (
           displayedTickers.map((t) => (

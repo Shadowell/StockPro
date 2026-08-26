@@ -223,5 +223,8 @@ class MarketDomainService:
             asset_class = "stock"
         return await asyncio.to_thread(self.repo.list_symbols, asset_class, 5000)
 
+    async def market_pulse(self) -> Dict:
+        return await asyncio.to_thread(self.repo.market_pulse)
+
 
 market_domain_service = MarketDomainService()

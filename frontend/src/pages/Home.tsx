@@ -33,18 +33,18 @@ export default function Home() {
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
             <span className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-1.5 font-medium text-emerald-300">
               <CircleDot className="h-3.5 w-3.5" />
-              OKX PUBLIC DATA
+              POSTGRESQL MARKET DATA
             </span>
             <span className="rounded-md border border-slate-600/45 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-300">
-              USDT-SWAP
+              CN A-SHARE
             </span>
             <span className="rounded-md border border-slate-600/45 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-400">
-              24H MARKET PULSE
+              DAILY MARKET PULSE
             </span>
           </div>
         </div>
         <p className="mt-3 max-w-3xl border-l-2 border-blue-500/40 pl-3 text-xs leading-5 text-gray-500">
-          聚合 OKX 公开行情的大盘广度、成交活跃度和强弱排行；点击榜单标的后进入行情页查看 K 线详情。
+          聚合 PostgreSQL A 股行情的市场广度、成交活跃度和强弱排行；点击榜单标的后进入行情页查看日线详情。
         </p>
       </header>
 

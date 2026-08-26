@@ -33,6 +33,10 @@
   22 个 Paper 实例、现金账本、持仓、成交、事件和权益曲线，没有引入另一套 Paper 页。
   实例页筛选改为股票/ETF、A 股策略类型、1D 和人民币资金档；详情的账户/收益单位改为 CNY，
   仓位风控改为现金、T+1、涨跌停和整手语义。未完成生命周期写入前整页只读，Paper 详情不再连接币圈 WebSocket。
+- BitPro 原首页 `MarketUniversePanel` / `NativeDataPanel` 已切到 A 股口径：新增
+  `/api/v2/system/health` 和 `/api/v2/market/native-sentiment`，从 PostgreSQL 读取证券数、涨跌家数、
+  成交额、平均涨跌、日线记录数和交易日水位。原 OKX/USDT/BTC/资金费率数据请求与 WebSocket
+  已停用，榜单和大盘情绪结构保留并改为 A 股成交额/涨幅/跌幅榜和市场广度。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

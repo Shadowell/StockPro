@@ -147,3 +147,12 @@ class MarketRepository:
 
     def get_trades(self, exchange: str, symbol: str, limit: int) -> List[Dict]:
         return []
+
+    def market_pulse(self) -> Dict:
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*),COUNT(*) FILTER(WHERE change_percent>0),COUNT(*) FILTER(WHERE change_percent<0),COALESCE(SUM(amount),0),COALESCE(AVG(change_percent),0),MAX(updated_at) FROM all_stocks_realtime")
+                instruments, rise, fall, turnover, average_change, updated_at = cursor.fetchone()
+                cursor.execute("SELECT COUNT(*),MIN(date),MAX(date) FROM stock_history")
+                daily_count, first_date, last_date = cursor.fetchone()
+        return {"instrument_count": instruments, "rise_count": rise, "fall_count": fall, "turnover": turnover, "average_change_pct": average_change, "updated_at": updated_at.isoformat() if updated_at else None, "daily_bar_count": daily_count, "first_trade_date": str(first_date or ""), "trade_date": str(last_date or "")}

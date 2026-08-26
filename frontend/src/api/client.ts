@@ -1489,10 +1489,7 @@ export const marketApi = {
 // ============================================
 
 export const fundingApi = {
-  getRates: (exchange: string, symbols?: string[]): Promise<FundingRate[]> =>
-    getReq('/funding/rates', {
-      params: { exchange, symbols: symbols?.join(',') },
-    }),
+  getRates: async (_exchange: string, _symbols?: string[]): Promise<FundingRate[]> => [],
 
   getRate: (exchange: string, symbol: string): Promise<FundingRate> =>
     getReq(`/funding/rate/${symbol}`, { params: { exchange } }),

@@ -101,6 +101,8 @@ def test_direct_port_boots_only_write_free_safety_and_a_share_market_routes(
     assert "/api/v2/backtest/results" in paths
     assert "/api/v2/live/instances" in paths
     assert "/api/v2/monitor/active_strategies" in paths
+    assert "/api/v2/system/health" in paths
+    assert "/api/v2/market/native-sentiment" in paths
     assert not any(path.startswith(("/api/live", "/api/trading", "/api/arbitrage")) for path in paths)
     assert not any(path.startswith(("/api/v2/trading", "/api/v2/arbitrage", "/api/v2/funding")) for path in paths)
     assert not any(path.startswith(("/api/v2/live/accounts", "/api/v2/live/deploy", "/api/v2/live/start", "/api/v2/live/positions/close")) for path in paths)

@@ -5,11 +5,8 @@ import { nativeSentimentApi, type NativeSentimentResponse } from '../api/client'
 
 
 const PIPELINE_LABELS: Record<string, string> = {
-  rubik_taker_volume: '资金流（OKX 日频）',
-  rubik_long_short: '多空账户比（OKX）',
-  funding_okx: '资金费率（OKX）',
-  oi_okx_forward: 'OI 快照（OKX 积累中）',
-  oi_binance_backfill: 'OI 历史（回填）',
+  security_master: 'A 股证券主数据',
+  daily_bars: 'A 股日线历史',
 };
 
 function fmtCompact(n: number): string {
@@ -60,9 +57,9 @@ export default function NativeDataPanel({ className = '' }: { className?: string
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-4 py-3">
         <div className="flex items-center gap-2">
           <Database className="h-4 w-4 text-cyan-400" />
-          <h2 className="text-sm font-semibold text-white">加密原生数据</h2>
+          <h2 className="text-sm font-semibold text-white">A 股市场证据</h2>
           <span className="rounded-md border border-slate-600/45 bg-slate-900/70 px-2 py-0.5 text-[10px] font-medium text-slate-400">
-            资金流 · 多空比 · 资金费率 · OI
+            市场广度 · 成交额 · 证券水位 · 交易日
           </span>
         </div>
         <button
@@ -88,11 +85,11 @@ export default function NativeDataPanel({ className = '' }: { className?: string
               <div key={item.ccy} className="rounded-lg border border-crypto-border/70 bg-gray-900/40 px-3 py-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm font-semibold text-white">{item.ccy}</span>
-                  <span className="text-[10px] text-gray-500">USDT 永续</span>
+                  <span className="text-[10px] text-gray-500">A 股现货</span>
                 </div>
                 <div className="space-y-1.5 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-500">资金流买入占比</span>
+                    <span className="text-gray-500">上涨家数占比</span>
                     {item.taker?.buyRatio != null ? (
                       <SignedValue value={(item.taker.buyRatio - 0.5) * 200} suffix="%" />
                     ) : (
@@ -100,7 +97,7 @@ export default function NativeDataPanel({ className = '' }: { className?: string
                     )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-500">多空账户比</span>
+                    <span className="text-gray-500">涨跌家数比</span>
                     {item.longShortRatio ? (
                       <span className={item.longShortRatio.value >= 1 ? 'text-up' : 'text-down'}>
                         {item.longShortRatio.value.toFixed(2)}
@@ -110,19 +107,18 @@ export default function NativeDataPanel({ className = '' }: { className?: string
                     )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-500">资金费率</span>
-                    {item.fundingRate ? (
-                      <SignedValue value={item.fundingRate.value * 100} suffix="%" />
+                    <span className="text-gray-500">平均涨跌</span>
+                    {item.oi?.change24hPct != null ? (
+                      <SignedValue value={item.oi.change24hPct} suffix="%" />
                     ) : (
                       <span className="text-gray-500">—</span>
                     )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-500">持仓量 24h</span>
+                    <span className="text-gray-500">全市场成交额</span>
                     {item.oi ? (
                       <span className="flex items-center gap-2">
                         <span className="text-gray-300">{fmtCompact(item.oi.openInterestUsd)}</span>
-                        <SignedValue value={item.oi.change24hPct} suffix="%" />
                       </span>
                     ) : (
                       <span className="text-gray-500">—</span>
