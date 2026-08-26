@@ -317,6 +317,12 @@ Playwright Mock E2E、真实 16 路由只读矩阵和 Paper 连续性门禁均�
 第 14–15 步的功能分支推送、`main` 合并与 Actions 部署，但 Goal 仍须等生产 SHA、迁移、健康、
 Paper 连续性和生产页面复验后才能关闭。
 
+生产认证启用前的安全门禁已补齐：管理员和访客登录共享按真实来源 IP 计算的 15 分钟 10 次
+失败预算，额度耗尽返回 429，成功登录清空来源预算；Nginx `X-Real-IP` 优先于可伪造的
+`X-Forwarded-For` 链。会话 Cookie 固定 HttpOnly、Secure（生产配置）与 SameSite=Strict。
+生产明文管理员密码只允许保存到本机 macOS 钥匙串，不进入仓库、服务器 `.env` 或日志；服务器
+只保存 Argon2 哈希与独立 HMAC 签名密钥。
+
 每个页面切片遵循：
 
 ```text

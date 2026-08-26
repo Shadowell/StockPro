@@ -35,7 +35,9 @@ cp backend/.env.example backend/.env
 
 编辑 `backend/.env`：
 
-- 修改 `ADMIN_PASSWORD` 和 `ADMIN_TOKEN_SECRET`；
+- 生成管理员强密码，仅保存其 Argon2 哈希到 `BITPRO_ADMIN_PASSWORD_HASH`，并配置独立的
+  `BITPRO_AUTH_TOKEN_SECRET`；生产 HTTPS 同时设置 `BITPRO_AUTH_ENABLED=true` 与
+  `BITPRO_AUTH_COOKIE_SECURE=true`，禁止把明文密码写入 `.env`；
 - 将 `DATABASE_URL` 指向隔离库 `stockpro_bitpro_rebase_dev`（见下方 [隔离库](#7-隔离库)）；
 - 需要连服务器研究库时再配置 `DATABASE_SSH_HOST`，不要把 `stockpro_dev` / 生产库交给 `./scripts/check.sh`；
 - 按需填写 `TUSHARE_TOKEN` 和 `QWEN_API_KEY`；
@@ -151,10 +153,15 @@ export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 curl -fsS http://127.0.0.1:4445/api/health
 curl -fsS http://127.0.0.1:4445/api/health/storage
 # 管理员登录后只读核对 Paper 列表（不写库）
-curl -fsS -X POST http://127.0.0.1:4445/api/auth/admin/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"'"$ADMIN_PASSWORD"'"}'
-curl -fsS -H "Authorization: Bearer $TOKEN" \
+read -rsp 'StockPro admin password: ' STOCKPRO_ADMIN_PASSWORD; echo
+export STOCKPRO_ADMIN_PASSWORD
+python3 - <<'PY' | curl -fsS -c /tmp/stockpro-cookie -X POST http://127.0.0.1:4445/api/auth/admin/login \
+  -H 'Content-Type: application/json' --data-binary @-
+import json, os
+print(json.dumps({"username": "admin", "password": os.environ["STOCKPRO_ADMIN_PASSWORD"]}))
+PY
+unset STOCKPRO_ADMIN_PASSWORD
+curl -fsS -b /tmp/stockpro-cookie \
   'http://127.0.0.1:4445/api/paper/instances?scope=business'
 ./scripts/check.sh
 ```
