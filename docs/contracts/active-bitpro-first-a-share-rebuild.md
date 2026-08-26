@@ -297,8 +297,9 @@ BitPro 页面使用其成熟 ViewModel；适配层从现有 PostgreSQL 对象生
 策略隔离 worker、sealed 输入解析、结果原子写入与 BitPro 回测 UI 单任务入口已经接通。
 当前写合同为 `/api/v2/backtest/run_job`、`/job/{id}`、`/jobs`、`/job/{id}/cancel|resume`
 和 `/configuration`；历史结果在全部子证据写完后才切换为 success+sealed，不提供物理删除。
-管理员批量回测、运行中 Paper 去重、sealed 配置绑定和只读规划压力验收现已完成；访客单任务
-PostgreSQL 配额迁移、批量真实任务压力和生产部署证据尚未完成，因此不能把该步骤视为最终关闭。
+管理员批量回测、运行中 Paper 去重、sealed 配置绑定、原子批量持久化，以及访客单任务
+PostgreSQL 区间/并发/每日配额压力验收现已完成；批量真实任务执行压力和生产部署证据尚未完成，
+因此不能把该步骤视为最终关闭。
 
 第 9 步的 Paper 生命周期已接通 `paper_eligible` 回测门禁与 `/api/v2/live/instances|candidates`
 以及 `/live/start|pause|resume|stop` 兼容路径。所有状态切换必须保留现有 Paper 账本与可见历史，

@@ -1,6 +1,7 @@
 """PostgreSQL persistence for asynchronous A-share backtest jobs."""
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Callable
 import uuid
 
@@ -13,6 +14,12 @@ from app.core.config import settings
 PATCH_COLUMNS = {
     "status", "progress", "phase", "message", "error_message", "backtest_run_id", "result_payload",
 }
+
+
+class GuestQuotaError(ValueError):
+    def __init__(self, message: str, *, status_code: int = 429) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class PostgresBacktestJobRepository:
@@ -34,17 +41,70 @@ class PostgresBacktestJobRepository:
             (job_id, level, phase, message, psycopg2.extras.Json(payload or {})),
         )
 
+    @staticmethod
+    def _reserve_guest_usage(cursor, payload: dict, principal: dict) -> int | None:
+        if principal.get("role") != "guest":
+            return None
+        guest_code_id = int(principal.get("guest_code_id") or 0)
+        session_id = str(principal.get("session_id") or "")
+        if not guest_code_id or not session_id:
+            raise GuestQuotaError("访客会话缺少配额身份", status_code=403)
+        cursor.execute(
+            """SELECT * FROM guest_access_codes
+               WHERE id=%s AND revoked_at IS NULL AND expires_at>NOW() FOR UPDATE""",
+            (guest_code_id,),
+        )
+        code = cursor.fetchone()
+        if not code:
+            raise GuestQuotaError("邀请码已撤销或已过期", status_code=403)
+        try:
+            start_date = date.fromisoformat(str(payload.get("start_date") or "")[:10])
+            end_date = date.fromisoformat(str(payload.get("end_date") or "")[:10])
+        except ValueError as exc:
+            raise GuestQuotaError("回测日期格式无效", status_code=400) from exc
+        if start_date > end_date:
+            raise GuestQuotaError("回测开始日期不能晚于结束日期", status_code=400)
+        max_days = int(code["max_backtest_days"] or 365)
+        if (end_date - start_date).days > max_days:
+            raise GuestQuotaError(f"访客邀请码最长回测区间为 {max_days} 天", status_code=403)
+        cursor.execute(
+            """SELECT COUNT(*) AS count FROM backtest_jobs
+               WHERE owner_role='guest' AND owner_guest_code_id=%s
+                 AND status IN ('pending','running','cancelling')""",
+            (guest_code_id,),
+        )
+        if int(cursor.fetchone()["count"] or 0) >= int(code["max_concurrent_backtests"] or 1):
+            raise GuestQuotaError(f"访客邀请码并发回测上限为 {int(code['max_concurrent_backtests'] or 1)} 个")
+        cursor.execute(
+            """SELECT COUNT(*) AS count FROM guest_backtest_usage
+               WHERE guest_code_id=%s AND created_at>=date_trunc('day',NOW())
+                 AND created_at<date_trunc('day',NOW())+INTERVAL '1 day'""",
+            (guest_code_id,),
+        )
+        daily = int(cursor.fetchone()["count"] or 0)
+        max_daily = int(code["max_backtests_per_day"] or 0)
+        if max_daily and daily >= max_daily:
+            raise GuestQuotaError(f"访客邀请码每日回测上限为 {max_daily} 次")
+        cursor.execute(
+            """INSERT INTO guest_backtest_usage
+               (guest_code_id,session_id,endpoint,start_date,end_date,status)
+               VALUES (%s,%s,'/api/v2/backtest/run_job',%s,%s,'running') RETURNING id""",
+            (guest_code_id, session_id, start_date, end_date),
+        )
+        return int(cursor.fetchone()["id"])
+
     def create(self, payload: dict, *, parent_job_id: str | None = None, attempt: int = 1, owner: dict | None = None) -> dict:
         job_id = str(uuid.uuid4())
         principal = dict(owner or {})
         with self._connect(readonly=False) as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                guest_usage_id = self._reserve_guest_usage(cursor, payload, principal)
                 cursor.execute(
                     """
                     INSERT INTO backtest_jobs
                     (job_id,request_payload,run_mode,status,progress,phase,message,owner_role,
-                     owner_session_id,owner_guest_code_id,parent_job_id,attempt,job_type,result_payload)
-                    VALUES (%s,%s,'full','pending',0,'queued','任务已进入本地队列',%s,%s,%s,%s,%s,'single','{}'::jsonb)
+                     owner_session_id,owner_guest_code_id,guest_usage_id,parent_job_id,attempt,job_type,result_payload)
+                    VALUES (%s,%s,'full','pending',0,'queued','任务已进入本地队列',%s,%s,%s,%s,%s,%s,'single','{}'::jsonb)
                     RETURNING *
                     """,
                     (
@@ -53,6 +113,7 @@ class PostgresBacktestJobRepository:
                         str(principal.get("role") or "admin"),
                         principal.get("session_id"),
                         principal.get("guest_code_id"),
+                        guest_usage_id,
                         parent_job_id,
                         max(1, int(attempt)),
                     ),
@@ -160,6 +221,15 @@ class PostgresBacktestJobRepository:
                 phase = str(result.get("phase") or result.get("status") or "update")
                 level = "error" if result.get("status") == "failed" else "warning" if result.get("status") in {"cancelling", "cancelled", "interrupted"} else "info"
                 self._log(cursor, str(job_id), level, phase, str(result.get("message") or phase), {"progress": float(result.get("progress") or 0)})
+                if result.get("guest_usage_id") and status in {"success", "failed", "cancelled", "interrupted"}:
+                    usage_status = "success" if status == "success" else "failed"
+                    failure_reason = None if usage_status == "success" else str(result.get("error_message") or result.get("message") or status)[:2000]
+                    cursor.execute(
+                        """UPDATE guest_backtest_usage
+                           SET status=%s,run_id=%s,failure_reason=%s,finished_at=NOW()
+                           WHERE id=%s AND status='running'""",
+                        (usage_status, str(result.get("backtest_run_id") or "") or None, failure_reason, result["guest_usage_id"]),
+                    )
         return result
 
     def cancel_requested(self, job_id: str) -> bool:

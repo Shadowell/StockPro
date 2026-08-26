@@ -12,7 +12,7 @@ from app.domain.backtest import backtest_domain_service
 from app.domain.backtest.execution import BacktestExecutionPipeline
 from app.domain.backtest.input_repository import PostgresBacktestInputGateway
 from app.domain.backtest.inputs import BacktestInputResolver
-from app.domain.backtest.job_repository import PostgresBacktestJobRepository
+from app.domain.backtest.job_repository import GuestQuotaError, PostgresBacktestJobRepository
 from app.domain.backtest.jobs import BacktestJobService
 from app.domain.backtest.result_repository import PostgresBacktestResultRepository
 from app.domain.backtest.strategy_process import StrategyProcessRunner
@@ -111,6 +111,11 @@ async def _with_result(job: dict, include_result: bool = True) -> dict:
     return payload
 
 
+def _require_job_owner(job: dict, owner: dict) -> None:
+    if owner.get("role") == "guest" and str(job.get("owner_session_id") or "") != str(owner.get("session_id") or ""):
+        raise HTTPException(status_code=403, detail="访客只能访问自己创建的回测任务")
+
+
 @router.get("/results")
 async def get_backtest_results(
     q: str = Query(""),
@@ -134,7 +139,10 @@ async def get_backtest_result(backtest_id: int):
 
 @router.post("/run_job", status_code=status.HTTP_202_ACCEPTED)
 async def run_backtest_job(body: BacktestRunRequest, request: Request):
-    created = backtest_job_service.create_job(body.model_dump(exclude_none=True), owner=_owner(request, write=True))
+    try:
+        created = backtest_job_service.create_job(body.model_dump(exclude_none=True), owner=_owner(request, write=True))
+    except GuestQuotaError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return ok({"job_id": str(created["job_id"])})
 
 
@@ -212,17 +220,20 @@ async def run_running_strategies(body: RunningStrategiesBacktestRequest, request
 
 @router.get("/job/{job_id}")
 async def get_backtest_job(job_id: str, request: Request):
-    _owner(request)
+    owner = _owner(request)
     try:
-        return ok(await _with_result(backtest_job_service.get(job_id)))
+        job = backtest_job_service.get(job_id)
+        _require_job_owner(job, owner)
+        return ok(await _with_result(job))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/job/{job_id}/cancel")
 async def cancel_backtest_job(job_id: str, request: Request):
-    _owner(request, write=True)
+    owner = _owner(request, write=True)
     try:
+        _require_job_owner(backtest_job_service.get(job_id), owner)
         return ok(await _with_result(backtest_job_service.cancel(job_id)))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -232,6 +243,7 @@ async def cancel_backtest_job(job_id: str, request: Request):
 async def resume_backtest_job(job_id: str, request: Request):
     owner = _owner(request, write=True)
     try:
+        _require_job_owner(backtest_job_service.get(job_id), owner)
         return ok(backtest_job_service.resume(job_id, owner=owner))
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

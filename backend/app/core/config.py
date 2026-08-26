@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     BITPRO_AUTH_COOKIE_NAME: str = "bitpro_session"
     BITPRO_AUTH_COOKIE_SECURE: bool = False
     BITPRO_ADMIN_SESSION_HOURS: int = 24 * 365 * 10
+    BITPRO_AUTH_TOKEN_SECRET: Optional[str] = None
     BITPRO_MCP_API_TOKEN: Optional[str] = None
     BITPRO_MCP_AUTH_HEADER: str = "X-BitPro-MCP-Token"
     BITPRO_REMOTE_MCP_ENABLED: bool = False

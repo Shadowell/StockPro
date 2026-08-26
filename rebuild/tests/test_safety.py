@@ -96,6 +96,7 @@ def test_direct_port_boots_only_safe_a_share_routes(
         sys.path.remove(str(backend_root))
 
     assert {"/api/health", "/api/health/storage", "/api/auth/me", "/api/v2/auth/me"}.issubset(paths)
+    assert "/api/v2/auth/guest-codes" in paths
     assert "/api/v2/market/symbols" in paths
     assert "/api/v2/strategies" in paths
     assert "/api/v2/backtest/results" in paths

@@ -158,6 +158,19 @@
   半批残留，提交成功后才启动受两个 worker 槽约束的执行线程。真实浏览器确认框显示
   2023-01-03 至 2025-01-02、100 万元、策略定义和异步实例，未出现 USDT/100U/OKX，写请求、
   失败资源与 console error 均为 0；79 项后端/重建测试、production build 和零警告 lint 通过。
+- 从仓库自身 `37442eba` PostgreSQL 认证合同恢复活动 `/api/v2/auth/*`，移除启动入口硬编码的
+  `auth_enabled=false`。管理员继续使用 Argon2 密码哈希；Cookie 改为 HMAC-SHA256 签名会话，
+  PostgreSQL `auth_audit_events` 同时承担明确退出的 session denylist；邀请码只存 SHA-256，创建时
+  明文只返回一次，撤销后既有访客 Cookie 立即失效。MCP Token 验证也改读 PostgreSQL
+  `mcp_agent_tokens`，保留环境 token 常量时间 fallback；干净重启后的活动 Python 进程不再打开
+  `crypto_data.db`/WAL/SHM，安全扫描仍为 active 0。邀请码创建响应不暴露内部 hash；访客读取、
+  取消和恢复 job 都再次核对 `owner_session_id`，不能凭其他任务 UUID 越权操作。
+- 访客单回测的区间、并发和每日配额已在创建 PostgreSQL job 的同一事务中锁定邀请码并写
+  `guest_backtest_usage`，任务 success/failed/cancelled/interrupted 同步收敛用量状态。真实并发探针
+  在“并发 1、每日 1、最长 30 天”下只允许一路创建，另一路 429；任务结束后再次请求仍被每日
+  上限拒绝。HTTP 验收为管理员 `401→login 200→protected 200→logout→401`，访客
+  `login 200→read 200→batch 403→revoke→401`。探针清理后 guest codes/usage 为 0、auth audit
+  83、jobs 35、logs 756，全部恢复基线；85 项后端/重建测试和安全扫描通过。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

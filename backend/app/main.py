@@ -13,6 +13,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.auth_middleware import AuthMiddleware
+from app.api.v2.endpoints.auth import router as auth_router
 from app.api.v2.endpoints.market import router as market_router
 from app.api.v2.endpoints.strategy import router as strategy_router
 from app.api.v2.endpoints.backtest import router as backtest_router
@@ -53,6 +55,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(AuthMiddleware)
 
     @app.get("/api/health")
     async def health() -> dict[str, object]:
@@ -73,16 +76,8 @@ def create_app() -> FastAPI:
             "writes_performed": False,
         }
 
-    @app.get("/api/auth/me")
-    @app.get("/api/v2/auth/me")
-    async def auth_me() -> dict[str, object]:
-        return {
-            "auth_enabled": False,
-            "authenticated": True,
-            "role": "admin",
-            "permissions": ["admin"],
-        }
-
+    app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+    app.include_router(auth_router, prefix="/api/v2/auth", tags=["Authentication"])
     app.include_router(market_router, prefix="/api/v2/market", tags=["A-share Market"])
     app.include_router(strategy_router, prefix="/api/v2/strategies", tags=["A-share Strategies"])
     app.include_router(backtest_router, prefix="/api/v2/backtest", tags=["A-share Backtests"])

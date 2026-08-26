@@ -14,6 +14,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.main import create_app  # noqa: E402
 from app.api.v2.endpoints import backtest as endpoint  # noqa: E402
+from app.domain.backtest.job_repository import GuestQuotaError  # noqa: E402
 
 
 class FakeJobs:
@@ -117,3 +118,23 @@ def test_batch_backtest_is_admin_only_when_auth_is_enabled(monkeypatch):
     with pytest.raises(HTTPException, match="批量回测仅允许管理员执行") as exc:
         endpoint._batch_owner(request)
     assert exc.value.status_code == 403
+
+
+def test_single_guest_backtest_surfaces_postgres_quota_rejection(monkeypatch):
+    class RejectedJobs(FakeJobs):
+        def create_job(self, payload, *, owner):
+            raise GuestQuotaError("访客邀请码并发回测上限为 1 个")
+
+    monkeypatch.setattr(endpoint, "backtest_job_service", RejectedJobs())
+    client = TestClient(create_app())
+    response = client.post("/api/v2/backtest/run_job", json=VALID)
+    assert response.status_code == 429
+    assert "并发回测上限" in response.json()["detail"]
+
+
+def test_guest_job_access_is_scoped_to_its_owner_session():
+    endpoint._require_job_owner({"owner_session_id": "guest-a"}, {"role": "guest", "session_id": "guest-a"})
+    with pytest.raises(HTTPException, match="只能访问自己创建") as exc:
+        endpoint._require_job_owner({"owner_session_id": "guest-b"}, {"role": "guest", "session_id": "guest-a"})
+    assert exc.value.status_code == 403
+    endpoint._require_job_owner({"owner_session_id": "guest-b"}, {"role": "admin", "session_id": "admin"})

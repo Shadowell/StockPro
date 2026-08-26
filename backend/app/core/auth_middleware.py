@@ -8,8 +8,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
-from app.services.auth_service import AuthService, auth_service as default_auth_service
-from app.services.mcp_token_service import mcp_token_service
+from app.domain.auth.service import ActiveAuthService, active_auth_service as default_auth_service
+from app.domain.auth.mcp_tokens import postgres_mcp_token_verifier
 
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
@@ -39,11 +39,11 @@ def guest_can_access(path: str, method: str) -> bool:
 def mcp_token_auth(request: Request) -> dict[str, object] | None:
     header_name = str(getattr(settings, "BITPRO_MCP_AUTH_HEADER", "X-BitPro-MCP-Token") or "").strip()
     provided = str(request.headers.get(header_name, "") or "").strip()
-    return mcp_token_service.verify_token(provided)
+    return postgres_mcp_token_verifier.verify_token(provided)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, auth_service: AuthService | None = None):
+    def __init__(self, app, auth_service: ActiveAuthService | None = None):
         super().__init__(app)
         self.auth_service = auth_service or default_auth_service
 
@@ -56,6 +56,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         method = request.method.upper()
         public_auth_paths = {
+            "/api/auth/me",
+            "/api/auth/admin/login",
+            "/api/auth/guest/login",
+            "/api/auth/logout",
             "/api/v2/auth/me",
             "/api/v2/auth/admin/login",
             "/api/v2/auth/guest/login",
@@ -64,7 +68,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if method == "OPTIONS" or path in public_auth_paths or path in {"/api/v2/system/health", "/"}:
             return await call_next(request)
 
-        if not path.startswith("/api/v2/"):
+        if not path.startswith(("/api/v2/", "/api/auth/")):
             return await call_next(request)
 
         mcp_auth = mcp_token_auth(request)

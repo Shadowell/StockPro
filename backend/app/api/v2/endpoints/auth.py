@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.core.config import settings
 from app.core.contracts import ok
 from app.core.errors import AppError
-from app.services.auth_service import AuthError, auth_service
+from app.domain.auth.service import ActiveAuthConfigError, ActiveAuthError, active_auth_service as auth_service
 
 
 router = APIRouter()
@@ -120,8 +120,8 @@ async def admin_login(payload: AdminLoginRequest, request: Request, response: Re
             user_agent=_user_agent(request),
             session_hours=int(settings.BITPRO_ADMIN_SESSION_HOURS),
         )
-    except AuthError as exc:
-        raise AuthRequestError(str(exc), status_code=exc.status_code) from exc
+    except (ActiveAuthError, ActiveAuthConfigError) as exc:
+        raise AuthRequestError(str(exc), status_code=getattr(exc, "status_code", 503)) from exc
     _set_session_cookie(response, session)
     return ok(_public_session(session, auth_enabled=True))
 
@@ -136,7 +136,7 @@ async def guest_login(payload: GuestLoginRequest, request: Request, response: Re
             ip_address=_client_ip(request),
             user_agent=_user_agent(request),
         )
-    except AuthError as exc:
+    except ActiveAuthError as exc:
         raise AuthRequestError(str(exc), status_code=exc.status_code) from exc
     _set_session_cookie(response, session)
     return ok(_public_session(session, auth_enabled=True))
