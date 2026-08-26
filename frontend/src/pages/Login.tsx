@@ -83,7 +83,7 @@ export default function Login() {
           <div className="flex items-center gap-3">
             <BitProLogo className="h-12 w-12" />
             <div>
-              <div className="text-lg font-semibold tracking-wide text-white">BitPro</div>
+              <div className="text-lg font-semibold tracking-wide text-white">StockPro</div>
               <div className="text-xs text-gray-500">量化研究与模拟执行工作台</div>
             </div>
           </div>
@@ -121,7 +121,7 @@ export default function Login() {
                   <LockKeyhole className="h-4 w-4" />
                   安全访问
                 </div>
-                <h1 className="mt-2 text-2xl font-bold text-white">登录 BitPro</h1>
+                <h1 className="mt-2 text-2xl font-bold text-white">登录 StockPro</h1>
                 <p className="mt-2 text-sm leading-6 text-gray-500">
                   使用访客邀请码进入只读研究模式，或使用管理员账号进入完整工作台。
                 </p>

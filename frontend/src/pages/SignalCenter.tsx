@@ -990,7 +990,7 @@ export default function SignalCenter() {
             <div>
               <h1 className="text-2xl font-bold tracking-normal">信号中心</h1>
               <p className="mt-1 text-xs text-gray-500">
-                沿用 BitPro 信号工作台查看 A 股策略；外部下单通道在合规适配完成前保持只读关闭。
+                使用 StockPro 信号工作台查看 A 股策略；外部下单通道在合规适配完成前保持只读关闭。
               </p>
             </div>
           </div>
@@ -1031,14 +1031,14 @@ export default function SignalCenter() {
           <div className="grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(110px,0.75fr)_minmax(210px,1.45fr)_minmax(120px,0.85fr)_70px_70px_82px] xl:items-end">
             <ChannelTextInput
               label="Bot 名称"
-              description="用于在 BitPro 内识别这个 OKX 信号通道，建议写策略或用途。"
+              description="用于在 StockPro 内识别这个隔离信号通道，建议写策略或用途。"
               value={form.name}
               onChange={(name) => setForm((prev) => ({ ...prev, name }))}
               placeholder="CTA Bot"
             />
             <ChannelTextInput
               label="Webhook 地址"
-              description="从 OKX App Signal Bot 页面复制触发地址，BitPro 确认后会向这里推送信号。"
+              description="从外部 Signal Bot 页面复制触发地址，StockPro 确认后会向这里推送信号。"
               value={form.webhookUrl}
               onChange={(webhookUrl) => setForm((prev) => ({ ...prev, webhookUrl }))}
               placeholder="粘贴 OKX webhook 触发地址"
@@ -1130,7 +1130,7 @@ export default function SignalCenter() {
                         <div className="grid max-w-[920px] gap-2 lg:grid-cols-[200px_minmax(280px,380px)_200px]">
                           <ChannelTextInput
                             label="Bot 名称"
-                            description="用于在 BitPro 内识别这个 OKX 信号通道，建议写策略或用途。"
+                            description="用于在 StockPro 内识别这个隔离信号通道，建议写策略或用途。"
                             value={editForm.name}
                             onChange={(name) => setEditForm((prev) => ({ ...prev, name }))}
                             placeholder="例如：CTA 1H 多品种 Bot"

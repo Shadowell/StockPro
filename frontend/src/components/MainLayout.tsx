@@ -567,7 +567,7 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
     <SettingsConfigBlock
       title="MCP Agent Token"
       icon={<ShieldCheck className="h-4 w-4 text-cyan-300" />}
-      description="给 Hermes、Codex 或外部 Agent 访问 BitPro MCP/API 使用；明文只显示一次。"
+      description="给 Hermes、Codex 或外部 Agent 访问 StockPro MCP/API 使用；明文只显示一次。"
       status={
         <SettingsStatusBadge tone={activeCount || envConfigured ? 'green' : 'neutral'}>
           {activeCount || envConfigured ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}

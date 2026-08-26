@@ -67,19 +67,19 @@ const BLOCK_REASONS: Record<string, string> = {
   evidence_window_unavailable: '缺少可用的历史行情窗口，研究无法开始',
   no_out_of_sample_evidence: '存活候选没有样本外证据，不予采信',
   no_validated_candidate: '预算内没有候选通过红队与门禁',
-  bitpro_self_test_incomplete: 'BitPro 自测没有回传完整引用',
+  bitpro_self_test_incomplete: 'StockPro 自测没有回传完整引用',
   paper_preauthorization_missing: '缺少模拟盘预授权',
-  paper_provision_failed: 'BitPro 模拟盘启动失败',
+  paper_provision_failed: 'StockPro 模拟盘启动失败',
   paper_instance_missing: '模拟盘实例丢失',
   paper_sample_insufficient: '观察窗结束时样本仍然不足',
-  live_promote_unhealthy: 'BitPro 实盘上线未返回健康结果',
+  live_promote_unhealthy: 'StockPro 实盘上线未返回健康结果',
 };
 
 const UNKNOWN_LABELS: Record<string, string> = {
   missing_candidate: '缺少候选',
-  missing_backtest_ref: '缺少 BitPro 回测引用',
+  missing_backtest_ref: '缺少 StockPro 回测引用',
   missing_validation_id: '缺少校验 ID',
-  missing_bitpro_strategy_id: '缺少 BitPro 策略 ID',
+  missing_bitpro_strategy_id: '缺少 StockPro 策略 ID',
   missing_paper_instance: '缺少模拟盘实例',
   missing_paper_observation: '缺少模拟盘观察',
   paper_instance_unconfirmed: '模拟盘实例未确认',
@@ -111,7 +111,7 @@ const STAGE_TONES: Record<ArcStageStatus, { shell: string; bar: string; text: st
 function unknownLabel(code: string): string {
   if (UNKNOWN_LABELS[code]) return UNKNOWN_LABELS[code];
   if (code.startsWith('bitpro_unhealthy:')) {
-    return `BitPro 不健康：${code.slice('bitpro_unhealthy:'.length)}`;
+    return `StockPro 不健康：${code.slice('bitpro_unhealthy:'.length)}`;
   }
   return code;
 }
