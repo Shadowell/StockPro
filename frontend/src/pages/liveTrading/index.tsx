@@ -4,6 +4,7 @@ import { FlaskConical, Radio } from 'lucide-react';
 import clsx from 'clsx';
 import { liveApi, monitorApi, paperApi, tradingApi } from '../../api/client';
 import { useStore } from '../../stores/useStore';
+import { useAuth } from '../../auth/AuthProvider';
 import ThemeDialog from '../../components/ThemeDialog';
 import type {
   Balance,
@@ -493,7 +494,8 @@ function dashboardMatchesInstance(
 
 function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
   const [initialPrefs] = useState<LivePrefsStored | null>(() => loadLivePrefs());
-  const readOnly = true;
+  const { isAdmin } = useAuth();
+  const readOnly = !isAdmin;
   const { selectedExchange, setSelectedExchange } = useStore();
 
   useLayoutEffect(() => {
@@ -545,13 +547,13 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
 
   const [config, setConfig] = useState(() => {
     const mode: TradeMode =
-      initialPrefs?.tradeMode === 'live' ? 'live' : 'paper';
+      modeScope ?? (initialPrefs?.tradeMode === 'live' ? 'live' : 'paper');
     const defaultTf =
       mode === 'paper' ? DEFAULT_PAPER_TIMEFRAME : DEFAULT_LIVE_CONFIG.timeframe;
     const defaultInitialEquity =
       mode === 'paper' ? DEFAULT_PAPER_INITIAL_EQUITY : DEFAULT_LIVE_CONFIG.initialEquity;
     const saved =
-      initialPrefs?.config && typeof initialPrefs.config === 'object'
+      !modeScope && initialPrefs?.config && typeof initialPrefs.config === 'object'
         ? initialPrefs.config
         : {};
     return {
@@ -578,6 +580,7 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
 
   const [paperResult, setPaperResult] = useState<any>(null);
   const [paperLoading, setPaperLoading] = useState(false);
+  const [paperCandidates, setPaperCandidates] = useState<StrategyInfo[]>([]);
   // /paper-trading/instances 僵尸 API 已移除（生产 review 2026-08-24）：该端点基于
   // 永远为空的内存列表，重启后恒为空且 getInstance 全部 404。模拟盘实例列表真实
   // 来源是 strategies（live:strategy:*）。props 链暂保留空数组以维持子组件编译，
@@ -613,29 +616,22 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
     isAlert: false,
   });
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
-  const [stopClearMetrics, setStopClearMetrics] = useState(false);
 
   const isDryRun = tradeMode === 'paper';
   const canSwitchMode = !modeScope;
+  const creatableStrategies = useMemo(
+    () => isDryRun ? paperCandidates : strategies,
+    [isDryRun, paperCandidates, strategies],
+  );
   const selectedStrategyInfo = useMemo(
-    () => strategies.find((s) => String(s.id) === String(selectedStrategy)),
-    [strategies, selectedStrategy],
+    () => creatableStrategies.find((s) => String(s.id) === String(selectedStrategy)),
+    [creatableStrategies, selectedStrategy],
   );
   const selectedStrategyRuntime = useMemo(
     () => strategyRuntimeDefaults(selectedStrategyInfo),
     [selectedStrategyInfo],
   );
-  const selectedStrategyTimeframe =
-    selectedStrategyRuntime.timeframe || DEFAULT_PAPER_TIMEFRAME;
-  const creatableStrategies = useMemo(
-    () =>
-      isDryRun
-        ? strategies.filter(
-            (strategy) => !ACTIVE_INSTANCE_STATUSES.has(normalizeInstanceStatus(strategy)),
-          )
-        : strategies,
-    [isDryRun, strategies],
-  );
+  const selectedStrategyTimeframe = selectedStrategyRuntime.timeframe || DEFAULT_PAPER_TIMEFRAME;
 
   const rawInstances = useMemo(
     () => buildTradingInstances(strategies),
@@ -1007,7 +1003,7 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
 
   const loadStrategies = async () => {
     try {
-      const raw = await loadAllStrategies();
+      const [raw, candidates] = await Promise.all([loadAllStrategies(), liveApi.getPaperCandidates()]);
       const list: StrategyInfo[] = raw.map((s: any) => ({
         ...s,
         id: s.id ?? s.strategyId,
@@ -1021,6 +1017,23 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
         createdAt: s.createdAt ?? s.created_at ?? null,
       }));
       setStrategies(list);
+      setPaperCandidates((Array.isArray(candidates) ? candidates : []).map((candidate: any) => ({
+        id: candidate.strategyId,
+        name: candidate.strategyName || `策略 #${candidate.strategyId}`,
+        description: candidate.description || '已通过完整回测与 Paper 晋级门禁',
+        status: 'not_started',
+        timeframe: '1d',
+        initialCapital: Number(candidate.initialCash || 1_000_000),
+        config: {
+          asset_class: 'stock',
+          timeframe: '1d',
+          initial_capital: Number(candidate.initialCash || 1_000_000),
+          qualifying_backtest_run_id: candidate.qualifyingBacktestRunId,
+          return_pct: candidate.returnPct,
+          max_drawdown_pct: candidate.maxDrawdownPct,
+          sharpe_ratio: candidate.sharpeRatio,
+        },
+      })));
     } catch (err) {
       console.error('加载策略列表失败:', err);
     }
@@ -1337,6 +1350,24 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
     setShowLiveConfirm(false);
     setLoading(true);
     try {
+      if (isDryRun) {
+        const candidate = selectedStrategyInfo;
+        const qualifyingBacktestRunId = String(asRecord(candidate?.config).qualifying_backtest_run_id || '');
+        if (!candidate || !qualifyingBacktestRunId) {
+          throw new Error('请选择已通过 Paper 晋级门禁的 A 股策略');
+        }
+        await liveApi.createPaperInstance({
+          name: `${candidate.name} / Paper`,
+          qualifyingBacktestRunId,
+          initialCash: config.initialEquity,
+          start: true,
+        });
+        setView('dashboard');
+        setCreateStep('select');
+        setPreflightResult(null);
+        await loadStrategies();
+        return;
+      }
       await liveApi.configure({
         exchange: selectedExchange,
         strategy_type: String(selectedStrategy),
@@ -1686,7 +1717,6 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
       });
       return;
     }
-    setStopClearMetrics(false);
     setStopDialogOpen(true);
   };
 
@@ -2030,30 +2060,17 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
           cancelText="取消"
           onCancel={() => setStopDialogOpen(false)}
           onConfirm={async () => {
-            const clear = stopClearMetrics;
             setStopDialogOpen(false);
-            await executeStop(clear);
+            await executeStop(false);
           }}
         >
           <div className="space-y-4 text-sm text-gray-300">
             <p>
               关闭会取消当前策略任务，不再产生新的交易。已有持仓不会因为关闭按钮自动卖出。
             </p>
-            <label className="flex items-start gap-3 rounded-xl border border-[#263142] bg-[#0b111d] p-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={stopClearMetrics}
-                onChange={(e) => setStopClearMetrics(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
-              />
-              <span>
-                <span className="block font-semibold text-white">清空之前的交易指标</span>
-                <span className="mt-1 block text-xs text-gray-500 leading-relaxed">
-                  勾选后会删除该策略的成交明细、收益曲线和诊断日志；下次启动按全新一轮统计。
-                  不勾选则保留现有指标，下次启动继续沿用本轮统计。
-                </span>
-              </span>
-            </label>
+            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-xs leading-relaxed text-emerald-100">
+              关闭只停止后续周期；当前现金、持仓、订单、成交、收益曲线、事件、运行游标和诊断历史全部保留。
+            </div>
           </div>
         </ThemeDialog>
       )}

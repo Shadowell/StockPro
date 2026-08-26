@@ -1680,6 +1680,13 @@ export const monitorApi = {
 
 export const liveApi = {
   getPaperInstances: (): Promise<{ items: Strategy[] }> => getReq('/live/instances'),
+  getPaperCandidates: (): Promise<any[]> => getReq('/live/candidates'),
+  createPaperInstance: (payload: {
+    name: string;
+    qualifyingBacktestRunId: string;
+    initialCash: number;
+    start?: boolean;
+  }): Promise<any> => postReq('/live/instances', payload),
   getStrategies: (params?: { page?: number; perPage?: number }): Promise<StrategyPageResponse> =>
     getReq<StrategyPageResponse>('/strategies', {
       params: {

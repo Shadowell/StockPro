@@ -110,6 +110,16 @@
   job/run 均为 0 残留，Paper 仍为 22。前端创建入口已恢复管理员可见，从 configuration 动态读取
   snapshot 10 / pool 5 的 2023-01-03~2025-01-02 可用范围，隐藏尚未恢复的批量入口，成本文案改为
   A 股买卖佣金、最低 5 元、卖出印花税和人民币；sealed 历史记录不再暴露删除按钮。
+- BitPro 原模拟盘生命周期已恢复管理员显式写入：候选只来自 success+sealed+full 且
+  `promotion_status=paper_eligible` 的回测，并要求策略、数据、因子、Universe、股票池、研究协议
+  全部一致且 11 项晋级检查 passed。创建事务原子生成 CNY Paper portfolio、draft instance、初始
+  cash ledger 和生命周期事件；start/pause/resume/stop 只切换状态和 portfolio 状态，停止不接受
+  `clear_metrics=true`，不删除成交、持仓、事件、权益、运行游标或现金历史。真实 PostgreSQL rollback
+  演练从 eligible run `15015031…` 完成 draft→running→paused→running→stopped，新增 5 条事件和
+  1 条初始账本，成交/权益变化均为 0；rollback 后实例仍为 22、探针实例为 0。
+- 模拟页已从全局只读改为 `isAdmin` 权限门禁，保留 BitPro 原卡片、创建向导、暂停、继续、关闭和
+  详情结构；候选单独读取 `/live/candidates`，创建改用 `/live/instances` 单次原子请求，Paper 默认
+  1D、100 万 CNY，隐藏杠杆筛选、重复快捷验证和实盘飞行检查，关闭文案明确历史保留。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

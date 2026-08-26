@@ -782,7 +782,7 @@ export default function InstanceDashboard({
             );
           })}
         </div>
-        <div className="inline-flex min-h-11 max-w-full flex-wrap items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card/80 p-1">
+        {!isDryRun && <div className="inline-flex min-h-11 max-w-full flex-wrap items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card/80 p-1">
           {leverageOptions.map((option) => {
             const active = leverageFilter === option.value;
             return (
@@ -810,7 +810,7 @@ export default function InstanceDashboard({
               </button>
             );
           })}
-        </div>
+        </div>}
         <div className="inline-flex h-11 items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card/80 p-1">
           {sortControls.map((control) => {
             const direction = sortDirectionFor(instanceSortMode, control.field);
@@ -843,7 +843,7 @@ export default function InstanceDashboard({
             type="search"
             value={instanceSearchQuery}
             onChange={(event) => setInstanceSearchQuery(event.target.value)}
-            placeholder="搜索策略、标的、周期、杠杆..."
+            placeholder="搜索策略、标的、周期..."
             className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-gray-200 placeholder:text-gray-600 focus:outline-none"
           />
         </label>
@@ -918,7 +918,7 @@ export default function InstanceDashboard({
                         {capitalVersionPill}
                       </span>
                     )}
-                    {leveragePill && (
+                    {!isDryRun && leveragePill && (
                       <span className="inline-flex h-5 items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 text-[10px] font-bold uppercase tracking-normal text-amber-300">
                         {leveragePill}
                       </span>

@@ -42,6 +42,27 @@ class PaperDomainService:
     async def list_instances(self) -> list[dict]:
         return [self._instance_view(row) for row in await asyncio.to_thread(self.repository.list_instances)]
 
+    async def list_candidates(self) -> list[dict]:
+        return await asyncio.to_thread(self.repository.list_candidates)
+
+    async def create(self, payload: dict, *, start: bool = True) -> dict:
+        row = await asyncio.to_thread(self.repository.create_instance, payload)
+        if start:
+            row = await asyncio.to_thread(self.repository.start, row["id"])
+        return self._instance_view(row)
+
+    async def pause(self, instance_id: int | str) -> dict:
+        return self._instance_view(await asyncio.to_thread(self.repository.pause, instance_id))
+
+    async def start(self, instance_id: int | str) -> dict:
+        return self._instance_view(await asyncio.to_thread(self.repository.start, instance_id))
+
+    async def resume(self, instance_id: int | str) -> dict:
+        return self._instance_view(await asyncio.to_thread(self.repository.resume, instance_id))
+
+    async def stop(self, instance_id: int | str) -> dict:
+        return self._instance_view(await asyncio.to_thread(self.repository.stop, instance_id))
+
     async def dashboard(self, instance_id: int | str | None) -> dict:
         if instance_id is None:
             return self._empty_dashboard()

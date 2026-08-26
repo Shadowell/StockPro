@@ -689,7 +689,7 @@ export default function CreateWizard({
           <div className="space-y-3">
             <label className="block">
               <span className="text-xs text-gray-400 mb-1 block">
-                {isDryRun ? '模拟初始资金 (USDT)' : '投入资金 (USDT)'}
+                {isDryRun ? '模拟初始资金 (CNY)' : '投入资金 (CNY)'}
               </span>
               <input
                 type="number"
@@ -813,7 +813,12 @@ export default function CreateWizard({
             </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-crypto-border">
+          {isDryRun && (
+            <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-xs leading-relaxed text-emerald-100">
+              该候选已经通过 sealed 全量回测、成本、容量、基准、样本外和数据质量门禁；创建时会固定策略版本、数据、因子、Universe、股票池、协议与晋级回测，不再执行重复的快捷验证。
+            </div>
+          )}
+          <div className={clsx('mt-4 pt-4 border-t border-crypto-border', isDryRun && 'hidden')}>
             <h4 className="text-xs text-gray-400 mb-3">
               快速验证 (策略周期 {definedTimeframeLabel} · 最近{' '}
               {paperQuickVerifyDaysBack(definedTimeframe)} 天数据)
@@ -995,7 +1000,7 @@ export default function CreateWizard({
             <span className="text-[10px] text-gray-500 block">
               {isDryRun ? '模拟资金' : '投入资金'}
             </span>
-            <span className="text-sm text-white">${config.initialEquity}</span>
+            <span className="text-sm text-white">¥{config.initialEquity}</span>
           </div>
           <div>
             <span className="text-[10px] text-gray-500 block">单笔风险</span>
@@ -1024,7 +1029,7 @@ export default function CreateWizard({
         </div>
       )}
 
-      {!preflightResult && !preflightLoading && (
+      {!isDryRun && !preflightResult && !preflightLoading && (
         <div className="text-center py-8">
           <button
             type="button"
