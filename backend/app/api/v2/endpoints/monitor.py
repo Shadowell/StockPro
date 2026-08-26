@@ -21,3 +21,15 @@ async def active_strategies():
 @router.get("/running-strategies")
 async def running_strategies():
     return ok(await _statuses())
+
+
+@router.get("/alerts")
+async def alerts(): return ok([])
+
+
+@router.get("/long-short-ratio")
+async def breadth_ratio(): return ok({"symbol": "CN-A", "ratio": None, "unavailable_reason": "A-share breadth is shown on the home page"})
+
+
+@router.get("/open-interest")
+async def gross_exposure(): return ok({"symbol": "CN-A", "open_interest": None, "unavailable_reason": "A-share Paper exposure is shown per instance"})

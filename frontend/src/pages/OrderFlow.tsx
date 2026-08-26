@@ -17,13 +17,10 @@ import {
 import { useSettingsStore } from '../stores/useSettingsStore';
 
 const SYMBOL_OPTIONS = [
-  'BTC/USDT:USDT',
-  'ETH/USDT:USDT',
-  'SOL/USDT:USDT',
-  'XRP/USDT:USDT',
-  'DOGE/USDT:USDT',
-  'BNB/USDT:USDT',
-  'XAU/USDT:USDT',
+  '600519.SH',
+  '000001.SZ',
+  '300750.SZ',
+  '510300.SH',
 ];
 
 const RANGE_OPTIONS = [
@@ -34,10 +31,10 @@ const RANGE_OPTIONS = [
 ];
 
 const THRESHOLD_OPTIONS = [
-  { label: '≥ 5 万 U', value: 50_000 },
-  { label: '≥ 10 万 U', value: 100_000 },
-  { label: '≥ 50 万 U', value: 500_000 },
-  { label: '≥ 100 万 U', value: 1_000_000 },
+  { label: '≥ 5 万元', value: 50_000 },
+  { label: '≥ 10 万元', value: 100_000 },
+  { label: '≥ 50 万元', value: 500_000 },
+  { label: '≥ 100 万元', value: 1_000_000 },
 ];
 
 const BAR_OPTIONS = [
@@ -154,7 +151,7 @@ export default function OrderFlow() {
         tooltip: {
           trigger: 'item',
           formatter: (p: { seriesName: string; value: [number, number, number] }) =>
-            `${p.seriesName} · ${fmtTime(p.value[0])}<br/>价格 ${p.value[1]} · 名义 ${fmtUsdt(p.value[2])} U`,
+            `${p.seriesName} · ${fmtTime(p.value[0])}<br/>价格 ${p.value[1]} · 成交额 ${fmtUsdt(p.value[2])} 元`,
         },
         xAxis: {
           type: 'time',
@@ -290,14 +287,14 @@ export default function OrderFlow() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Activity className="h-5 w-5 text-blue-400" />
-          <h1 className="text-lg font-semibold">订单流 · 大单微观结构</h1>
+          <h1 className="text-lg font-semibold">A 股资金流 · 大单微观结构</h1>
           <span className={`rounded border px-2 py-0.5 text-xs ${statusBadge.cls}`}>
             {statusBadge.text}
           </span>
           {streamStatus && (
             <span className="text-xs text-gray-500">
               采集 {streamStatus.totalIngested.toLocaleString()} 笔 · 阈值 ≥{' '}
-              {fmtUsdt(streamStatus.minNotionalUsdt)} U · 重连 {streamStatus.reconnects}
+              ¥{fmtUsdt(streamStatus.minNotionalUsdt)} · 重连 {streamStatus.reconnects}
               {streamStatus.lastError ? ` · ${streamStatus.lastError}` : ''}
             </span>
           )}
@@ -332,7 +329,7 @@ export default function OrderFlow() {
         >
           {SYMBOL_OPTIONS.map((s) => (
             <option key={s} value={s}>
-              {s.replace('/USDT:USDT', '')}
+              {s}
             </option>
           ))}
         </select>
@@ -395,14 +392,14 @@ export default function OrderFlow() {
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {[
           { label: '大单笔数', value: kpi.count.toLocaleString(), cls: 'text-gray-200' },
-          { label: '主买名义', value: `${fmtUsdt(kpi.buy)} U`, cls: 'text-up' },
-          { label: '主卖名义', value: `${fmtUsdt(kpi.sell)} U`, cls: 'text-down' },
+          { label: '主买金额', value: `¥${fmtUsdt(kpi.buy)}`, cls: 'text-up' },
+          { label: '主卖金额', value: `¥${fmtUsdt(kpi.sell)}`, cls: 'text-down' },
           {
             label: '净流 Delta',
-            value: `${kpi.delta >= 0 ? '+' : ''}${fmtUsdt(kpi.delta)} U`,
+            value: `${kpi.delta >= 0 ? '+' : ''}¥${fmtUsdt(kpi.delta)}`,
             cls: kpi.delta >= 0 ? 'text-up' : 'text-down',
           },
-          { label: '最大单笔', value: `${fmtUsdt(kpi.maxTrade)} U`, cls: 'text-blue-300' },
+          { label: '最大单笔', value: `¥${fmtUsdt(kpi.maxTrade)}`, cls: 'text-blue-300' },
         ].map((item) => (
           <div
             key={item.label}
@@ -417,7 +414,7 @@ export default function OrderFlow() {
       {/* 气泡图 */}
       <div className="rounded border border-crypto-border bg-crypto-card p-3">
         <div className="mb-1 text-xs text-gray-500">
-          大单时间轴 · 气泡大小 = 单笔名义（{symbol.replace('/USDT:USDT', '')}）
+          大单时间轴 · 气泡大小 = 单笔成交额（{symbol}）
         </div>
         <div ref={bubbleRef} className="h-72 w-full" />
         {trades.length === 0 && !loading && (
@@ -448,7 +445,7 @@ export default function OrderFlow() {
                 <th className="px-3 py-2 text-left font-normal">时间</th>
                 <th className="px-3 py-2 text-left font-normal">方向</th>
                 <th className="px-3 py-2 text-right font-normal">价格</th>
-                <th className="px-3 py-2 text-right font-normal">数量(币)</th>
+                <th className="px-3 py-2 text-right font-normal">数量(股)</th>
                 <th className="px-3 py-2 text-right font-normal">名义(U)</th>
               </tr>
             </thead>

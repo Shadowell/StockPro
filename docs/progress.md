@@ -42,6 +42,15 @@
   `/api/v2/factorlab` 映射 112 个真实因子定义和 7 个封存因子快照；`/api/v2/review`
   用当前 A 股回测证据生成分组、好坏榜、回撤和待办。数据/Factor 页的 Provider、同步、研究写入均默认禁用，
   不在 GET 时拉取外部数据。
+- BitPro 原盯盘、资金流、监控、基本面、AI、ARC、价差与信号路由已恢复安全读取边界：
+  盯盘停用币圈 WebSocket/实盘平仓并改为 A 股 Paper 只读账户和 1D；`/api/v2/orderflow`、
+  `/onchain/summary`、`/arbitrage/summary`、`/agent/*`、`/arc/*`、`/monitor/*` 均返回明确的
+  A 股真实数据或“未接通”状态，不生成 synthetic 记录；信号中心新增只读
+  `/api/v2/signal-channels|signal-strategies|signals`，读取 78 个 A 股策略且不注册任何写路由。
+  侧栏“订单流/链上”改为“资金流/基本面”，未接通的基本面和价差页不再渲染 TVL、稳定币、
+  OKX/Binance 或 funding 面板。验证通过：direct-port pytest 14 项、前端 build/lint、
+  浏览器 `/watch|onchain|arbitrage|signals` 写请求 0、API 4xx/5xx 0、console errors 0。
+  当前仍在功能分支，未推送、未合并、未部署。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

@@ -24,6 +24,13 @@ from app.api.v2.endpoints.sync import router as sync_router
 from app.api.v2.endpoints.factorlab import router as factorlab_router
 from app.api.v2.endpoints.settings import router as settings_router
 from app.api.v2.endpoints.review import router as review_router
+from app.api.v2.endpoints.orderflow import router as orderflow_router
+from app.api.v2.endpoints.onchain import router as onchain_router
+from app.api.v2.endpoints.arbitrage import router as arbitrage_router
+from app.api.v2.endpoints.arc import router as arc_router
+from app.api.v2.endpoints.agent import router as agent_router
+from app.api.v2.endpoints.signals import router as signals_router
+from app.api.v2.endpoints.research_workbench import router as research_workbench_router
 
 
 @asynccontextmanager
@@ -87,6 +94,13 @@ def create_app() -> FastAPI:
     app.include_router(factorlab_router, prefix="/api/v2/factorlab", tags=["A-share Factors"])
     app.include_router(settings_router, prefix="/api/v2/settings", tags=["StockPro Settings"])
     app.include_router(review_router, prefix="/api/v2/review", tags=["A-share Review"])
+    app.include_router(orderflow_router, prefix="/api/v2/orderflow", tags=["A-share Order Flow"])
+    app.include_router(onchain_router, prefix="/api/v2/onchain", tags=["A-share Fundamentals"])
+    app.include_router(arbitrage_router, prefix="/api/v2/arbitrage", tags=["A-share Spread Research"])
+    app.include_router(arc_router, prefix="/api/v2/arc", tags=["A-share ARC"])
+    app.include_router(agent_router, prefix="/api/v2/agent", tags=["A-share AI"])
+    app.include_router(signals_router, prefix="/api/v2", tags=["A-share Signals"])
+    app.include_router(research_workbench_router, prefix="/api/v2/research-workbench", tags=["A-share AI Research"])
 
     return app
 

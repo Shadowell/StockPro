@@ -407,7 +407,7 @@ export default function SignalCenter() {
   const [botPickerStrategyId, setBotPickerStrategyId] = useState<number | null>(null);
   const [pendingBotChannelId, setPendingBotChannelId] = useState<number | null>(null);
   const [strategySearch, setStrategySearch] = useState('');
-  const [strategyEnabledFilter, setStrategyEnabledFilter] = useState<StrategyEnabledFilter>('enabled');
+  const [strategyEnabledFilter, setStrategyEnabledFilter] = useState<StrategyEnabledFilter>('all');
   const [strategyReturnSort, setStrategyReturnSort] = useState<StrategyReturnSort>('default');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -990,7 +990,7 @@ export default function SignalCenter() {
             <div>
               <h1 className="text-2xl font-bold tracking-normal">信号中心</h1>
               <p className="mt-1 text-xs text-gray-500">
-                按策略选择、绑定 OKX 信号通道；默认自动发送，也可为单个策略开启人工确认。
+                沿用 BitPro 信号工作台查看 A 股策略；外部下单通道在合规适配完成前保持只读关闭。
               </p>
             </div>
           </div>
@@ -1020,7 +1020,7 @@ export default function SignalCenter() {
       )}
 
       <div className="mb-5 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1fr)]">
-        <section id="signal-channel-config" className="scroll-mt-6 min-w-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-2.5">
+        <section id="signal-channel-config" className="hidden scroll-mt-6 min-w-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-2.5">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <Settings2 size={17} className="text-blue-300" />
@@ -1080,12 +1080,12 @@ export default function SignalCenter() {
         <section className="min-w-0 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-3">
           <div className="mb-3 flex items-center gap-2">
             <Bot size={16} className="text-green-300" />
-            <h2 className="truncate text-base font-semibold">OKX 信号通道</h2>
+            <h2 className="truncate text-base font-semibold">A 股信号通道</h2>
           </div>
           <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
             {channels.length === 0 ? (
               <div className="rounded-lg border border-dashed border-crypto-border py-8 text-center text-sm text-gray-500">
-                暂无通道
+                A 股券商/通知通道尚未配置；外部发送保持关闭
               </div>
             ) : (
               channels.map((channel) => {
@@ -1307,7 +1307,7 @@ export default function SignalCenter() {
                   <h2 className="text-lg font-semibold">策略选择</h2>
                 </div>
                 <p className="text-xs leading-relaxed text-gray-500">
-                  点击策略只切换查看；点击启动加入信号策略列表并按策略设置产出信号。
+                  只读查看已迁入 StockPro 的 A 股策略；信号启停写入将在券商/通知通道验收后开放。
                 </p>
               </div>
               <span className="inline-flex h-8 shrink-0 items-center rounded-full border border-green-500/30 bg-green-500/10 px-2.5 text-[11px] font-semibold leading-none text-green-300">
@@ -1320,7 +1320,7 @@ export default function SignalCenter() {
               <input
                 value={strategySearch}
                 onChange={(event) => setStrategySearch(event.target.value)}
-                placeholder="搜索策略名称 / ID / 交易对"
+                placeholder="搜索策略名称 / ID / 标的"
                 className="w-full rounded-lg border border-crypto-border bg-crypto-bg py-2 pl-9 pr-3 text-sm text-gray-100 outline-none placeholder:text-gray-600 focus:border-blue-500/70"
               />
             </div>
@@ -1367,7 +1367,7 @@ export default function SignalCenter() {
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {signalStrategies.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-crypto-border py-8 text-center text-sm text-gray-500">
-                  暂无可选择的合约策略
+                  暂无可选择的 A 股策略
                 </div>
               ) : filteredSignalStrategies.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-crypto-border py-8 text-center text-sm text-gray-500">
@@ -1413,12 +1413,12 @@ export default function SignalCenter() {
                         ) : (
                           <button
                             type="button"
-                            disabled={strategyActioningId === strategy.strategyId}
+                            disabled
                             onClick={() => void startStrategyIntoMiddleList(strategy)}
                             className="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border border-blue-500/50 bg-blue-600/15 px-2 text-[11px] font-semibold text-blue-200 hover:bg-blue-600/25 disabled:cursor-not-allowed disabled:border-crypto-border disabled:bg-white/[0.03] disabled:text-gray-500"
                           >
                             <ShieldCheck size={12} />
-                            {strategyActioningId === strategy.strategyId ? '启动中' : '启动'}
+                            只读
                           </button>
                         )}
                       </div>
@@ -1463,7 +1463,7 @@ export default function SignalCenter() {
             </div>
             {selectedStrategies.length === 0 ? (
               <div className="rounded-lg border border-dashed border-crypto-border py-10 text-center text-sm text-gray-500">
-                从左侧选中策略并点击启动后会加入这里
+                A 股信号启停写入尚未开放；当前仅展示策略目录与历史信号
               </div>
             ) : (
               <div className="space-y-2">

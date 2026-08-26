@@ -685,7 +685,7 @@ export default function ArcConsole() {
               </span>
               <h1 className="truncate text-xl font-bold leading-tight text-white">自主研究</h1>
               <span className="rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-[11px] font-medium text-blue-300">
-                HyperTrade ARC
+                A股 ARC
               </span>
               <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-[11px] font-medium text-gray-500">
                 仅管理员
@@ -705,7 +705,7 @@ export default function ArcConsole() {
               <MetaChip
                 icon={<ShieldCheck className="h-3 w-3" />}
                 label="边界"
-                value="实盘需人工审批"
+                value="Paper 晋级需人工审批"
                 tone="blue"
               />
             </div>
@@ -728,9 +728,7 @@ export default function ArcConsole() {
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-yellow-500/25 bg-yellow-500/[0.07] px-4 py-3 text-sm text-yellow-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            未配置 HyperTrade。服务端需要 <code>HYPERTRADE_BASE_URL</code> 与{' '}
-            <code>HYPERTRADE_SERVICE_TOKEN</code>，实盘审批还需要{' '}
-            <code>HYPERTRADE_APPROVAL_SIGNING_SECRET</code>。
+            A 股 ARC 自主研究写入链路尚未配置。当前不会创建任务、回测或 Paper。
           </div>
         </div>
       )}
@@ -743,7 +741,7 @@ export default function ArcConsole() {
       )}
 
       <section className="mb-4 rounded-xl border border-crypto-border bg-crypto-card p-4">
-        <SectionTitle icon={<Play className="h-4 w-4" />} title="启动研究" meta="候选生成与门禁由 HyperTrade 拥有" />
+        <SectionTitle icon={<Play className="h-4 w-4" />} title="启动研究" meta="A 股候选生成与门禁待接通" />
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_170px_110px_120px_140px]">
           <label className="min-w-0">
             <span className="mb-1.5 block text-[11px] font-medium text-gray-500">研究目标</span>

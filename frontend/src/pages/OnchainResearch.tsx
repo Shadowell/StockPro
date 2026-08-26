@@ -682,7 +682,7 @@ export default function OnchainResearch() {
     if (!summary) return [];
     return Object.entries(summary.sourceStatus || {});
   }, [summary]);
-  const emptyText = summary?.emptyReason || '等待 DeFiLlama 返回真实链上数据';
+  const emptyText = summary?.emptyReason || '等待 A 股资金流、股东与基本面封存快照';
 
   const maxChainTvl = useMemo(
     () => Math.max(0, ...(summary?.chains || []).map((row) => numberFrom(row, 'tvlUsd') || 0)),
@@ -835,24 +835,42 @@ export default function OnchainResearch() {
     });
   }
 
+  if (summary?.status === 'partial') {
+    return (
+      <div className="h-full w-full min-w-0 overflow-auto p-6">
+        <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-normal text-white"><Network className="h-6 w-6 text-cyan-300" />A 股基本面与资金流</h1>
+            <div className="mt-1 text-xs text-gray-500">保留 BitPro 研究页入口，数据域已切换为 A 股 PostgreSQL 只读数据</div>
+          </div>
+          <button type="button" onClick={() => void loadSummary()} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-crypto-border bg-crypto-card px-3 text-sm font-semibold text-gray-200 hover:border-cyan-400/45 hover:text-cyan-100">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}刷新</button>
+        </header>
+        <div className="rounded-xl border border-amber-500/25 bg-crypto-card p-8">
+          <div className="text-base font-semibold text-amber-200">A 股基本面明细适配中</div>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">当前 PostgreSQL 已登记股东、资金流和基本面数据域，但尚未形成可验证的冻结快照。明细适配完成前保持诚实空态，不用模拟数据填充。</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full w-full min-w-0 overflow-auto p-6">
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-normal text-white">
             <Network className="h-6 w-6 text-cyan-300" />
-            链上数据
+            A 股基本面与资金流
           </h1>
-          <div className="mt-1 text-xs text-gray-500">DeFiLlama 链上宏观数据 · 只读研究看板</div>
+          <div className="mt-1 text-xs text-gray-500">PostgreSQL 股东、资金流和基本面数据 · 只读研究看板</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex h-10 items-center gap-2 rounded-xl border border-crypto-border bg-crypto-card/85 px-3 text-xs font-semibold text-gray-300">
             <Network className="h-4 w-4 text-cyan-300" />
-            全链视图
+            A 股全市场
           </span>
           <span className={clsx('inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold', statusTone(summary?.status || 'loading'))}>
             <span className="live-dot h-2 w-2 rounded-full bg-current" />
-            DeFiLlama {statusLabel(summary?.status || 'loading')}
+            A股数据 {statusLabel(summary?.status || 'loading')}
           </span>
           <span className="inline-flex h-10 items-center rounded-xl border border-crypto-border bg-crypto-card/85 px-3 text-xs tabular-nums text-gray-500" title="页面每 5 分钟自动刷新一次链上数据">
             更新于 {dateTime(summary?.asOf)} · 自动刷新 {Math.floor(refreshCountdown / 60)}:{String(refreshCountdown % 60).padStart(2, '0')}

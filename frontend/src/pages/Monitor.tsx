@@ -9,7 +9,7 @@ import clsx from 'clsx';
 import CryptoSelect from '../components/CryptoSelect';
 import ThemeDialog from '../components/ThemeDialog';
 import { SELECTED_SEGMENT_CLASS, SELECTED_SEGMENT_COUNT_CLASS } from '../utils/selectionStyles';
-import { liveExecutionApi, marketApi, monitorApi, settingsApi } from '../api/client';
+import { liveExecutionApi, monitorApi, settingsApi } from '../api/client';
 import type {
   LiveExecutionAccount,
   LiveExecutionAccountBinding,
@@ -115,7 +115,7 @@ interface MarketSentiment {
 
 function formatUsd(value: unknown, digits = 2): string {
   const n = Number(value ?? 0);
-  return `$${Number.isFinite(n) ? n.toFixed(digits) : '0.00'}`;
+  return `¥${Number.isFinite(n) ? n.toFixed(digits) : '0.00'}`;
 }
 
 function finiteNumber(value: unknown, fallback = 0): number {
@@ -126,7 +126,7 @@ function finiteNumber(value: unknown, fallback = 0): number {
 function formatSignedUsd(value: unknown): string {
   const n = finiteNumber(value);
   const sign = n > 0 ? '+' : n < 0 ? '-' : '';
-  return `${sign}$${Math.abs(n).toFixed(2)}`;
+  return `${sign}¥${Math.abs(n).toFixed(2)}`;
 }
 
 function formatSignedPercent(value: unknown, digits = 2): string {
@@ -181,7 +181,7 @@ function livePositionSize(position: LiveExecutionPosition): number {
 }
 
 function accountExchangeLabel(account?: LiveExecutionAccount | null): string {
-  return account?.exchange === 'binanceusdm' ? 'Binance USD-M' : 'OKX';
+  return account?.exchangeAlias || account?.name || 'A股';
 }
 
 function LiveMonitorAccountTabs({
@@ -950,7 +950,7 @@ export default function Monitor() {
           : '全市场未平仓（OKX BTC-SWAP）';
       return { positionCardValue: main, positionCardSub: sub };
     }
-    return { positionCardValue: '--', positionCardSub: '暂无策略持仓与市场 OI' };
+    return { positionCardValue: '--', positionCardSub: '暂无策略持仓' };
   }, [strategyNotionalUsdt, sentiment.openInterest, sentiment.openInterestBtc]);
 
   const profitPushStatusText = useMemo(() => {
@@ -1259,11 +1259,9 @@ export default function Monitor() {
   const fetchMarketSentiment = async () => {
     setSentimentLoading(true);
     try {
-      // 并行请求多个数据源
-      const [lsRes, oiRes, _frRes] = await Promise.allSettled([
-        monitorApi.getLongShortRatio('okx', 'BTC/USDT:USDT'),
-        monitorApi.getOpenInterest('okx', 'BTC/USDT:USDT'),
-        marketApi.getTicker('okx', 'BTC/USDT'),
+      const [lsRes, oiRes] = await Promise.allSettled([
+        monitorApi.getLongShortRatio('CN', 'CN-A'),
+        monitorApi.getOpenInterest('CN', 'CN-A'),
       ]);
 
       const longShortValue =
@@ -1430,11 +1428,11 @@ export default function Monitor() {
               sub={monitorSummary.grossLoss > 0 ? '总盈利 / 总亏损' : '暂无亏损样本'}
             />
             <SentimentCard
-              label="多空比"
+              label="涨跌比"
               value={sentiment.longShortRatio != null ? sentiment.longShortRatio.toFixed(2) : '--'}
               icon={<BarChart3 className="w-4 h-4" />}
               color={sentiment.longShortRatio != null ? (sentiment.longShortRatio > 1 ? 'green' : sentiment.longShortRatio < 1 ? 'red' : 'gray') : 'gray'}
-              sub={sentiment.longShortRatio != null ? (sentiment.longShortRatio > 1 ? '多头占优' : sentiment.longShortRatio < 1 ? '空头占优' : '多空均衡') : '获取中...'}
+              sub={sentiment.longShortRatio != null ? (sentiment.longShortRatio > 1 ? '上涨家数占优' : sentiment.longShortRatio < 1 ? '下跌家数占优' : '涨跌均衡') : '首页展示市场广度'}
             />
             <SentimentCard
               label="策略/告警"
@@ -1446,7 +1444,7 @@ export default function Monitor() {
           </div>
         </section>
 
-        <section className="monitor-overview-panel rounded-xl border border-blue-500/15 bg-crypto-card p-4">
+        <section className="hidden monitor-overview-panel rounded-xl border border-blue-500/15 bg-crypto-card p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -1526,7 +1524,7 @@ export default function Monitor() {
         </section>
       </div>
 
-      <div className="monitorConfigPanel mb-6 rounded-xl border border-crypto-border bg-crypto-card">
+      <div className="hidden monitorConfigPanel mb-6 rounded-xl border border-crypto-border bg-crypto-card">
         <button
           type="button"
           onClick={() => setMonitorConfigOpen(open => !open)}
@@ -1808,7 +1806,7 @@ export default function Monitor() {
                       : 'border-emerald-500/20 bg-emerald-500/5 text-emerald-400/70 hover:bg-emerald-500/10 hover:text-emerald-300',
                   )}
                 >
-                  现货 {runningStrategyAssetCounts.spot}
+                  股票 {runningStrategyAssetCounts.spot}
                 </button>
                 <button
                   type="button"
@@ -1821,7 +1819,7 @@ export default function Monitor() {
                       : 'border-blue-500/20 bg-blue-500/5 text-blue-400/70 hover:bg-blue-500/10 hover:text-blue-300',
                   )}
                 >
-                  合约 {runningStrategyAssetCounts.contract}
+                  ETF {runningStrategyAssetCounts.contract}
                 </button>
               </div>
               <button
@@ -1945,7 +1943,7 @@ export default function Monitor() {
                 <p className="text-gray-600 text-xs mt-1">
                   {runningStrategies.length > 0
                     ? '可切换上方筛选查看其他资产类型'
-                    : '前往"模拟/实盘"页面启动策略'}
+                    : '前往“模拟”页面查看 A 股 Paper 策略'}
                 </p>
               </div>
             )}
@@ -1953,7 +1951,7 @@ export default function Monitor() {
         </div>
 
         {/* ====== 实盘监控 ====== */}
-        <div className="bg-crypto-card border border-crypto-border rounded-xl">
+        <div className="hidden bg-crypto-card border border-crypto-border rounded-xl">
           <div className="p-4 border-b border-crypto-border flex items-center gap-2">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-blue-400" />

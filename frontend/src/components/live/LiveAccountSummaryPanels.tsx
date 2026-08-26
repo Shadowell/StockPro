@@ -434,6 +434,8 @@ export function LiveContractPositionsPanel({
   closingKey,
   onClosePosition,
   onCloseAll,
+  title = '合约持仓',
+  emptyText = '当前账户无合约持仓',
 }: {
   rows: LiveExecutionPosition[];
   readonly?: boolean;
@@ -442,6 +444,8 @@ export function LiveContractPositionsPanel({
   closingKey?: string | null;
   onClosePosition?: (position: LiveExecutionPosition) => void;
   onCloseAll?: (position: LiveExecutionPosition) => void;
+  title?: string;
+  emptyText?: string;
 }) {
   const visibleRows = maxRows && maxRows > 0 ? rows.slice(0, maxRows) : rows;
 
@@ -478,14 +482,14 @@ export function LiveContractPositionsPanel({
     <div className={liveContractPositionsPanelShell}>
       <div className={liveAccountPanelHeader}>
         <CircleDollarSign className="h-4 w-4 text-amber-300" />
-        <span className="text-sm font-semibold text-gray-100">合约持仓</span>
+        <span className="text-sm font-semibold text-gray-100">{title}</span>
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5">
           {headerStats || <span className="text-[10px] text-gray-500">衍生品仓位</span>}
         </div>
       </div>
       <div className={liveAccountPanelBody}>
         {visibleRows.length === 0 ? (
-          <div className="py-6 text-center text-xs text-gray-600">当前账户无合约持仓</div>
+          <div className="py-6 text-center text-xs text-gray-600">{emptyText}</div>
         ) : (
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             {visibleRows.map((position, index) => {

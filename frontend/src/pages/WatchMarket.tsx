@@ -31,13 +31,8 @@ import type { Kline, Ticker } from '../types';
 
 const WatchKlineChart = lazy(() => import('../components/WatchKlineChart'));
 
-const DEFAULT_TIMEFRAME = '15m';
+const DEFAULT_TIMEFRAME = '1d';
 const TIMEFRAMES = [
-  { value: '1m', label: '1M' },
-  { value: '5m', label: '5M' },
-  { value: '15m', label: '15M' },
-  { value: '1h', label: '1H' },
-  { value: '4h', label: '4H' },
   { value: '1d', label: '1D' },
 ];
 
@@ -58,14 +53,14 @@ function compactNumber(value: unknown, digits = 2): string {
 function money(value: unknown, digits = 2): string {
   const next = finite(value, Number.NaN);
   if (!Number.isFinite(next)) return '--';
-  return `$${compactNumber(next, digits)}`;
+  return `¥${compactNumber(next, digits)}`;
 }
 
 function signedMoney(value: unknown, digits = 2): string {
   const next = finite(value, Number.NaN);
   if (!Number.isFinite(next)) return '--';
   const sign = next > 0 ? '+' : next < 0 ? '-' : '';
-  return `${sign}$${compactNumber(Math.abs(next), digits)}`;
+  return `${sign}¥${compactNumber(Math.abs(next), digits)}`;
 }
 
 function pct(value: unknown): string {
@@ -99,8 +94,7 @@ function normalizeWatchSymbolKey(symbol?: string | null): string {
 }
 
 function accountExchangeLabel(account?: LiveExecutionAccount | null): string {
-  if (account?.exchange === 'binanceusdm') return 'Binance USD-M';
-  return 'OKX';
+  return account?.exchangeAlias || account?.name || 'A股';
 }
 
 function marketExchangeForAccount(account?: LiveExecutionAccount | null): 'okx' | 'binanceusdm' {
@@ -293,8 +287,8 @@ function WatchSymbolTile({
   const [error, setError] = useState('');
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
 
-  const { ticker: wsTicker, isConnected } = useTickerWebSocket(marketExchange, symbol);
-  const { kline: wsKline } = useKlineWebSocket(marketExchange, symbol, timeframe);
+  const { ticker: wsTicker, isConnected } = useTickerWebSocket(marketExchange, symbol, false);
+  const { kline: wsKline } = useKlineWebSocket(marketExchange, symbol, timeframe, false);
 
   const loadMarket = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -502,6 +496,7 @@ export default function WatchMarket() {
   }, [selectedAccountId]);
 
   const { isConnected: orderBridgeConnected, subscribe, unsubscribe } = useWebSocket({
+    enabled: false,
     onMessage: (message) => {
       if (
         message.channel === 'live_order'
@@ -610,7 +605,7 @@ export default function WatchMarket() {
               <ScanLine className="h-6 w-6 text-blue-400" />
               <h1 className="text-2xl font-bold tracking-tight text-white">盯盘</h1>
             </div>
-            <p className="mt-1 text-sm text-gray-500">切换 OKX 或 Binance USD-M 账户后，持仓、订单、盯盘标的和行情同步切换。</p>
+            <p className="mt-1 text-sm text-gray-500">A 股 Paper 持仓、委托、盯盘标的和日线行情统一查看；当前阶段保持只读。</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <div
@@ -641,7 +636,7 @@ export default function WatchMarket() {
               })}
               {accounts.length === 0 && (
                 <span className="col-span-2 inline-flex items-center justify-center px-3 text-xs text-gray-500">
-                  暂无实盘账户
+                  暂无 A 股 Paper 账户
                 </span>
               )}
             </div>
@@ -675,11 +670,13 @@ export default function WatchMarket() {
           <div className="watchTopPanelGrid grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(520px,680px)_minmax(0,1fr)]">
             <LiveContractPositionsPanel
               rows={orderedContractPositions}
-              readonly={false}
+              readonly
+              title="A 股持仓"
+              emptyText="当前 A 股 Paper 账户无持仓"
               headerStats={
                 <>
                   <WatchHeaderMetric label="仓位" value={contractPositionStats.count} tone="blue" />
-                  <WatchHeaderMetric label="保证金" value={money(contractPositionStats.margin)} />
+                  <WatchHeaderMetric label="持仓市值" value={money(contractPositionStats.margin)} />
                   <WatchHeaderMetric
                     label="浮盈"
                     value={signedMoney(contractPositionStats.pnl)}
@@ -737,7 +734,7 @@ export default function WatchMarket() {
                   </div>
                 ) : (
                   <div className="flex h-full min-h-[360px] items-center justify-center rounded-xl border border-dashed border-crypto-border text-gray-500">
-                    当前账户暂无由 BitPro 策略执行且仍持仓的标的；左侧仍显示全部真实合约持仓。
+                    当前 A 股 Paper 账户暂无持仓盯盘标的；接通只读持仓适配后将在此沿用 BitPro K 线卡片展示。
                   </div>
                 )}
               </div>

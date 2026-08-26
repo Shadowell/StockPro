@@ -103,10 +103,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   };
 }
 
-export function useTickerWebSocket(exchange: string, symbol: string) {
+export function useTickerWebSocket(exchange: string, symbol: string, enabled = true) {
   const [ticker, setTicker] = useState<RealtimeTicker | null>(null);
 
   const { isConnected, subscribe, unsubscribe } = useWebSocket({
+    enabled,
     onMessage: (msg) => {
       if (msg.channel === 'ticker' && msg.exchange === exchange && msg.symbol === symbol) {
         setTicker(msg.data as RealtimeTicker);
@@ -125,10 +126,11 @@ export function useTickerWebSocket(exchange: string, symbol: string) {
   return { ticker, isConnected };
 }
 
-export function useKlineWebSocket(exchange: string, symbol: string, timeframe: string) {
+export function useKlineWebSocket(exchange: string, symbol: string, timeframe: string, enabled = true) {
   const [kline, setKline] = useState<any | null>(null);
 
   const { isConnected, subscribe, unsubscribe } = useWebSocket({
+    enabled,
     onMessage: (msg) => {
       if (msg.channel === 'kline' && msg.exchange === exchange && msg.symbol === symbol) {
         setKline(msg.data as any);

@@ -31,3 +31,26 @@ async def paper_equity_curve(instance_id: int):
 @router.get("/trades")
 async def paper_trades(instance_id: int, limit: int = Query(100, ge=1, le=500)):
     return ok(await paper_domain_service.trades(instance_id, limit))
+
+
+@router.get("/accounts")
+async def paper_accounts():
+    return ok({"accounts": [{"account_id": "paper", "name": "A股 Paper 现金账本", "exchange": "CN", "exchange_alias": "A股", "is_default": True, "configured": True, "enabled": True, "testnet": True, "display_only": True, "can_trade": False}]})
+
+
+@router.get("/strategies")
+async def paper_strategies():
+    return ok({"strategies": await paper_domain_service.list_instances()})
+
+
+@router.get("/watchlist")
+async def paper_watchlist(account_id: str = Query("paper"), limit: int = Query(100)):
+    return ok({"account_id": account_id, "exchange": "CN", "items": []})
+
+
+@router.get("/accounts/{account_id}/positions")
+async def account_positions(account_id: str): return ok({"account_id": account_id, "exchange": "CN", "positions": []})
+
+
+@router.get("/accounts/{account_id}/orders/history")
+async def account_orders(account_id: str, limit: int = Query(50)): return ok({"account_id": account_id, "exchange": "CN", "orders": []})

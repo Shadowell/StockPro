@@ -38,7 +38,7 @@ const STAGES: Array<{ id: StageId; label: string; empty: string; icon: LucideIco
   { id: 'paper', label: '模拟盘决策', empty: '只有验证通过并记录证据的结果才能申请模拟盘；申请不会直接启动模拟盘。', icon: CircleUserRound },
 ];
 
-const DEFAULT_MANDATE_SYMBOLS = ['BTC/USDT:USDT', 'ETH/USDT:USDT'];
+const DEFAULT_MANDATE_SYMBOLS = ['600519.SH', '000001.SZ'];
 const REVIEW_ACTIONS = ['request_paper_review', 'request_pause_review', 'retire_candidate_review'] as const;
 
 function rows(value: unknown): Row[] {
@@ -572,7 +572,7 @@ export default function ResearchWorkbench() {
       <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><FlaskConical size={18} className="text-cyan-300" /><h2 className="text-base font-semibold text-gray-100">策略研发工作台</h2><span className={clsx('rounded border px-2 py-0.5 text-[10px]', connectionUnavailable ? 'border-red-500/40 bg-red-500/10 text-red-200' : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200')}>{connectionLabel}</span></div><p className="mt-1 text-xs text-gray-500">写提议，HT 自动研究回测；你只根据真实回测证据决定是否申请模拟盘。</p></div>
-          <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={openProposalDialog} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-500"><Sparkles size={14} />提交研究提议</button><button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-300 hover:border-blue-400 disabled:opacity-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />同步</button></div>
+          <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={openProposalDialog} disabled={connectionUnavailable} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"><Sparkles size={14} />{connectionUnavailable ? '写入未接通' : '提交研究提议'}</button><button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-300 hover:border-blue-400 disabled:opacity-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />同步</button></div>
         </div>
         {realError && <div role="alert" className="mt-3 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs text-red-100">真实错误：{realError}</div>}
         {candidateErrors.length > 0 && <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-100">候选证据读取不完整：{candidateErrors.join('；')}</div>}
@@ -601,7 +601,7 @@ export default function ResearchWorkbench() {
       <section className="min-h-[430px] overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
         <div className="flex items-center justify-between gap-2 border-b border-crypto-border px-4 py-3"><div><div className="text-sm font-semibold text-gray-100">{STAGES.find((stage) => stage.id === selectedStage)?.label}</div><div className="mt-1 text-[11px] text-gray-500">真实对象与证据</div></div><span className="rounded border border-crypto-border bg-crypto-bg px-2 py-0.5 text-[10px] text-gray-400">{stageStates[selectedStage].count} 项</span></div>
         <div className="min-h-[350px] p-3">{renderSelectedStage()}</div>
-        <div className="border-t border-crypto-border px-4 py-2 text-[10px] text-gray-600">研究与模拟盘结果仅作为证据，不代表稳定盈利或实盘表现。最近同步：{formatTime(field(summary, 'lastSyncedAt', 'last_synced_at'))}</div>
+        <div className="border-t border-crypto-border px-4 py-2 text-[10px] text-gray-600">研究与模拟盘结果仅作为证据，不代表稳定盈利或未来表现。最近同步：{formatTime(field(summary, 'lastSyncedAt', 'last_synced_at'))}</div>
       </section>
 
       <ThemeDialog open={proposalOpen} variant="confirm" title="提交研究提议" tone="default" confirmText={writeBusy ? '提交中...' : '提交给 HT'} confirmDisabled={writeBusy || mandateSymbols.length === 0 || !proposalDirection.trim()} onCancel={closeProposalDialog} onConfirm={() => void submitProposal()}>

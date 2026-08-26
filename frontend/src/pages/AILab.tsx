@@ -26,7 +26,7 @@ api.interceptors.response.use((r) => r.data, (e) => Promise.reject(e));
 export default function AILab() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const activeTab: AssistantTab = tabParam === 'research' || tabParam === 'optimizer' || tabParam === 'autonomous' || tabParam === 'auto-agent' || tabParam === 'orbit-post' ? tabParam : 'auto-agent';
+  const activeTab = (tabParam === 'research' || tabParam === 'optimizer' ? tabParam : 'research') as AssistantTab;
   const [startDate, setStartDate] = useState(DEFAULT_BACKTEST_DATE_RANGE.start);
   const [endDate, setEndDate] = useState(DEFAULT_BACKTEST_DATE_RANGE.end);
   const [maxIter, setMaxIter] = useState(3);
@@ -1130,7 +1130,7 @@ export default function AILab() {
             <Sparkles className="text-yellow-400" size={28} />
             AI策略助手
           </h1>
-          <p className="mt-1 text-xs text-gray-500">AI自主交易、新策略研发与现有策略优化统一入口</p>
+          <p className="mt-1 text-xs text-gray-500">A 股新策略研发与现有策略优化统一入口；执行类能力保持关闭</p>
         </div>
         <div className="flex items-center gap-3">
           {task && (
@@ -1152,11 +1152,11 @@ export default function AILab() {
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-1 gap-2 rounded-xl border border-crypto-border bg-crypto-card p-1 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-1 gap-2 rounded-xl border border-crypto-border bg-crypto-card p-1 lg:grid-cols-2">
         <button
           type="button"
           onClick={() => switchTab('auto-agent')}
-          className={`flex min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
+          className={`hidden min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
             activeTab === 'auto-agent'
               ? SELECTED_SEGMENT_BORDER_CLASS
               : 'border-purple-500/30 bg-purple-950/45 text-purple-100/80 hover:border-purple-400/55 hover:bg-purple-900/45'
@@ -1171,7 +1171,7 @@ export default function AILab() {
         <button
           type="button"
           onClick={() => switchTab('autonomous')}
-          className={`flex min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
+          className={`hidden min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
             activeTab === 'autonomous'
               ? SELECTED_SEGMENT_BORDER_CLASS
               : 'border-yellow-500/30 bg-yellow-950/45 text-yellow-100/80 hover:border-yellow-400/55 hover:bg-yellow-900/45'
@@ -1210,13 +1210,13 @@ export default function AILab() {
           <Wrench size={18} className={activeTab === 'optimizer' ? 'text-green-300' : 'text-emerald-500/70'} />
           <span className="min-w-0">
             <span className="block text-sm font-semibold">现有策略优化</span>
-            <span className="block truncate text-[11px] text-current/60">4h 扫描、AI 诊断、候选试运行</span>
+            <span className="block truncate text-[11px] text-current/60">日线扫描、AI 诊断、候选试运行</span>
           </span>
         </button>
         <button
           type="button"
           onClick={() => switchTab('orbit-post')}
-          className={`flex min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
+          className={`hidden min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
             activeTab === 'orbit-post'
               ? SELECTED_SEGMENT_BORDER_CLASS
               : 'border-cyan-500/30 bg-cyan-950/45 text-cyan-100/80 hover:border-cyan-400/55 hover:bg-cyan-900/45'

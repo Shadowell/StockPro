@@ -156,7 +156,7 @@ export default function ArbitrageCenter() {
 
   const exchanges = summary?.configuredExchanges || [];
   const pnl = summary?.pnl || {};
-  const emptyText = summary?.emptyReason || '等待真实跨所行情和资金费率数据';
+  const emptyText = summary?.emptyReason || '等待真实 ETF/LOF/可转债价差数据';
   const kpis = useMemo(() => [
     { label: '净敞口', value: money(summary?.netExposure?.totalUsdt), tone: metricClass(summary?.netExposure?.totalUsdt), icon: Gauge },
     { label: '预估收益', value: money(pnl.estimatedUsdt), tone: metricClass(pnl.estimatedUsdt), icon: TrendingUp },
@@ -239,15 +239,33 @@ export default function ArbitrageCenter() {
     };
   }, [calculator]);
 
+  if (summary?.status === 'unavailable') {
+    return (
+      <div className="h-full w-full min-w-0 p-6">
+        <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-normal text-white"><ArrowLeftRight className="h-6 w-6 text-cyan-300" />A 股价差研究</h1>
+            <div className="mt-1 text-xs text-gray-500">ETF / LOF / 可转债 · 价差证据 · 模拟组合审计</div>
+          </div>
+          <button type="button" onClick={() => void loadSummary()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm font-semibold text-gray-200 hover:border-cyan-400/45 hover:text-cyan-100">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}刷新</button>
+        </header>
+        <div className="rounded-xl border border-amber-500/25 bg-crypto-card p-8">
+          <div className="text-base font-semibold text-amber-200">A 股价差数据尚未接通</div>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">当前没有经过验证的 ETF、LOF 或可转债申赎/折溢价数据。数据接通前保持诚实空态，不生成虚假套利机会。</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full w-full min-w-0 p-6">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-normal text-white">
             <ArrowLeftRight className="h-6 w-6 text-cyan-300" />
-            套利中心
+            A 股价差研究
           </h1>
-          <div className="mt-1 text-xs text-gray-500">OKX / Binance USD-M · 跨所机会扫描 · 模拟组合审计</div>
+          <div className="mt-1 text-xs text-gray-500">ETF / LOF / 可转债 · 价差证据 · 模拟组合审计</div>
         </div>
         <button
           type="button"
@@ -460,7 +478,7 @@ export default function ArbitrageCenter() {
         <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
             <BarChart3 className="h-4 w-4 text-cyan-300" />
-            资金费率排行
+            A 股价差排行
           </div>
           {summary?.fundingRankings?.length ? (
             <div className="overflow-x-auto">
