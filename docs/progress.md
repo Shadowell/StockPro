@@ -143,6 +143,12 @@
   CDN。Paper 基线仍为 22 instances、137 cash ledger、115 trades、51 positions、1008 equity、
   2080 events、1019 cycles，两次 2025-08-05 rollback 探针 cycle 为 0；75 项后端/重建测试、前端
   production build、零警告 lint 与 `git diff --check` 全部通过。
+- 隔离库另用唯一命名临时 Paper 完成已提交的长期运行门禁：2025-08-05 首日成功后真实终止并
+  重启前后端，重启后的 `/live/advance` 只推进 2025-08-06；随后两路并发争抢 2025-08-07，
+  一路提交、一路在实例锁后复用同一 success cycle，重复订单/成交/权益均为 0。三日 ledger
+  difference 均为 0，单日分别耗时 17.55 秒、32.32 秒，并发完成窗口 44–45 秒。探针按精确 UUID
+  清理 1 ledger、3 equity、5 events、3 cycles、1 instance 和 1 portfolio 后，七张核心表计数逐项
+  恢复到测试前基线，候选回测重新可用，既有 22 个 Paper 及其历史没有变化。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 
