@@ -6,6 +6,7 @@ type MessageHandler = (data: WSMessage) => void;
 
 export interface RealtimeTicker {
   symbol: string;
+  name?: string;
   last: number;
   high?: number;
   low?: number;

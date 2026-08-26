@@ -55,7 +55,7 @@ import LLMProviderCard from './settings/LLMProviderCard';
 import { getActiveLLMProvider, mergeLLMProviderSettings } from './settings/providerState';
 
 type NavRole = 'admin' | 'guest';
-type SettingsTabId = 'ai' | 'agent' | 'access' | 'notifications' | 'appearance';
+type SettingsTabId = 'ai' | 'agent' | 'access' | 'notifications' | 'appearance' | 'account';
 type LLMProviderFormState = {
   providerKey: string;
   name: string;
@@ -776,6 +776,16 @@ export default function MainLayout() {
     llmConfigReloadEpochRef.current += 1;
   }, []);
 
+  const openSettings = useCallback(() => {
+    setActiveSettingsTab('account');
+    setShowSettings(true);
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    closeSettings();
+    await logout();
+  }, [closeSettings, logout]);
+
   // 点击外部关闭设置面板
   useEffect(() => {
     if (!showSettings) return;
@@ -789,7 +799,7 @@ export default function MainLayout() {
   }, [closeSettings, showSettings]);
 
   useEffect(() => {
-    if (!showSettings || !isAdmin) {
+    if (!showSettings) {
       settingsPreviousFocusRef.current?.focus();
       settingsPreviousFocusRef.current = null;
       return;
@@ -823,7 +833,7 @@ export default function MainLayout() {
       window.cancelAnimationFrame(frame);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [closeSettings, isAdmin, showSettings]);
+  }, [closeSettings, showSettings]);
 
   useEffect(() => {
     if (!llmProviderAdding) {
@@ -865,26 +875,28 @@ export default function MainLayout() {
     let cancelled = false;
     setFeishuError('');
     setFeishuSaved(false);
-    settingsApi.getFeishuWebhook()
-      .then((res) => {
-        if (cancelled) return;
-        setFeishuWebhookConfigured(res.webhookConfigured);
-        setFeishuMaskedWebhookUrl(res.maskedWebhookUrl || null);
-      })
-      .catch((error) => {
-        if (!cancelled) setFeishuError(parseApiError(error, '读取飞书 Webhook 配置失败'));
-      });
-    void reloadLLMConfig();
-    loadMcpTokenStatus()
-      .catch(() => {
-        if (!cancelled) {
-          setMcpTokenStatus(null);
-        }
-      });
+    if (activeSettingsTab === 'notifications') {
+      settingsApi.getFeishuWebhook()
+        .then((res) => {
+          if (cancelled) return;
+          setFeishuWebhookConfigured(res.webhookConfigured);
+          setFeishuMaskedWebhookUrl(res.maskedWebhookUrl || null);
+        })
+        .catch((error) => {
+          if (!cancelled) setFeishuError(parseApiError(error, '读取飞书 Webhook 配置失败'));
+        });
+    }
+    if (activeSettingsTab === 'ai') void reloadLLMConfig();
+    if (activeSettingsTab === 'agent') {
+      loadMcpTokenStatus()
+        .catch(() => {
+          if (!cancelled) setMcpTokenStatus(null);
+        });
+    }
     return () => {
       cancelled = true;
     };
-  }, [isAdmin, loadMcpTokenStatus, reloadLLMConfig, showSettings]);
+  }, [activeSettingsTab, isAdmin, loadMcpTokenStatus, reloadLLMConfig, showSettings]);
 
   const saveFeishuWebhook = async () => {
     const next = feishuWebhookUrl.trim();
@@ -1084,9 +1096,20 @@ export default function MainLayout() {
       status: colorScheme === 'redUpGreenDown' ? '红涨绿跌' : '绿涨红跌',
       tone: 'blue',
     },
+    {
+      id: 'account',
+      title: '账户与会话',
+      description: '当前身份与安全退出',
+      icon: <KeyRound className="h-4 w-4" />,
+      status: isGuest ? '访客' : '管理员',
+      tone: isGuest ? 'cyan' : 'green',
+    },
   ];
 
-  const activeSettings = settingsTabs.find((tab) => tab.id === activeSettingsTab) || settingsTabs[0];
+  const visibleSettingsTabs = isAdmin
+    ? settingsTabs
+    : settingsTabs.filter((tab) => tab.id === 'account');
+  const activeSettings = visibleSettingsTabs.find((tab) => tab.id === activeSettingsTab) || visibleSettingsTabs[0];
 
   return (
     <div data-testid="main-layout" className="flex h-screen bg-crypto-bg">
@@ -1128,9 +1151,10 @@ export default function MainLayout() {
               {isGuest ? '访客' : '管理员'}
             </div>
           )}
-          {isAdmin && (
+          {(isAdmin || isGuest) && (
             <button
-              onClick={() => setShowSettings(true)}
+              onClick={openSettings}
+              aria-label="打开设置"
               className={clsx(
                 'w-full flex flex-col items-center justify-center h-10 text-xs rounded transition-colors',
                 showSettings
@@ -1139,15 +1163,6 @@ export default function MainLayout() {
               )}
             >
               <Settings className="w-4 h-4" />
-            </button>
-          )}
-          {authEnabled && (
-            <button
-              onClick={() => void logout()}
-              className="w-full flex flex-col items-center justify-center h-10 text-xs rounded text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-200"
-              title="退出登录"
-            >
-              <LogOut className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -1182,7 +1197,7 @@ export default function MainLayout() {
       </main>
 
       {/* 设置面板 */}
-      {showSettings && isAdmin && (
+      {showSettings && (isAdmin || isGuest) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6">
           <div
             ref={settingsRef}
@@ -1211,7 +1226,7 @@ export default function MainLayout() {
             <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)]">
               <aside className="border-b border-crypto-border bg-crypto-bg/35 p-3 lg:border-b-0 lg:border-r">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                  {settingsTabs.map((tab) => (
+                  {visibleSettingsTabs.map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
@@ -1657,6 +1672,38 @@ export default function MainLayout() {
                           selected={colorScheme === 'greenUpRedDown'}
                           onSelect={() => setColorScheme('greenUpRedDown')}
                         />
+                      </div>
+                    </SettingsConfigBlock>
+                  )}
+
+                  {activeSettingsTab === 'account' && (
+                    <SettingsConfigBlock
+                      title="当前会话"
+                      icon={<ShieldCheck className="h-4 w-4 text-emerald-300" />}
+                      description={isGuest ? '访客只读会话' : '管理员完整权限会话'}
+                      status={
+                        <SettingsStatusBadge tone={isGuest ? 'cyan' : 'green'}>
+                          {isGuest ? '访客' : '管理员'}
+                        </SettingsStatusBadge>
+                      }
+                    >
+                      <div className="flex flex-col gap-4 rounded-xl border border-crypto-border bg-crypto-bg/45 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-gray-100">
+                            {isGuest ? '当前以访客身份访问' : '当前以管理员身份访问'}
+                          </div>
+                          <p className="mt-1 text-xs leading-5 text-gray-500">
+                            退出后需要重新输入{isGuest ? '访客邀请码' : '管理员密码'}才能进入工作台。
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleLogout()}
+                          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-4 text-sm font-semibold text-red-300 transition-colors hover:bg-red-500/20 hover:text-red-200"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          退出登录
+                        </button>
                       </div>
                     </SettingsConfigBlock>
                   )}

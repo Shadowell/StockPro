@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Trash2, Plus, Code2, Save, X, FileCode, Copy, Search,
@@ -16,6 +16,8 @@ import { getStrategyParameterSections } from '../utils/strategyConfigDisplay';
 import { formatTimeframeLabel } from '../utils/timeframe';
 import { SELECTED_SEGMENT_CLASS, SELECTED_SEGMENT_COUNT_CLASS } from '../utils/selectionStyles';
 import { useAuth } from '../auth/AuthProvider';
+import { useSymbolNames } from '../hooks/useSymbolNames';
+import { formatSymbolLabel } from '../utils/symbolDisplay';
 
 function isStrategyRunningOrPaused(status: string | undefined): boolean {
   return status === 'running' || status === 'paused';
@@ -456,6 +458,13 @@ export default function Strategy() {
     '1000000CNY': 0,
   });
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType | null>(null);
+  const selectedDisplaySymbols = useMemo(() => {
+    if (!selectedStrategy) return [];
+    const config = isRecord(selectedStrategy.config) ? selectedStrategy.config : {};
+    const tradeSymbols = getStrategyConfigArray(config, ['tradeSymbols', 'trade_symbols']);
+    return tradeSymbols.length > 0 ? tradeSymbols : selectedStrategy.symbols || [];
+  }, [selectedStrategy]);
+  const selectedSymbolNames = useSymbolNames(selectedDisplaySymbols);
 
   // 页面视图
   const [view, setView] = useState<PageView>('list');
@@ -1292,8 +1301,7 @@ export default function Strategy() {
 
     const config = isRecord(selectedStrategy.config) ? selectedStrategy.config : {};
     const logic = getStrategyLogicSummary(selectedStrategy);
-    const tradeSymbols = getStrategyConfigArray(config, ['tradeSymbols', 'trade_symbols']);
-    const displaySymbols = tradeSymbols.length > 0 ? tradeSymbols : selectedStrategy.symbols || [];
+    const displaySymbols = selectedDisplaySymbols;
     const timeframe = readTextField(config, ['timeframe']);
     const assetClass = inferStrategyAssetClass(selectedStrategy);
     const assetClassLabel = assetClass === 'etf' ? 'ETF' : '股票';
@@ -1391,7 +1399,7 @@ export default function Strategy() {
                     key={symbol}
                     className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-xs text-gray-300"
                   >
-                    {symbol}
+                    {formatSymbolLabel(symbol, selectedSymbolNames[symbol])}
                   </span>
                 ))}
               </div>

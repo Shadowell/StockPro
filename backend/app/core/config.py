@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     # 日志配置
     LOG_LEVEL: str = "INFO"
 
+    # A 股证券主数据与每日行情同步
+    TUSHARE_TOKEN: Optional[str] = None
+    A_SHARE_DAILY_SYNC_ENABLED: bool = False
+    A_SHARE_DAILY_SYNC_HOUR: int = 18
+    A_SHARE_DAILY_SYNC_MINUTE: int = 10
+    A_SHARE_DAILY_SYNC_TIMEZONE: str = "Asia/Shanghai"
+
     # 交易所配置 - OKX
     OKX_API_KEY: Optional[str] = None
     OKX_API_SECRET: Optional[str] = None

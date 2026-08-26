@@ -51,29 +51,52 @@ class MarketRepository:
         return int(observed.timestamp() * 1000)
 
     def list_symbols(self, asset_class: str, limit: int = 5000) -> List[str]:
-        bounded = max(1, min(int(limit), 10000))
+        return [item["symbol"] for item in self.list_instruments(asset_class, limit)]
+
+    def list_instruments(self, asset_class: str, limit: int = 10000) -> List[Dict]:
+        bounded = max(1, min(int(limit), 20000))
         normalized = str(asset_class or "stock").lower()
-        query = "SELECT symbol FROM instrument_definitions"
+        query = """
+            SELECT symbol,name,exchange,asset_class,industry,board,list_status
+            FROM instrument_definitions WHERE market='CN' AND list_status IN ('L','P')
+        """
         params: list[object] = []
         if normalized != "all":
-            query += " WHERE asset_class=%s"
+            query += " AND asset_class=%s"
             params.append(normalized)
         query += " ORDER BY exchange,symbol LIMIT %s"
         params.append(bounded)
         with self._connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(query, tuple(params))
-                return [self._canonical_symbol(row[0]) for row in cursor.fetchall()]
+                rows = cursor.fetchall()
+        return [
+            {
+                "symbol": self._canonical_symbol(row[0]),
+                "name": str(row[1] or ""),
+                "display_name": f"{str(row[1] or '').strip()} {self._canonical_symbol(row[0])}".strip(),
+                "exchange": row[2],
+                "asset_class": row[3],
+                "industry": row[4],
+                "board": row[5],
+                "list_status": row[6],
+            }
+            for row in rows
+        ]
 
     def list_tickers(self, symbols: Optional[List[str]] = None) -> List[Dict]:
         requested = [self._storage_symbol(symbol) for symbol in symbols or []]
         query = """
-            SELECT code,price,change_percent,volume,amount,updated_at
-            FROM all_stocks_realtime
+            SELECT r.code,COALESCE(NULLIF(d.name,''),r.name),r.price,r.change_percent,
+                   r.volume,r.amount,r.updated_at
+            FROM all_stocks_realtime r
+            LEFT JOIN instrument_definitions d
+              ON d.market='CN'
+             AND d.symbol=(split_part(r.code,'_',2)||'.'||split_part(r.code,'_',1))
         """
         params: tuple[object, ...] = ()
         if requested:
-            query += " WHERE code = ANY(%s)"
+            query += " WHERE r.code = ANY(%s)"
             params = (requested,)
         query += " ORDER BY code"
         with self._connect() as connection:
@@ -84,15 +107,21 @@ class MarketRepository:
             {
                 "exchange": self._canonical_symbol(row[0]).rsplit(".", 1)[1],
                 "symbol": self._canonical_symbol(row[0]),
-                "last": float(row[1] or 0),
-                "changePercent": float(row[2] or 0),
-                "change_percent": float(row[2] or 0),
-                "volume": float(row[3] or 0),
-                "quoteVolume": float(row[4] or 0),
-                "timestamp": self._timestamp_ms(row[5]),
+                "name": str(row[1] or ""),
+                "display_name": f"{str(row[1] or '').strip()} {self._canonical_symbol(row[0])}".strip(),
+                "last": float(row[2] or 0),
+                "changePercent": float(row[3] or 0),
+                "change_percent": float(row[3] or 0),
+                "volume": float(row[4] or 0),
+                "quoteVolume": float(row[5] or 0),
+                "timestamp": self._timestamp_ms(row[6]),
             }
             for row in rows
         ]
+
+    def lookup_names(self, symbols: List[str]) -> Dict[str, str]:
+        from app.domain.instruments.repository import AshareInstrumentRepository
+        return AshareInstrumentRepository(self.database_url).lookup_names(symbols)
 
     def get_klines(
         self,
@@ -151,8 +180,10 @@ class MarketRepository:
     def market_pulse(self) -> Dict:
         with self._connect() as connection:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT COUNT(*),COUNT(*) FILTER(WHERE change_percent>0),COUNT(*) FILTER(WHERE change_percent<0),COALESCE(SUM(amount),0),COALESCE(AVG(change_percent),0),MAX(updated_at) FROM all_stocks_realtime")
-                instruments, rise, fall, turnover, average_change, updated_at = cursor.fetchone()
+                cursor.execute("SELECT COUNT(*) FROM instrument_definitions WHERE market='CN' AND asset_class='stock' AND list_status IN ('L','P')")
+                instruments = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FILTER(WHERE change_percent>0),COUNT(*) FILTER(WHERE change_percent<0),COALESCE(SUM(amount),0),COALESCE(AVG(change_percent),0),MAX(updated_at) FROM all_stocks_realtime")
+                rise, fall, turnover, average_change, updated_at = cursor.fetchone()
                 cursor.execute("SELECT COUNT(*),MIN(date),MAX(date) FROM stock_history")
                 daily_count, first_date, last_date = cursor.fetchone()
         return {"instrument_count": instruments, "rise_count": rise, "fall_count": fall, "turnover": turnover, "average_change_pct": average_change, "updated_at": updated_at.isoformat() if updated_at else None, "daily_bar_count": daily_count, "first_trade_date": str(first_date or ""), "trade_date": str(last_date or "")}

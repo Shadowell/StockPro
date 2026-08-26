@@ -3798,6 +3798,20 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 
 ## 2026-08-26 BitPro 基线同步
 
+- 数据中心“只有 3 个标的”的根因是活动 `/api/v2/sync/config` 硬编码
+  `600519.SH / 000001.SZ / 300750.SZ`，生产 `instrument_definitions`、`stock_history` 和
+  `all_stocks_realtime` 实际均为 0；它不是全量同步结果。
+- 新增第 40 个 additive migration：扩展证券行业、板块、上市状态/日期，并增加
+  `a_share_daily_sync_runs` 唯一 running 台账。TuShare Provider 每批先完整拉取 L/P/D 全量
+  `stock_basic`、最近开放交易日 `daily` 和 `daily_basic`，再单事务 upsert 三张业务表；进程中断
+  超过两小时自动标记 interrupted，手动与 APScheduler 每日任务不能并发。
+- 隔离库首次同步对 `T600018.SH` 退市命名空间 fail-closed，修复为保留 `T*`、不覆盖现行代码后
+  成功：证券主数据 5,889 条，当前 A 股 5,550/5,550 全部有中文名，2026-08-26 日线 5,547 条，
+  Paper 实例仍为 22。数据和行情 API 返回中文名，页面搜索中文名/代码，并在数据、行情、策略、
+  回测、模拟、盯盘、监控、信号、资金流与 AI 研究主要证券组件中使用“名称在前、代码在后”。
+- 侧栏独立退出图标已移除；设置中心新增“账户与会话”，管理员和访客都能从齿轮进入并退出。
+  打开设置默认进入账户页，配置 API 按页签延迟加载，避免退出流程触发无关 404。
+
 - 生产认证启用前完成最后一层抗暴力破解加固：活动管理员/访客端点共享真实来源 IP 的
   15 分钟 10 次失败预算，耗尽后在调用认证服务前返回 429，成功登录清空预算；来源优先使用
   Nginx 覆盖的 `X-Real-IP`，不再信任客户端可伪造的 `X-Forwarded-For` 首项。会话 Cookie 从

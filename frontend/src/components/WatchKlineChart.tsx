@@ -5,6 +5,8 @@ import type { WatchTradeMarker } from '../api/client';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { KLINE_TRACKPAD_DATA_ZOOM } from '../utils/klineDataZoom';
 import { bindKlineWheelNavigation } from '../utils/klineWheelNavigation';
+import { useSymbolNames } from '../hooks/useSymbolNames';
+import { formatSymbolLabel } from '../utils/symbolDisplay';
 
 const APP_DEFAULT_VISIBLE_CANDLES = 36;
 const DESKTOP_DEFAULT_VISIBLE_CANDLES = 80;
@@ -186,6 +188,7 @@ export default function WatchKlineChart({
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
   const { upColor, downColor } = useSettingsStore((s) => s.getColors());
+  const symbolNames = useSymbolNames([symbol]);
 
   const option = useMemo(() => {
     const rows = data
@@ -558,7 +561,7 @@ export default function WatchKlineChart({
       {header ?? (showHeader ? (
         <div className={`${compact ? 'mb-1.5 gap-2' : 'mb-3'} flex items-center justify-between`}>
           <div>
-            <div className={`${compact ? 'text-[11px]' : 'text-sm'} font-semibold leading-4 text-gray-100`}>{symbol}</div>
+            <div className={`${compact ? 'text-[11px]' : 'text-sm'} font-semibold leading-4 text-gray-100`}>{formatSymbolLabel(symbol, symbolNames[symbol])}</div>
             <div className={`${compact ? 'text-[11px]' : 'text-xs'} leading-4 text-gray-500`}>EMA5 / EMA10 / EMA20 · VOL · MACD · {timeframe}</div>
           </div>
           <div className={`flex items-center gap-2 text-[10px] text-gray-400 ${compact ? 'flex-col items-end gap-1' : ''}`}>

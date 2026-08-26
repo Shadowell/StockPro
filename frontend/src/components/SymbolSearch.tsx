@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, ChevronDown, X } from 'lucide-react';
 import SymbolIcon from './SymbolIcon';
+import type { MarketInstrument } from '../api/client';
 
 // Kept for the original BitPro component contract; A-share options come from PostgreSQL.
 export const TOP50_SYMBOLS: string[] = [];
@@ -10,17 +11,19 @@ interface SymbolSearchProps {
   onChange: (symbol: string) => void;
   /** 额外从服务端获取到的交易对列表（可选，如果不传则只用 TOP50） */
   allSymbols?: string[];
+  instruments?: MarketInstrument[];
   marketType?: 'stock' | 'etf' | 'index';
   className?: string;
 }
 
-export function matchesSymbolSearch(symbol: string, query: string): boolean {
+export function matchesSymbolSearch(symbol: string, query: string, name = ''): boolean {
   const normalizedQuery = query.toUpperCase().trim();
   if (!normalizedQuery) return true;
-  return symbol.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(normalizedQuery.replace(/[^A-Z0-9]/g, ''));
+  return name.toUpperCase().includes(normalizedQuery)
+    || symbol.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(normalizedQuery.replace(/[^A-Z0-9]/g, ''));
 }
 
-export default function SymbolSearch({ value, onChange, allSymbols, className = '' }: SymbolSearchProps) {
+export default function SymbolSearch({ value, onChange, allSymbols, instruments = [], className = '' }: SymbolSearchProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -45,24 +48,30 @@ export default function SymbolSearch({ value, onChange, allSymbols, className = 
   }, [isOpen]);
 
   const fullList = useMemo(() => allSymbols || [], [allSymbols]);
+  const instrumentBySymbol = useMemo(() => new Map(instruments.map((item) => [item.symbol, item])), [instruments]);
 
   // 模糊搜索过滤
   const filtered = useMemo(() => {
     if (!query.trim()) return fullList.slice(0, 50); // 默认只展示前50
-    return fullList.filter((symbol) => matchesSymbolSearch(symbol, query));
-  }, [query, fullList]);
+    return fullList.filter((symbol) => matchesSymbolSearch(symbol, query, instrumentBySymbol.get(symbol)?.name));
+  }, [query, fullList, instrumentBySymbol]);
 
   const selectedCode = value.split('.')[0];
+  const selectedInstrument = instrumentBySymbol.get(value);
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       {/* 触发按钮 */}
       <button
+        data-testid="symbol-search-trigger"
         onClick={() => { setIsOpen(!isOpen); setQuery(''); }}
         className="flex items-center space-x-2 bg-crypto-card border border-crypto-border rounded-lg px-3 py-2 hover:border-gray-500 transition-colors min-w-[180px]"
       >
         <SymbolIcon symbol={value} base={selectedCode} size="xs" />
-        <span className="text-white font-medium text-sm">{value}</span>
+        <span className="min-w-0 text-left">
+          <span className="block truncate text-sm font-semibold text-white">{selectedInstrument?.name || '名称待同步'}</span>
+          <span className="block truncate font-mono text-[10px] text-gray-500">{value}</span>
+        </span>
         <ChevronDown className={`w-4 h-4 text-gray-400 ml-auto transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
@@ -76,7 +85,7 @@ export default function SymbolSearch({ value, onChange, allSymbols, className = 
               <input
                 ref={inputRef}
                 type="text"
-                placeholder="搜索股票代码..."
+                placeholder="搜索中文名称或股票代码..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="w-full bg-gray-800 border border-gray-700 rounded-md pl-8 pr-8 py-2 text-sm text-white focus:outline-none focus:border-blue-500 placeholder:text-gray-600"
@@ -102,10 +111,12 @@ export default function SymbolSearch({ value, onChange, allSymbols, className = 
               filtered.map((symbol, idx) => {
                 const [code, market] = symbol.split('.');
                 const isSelected = symbol === value;
+                const instrument = instrumentBySymbol.get(symbol);
 
                 return (
                   <button
                     key={symbol}
+                    data-testid={`symbol-option-${symbol}`}
                     onClick={() => {
                       onChange(symbol);
                       setIsOpen(false);
@@ -129,11 +140,8 @@ export default function SymbolSearch({ value, onChange, allSymbols, className = 
 
                     {/* 名称 */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-1.5">
-                        <span className="text-white text-sm font-medium">{code}</span>
-                        <span className="text-gray-600 text-xs">.{market}</span>
-                      </div>
-                      <div className="text-gray-500 text-xs truncate">A股证券</div>
+                      <div className="truncate text-sm font-semibold text-white">{instrument?.name || '名称待同步'}</div>
+                      <div className="truncate font-mono text-xs text-gray-500">{code}.{market}</div>
                     </div>
 
                   </button>

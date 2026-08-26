@@ -116,5 +116,12 @@ async def get_symbols(
     quote: str = Query("CNY", description="计价币种，A 股固定为 CNY"),
     market_type: str = Query("stock", description="资产类型: stock/etf/index/all"),
 ):
-    symbols = await market_domain_service.get_symbols(exchange, quote, market_type)
-    return ok({"symbols": symbols})
+    instruments = await market_domain_service.get_instruments(exchange, quote, market_type)
+    return ok({"symbols": [item["symbol"] for item in instruments], "instruments": instruments})
+
+
+@router.get("/symbol-names")
+async def lookup_symbol_names(symbols: str = Query("", max_length=10000)):
+    requested = [item.strip() for item in symbols.split(",") if item.strip()][:500]
+    names = await market_domain_service.lookup_names(requested)
+    return ok({"names": names, "total": len(names)})

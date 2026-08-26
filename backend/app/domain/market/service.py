@@ -223,6 +223,15 @@ class MarketDomainService:
             asset_class = "stock"
         return await asyncio.to_thread(self.repo.list_symbols, asset_class, 5000)
 
+    async def get_instruments(self, exchange_name: str, quote: str = "CNY", market_type: str = "stock") -> List[Dict]:
+        asset_class = (market_type or "stock").strip().lower()
+        if asset_class not in {"stock", "etf", "index", "all"}:
+            asset_class = "stock"
+        return await asyncio.to_thread(self.repo.list_instruments, asset_class, 10000)
+
+    async def lookup_names(self, symbols: List[str]) -> Dict[str, str]:
+        return await asyncio.to_thread(self.repo.lookup_names, symbols)
+
     async def market_pulse(self) -> Dict:
         return await asyncio.to_thread(self.repo.market_pulse)
 
