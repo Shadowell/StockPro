@@ -51,6 +51,16 @@
   OKX/Binance 或 funding 面板。验证通过：direct-port pytest 14 项、前端 build/lint、
   浏览器 `/watch|onchain|arbitrage|signals` 写请求 0、API 4xx/5xx 0、console errors 0。
   当前仍在功能分支，未推送、未合并、未部署。
+- BitPro 原策略编辑器已恢复首个生产级写入闭环：管理员可从 A 股 `stockpro.v1`
+  `initialize/handle_data` 模板新建策略，编辑时写入带 `parent_version_id` 的不可变新版本，
+  原“删除”改为归档且保留历史版本与 `strategy_validation_runs`。后端拒绝非 CN 市场、危险
+  import/网络/文件/数据库能力、属性/下标动态调用、缺失生命周期和错误函数签名；认证开启时
+  写端点要求 admin，MCP Token 还必须具备 `W` scope。新版本不覆盖 legacy 脚本文本，
+  `asset_class` 仅允许 stock/ETF，标的必须为六位代码加 `.SH/.SZ/.BJ`，资金与周期强制 CNY/1D。
+  PostgreSQL 真实 schema 上使用强制 rollback 连接验证 POST/PUT/DELETE SQL 合同，响应分别为
+  201/200/200，探针行最终为 0，既有策略 224 仍保持唯一 draft 版本。真实浏览器确认 78 个策略、
+  新建入口、A 股市场/标的/API 提示与安全模板可见，API 错误和 console error 均为 0；未提交表单，
+  未污染策略或 Paper 历史。当前仍未推送、未合并、未部署。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

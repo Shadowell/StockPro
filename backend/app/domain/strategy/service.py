@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 from typing import Dict, Optional
 
 from app.domain.strategy.repository import StrategyRepository
+from app.domain.strategy.validation import validate_strategy_python
 
 
 class StrategyDomainService:
+    A_SHARE_SYMBOL = re.compile(r"^\d{6}\.(?:SH|SZ|BJ)$")
     def __init__(self, repository: StrategyRepository | None = None) -> None:
         self.repository = repository or StrategyRepository()
 
@@ -45,7 +48,7 @@ class StrategyDomainService:
             },
             "status": status,
             "exchange": "CN",
-            "symbols": [],
+            "symbols": list((row.get("parameter_schema") or {}).get("symbols") or []),
             "created_at": row.get("created_at"),
             "updated_at": row.get("updated_at"),
         }
@@ -77,6 +80,61 @@ class StrategyDomainService:
     async def get(self, strategy_id: int | str) -> Optional[dict]:
         row = await asyncio.to_thread(self.repository.get_strategy, strategy_id)
         return self._view(row) if row else None
+
+    @staticmethod
+    def _write_payload(payload: dict, *, current: dict | None = None) -> tuple[dict, dict]:
+        name = str(payload.get("name") or (current or {}).get("name") or "").strip()
+        code = str(payload.get("script_content") or (current or {}).get("script_content") or "")
+        if not name:
+            raise ValueError("策略名称必填")
+        if not code.strip():
+            raise ValueError("策略代码必填")
+        validation = validate_strategy_python(code)
+        if not validation["valid"]:
+            first = validation["issues"][0]
+            raise ValueError(f"策略代码未通过验证：{first['message']}")
+        config = dict(payload.get("config") or payload.get("parameter_schema") or (current or {}).get("parameter_schema") or {})
+        asset_class = str(config.get("asset_class") or "stock").lower()
+        if asset_class not in {"stock", "etf"}:
+            raise ValueError("asset_class 仅支持 stock 或 etf")
+        symbols = [str(item).strip().upper() for item in (payload.get("symbols") or config.get("symbols") or []) if str(item).strip()]
+        invalid_symbols = [symbol for symbol in symbols if not StrategyDomainService.A_SHARE_SYMBOL.fullmatch(symbol)]
+        if invalid_symbols:
+            raise ValueError(f"无效 A 股标的：{invalid_symbols[0]}")
+        config.update(
+            {
+                "asset_class": asset_class,
+                "timeframe": "1d",
+                "capital": "1000000CNY",
+                "symbols": symbols,
+            }
+        )
+        return {
+            "name": name,
+            "description": str(payload.get("description", (current or {}).get("description") or "")),
+            "script_content": code,
+            "parameter_schema": config,
+            "data_dependencies": ["daily_bars"],
+        }, validation
+
+    async def create(self, payload: dict) -> dict:
+        normalized, validation = self._write_payload(payload)
+        row = await asyncio.to_thread(self.repository.create_strategy, normalized, validation)
+        return self._view(row)
+
+    async def update(self, strategy_id: int | str, payload: dict) -> dict:
+        current = await asyncio.to_thread(self.repository.get_strategy, strategy_id)
+        if not current:
+            raise ValueError("策略不存在")
+        normalized, validation = self._write_payload(payload, current=current)
+        row = await asyncio.to_thread(self.repository.create_version, strategy_id, normalized, validation)
+        return self._view(row)
+
+    async def archive(self, strategy_id: int | str) -> dict:
+        archived = await asyncio.to_thread(self.repository.archive_strategy, strategy_id)
+        if not archived:
+            raise ValueError("策略不存在")
+        return {"archived": True, "strategy_id": strategy_id}
 
 
 strategy_domain_service = StrategyDomainService()

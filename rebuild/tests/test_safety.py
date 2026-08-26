@@ -82,7 +82,7 @@ def test_imported_repository_has_no_active_unsafe_surface() -> None:
     assert report.quarantined_source_findings >= 0
 
 
-def test_direct_port_boots_only_write_free_safety_and_a_share_market_routes(
+def test_direct_port_boots_only_safe_a_share_routes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://stockpro@127.0.0.1/stockpro")
@@ -115,6 +115,14 @@ def test_direct_port_boots_only_write_free_safety_and_a_share_market_routes(
     assert not any(path.startswith(("/api/live", "/api/trading", "/api/arbitrage")) for path in paths)
     assert not any(path.startswith(("/api/v2/trading", "/api/v2/funding")) for path in paths)
     assert not any(path.startswith(("/api/v2/live/deploy", "/api/v2/live/start", "/api/v2/live/positions/close")) for path in paths)
+
+    strategy_methods = {
+        method
+        for route in create_app().routes
+        if route.path == "/api/v2/strategies"
+        for method in (route.methods or set())
+    }
+    assert {"GET", "POST"}.issubset(strategy_methods)
 
 
 def test_current_health_is_truthful_and_write_free(

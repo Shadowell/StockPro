@@ -15,6 +15,7 @@ import StrategyParameterSections from '../components/StrategyParameterSections';
 import { getStrategyParameterSections } from '../utils/strategyConfigDisplay';
 import { formatTimeframeLabel } from '../utils/timeframe';
 import { SELECTED_SEGMENT_CLASS, SELECTED_SEGMENT_COUNT_CLASS } from '../utils/selectionStyles';
+import { useAuth } from '../auth/AuthProvider';
 
 function isStrategyRunningOrPaused(status: string | undefined): boolean {
   return status === 'running' || status === 'paused';
@@ -23,7 +24,7 @@ function isStrategyRunningOrPaused(status: string | undefined): boolean {
 // ============================================
 // 策略模板 — 基于 BaseStrategy 异步架构
 // ============================================
-const STRATEGY_TEMPLATES = [
+export const BITPRO_SOURCE_STRATEGY_TEMPLATES = [
   {
     key: 'kairos_30m_horizon_dca',
     name: 'Kairos 30分钟视界 DCA（1m）',
@@ -199,6 +200,105 @@ class MyStrategy(BaseStrategy):
   },
 ];
 
+const STRATEGY_TEMPLATES = [
+  {
+    key: 'a_share_momentum',
+    name: 'A 股日线动量轮动',
+    category: '动量趋势',
+    difficulty: '入门',
+    description: '每周选择 20 日动量最强的 A 股标的，按等权方式调仓；使用沪深 300 基准和 A 股成本。',
+    tags: ['A股', '日线', '动量'],
+    code: `"""A 股日线动量轮动模板。"""
+LOOKBACK = 20
+TOP_N = 5
+
+def initialize(context):
+    set_benchmark("000300.SH")
+    set_option("avoid_future_data", True)
+    set_order_cost(open_tax=0.0, close_tax=0.0005, commission=0.0003, min_commission=5.0)
+    set_slippage(0.001)
+    run_weekly(rebalance)
+
+def handle_data(context, data):
+    record(held=len(context.portfolio.positions))
+
+def rebalance(context):
+    ranked = []
+    for symbol in context.universe:
+        closes = history(symbol, LOOKBACK + 1, "1d", "close")
+        if len(closes) < LOOKBACK + 1 or float(closes[0]) <= 0:
+            continue
+        ranked.append(((float(closes[-1]) / float(closes[0])) - 1.0, symbol))
+    targets = [item[1] for item in sorted(ranked, reverse=True)[:TOP_N]]
+    for symbol in list(context.portfolio.positions):
+        if symbol not in targets:
+            order_target_percent(symbol, 0.0)
+    weight = 1.0 / len(targets) if targets else 0.0
+    for symbol in targets:
+        order_target_percent(symbol, weight)
+`,
+    defaultConfig: { asset_class: 'stock', timeframe: '1d', capital: '1000000CNY' },
+  },
+  {
+    key: 'a_share_mean_reversion',
+    name: 'A 股五日超跌反弹',
+    category: '均值回归',
+    difficulty: '进阶',
+    description: '在 A 股候选池中选择五日跌幅较大的标的，并通过日线调度和等权上限控制风险。',
+    tags: ['A股', '日线', '均值回归'],
+    code: `"""A 股五日超跌反弹模板。"""
+LOOKBACK = 5
+TOP_N = 5
+
+def initialize(context):
+    set_benchmark("000300.SH")
+    set_option("avoid_future_data", True)
+    set_order_cost(open_tax=0.0, close_tax=0.0005, commission=0.0003, min_commission=5.0)
+    set_slippage(0.001)
+    run_daily(rebalance)
+
+def handle_data(context, data):
+    record(held=len(context.portfolio.positions))
+
+def rebalance(context):
+    ranked = []
+    for symbol in context.universe:
+        closes = history(symbol, LOOKBACK + 1, "1d", "close")
+        if len(closes) < LOOKBACK + 1 or float(closes[0]) <= 0:
+            continue
+        ranked.append(((float(closes[-1]) / float(closes[0])) - 1.0, symbol))
+    targets = [item[1] for item in sorted(ranked)[:TOP_N]]
+    for symbol in list(context.portfolio.positions):
+        if symbol not in targets:
+            order_target_percent(symbol, 0.0)
+    weight = 1.0 / len(targets) if targets else 0.0
+    for symbol in targets:
+        order_target_percent(symbol, weight)
+`,
+    defaultConfig: { asset_class: 'stock', timeframe: '1d', capital: '1000000CNY' },
+  },
+  {
+    key: 'empty',
+    name: 'A 股空白策略模板',
+    category: '自定义',
+    difficulty: '自定义',
+    description: '从 stockpro.v1 安全策略契约开始，使用日线、人民币和 A 股交易规则。',
+    tags: ['A股', 'stockpro.v1', '日线'],
+    code: `"""A 股自定义策略。"""
+
+def initialize(context):
+    set_benchmark("000300.SH")
+    set_option("avoid_future_data", True)
+    set_order_cost(open_tax=0.0, close_tax=0.0005, commission=0.0003, min_commission=5.0)
+    set_slippage(0.001)
+
+def handle_data(context, data):
+    record(held=len(context.portfolio.positions))
+`,
+    defaultConfig: { asset_class: 'stock', timeframe: '1d', capital: '1000000CNY' },
+  },
+];
+
 const EMPTY_STRATEGY_TEMPLATE = STRATEGY_TEMPLATES.find(t => t.key === 'empty')!;
 const STRATEGY_PAGE_SIZE = 18;
 
@@ -318,7 +418,9 @@ function strategyNameColorClass(assetClass: StrategyAssetClass): string {
 // ============================================
 export default function Strategy() {
   const navigate = useNavigate();
-  const canWriteStrategy = false;
+  const { isAdmin } = useAuth();
+  const canWriteStrategy = isAdmin;
+  const canUseAiStrategy = false;
   const [strategies, setStrategies] = useState<StrategyType[]>([]);
   const [isLoadingStrategies, setIsLoadingStrategies] = useState(false);
   const [strategyListError, setStrategyListError] = useState<string | null>(null);
@@ -374,7 +476,7 @@ export default function Strategy() {
     name: '',
     description: '',
     scriptContent: EMPTY_STRATEGY_TEMPLATE.code,
-    exchange: 'okx',
+    exchange: 'CN',
     symbols: '600519.SH',
     config: JSON.stringify(EMPTY_STRATEGY_TEMPLATE.defaultConfig, null, 2),
   });
@@ -616,7 +718,7 @@ export default function Strategy() {
   const runDeleteStrategy = async () => {
     if (!canWriteStrategy) {
       setDeleteTarget(null);
-      setMessage({ type: 'error', text: '访客只能查看策略，不能删除策略' });
+      setMessage({ type: 'error', text: '访客只能查看策略，不能归档策略' });
       return;
     }
     if (!deleteTarget) return;
@@ -630,7 +732,7 @@ export default function Strategy() {
     setDeleteTarget(null);
     try {
       await strategyApi.delete(id);
-      setMessage({ type: 'success', text: `策略「${name}」已删除` });
+      setMessage({ type: 'success', text: `策略「${name}」已归档，历史版本仍保留` });
       refreshStrategyPage();
     } catch (err: unknown) {
       const e = err as {
@@ -639,7 +741,7 @@ export default function Strategy() {
       const msg =
         e?.response?.data?.error?.message ||
         (typeof e?.response?.data?.detail === 'string' ? e.response.data.detail : null) ||
-        '删除失败';
+        '归档失败';
       setMessage({ type: 'error', text: msg });
     }
   };
@@ -666,7 +768,7 @@ export default function Strategy() {
         </div>
         {canWriteStrategy && (
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowAiGen(!showAiGen)}
+            {canUseAiStrategy && <button onClick={() => setShowAiGen(!showAiGen)}
               className={clsx(
                 'inline-flex h-11 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition-colors',
                 showAiGen
@@ -674,7 +776,7 @@ export default function Strategy() {
                   : 'border-purple-500/30 bg-purple-500/[0.12] text-purple-200 hover:border-purple-500/45 hover:bg-purple-500/[0.18] hover:text-purple-100'
               )}>
               <Zap className="w-4 h-4" />AI 写策略
-            </button>
+            </button>}
             <button onClick={() => handleCreateFromTemplate(EMPTY_STRATEGY_TEMPLATE)}
               className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-colors">
               <Plus className="w-4 h-4" />新建策略
@@ -684,7 +786,7 @@ export default function Strategy() {
       </div>
 
       {/* AI 写策略面板 */}
-      {showAiGen && canWriteStrategy && (
+      {showAiGen && canWriteStrategy && canUseAiStrategy && (
         <div className="bg-gradient-to-r from-purple-500/5 to-blue-500/5 border border-purple-500/20 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <Zap className="w-4 h-4 text-purple-400" />
@@ -991,7 +1093,7 @@ export default function Strategy() {
                                   setDeleteTarget({ id: s.id, name: s.name });
                                 }}
                                 className="opacity-0 group-hover:opacity-100 p-1 text-gray-600 hover:text-red-400 transition-all"
-                                title="删除策略">
+                                title="归档策略">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
@@ -1348,13 +1450,13 @@ export default function Strategy() {
               className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none resize-none" />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">交易所</label>
+            <label className="block text-xs text-gray-400 mb-1.5">市场</label>
             <CryptoSelect value={formData.exchange} onChange={e => setFormData({ ...formData, exchange: e.target.value })}>
-              <option value="okx">OKX</option>
+              <option value="CN">A 股</option>
             </CryptoSelect>
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">交易对（逗号分隔）</label>
+            <label className="block text-xs text-gray-400 mb-1.5">A 股标的（逗号分隔）</label>
             <input type="text" value={formData.symbols} onChange={e => setFormData({ ...formData, symbols: e.target.value })}
               placeholder="600519.SH, 000001.SZ"
               className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
@@ -1370,12 +1472,11 @@ export default function Strategy() {
           <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
             <div className="text-[10px] text-blue-400 font-semibold mb-1.5">可用 API</div>
             <div className="text-[10px] text-gray-400 space-y-1 font-mono">
-              <div><span className="text-green-400">buy</span>(symbol, amount)</div>
-              <div><span className="text-red-400">sell</span>(symbol, amount)</div>
-              <div><span className="text-blue-400">get_klines</span>(symbol, tf, n)</div>
-              <div><span className="text-blue-400">get_ticker</span>(symbol)</div>
-              <div><span className="text-yellow-400">log</span>(message)</div>
-              <div><span className="text-gray-500">config</span> · <span className="text-gray-500">symbols</span></div>
+              <div><span className="text-blue-400">history</span>(symbol, count, "1d", field)</div>
+              <div><span className="text-blue-400">get_current_data</span>()</div>
+              <div><span className="text-green-400">order_target_percent</span>(symbol, weight)</div>
+              <div><span className="text-yellow-400">record</span>(metric=value)</div>
+              <div><span className="text-gray-500">set_benchmark</span> · <span className="text-gray-500">set_order_cost</span></div>
             </div>
           </div>
         </div>
@@ -1424,8 +1525,8 @@ export default function Strategy() {
       <ThemeDialog
         open={deleteBlockedOpen}
         variant="alert"
-        title="无法删除"
-        content="该策略正在运行或已暂停。请前往「模拟/实盘」页面停止策略后再删除。"
+        title="无法归档"
+        content="该策略正在运行或已暂停。请前往「模拟」页面暂停策略后再归档。"
         tone="warning"
         confirmText="我知道了"
         onClose={() => setDeleteBlockedOpen(false)}
@@ -1434,19 +1535,19 @@ export default function Strategy() {
       <ThemeDialog
         open={deleteTarget !== null}
         variant="confirm"
-        title="删除策略"
+        title="归档策略"
         content={
           deleteTarget
-            ? `确定要删除策略「${deleteTarget.name}」吗？删除后不可恢复。`
+            ? `确定要归档策略「${deleteTarget.name}」吗？历史版本和验证记录会继续保留。`
             : ''
         }
         tone="danger"
-        confirmText="删除"
+        confirmText="归档"
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => void runDeleteStrategy()}
       />
 
-      {/* 启动策略请前往「模拟/实盘」模块 */}
+      {/* 启动策略请前往「模拟」模块 */}
     </div>
   );
 }
