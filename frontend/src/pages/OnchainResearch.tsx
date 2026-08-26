@@ -841,7 +841,7 @@ export default function OnchainResearch() {
         <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-normal text-white"><Network className="h-6 w-6 text-cyan-300" />A 股基本面与资金流</h1>
-            <div className="mt-1 text-xs text-gray-500">保留 BitPro 研究页入口，数据域已切换为 A 股 PostgreSQL 只读数据</div>
+            <div className="mt-1 text-xs text-gray-500">研究页数据域已切换为 A 股 PostgreSQL 只读数据</div>
           </div>
           <button type="button" onClick={() => void loadSummary()} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-crypto-border bg-crypto-card px-3 text-sm font-semibold text-gray-200 hover:border-cyan-400/45 hover:text-cyan-100">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}刷新</button>
         </header>

@@ -3789,6 +3789,11 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
   运行时断链。按原 StockPro PostgreSQL-only 实现恢复 SSH ControlMaster 隧道脚本，并新增真实
   行为测试覆盖无 SSH 主机时的直接 PostgreSQL 配置；6 项运行依赖测试通过。随后 `./restart.sh`
   成功建立 `127.0.0.1:55432` 隔离库隧道，4445/4444 均完成干净启动和健康检查。
+- 首次生产认证截图在入口识别阶段超时；真实 DOM 证明活动登录页和 HTML 标题仍残留
+  “BitPro / 加密货币”，不是截图器故障。保持 BitPro 原版式和组件结构不变，只把活动产品标题、
+  登录门禁、Logo 字母及其他用户可见产品名机械替换为 `StockPro / A股`，并清理活动 AI 研究文案
+  中的 USDT 永续标的提示。新增真实浏览器品牌合同，强制标题、登录 heading 和 Logo 可访问名称
+  全部为 StockPro，且登录页不再出现 BitPro。
 
 - BitPro 本地 `main` 前进到 `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`。相对 `aecd03f7` 仅新增 `docs/research/strategy-analysis-2026-08-26-0008-favorites-core-loss-attribution.md` 并更新 BitPro 文档索引/进度，前端、后端、packages、scripts 和 tests 应用树无变化。
 - StockPro 来源测试、导入器、完成审计、活动合同和总控计划已重新钉住该提交；未静默漂移，也未把 BitPro 未提交工作区作为来源。

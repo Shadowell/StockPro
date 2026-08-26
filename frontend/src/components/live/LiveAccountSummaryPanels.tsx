@@ -333,7 +333,7 @@ function orderSourceLabel(order: LiveExecutionOrder): { primary: string; seconda
   if (order.bitproSource === 'strategy' && order.sourceStrategyName) {
     return {
       primary: order.sourceStrategyName,
-      secondary: 'BitPro 策略信号',
+      secondary: 'StockPro 策略信号',
       className: 'text-blue-200',
     };
   }

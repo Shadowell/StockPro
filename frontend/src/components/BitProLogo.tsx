@@ -3,7 +3,7 @@ type BitProLogoProps = {
   title?: string;
 };
 
-export function BitProLogo({ className = 'h-10 w-10', title = 'BitPro' }: BitProLogoProps) {
+export function BitProLogo({ className = 'h-10 w-10', title = 'StockPro' }: BitProLogoProps) {
   return (
     <svg
       className={className}
@@ -40,7 +40,7 @@ export function BitProLogo({ className = 'h-10 w-10', title = 'BitPro' }: BitPro
         strokeWidth="2.4"
         paintOrder="stroke"
       >
-        B
+        S
       </text>
     </svg>
   );

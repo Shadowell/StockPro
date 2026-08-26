@@ -216,7 +216,7 @@ function CandidateCard({ candidate, onRequestPaper, onView }: { candidate: Row; 
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-gray-100" title={strategyName}>{strategyName}</div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
-            <span>BitPro #{short(field(candidate, 'bitproStrategyId', 'bitpro_strategy_id'))}</span>
+            <span>StockPro #{short(field(candidate, 'bitproStrategyId', 'bitpro_strategy_id'))}</span>
             <span>版本 {short(field(candidate, 'variantId', 'variant_id'))}</span>
             <span>配置 {short(field(field(candidate, 'parameters'), 'configVersion', 'config_version', 'version'))}</span>
           </div>
@@ -357,7 +357,7 @@ export default function ResearchWorkbench() {
         ? response.symbols.map((symbol) => String(symbol).trim()).filter(Boolean)
         : [];
       if (!received.length) {
-        setMandateSymbolsError('BitPro 市场接口未返回可选 USDT 永续标的。');
+        setMandateSymbolsError('StockPro 市场接口未返回可选 A 股标的。');
         return;
       }
       setMandateSymbolOptions(Array.from(new Set([...DEFAULT_MANDATE_SYMBOLS, ...received])).sort((left, right) => left.localeCompare(right)));
@@ -511,7 +511,7 @@ export default function ResearchWorkbench() {
           return (
             <article key={id} className="rounded-lg border border-crypto-border bg-crypto-bg p-3">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0"><div className="truncate text-sm font-semibold text-gray-100">{short(field(promotion, 'strategyKey', 'strategy_key'))}</div><div className="mt-1 text-[11px] text-gray-500">BitPro #{short(field(promotion, 'bitproStrategyId', 'bitpro_strategy_id'))} · 人工审批</div></div>
+                <div className="min-w-0"><div className="truncate text-sm font-semibold text-gray-100">{short(field(promotion, 'strategyKey', 'strategy_key'))}</div><div className="mt-1 text-[11px] text-gray-500">StockPro #{short(field(promotion, 'bitproStrategyId', 'bitpro_strategy_id'))} · 人工审批</div></div>
                 <span className={clsx('shrink-0 rounded border px-2 py-0.5 text-[10px]', statusTone(field(promotion, 'status')))}>{statusLabel(field(promotion, 'status'))}</span>
               </div>
               <div className="mt-2 text-[11px] text-gray-500">申请原因：{short(field(promotion, 'requestReason', 'request_reason'))}</div>
@@ -545,13 +545,13 @@ export default function ResearchWorkbench() {
 
   const renderSelectedStage = () => {
     const stage = STAGES.find((item) => item.id === selectedStage)!;
-    if (loading) return <EmptyStage>正在读取 BitPro 代理返回的 HyperTrade 真实对象；不会显示演示数据。</EmptyStage>;
+    if (loading) return <EmptyStage>正在读取 StockPro 代理返回的 HyperTrade 真实对象；不会显示演示数据。</EmptyStage>;
     if (field(connection, 'status') === 'unavailable') return <EmptyStage>{short(field(connection, 'error'))}</EmptyStage>;
     if (selectedStage === 'proposal') {
       return (
         <div className="rounded-lg border border-blue-400/20 bg-blue-400/5 p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0"><div className="text-sm font-semibold text-gray-100">告诉 HT 你想研究什么</div><p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-400">只需描述方向或假设。BitPro 会在后台建立受控研究范围，HT 自动完成规格、数据/代码校验、回测和验证。</p></div>
+            <div className="min-w-0"><div className="text-sm font-semibold text-gray-100">告诉 HT 你想研究什么</div><p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-400">只需描述方向或假设。StockPro 会在后台建立受控研究范围，HT 自动完成规格、数据/代码校验、回测和验证。</p></div>
             <button type="button" onClick={openProposalDialog} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-500"><Sparkles size={14} />提交研究提议</button>
           </div>
           <div className="mt-4 grid grid-cols-1 gap-2 text-[11px] text-gray-400 sm:grid-cols-3"><div className="rounded border border-crypto-border bg-crypto-bg px-3 py-2">1. 选择标的并写提议</div><div className="rounded border border-crypto-border bg-crypto-bg px-3 py-2">2. HT 自动研究与回测</div><div className="rounded border border-crypto-border bg-crypto-bg px-3 py-2">3. 你根据结果决定模拟盘</div></div>
@@ -613,7 +613,7 @@ export default function ResearchWorkbench() {
             <div className="mt-1 overflow-hidden rounded-xl border border-crypto-border bg-crypto-bg shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
               <div className="flex items-center gap-2 border-b border-crypto-border px-2"><Search size={14} className="shrink-0 text-gray-500" aria-hidden="true" /><input type="search" value={mandateSymbolSearch} onChange={(event) => setMandateSymbolSearch(event.target.value)} className="h-9 min-w-0 flex-1 bg-transparent text-sm text-gray-100 outline-none placeholder:text-gray-600" placeholder="搜索 BTC、ETH 或完整合约标的" aria-label="搜索真实 USDT 永续标的" /></div>
               <div className="max-h-40 min-h-[6rem] overflow-y-auto p-1" aria-live="polite">
-                {mandateSymbolsLoading ? <p className="px-2 py-3 text-xs text-gray-500">正在读取 BitPro 市场接口中的真实 USDT 永续标的…</p> : mandateSymbolsError ? <p role="alert" className="px-2 py-3 text-xs leading-relaxed text-amber-100">{mandateSymbolsError}</p> : visibleMandateSymbols.length ? visibleMandateSymbols.map((symbol) => {
+                {mandateSymbolsLoading ? <p className="px-2 py-3 text-xs text-gray-500">正在读取 StockPro 市场接口中的真实 A 股标的…</p> : mandateSymbolsError ? <p role="alert" className="px-2 py-3 text-xs leading-relaxed text-amber-100">{mandateSymbolsError}</p> : visibleMandateSymbols.length ? visibleMandateSymbols.map((symbol) => {
                   const selected = mandateSymbols.includes(symbol);
                   return <button key={symbol} type="button" aria-pressed={selected} onClick={() => toggleMandateSymbol(symbol)} className={clsx('flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs transition-colors', selected ? SELECTED_SEGMENT_CLASS : 'text-gray-300 hover:bg-white/[0.045] hover:text-white')}><span className={clsx('inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border', selected ? 'border-yellow-400 bg-yellow-500 text-yellow-950' : 'border-crypto-border')}>{selected && <Check size={11} />}</span><span className="min-w-0 truncate font-mono" title={symbol}>{symbol}</span></button>;
                 }) : <p className="px-2 py-3 text-xs text-gray-500">没有匹配的真实标的；请修改搜索词或手动加入完整统一格式。</p>}
