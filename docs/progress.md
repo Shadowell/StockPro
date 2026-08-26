@@ -37,6 +37,11 @@
   `/api/v2/system/health` 和 `/api/v2/market/native-sentiment`，从 PostgreSQL 读取证券数、涨跌家数、
   成交额、平均涨跌、日线记录数和交易日水位。原 OKX/USDT/BTC/资金费率数据请求与 WebSocket
   已停用，榜单和大盘情绪结构保留并改为 A 股成交额/涨幅/跌幅榜和市场广度。
+- BitPro 原数据中心、FactorLab 和复盘中心已恢复真实只读数据：
+  `/api/v2/sync` 展示 17,362 条 A 股日线、5,544 个标的和 34 个封存数据快照；
+  `/api/v2/factorlab` 映射 112 个真实因子定义和 7 个封存因子快照；`/api/v2/review`
+  用当前 A 股回测证据生成分组、好坏榜、回撤和待办。数据/Factor 页的 Provider、同步、研究写入均默认禁用，
+  不在 GET 时拉取外部数据。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

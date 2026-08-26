@@ -20,6 +20,10 @@ from app.api.v2.endpoints.live import router as paper_router
 from app.api.v2.endpoints.monitor import router as monitor_router
 from app.api.v2.endpoints.system import router as system_router
 from app.api.v2.endpoints.native_sentiment import router as native_sentiment_router
+from app.api.v2.endpoints.sync import router as sync_router
+from app.api.v2.endpoints.factorlab import router as factorlab_router
+from app.api.v2.endpoints.settings import router as settings_router
+from app.api.v2.endpoints.review import router as review_router
 
 
 @asynccontextmanager
@@ -79,6 +83,10 @@ def create_app() -> FastAPI:
     app.include_router(monitor_router, prefix="/api/v2/monitor", tags=["A-share Monitor"])
     app.include_router(system_router, prefix="/api/v2/system", tags=["StockPro System"])
     app.include_router(native_sentiment_router, prefix="/api/v2/market", tags=["A-share Breadth"])
+    app.include_router(sync_router, prefix="/api/v2/sync", tags=["A-share Data"])
+    app.include_router(factorlab_router, prefix="/api/v2/factorlab", tags=["A-share Factors"])
+    app.include_router(settings_router, prefix="/api/v2/settings", tags=["StockPro Settings"])
+    app.include_router(review_router, prefix="/api/v2/review", tags=["A-share Review"])
 
     return app
 
