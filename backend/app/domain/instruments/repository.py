@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from app.core.config import settings
 
@@ -47,6 +50,8 @@ class AshareInstrumentRepository:
         instruments: list[dict[str, Any]],
         daily_rows: list[dict[str, Any]],
         trade_date: str | None,
+        *,
+        auxiliary_datasets: dict[str, list[dict[str, Any]]] | None = None,
     ) -> dict[str, Any]:
         instrument_values = [
             (
@@ -130,14 +135,265 @@ class AshareInstrumentRepository:
                     """,
                     (trade_date, len(instruments), len(daily_rows), run_id),
                 )
+                dataset_snapshot = self._publish_research_datasets(
+                    cursor,
+                    run_id=run_id,
+                    instruments=instruments,
+                    daily_rows=daily_rows,
+                    trade_date=trade_date,
+                    auxiliary_datasets=auxiliary_datasets or {},
+                )
             connection.commit()
-        return {
+        result = {
             "run_id": run_id,
             "status": "success",
             "instrument_count": len(instruments),
             "daily_count": len(daily_rows),
             "trade_date": trade_date,
         }
+        if dataset_snapshot:
+            result["dataset_snapshot"] = dataset_snapshot
+        return result
+
+    @staticmethod
+    def _jsonable(value: Any) -> Any:
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {str(key): AshareInstrumentRepository._jsonable(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [AshareInstrumentRepository._jsonable(item) for item in value]
+        return value
+
+    @classmethod
+    def _content_hash(cls, value: Any) -> str:
+        payload = json.dumps(cls._jsonable(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    @staticmethod
+    def _dataset_id(cursor, code: str) -> int:
+        cursor.execute("SELECT id FROM dataset_definitions WHERE code=%s", (code,))
+        row = cursor.fetchone()
+        if not row:
+            raise RuntimeError(f"数据集未注册：{code}")
+        return int(row["id"])
+
+    @staticmethod
+    def _record_symbol_count(rows: list[dict[str, Any]]) -> int:
+        return len({str(row.get("symbol") or "").strip() for row in rows if str(row.get("symbol") or "").strip()})
+
+    def _publish_partition(
+        self,
+        cursor,
+        *,
+        dataset_code: str,
+        partition_key: str,
+        rows: list[dict[str, Any]],
+        trade_date: str,
+        request_params: dict[str, Any],
+        allow_empty: bool = False,
+    ) -> dict[str, Any]:
+        if not rows and not allow_empty:
+            raise RuntimeError(f"{dataset_code} 没有可发布的规范化记录")
+        normalized_rows = [self._jsonable(dict(row)) for row in rows]
+        normalized_rows.sort(key=self._content_hash)
+        content_hash = self._content_hash(normalized_rows)
+        dataset_id = self._dataset_id(cursor, dataset_code)
+        cursor.execute(
+            """
+            INSERT INTO source_entitlements(dataset_code,source,permission_state,cache_policy,export_policy,contract_version,checked_at)
+            VALUES (%s,'tushare','available','local_pg_research_only','disabled','ashare.dataset.v1',NOW())
+            ON CONFLICT(dataset_code,source) DO UPDATE SET
+                permission_state='available', cache_policy=EXCLUDED.cache_policy,
+                export_policy=EXCLUDED.export_policy, contract_version=EXCLUDED.contract_version,
+                checked_at=NOW()
+            """,
+            (dataset_code,),
+        )
+        cursor.execute(
+            """
+            INSERT INTO source_fetch_runs(
+                dataset_id,requested_source,actual_source,request_params,schema_version,
+                finished_at,status,row_count,response_hash
+            ) VALUES (%s,'tushare','tushare',%s,'ashare.dataset.v1',NOW(),'success',%s,%s)
+            RETURNING id
+            """,
+            (dataset_id, Jsonb(self._jsonable(request_params)), len(normalized_rows), content_hash),
+        )
+        fetch_run_id = int(cursor.fetchone()["id"])
+        cursor.execute(
+            """
+            INSERT INTO dataset_partitions(
+                dataset_id,fetch_run_id,partition_key,start_date,end_date,symbol_count,row_count,
+                content_hash,available_at,knowledge_cutoff_at,status
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW(),'sealed')
+            ON CONFLICT(dataset_id,partition_key,content_hash) DO NOTHING
+            RETURNING id
+            """,
+            (
+                dataset_id,
+                fetch_run_id,
+                partition_key,
+                trade_date,
+                trade_date,
+                self._record_symbol_count(normalized_rows),
+                len(normalized_rows),
+                content_hash,
+            ),
+        )
+        inserted = cursor.fetchone()
+        if inserted:
+            partition_id = int(inserted["id"])
+            if normalized_rows:
+                cursor.executemany(
+                    """
+                    INSERT INTO dataset_partition_records(partition_id,record_ordinal,record_hash,payload)
+                    VALUES (%s,%s,%s,%s)
+                    ON CONFLICT(partition_id,record_ordinal) DO NOTHING
+                    """,
+                    [
+                        (partition_id, ordinal, self._content_hash(row), Jsonb(row))
+                        for ordinal, row in enumerate(normalized_rows, start=1)
+                    ],
+                )
+        else:
+            cursor.execute(
+                """
+                SELECT id FROM dataset_partitions
+                WHERE dataset_id=%s AND partition_key=%s AND content_hash=%s
+                """,
+                (dataset_id, partition_key, content_hash),
+            )
+            partition_id = int(cursor.fetchone()["id"])
+        cursor.execute(
+            """
+            INSERT INTO dataset_watermarks(dataset_id,last_published_trade_date,last_fetch_run_id,updated_at)
+            VALUES (%s,%s,%s,NOW())
+            ON CONFLICT(dataset_id) DO UPDATE SET
+                last_published_trade_date=EXCLUDED.last_published_trade_date,
+                last_fetch_run_id=EXCLUDED.last_fetch_run_id,
+                updated_at=NOW()
+            """,
+            (dataset_id, trade_date, fetch_run_id),
+        )
+        return {
+            "dataset_code": dataset_code,
+            "partition_id": partition_id,
+            "content_hash": content_hash,
+            "row_count": len(normalized_rows),
+            "symbol_count": self._record_symbol_count(normalized_rows),
+        }
+
+    def _seal_research_snapshot(self, cursor, trade_date: str, partitions: list[dict[str, Any]]) -> dict[str, Any]:
+        ordered = sorted(partitions, key=lambda item: item["dataset_code"])
+        manifest_hash = self._content_hash([
+            {"dataset_code": item["dataset_code"], "partition_id": item["partition_id"], "content_hash": item["content_hash"]}
+            for item in ordered
+        ])
+        name = f"ashare-research-{trade_date}-{manifest_hash[:12]}"
+        cursor.execute(
+            """
+            INSERT INTO dataset_snapshots(name,status,knowledge_cutoff_at,manifest_hash)
+            VALUES (%s,'draft',NOW(),%s)
+            ON CONFLICT(name) DO NOTHING
+            RETURNING id
+            """,
+            (name, manifest_hash),
+        )
+        row = cursor.fetchone()
+        if row:
+            snapshot_id = int(row["id"])
+            cursor.executemany(
+                """
+                INSERT INTO dataset_snapshot_items(snapshot_id,partition_id,dataset_code,content_hash)
+                VALUES (%s,%s,%s,%s)
+                ON CONFLICT(snapshot_id,partition_id) DO NOTHING
+                """,
+                [
+                    (snapshot_id, item["partition_id"], item["dataset_code"], item["content_hash"])
+                    for item in ordered
+                ],
+            )
+            cursor.execute(
+                "UPDATE dataset_snapshots SET status='sealed', sealed_at=NOW() WHERE id=%s AND status='draft'",
+                (snapshot_id,),
+            )
+        else:
+            cursor.execute("SELECT id FROM dataset_snapshots WHERE name=%s", (name,))
+            snapshot_id = int(cursor.fetchone()["id"])
+        return {
+            "id": snapshot_id,
+            "name": name,
+            "status": "sealed",
+            "manifest_hash": manifest_hash,
+            "dataset_codes": [item["dataset_code"] for item in ordered],
+        }
+
+    def _publish_research_datasets(
+        self,
+        cursor,
+        *,
+        run_id: int,
+        instruments: list[dict[str, Any]],
+        daily_rows: list[dict[str, Any]],
+        trade_date: str | None,
+        auxiliary_datasets: dict[str, list[dict[str, Any]]],
+    ) -> dict[str, Any] | None:
+        if not trade_date:
+            return None
+        dataset_rows: dict[str, list[dict[str, Any]]] = {
+            "security_master": [
+                {
+                    "symbol": row["symbol"],
+                    "exchange": row["exchange"],
+                    "name": row["name"],
+                    "asset_class": "stock",
+                    "currency": "CNY",
+                    "lot_size": 100,
+                    "tick_size": 0.01,
+                    "industry": row.get("industry"),
+                    "board": row.get("board"),
+                    "list_status": row.get("list_status"),
+                    "list_date": row.get("list_date"),
+                    "delist_date": row.get("delist_date"),
+                    "source": "tushare.stock_basic",
+                }
+                for row in instruments
+            ],
+            "daily_bars": [
+                {
+                    "symbol": row["symbol"],
+                    "name": row["name"],
+                    "trade_date": row["trade_date"],
+                    "open": row.get("open"),
+                    "high": row.get("high"),
+                    "low": row.get("low"),
+                    "close": row.get("close"),
+                    "volume": row.get("volume"),
+                    "amount": row.get("amount"),
+                    "source": "tushare.daily",
+                }
+                for row in daily_rows
+            ],
+            **auxiliary_datasets,
+        }
+        required_codes = [
+            "security_master", "trade_calendar", "daily_bars", "adj_factor", "daily_basic",
+            "suspensions", "price_limits", "corporate_actions", "benchmark_bars",
+        ]
+        partitions = [
+            self._publish_partition(
+                cursor,
+                dataset_code=code,
+                partition_key=f"{code}:{trade_date}:tushare",
+                rows=dataset_rows.get(code) or [],
+                trade_date=trade_date,
+                request_params={"trigger_run_id": run_id, "trade_date": trade_date, "source": "a_share_daily_sync"},
+                allow_empty=code in {"suspensions", "corporate_actions"},
+            )
+            for code in required_codes
+        ]
+        return self._seal_research_snapshot(cursor, trade_date, partitions)
 
     def fail_run(self, run_id: int, error: Exception) -> None:
         message = str(error)

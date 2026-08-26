@@ -3890,3 +3890,9 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 因子 `tsc`、零警告 lint 和 Mock E2E 通过；pending Rank IC 仍保持 null 并显示原因，页面加载 mutation 0。
 - BitPro 对应盯盘源码 `WatchMarket.tsx`（765 行）与 `LiveAccountSummaryPanels` 已原样导入但未注册；默认 `/watch` 保持当前 A 股五工作区，只读 Paper 信号/订单/成交/规则/告警。TypeScript 与安全审计通过，活动 live 路由仍为 0。
 - BitPro 当前 `App.tsx`、`MainLayout.tsx` 与 `index.css` 已逐字保存为 `_quarantine/BitPro*.disabled` 基线；活动 App/MainLayout 保留 A 股 13 个 Owner 路由和 Paper-only 安全差异。BitPro 的 livePulse、progressShimmer、rowFadeIn 与 reduced-motion 动效已原样补入活动 `index.css`。
+
+## 2026-08-27 首页指标与 A 股研究数据集
+
+- A 股每日同步不再只写业务行情表；同步链路会在同一成功 run 内规范化并发布 `security_master`、`trade_calendar`、`daily_bars`、`adj_factor`、`daily_basic`、`suspensions`、`price_limits`、`corporate_actions`、`benchmark_bars` 九类研究数据分区，写入 fetch run、水位、partition records，并生成 sealed dataset snapshot。允许当日停牌/除权除息为空，其余必需数据集为空时 fail-closed。
+- 首页新增“市场指标看板”，直接接入真实 `/market/phase`、`/market/sector-rps`、`/market/movers` 与 A 股 symbols/instruments；市场阶段、行业 RPS、异动标的、数据可用状态同屏展示，异动和龙头标的按“中文名（代码）”显示，不生成 mock 指标。
+- 验证通过：`npm run check`、`pytest -q` 141 项、`git diff --check`、本地 4445/4444 启动后 `/api/v2/system/health`、前端根页面和 `/api/v2/market/phase` 探测。当前本地研究指标接口返回 `unavailable` 的原因是 `market_phase_results` 等指标结果表尚未迁移到当前运行库。

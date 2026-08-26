@@ -16,20 +16,26 @@ def test_home_uses_market_universe_summary_without_trade_pair_tabs():
     assert "市场大盘" in text
     assert "variant=\"summary\"" in text
     assert "MarketUniversePanel" in text
-    assert "点击榜单标的后进入行情页查看 K 线详情" in text
+    assert "点击榜单标的后进入行情页查看日线详情" in text
     assert "MARKET_TABS" not in text
     assert "market-universe-panel" not in text
     assert "24h 区间" not in text
 
 
-def test_home_has_visible_market_command_shell_and_sector_momentum_panel():
+def test_home_has_visible_a_share_market_command_shell_and_research_metrics():
     home = HOME.read_text(encoding="utf-8")
     heatmap = SECTOR_HEATMAP.read_text(encoding="utf-8")
 
     assert "Market Command" in home
-    assert "OKX PUBLIC DATA" in home
-    assert "USDT-SWAP" in home
-    assert "24H MARKET PULSE" in home
+    assert "POSTGRESQL MARKET DATA" in home
+    assert "CN A-SHARE" in home
+    assert "DAILY MARKET PULSE" in home
+    assert "MarketIntelligencePanel" in home
+    assert "marketApi.getPhase()" in home
+    assert "marketApi.getSectorRps('industry', undefined, HOME_INTEL_LIMIT)" in home
+    assert "marketApi.getMovers(undefined, HOME_INTEL_LIMIT)" in home
+    assert "中文名（代码）" in home
+    assert "return `${name}（${symbol}）`;" in home
     assert "板块动量" in heatmap
     assert "强弱板块" in heatmap
     assert "topMovingSectors" in heatmap

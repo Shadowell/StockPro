@@ -41,17 +41,22 @@ class TushareAshareProvider:
     def latest_open_trade_date(self) -> str:
         today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
         start = today - timedelta(days=14)
-        rows = _records(self.client.trade_cal(
-            exchange="",
-            start_date=start.strftime("%Y%m%d"),
-            end_date=today.strftime("%Y%m%d"),
-            is_open="1",
-            fields="cal_date,is_open",
-        ))
+        rows = self.fetch_trade_calendar(start.strftime("%Y%m%d"), today.strftime("%Y%m%d"), is_open="1")
         dates = sorted(str(row.get("cal_date") or "") for row in rows if str(row.get("cal_date") or ""))
         if not dates:
             raise RuntimeError("TuShare trade_cal 未返回最近开放交易日")
         return dates[-1]
+
+    def fetch_trade_calendar(self, start_date: str, end_date: str, *, is_open: str | None = None) -> list[dict]:
+        params = {
+            "exchange": "",
+            "start_date": start_date,
+            "end_date": end_date,
+            "fields": "exchange,cal_date,is_open,pretrade_date",
+        }
+        if is_open is not None:
+            params["is_open"] = is_open
+        return _records(self.client.trade_cal(**params))
 
     def fetch_daily(self, trade_date: str) -> list[dict]:
         return _records(self.client.daily(
@@ -62,5 +67,39 @@ class TushareAshareProvider:
     def fetch_daily_basic(self, trade_date: str) -> list[dict]:
         return _records(self.client.daily_basic(
             trade_date=trade_date,
-            fields="ts_code,trade_date,turnover_rate,volume_ratio,pe,pb,total_mv,circ_mv",
+            fields="ts_code,trade_date,close,turnover_rate,turnover_rate_f,volume_ratio,pe,pe_ttm,pb,ps,ps_ttm,dv_ratio,dv_ttm,total_mv,circ_mv,limit_status",
         ))
+
+    def fetch_adj_factor(self, trade_date: str) -> list[dict]:
+        return _records(self.client.adj_factor(
+            trade_date=trade_date,
+            fields="ts_code,trade_date,adj_factor",
+        ))
+
+    def fetch_suspensions(self, trade_date: str) -> list[dict]:
+        return _records(self.client.suspend_d(
+            trade_date=trade_date,
+            fields="ts_code,trade_date,suspend_timing,suspend_type",
+        ))
+
+    def fetch_price_limits(self, trade_date: str) -> list[dict]:
+        return _records(self.client.stk_limit(
+            trade_date=trade_date,
+            fields="ts_code,trade_date,pre_close,up_limit,down_limit",
+        ))
+
+    def fetch_corporate_actions(self, trade_date: str) -> list[dict]:
+        return _records(self.client.dividend(
+            ex_date=trade_date,
+            fields="ts_code,end_date,ann_date,div_proc,stk_div,stk_bo_rate,stk_co_rate,cash_div,cash_div_tax,record_date,ex_date,pay_date,div_listdate,imp_ann_date,base_date,base_share",
+        ))
+
+    def fetch_benchmark_bars(self, trade_date: str, benchmarks: list[str] | None = None) -> list[dict]:
+        rows: list[dict] = []
+        for ts_code in benchmarks or ["000001.SH", "399001.SZ", "399006.SZ", "000300.SH"]:
+            rows.extend(_records(self.client.index_daily(
+                ts_code=ts_code,
+                trade_date=trade_date,
+                fields="ts_code,trade_date,close,open,high,low,pre_close,change,pct_chg,vol,amount",
+            )))
+        return rows

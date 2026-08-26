@@ -82,13 +82,52 @@ class FakeProvider:
         return [
             {
                 "ts_code": "600519.SH",
+                "trade_date": trade_date,
+                "close": 1510.0,
                 "turnover_rate": 0.42,
+                "turnover_rate_f": 0.43,
                 "volume_ratio": 1.1,
                 "pe": 24.5,
+                "pe_ttm": 24.0,
                 "pb": 7.8,
+                "ps": 12.0,
+                "ps_ttm": 11.8,
+                "dv_ratio": 1.2,
+                "dv_ttm": 1.1,
                 "total_mv": 1_900_000_000.0,
                 "circ_mv": 1_900_000_000.0,
+                "limit_status": 0,
             }
+        ]
+
+    def fetch_trade_calendar(self, start_date: str, end_date: str):
+        assert start_date == "20260826"
+        assert end_date == "20260826"
+        return [{"exchange": "SSE", "cal_date": "20260826", "is_open": 1, "pretrade_date": "20260825"}]
+
+    def fetch_adj_factor(self, trade_date: str):
+        assert trade_date == "20260826"
+        return [{"ts_code": "600519.SH", "trade_date": trade_date, "adj_factor": 12.3}]
+
+    def fetch_suspensions(self, trade_date: str):
+        assert trade_date == "20260826"
+        return []
+
+    def fetch_price_limits(self, trade_date: str):
+        assert trade_date == "20260826"
+        return [{"ts_code": "600519.SH", "trade_date": trade_date, "pre_close": 1491.36, "up_limit": 1640.5, "down_limit": 1342.22}]
+
+    def fetch_corporate_actions(self, trade_date: str):
+        assert trade_date == "20260826"
+        return []
+
+    def fetch_benchmark_bars(self, trade_date: str):
+        assert trade_date == "20260826"
+        return [
+            {"ts_code": "000001.SH", "trade_date": trade_date, "open": 3000.0, "high": 3020.0, "low": 2990.0, "close": 3010.0},
+            {"ts_code": "399001.SZ", "trade_date": trade_date, "open": 10000.0, "high": 10100.0, "low": 9900.0, "close": 10080.0},
+            {"ts_code": "399006.SZ", "trade_date": trade_date, "open": 2000.0, "high": 2040.0, "low": 1980.0, "close": 2030.0},
+            {"ts_code": "000300.SH", "trade_date": trade_date, "open": 3600.0, "high": 3650.0, "low": 3580.0, "close": 3630.0},
         ]
 
 
@@ -102,12 +141,13 @@ class FakeRepository:
         self.trigger = trigger
         return self.run_id
 
-    def complete_run(self, run_id, instruments, daily_rows, trade_date):
+    def complete_run(self, run_id, instruments, daily_rows, trade_date, *, auxiliary_datasets=None):
         self.completed = {
             "run_id": run_id,
             "instruments": instruments,
             "daily_rows": daily_rows,
             "trade_date": trade_date,
+            "auxiliary_datasets": auxiliary_datasets or {},
         }
         return {
             "run_id": run_id,
@@ -142,6 +182,16 @@ def test_full_a_share_sync_persists_names_and_daily_rows_atomically():
     assert repository.completed["daily_rows"][0]["name"] == "贵州茅台"
     assert repository.completed["daily_rows"][0]["volume"] == 12300
     assert repository.completed["daily_rows"][0]["amount"] == 18_600_000.0
+    assert set(repository.completed["auxiliary_datasets"]) == {
+        "trade_calendar",
+        "daily_basic",
+        "adj_factor",
+        "suspensions",
+        "price_limits",
+        "corporate_actions",
+        "benchmark_bars",
+    }
+    assert len(repository.completed["auxiliary_datasets"]["benchmark_bars"]) == 4
 
 
 def test_full_a_share_sync_reuses_running_database_gate():
