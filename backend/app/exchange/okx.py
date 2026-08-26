@@ -51,7 +51,7 @@ class OKXExchange(BaseExchange):
                 'defaultType': 'spot',  # 现货
             }
         }
-        
+
         api_key = self.config.get('api_key') or self.config.get('apiKey') or settings.OKX_API_KEY
         api_secret = self.config.get('api_secret') or self.config.get('secret') or settings.OKX_API_SECRET
         passphrase = self.config.get('passphrase') or self.config.get('password') or settings.OKX_PASSPHRASE
@@ -63,11 +63,11 @@ class OKXExchange(BaseExchange):
             config['secret'] = api_secret
             if passphrase:
                 config['password'] = passphrase
-        
+
         # 测试网
         if testnet:
             config['sandbox'] = True
-        
+
         return ccxt.okx(config)
 
     def _order_query_params(self, symbol: Optional[str] = None, limit: Optional[int] = None) -> Dict[str, Any]:
@@ -308,7 +308,7 @@ class OKXExchange(BaseExchange):
             orders.extend(self._format_okx_private_order(o) for o in rows)
         orders.sort(key=lambda item: int(item.get("timestamp") or 0), reverse=True)
         return orders[:limit]
-    
+
     @ccxt_retry("okx_fetch_balance")
     def fetch_balance(self) -> List[Dict]:
         """
@@ -439,7 +439,7 @@ class OKXExchange(BaseExchange):
                 continue
             result[key] = (current_value - past_value) / past_value * 100
         return result
-    
+
     def fetch_funding_rate(self, symbol: str) -> Optional[Dict]:
         """获取 OKX 资金费率"""
         try:
@@ -448,7 +448,7 @@ class OKXExchange(BaseExchange):
             symbol = self._normalize_swap_symbol(symbol)
             # 获取资金费率
             funding = self.exchange.fetch_funding_rate(symbol)
-            
+
             return {
                 'exchange': self.name,
                 'symbol': symbol,
@@ -461,31 +461,31 @@ class OKXExchange(BaseExchange):
         except Exception as e:
             logger.warning(f"Failed to fetch OKX funding rate for {symbol}: {e}")
             return None
-    
+
     def fetch_funding_rates(self, symbols: List[str] = None) -> List[Dict]:
         """批量获取资金费率"""
         try:
             self.load_markets()
-            
+
             # OKX 批量获取
             if hasattr(self.exchange, 'publicGetPublicFundingRate'):
                 response = self.exchange.publicGetPublicFundingRate({'instId': 'ANY'})
-                
+
                 rates = []
                 data = response.get('data', [])
-                
+
                 for item in data:
                     inst_id = item.get('instId', '')
-                    
+
                     # 转换为 CCXT 符号格式
                     try:
                         symbol = self.exchange.safe_symbol(inst_id)
                     except:
                         continue
-                    
+
                     if symbols and symbol not in symbols:
                         continue
-                    
+
                     rates.append({
                         'exchange': self.name,
                         'symbol': symbol,
@@ -495,15 +495,15 @@ class OKXExchange(BaseExchange):
                         'mark_price': None,
                         'index_price': None
                     })
-                
+
                 return rates
-            
+
             return super().fetch_funding_rates(symbols)
-            
+
         except Exception as e:
             logger.error(f"Failed to fetch OKX funding rates: {e}")
             return []
-    
+
     def fetch_funding_history(self, symbol: str, limit: int = 100) -> List[Dict]:
         """获取资金费率历史"""
         try:
@@ -512,13 +512,13 @@ class OKXExchange(BaseExchange):
             symbol = self._normalize_swap_symbol(symbol)
             market = self.exchange.market(symbol)
             inst_id = market['id']
-            
+
             # 调用 OKX API
             response = self.exchange.publicGetPublicFundingRateHistory({
                 'instId': inst_id,
                 'limit': str(limit)
             })
-            
+
             history = []
             for item in response.get('data', []):
                 history.append({
@@ -526,9 +526,9 @@ class OKXExchange(BaseExchange):
                     'rate': float(item.get('realizedRate', 0)),
                     'mark_price': None
                 })
-            
+
             return history
-            
+
         except Exception as e:
             logger.error(f"Failed to fetch OKX funding history: {e}")
             return []

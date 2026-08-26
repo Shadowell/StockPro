@@ -237,4 +237,3 @@ class RiskWatchdog:
             logger.fatal(f"positions_snapshot_on_trip={positions[:10]}")
         except Exception as exc:
             logger.error(f"fetch_positions failed during trip: {exc}")
-

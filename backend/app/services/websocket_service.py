@@ -79,21 +79,21 @@ def parse_subscription_key(sub_key: str, *, has_timeframe: bool = False) -> Pars
 
 class ConnectionManager:
     """WebSocket 连接管理器"""
-    
+
     def __init__(self):
         # websocket -> subscriptions
         self.active_connections: Dict[WebSocket, Set[str]] = {}
         # subscription_key -> set of websockets
         self.subscriptions: Dict[str, Set[WebSocket]] = {}
         self._lock = asyncio.Lock()
-    
+
     async def connect(self, websocket: WebSocket):
         """新连接"""
         await websocket.accept()
         async with self._lock:
             self.active_connections[websocket] = set()
         logger.info(f"WebSocket connected. Total: {len(self.active_connections)}")
-    
+
     async def disconnect(self, websocket: WebSocket):
         """断开连接"""
         async with self._lock:
@@ -106,49 +106,49 @@ class ConnectionManager:
                         if not self.subscriptions[sub_key]:
                             del self.subscriptions[sub_key]
         logger.info(f"WebSocket disconnected. Total: {len(self.active_connections)}")
-    
+
     async def subscribe(self, websocket: WebSocket, channel: str,
                        exchange: str, symbol: str = None, timeframe: str = None) -> str:
         """订阅频道"""
         sub_key = self._make_key(channel, exchange, symbol, timeframe)
-        
+
         async with self._lock:
             if websocket not in self.active_connections:
                 return None
-            
+
             self.active_connections[websocket].add(sub_key)
-            
+
             if sub_key not in self.subscriptions:
                 self.subscriptions[sub_key] = set()
             self.subscriptions[sub_key].add(websocket)
-        
+
         logger.debug(f"Subscribed to {sub_key}")
         return sub_key
-    
+
     async def unsubscribe(self, websocket: WebSocket, channel: str,
                          exchange: str, symbol: str = None, timeframe: str = None) -> bool:
         """取消订阅"""
         sub_key = self._make_key(channel, exchange, symbol, timeframe)
-        
+
         async with self._lock:
             if websocket in self.active_connections:
                 self.active_connections[websocket].discard(sub_key)
-            
+
             if sub_key in self.subscriptions:
                 self.subscriptions[sub_key].discard(websocket)
                 if not self.subscriptions[sub_key]:
                     del self.subscriptions[sub_key]
-        
+
         return True
-    
+
     async def broadcast(self, channel: str, exchange: str,
                        symbol: str, data: Dict, timeframe: str = None):
         """广播数据到订阅者"""
         sub_key = self._make_key(channel, exchange, symbol, timeframe)
-        
+
         if sub_key not in self.subscriptions:
             return
-        
+
         message = json.dumps({
             "channel": channel,
             "exchange": exchange,
@@ -157,7 +157,7 @@ class ConnectionManager:
             "data": data,
             "timestamp": int(datetime.now().timestamp() * 1000)
         })
-        
+
         subscribers = list(self.subscriptions[sub_key])
 
         async def _send_one(websocket: WebSocket):
@@ -170,18 +170,18 @@ class ConnectionManager:
 
         results = await asyncio.gather(*(_send_one(ws) for ws in subscribers), return_exceptions=False)
         dead_connections = [ws for ws in results if ws is not None]
-        
+
         # 清理失效连接
         for ws in dead_connections:
             await self.disconnect(ws)
-    
+
     async def send_personal(self, websocket: WebSocket, data: Dict):
         """发送个人消息"""
         try:
             await websocket.send_json(data)
         except Exception as e:
             logger.warning(f"Failed to send personal message: {e}")
-    
+
     def _make_key(self, channel: str, exchange: str, symbol: str = None, timeframe: str = None) -> str:
         """生成订阅 key"""
         if symbol:
@@ -189,7 +189,7 @@ class ConnectionManager:
                 return f"{channel}:{exchange}:{symbol}:{timeframe}"
             return f"{channel}:{exchange}:{symbol}"
         return f"{channel}:{exchange}"
-    
+
     def get_stats(self) -> Dict:
         """获取统计信息"""
         return {
@@ -208,19 +208,19 @@ class ConnectionManager:
 
 class RealtimeDataService:
     """实时数据服务"""
-    
+
     def __init__(self, manager: ConnectionManager):
         self.manager = manager
         self._running = False
         self._tasks: List[asyncio.Task] = []
-    
+
     async def start(self):
         """启动实时数据服务"""
         if self._running:
             return
-        
+
         self._running = True
-        
+
         # 启动各数据源任务
         self._tasks = [
             asyncio.create_task(self._ticker_loop()),
@@ -230,9 +230,9 @@ class RealtimeDataService:
             asyncio.create_task(self._orderbook_loop()),
             asyncio.create_task(self._live_order_loop()),
         ]
-        
+
         logger.info("Realtime data service started")
-    
+
     async def stop(self):
         """停止服务"""
         self._running = False
@@ -240,7 +240,7 @@ class RealtimeDataService:
             task.cancel()
         self._tasks = []
         logger.info("Realtime data service stopped")
-    
+
     async def _ticker_loop(self):
         """行情推送循环"""
         from app.exchange import exchange_manager
@@ -270,15 +270,15 @@ class RealtimeDataService:
             except Exception as e:
                 logger.error(f"Ticker loop error: {e}")
                 await asyncio.sleep(5)
-    
+
     async def _tickers_loop(self):
         """批量行情推送循环（首页用）
-        
+
         订阅 key 格式: tickers:{exchange}
         前端订阅时不需要指定 symbol，后端会推送所有主流交易对的 ticker 数据
         """
         from app.exchange import exchange_manager
-        
+
         # 主流交易对列表
         BATCH_SYMBOLS = [
             'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT',
@@ -289,7 +289,7 @@ class RealtimeDataService:
             'WIF/USDT', 'RUNE/USDT', 'AAVE/USDT', 'MATIC/USDT', 'STX/USDT',
             'IMX/USDT', 'SEI/USDT',
         ]
-        
+
         while self._running:
             try:
                 tickers_subs = await self.manager.get_subscription_keys("tickers:")
