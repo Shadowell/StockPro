@@ -16,6 +16,8 @@ from app.core.config import settings
 from app.api.v2.endpoints.market import router as market_router
 from app.api.v2.endpoints.strategy import router as strategy_router
 from app.api.v2.endpoints.backtest import router as backtest_router
+from app.api.v2.endpoints.live import router as paper_router
+from app.api.v2.endpoints.monitor import router as monitor_router
 
 
 @asynccontextmanager
@@ -71,6 +73,8 @@ def create_app() -> FastAPI:
     app.include_router(market_router, prefix="/api/v2/market", tags=["A-share Market"])
     app.include_router(strategy_router, prefix="/api/v2/strategies", tags=["A-share Strategies"])
     app.include_router(backtest_router, prefix="/api/v2/backtest", tags=["A-share Backtests"])
+    app.include_router(paper_router, prefix="/api/v2/live", tags=["A-share Paper"])
+    app.include_router(monitor_router, prefix="/api/v2/monitor", tags=["A-share Monitor"])
 
     return app
 

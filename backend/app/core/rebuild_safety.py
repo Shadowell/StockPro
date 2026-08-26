@@ -29,7 +29,8 @@ CATEGORY_PATTERNS = {
         re.IGNORECASE,
     ),
     "active_versioned_api_routes": re.compile(
-        r"/api/(?:public/)?v\d+/(?:live|trading|arbitrage|funding|onchain)(?:/|\b)",
+        r"/api/(?:public/)?v\d+/(?:trading|arbitrage|funding|onchain)(?:/|\b)|"
+        r"/api/(?:public/)?v\d+/live/(?:accounts|deploy|start|positions/close)(?:/|\b)",
         re.IGNORECASE,
     ),
     "registered_live_routes": re.compile(

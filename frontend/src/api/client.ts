@@ -1682,6 +1682,7 @@ export const monitorApi = {
 // ============================================
 
 export const liveApi = {
+  getPaperInstances: (): Promise<{ items: Strategy[] }> => getReq('/live/instances'),
   getStrategies: (params?: { page?: number; perPage?: number }): Promise<StrategyPageResponse> =>
     getReq<StrategyPageResponse>('/strategies', {
       params: {
@@ -1697,7 +1698,7 @@ export const liveApi = {
   getStrategyStatus: (id: number): Promise<any> => getReq(`/strategies/${id}/status`),
 
   getStrategyTrades: (id: number, limit = 50): Promise<any> =>
-    getReq(`/strategies/${id}/trades`, { params: { limit } }),
+    getReq('/live/trades', { params: { instanceId: id, limit } }),
 
   configure: (config: {
     [key: string]: unknown;

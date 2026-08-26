@@ -104,7 +104,7 @@ const EQUITY_METRIC_OPTIONS: Array<{
   fillColor: string;
 }> = [
   { value: 'returnPct', label: '收益率', axisName: '%', unit: '%', color: '#FF1744', fillColor: 'rgba(255,23,68,0.16)' },
-  { value: 'totalPnl', label: '收益', axisName: 'USDT', unit: ' USDT', color: '#60a5fa', fillColor: 'rgba(96,165,250,0.18)' },
+  { value: 'totalPnl', label: '收益', axisName: 'CNY', unit: ' CNY', color: '#60a5fa', fillColor: 'rgba(96,165,250,0.18)' },
   { value: 'winRate', label: '胜率', axisName: '%', unit: '%', color: '#f59e0b', fillColor: 'rgba(245,158,11,0.14)' },
   { value: 'profitFactor', label: '盈亏比', axisName: '', unit: '', color: '#a78bfa', fillColor: 'rgba(167,139,250,0.14)' },
 ];
@@ -153,13 +153,13 @@ function formatDiagField(label: string, value: unknown, suffix = '', digits = 4)
 
 function formatSignedUsd(value: number): string {
   const sign = value > 0 ? '+' : value < 0 ? '-' : '';
-  return `${sign}$${Math.abs(value).toFixed(2)}`;
+  return `${sign}¥${Math.abs(value).toFixed(2)}`;
 }
 
 function formatUsd(value: unknown): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return '--';
-  return `$${n.toLocaleString(undefined, {
+  return `¥${n.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -938,6 +938,7 @@ export default function InstanceMonitor({
   }, []);
 
   const { isConnected, subscribe, unsubscribe } = useWebSocket({
+    enabled: false,
     onMessage: onStrategyWsMessage,
   });
 
@@ -1617,8 +1618,8 @@ export default function InstanceMonitor({
             ? 'border-blue-500/30 bg-blue-500/10 text-blue-200'
             : 'border-crypto-border bg-white/[0.03] text-gray-300',
           description: hasContractPositions
-            ? '合约持仓会持续暴露方向、杠杆、保证金和浮盈亏风险，新增信号仍需通过策略参数和 broker 风控。'
-            : '当前没有合约仓位；下一次交易信号仍会受单笔风险、仓位上限和账户资金边界约束。',
+            ? 'A 股持仓会持续暴露市场与流动性风险，新增信号仍需通过 T+1、涨跌停、整手和仓位上限风控。'
+            : '当前没有 A 股持仓；下一次交易信号仍会受现金、T+1、涨跌停和仓位上限约束。',
         },
       ]
     : [];
@@ -2012,7 +2013,7 @@ export default function InstanceMonitor({
                   )}
                 >
                   {unrealizedTotal >= 0 ? '+' : ''}
-                  {typeof unrealizedTotal === 'number' ? unrealizedTotal.toFixed(2) : String(unrealizedTotal)} USDT
+                  {typeof unrealizedTotal === 'number' ? unrealizedTotal.toFixed(2) : String(unrealizedTotal)} CNY
                 </span>
               </div>
               {positions.length === 0 ? (
@@ -2644,7 +2645,7 @@ export default function InstanceMonitor({
           <div className="rounded-xl border border-crypto-border bg-crypto-bg px-3 py-2 font-mono text-xs text-gray-300">
             <div>{closePositionTarget?.symbol || '—'}</div>
             <div className="mt-1 text-gray-500">
-              {closePositionTarget?.marketType === 'swap' ? '合约' : '现货'} · {closePositionTarget?.side || 'long'}
+              A 股 · {closePositionTarget?.side || 'long'}
             </div>
           </div>
         </div>

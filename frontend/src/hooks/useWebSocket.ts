@@ -26,6 +26,7 @@ export interface RealtimeTicker {
 }
 
 interface UseWebSocketOptions {
+  enabled?: boolean;
   url?: string;
   onMessage?: MessageHandler;
   onConnect?: () => void;
@@ -42,7 +43,7 @@ interface UseWebSocketReturn {
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
-  const { url: urlOption, onMessage, onConnect, onDisconnect } = options;
+  const { enabled = true, url: urlOption, onMessage, onConnect, onDisconnect } = options;
 
   const url = useMemo(
     () => urlOption ?? getDefaultRealtimeWebSocketUrl(),
@@ -53,6 +54,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setIsConnected(false);
+      return undefined;
+    }
     websocketManager.connect(url);
 
     const handler = (msg: WSMessage) => {
@@ -75,7 +80,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     return () => {
       websocketManager.removeHandler(handler);
     };
-  }, [url, onMessage, onConnect, onDisconnect]);
+  }, [enabled, url, onMessage, onConnect, onDisconnect]);
 
   const sendMessage = useCallback((message: Record<string, unknown>) => {
     websocketManager.send(message);

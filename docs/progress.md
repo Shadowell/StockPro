@@ -28,6 +28,11 @@
   转成 BitPro 页面 ViewModel，并保留原实例表、排序、筛选、对比和详情结构。当前真实页显示
   20 条历史（18 完成/2 失败），详情可读 27 笔成交和 102 个权益点；基准改为沪深300，
   现货/合约改为股票/ETF，资金改为 CNY。异步创建任务尚未接通前不展示创建入口。
+- 模拟盘切片已直接接入 BitPro 原 `/live` `InstanceDashboard` / `InstanceMonitor`：
+  `/api/v2/live/instances|dashboard|events|equity_curve|trades` 只读适配层映射 PostgreSQL
+  22 个 Paper 实例、现金账本、持仓、成交、事件和权益曲线，没有引入另一套 Paper 页。
+  实例页筛选改为股票/ETF、A 股策略类型、1D 和人民币资金档；详情的账户/收益单位改为 CNY，
+  仓位风控改为现金、T+1、涨跌停和整手语义。未完成生命周期写入前整页只读，Paper 详情不再连接币圈 WebSocket。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

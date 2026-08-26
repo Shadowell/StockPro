@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import { FlaskConical, Radio } from 'lucide-react';
 import clsx from 'clsx';
 import { liveApi, monitorApi, paperApi, tradingApi } from '../../api/client';
-import { useAuth } from '../../auth/AuthProvider';
 import { useStore } from '../../stores/useStore';
 import ThemeDialog from '../../components/ThemeDialog';
 import type {
@@ -66,7 +65,6 @@ const InstanceMonitor = lazy(loadInstanceMonitor);
 
 const ACTIVE_INSTANCE_STATUSES = new Set(['running', 'paused']);
 const DASHBOARD_LIST_REFRESH_INTERVAL_MS = 60_000;
-const STRATEGY_PAGE_SIZE = 60;
 const INSTANCE_FAVORITES_STORAGE_KEY = 'bitpro_live_instance_favorites_v1';
 const AUTO_PREFERRED_DISMISSED_STORAGE_KEY =
   'bitpro_live_auto_preferred_dismissed_v1';
@@ -161,19 +159,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function stringList(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item || '').trim()).filter(Boolean);
-  }
-  if (typeof value === 'string' && value.trim()) {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
-
 function optionalText(value: unknown): string | null {
   if (value == null) return null;
   const text = String(value).trim();
@@ -261,11 +246,6 @@ function compareInstancesBySortMode(sortMode: InstanceSortMode) {
   };
 }
 
-function isContractSymbol(symbol: string): boolean {
-  const normalized = symbol.trim().toUpperCase();
-  return normalized.includes(':') || normalized.endsWith('-USDT-SWAP');
-}
-
 function inferAssetClass(source: {
   name?: unknown;
   symbol?: unknown;
@@ -277,29 +257,7 @@ function inferAssetClass(source: {
   inst_type?: unknown;
 }): ConcreteAssetClass {
   const cfg = asRecord(source.config);
-  const marketType = String(
-    source.marketType ?? source.market_type ?? cfg.marketType ?? cfg.market_type ?? '',
-  ).toLowerCase();
-  const instType = String(
-    source.instType ?? source.inst_type ?? cfg.instType ?? cfg.inst_type ?? '',
-  ).toUpperCase();
-  if (['swap', 'future', 'futures', 'contract'].includes(marketType) || instType === 'SWAP') {
-    return 'contract';
-  }
-
-  const name = String(source.name || '').trim();
-  if (name.startsWith('[合约]')) return 'contract';
-
-  const symbols = [
-    ...stringList(source.symbol),
-    ...stringList(source.symbols),
-    ...stringList(cfg.symbol),
-    ...stringList(cfg.symbols),
-    ...stringList(cfg.trade_symbols),
-    ...stringList(cfg.tradeSymbols),
-    ...stringList(cfg.contract_trade_symbols),
-  ];
-  return symbols.some(isContractSymbol) ? 'contract' : 'spot';
+  return String(cfg.assetClass ?? cfg.asset_class ?? '').toLowerCase() === 'etf' ? 'etf' : 'stock';
 }
 
 function resolveInstanceLeverage(cfg: Record<string, unknown>): number | undefined {
@@ -518,18 +476,8 @@ function deleteStrategyIdSearchParams(searchParams: URLSearchParams) {
 }
 
 async function loadAllStrategies() {
-  const firstPage = await liveApi.getStrategies({ page: 1, perPage: STRATEGY_PAGE_SIZE });
-  const totalPages = Math.max(1, Number(firstPage?.pages || 1));
-  if (totalPages === 1) return Array.isArray(firstPage?.items) ? firstPage.items : [];
-
-  const remainingPages = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, index) =>
-      liveApi.getStrategies({ page: index + 2, perPage: STRATEGY_PAGE_SIZE }),
-    ),
-  );
-  return [firstPage, ...remainingPages].flatMap((page) =>
-    Array.isArray(page?.items) ? page.items : [],
-  );
+  const result = await liveApi.getPaperInstances();
+  return Array.isArray(result?.items) ? result.items : [];
 }
 
 function dashboardMatchesInstance(
@@ -545,8 +493,7 @@ function dashboardMatchesInstance(
 
 function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
   const [initialPrefs] = useState<LivePrefsStored | null>(() => loadLivePrefs());
-  const { isGuest } = useAuth();
-  const readOnly = isGuest;
+  const readOnly = true;
   const { selectedExchange, setSelectedExchange } = useStore();
 
   useLayoutEffect(() => {
@@ -588,7 +535,7 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
     () => initialPrefs?.assetClassFilter ?? 'all',
   );
   const [instanceSortMode, setInstanceSortMode] = useState<InstanceSortMode>('return_desc');
-  const [instanceListView, setInstanceListView] = useState<InstanceListView>('favorites');
+  const [instanceListView, setInstanceListView] = useState<InstanceListView>('all');
   const [favoriteInstanceIds, setFavoriteInstanceIds] = useState<Set<string>>(
     loadFavoriteInstanceIds,
   );
@@ -773,8 +720,8 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
   const assetClassCounts = useMemo(
     () => ({
       all: viewModeInstances.length,
-      spot: viewModeInstances.filter((i) => i.assetClass === 'spot').length,
-      contract: viewModeInstances.filter((i) => i.assetClass === 'contract').length,
+      stock: viewModeInstances.filter((i) => i.assetClass === 'stock').length,
+      etf: viewModeInstances.filter((i) => i.assetClass === 'etf').length,
     }),
     [viewModeInstances],
   );

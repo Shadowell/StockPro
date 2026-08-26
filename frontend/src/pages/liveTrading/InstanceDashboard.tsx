@@ -76,7 +76,7 @@ export interface InstanceDashboardProps {
 function formatSignedUsd(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '--';
   const sign = value > 0 ? '+' : value < 0 ? '-' : '';
-  return `${sign}$${Math.abs(value).toFixed(2)}`;
+  return `${sign}¥${Math.abs(value).toFixed(2)}`;
 }
 
 function formatSignedPercent(value: number | null | undefined): string {
@@ -93,7 +93,7 @@ function formatSharpe(value: number | null | undefined): string {
 }
 
 function strategyNameColorClass(assetClass: TradingInstance['assetClass']): string {
-  return assetClass === 'contract' ? 'text-[#FFAB73]' : 'text-yellow-300';
+  return assetClass === 'etf' ? 'text-cyan-300' : 'text-yellow-300';
 }
 
 function normalizeInstanceSearchText(value: unknown): string {
@@ -109,7 +109,7 @@ function instanceMatchesSearch(inst: TradingInstance, query: string): boolean {
     .filter(Boolean);
   if (tokens.length === 0) return true;
 
-  const assetClassLabel = inst.assetClass === 'contract' ? '合约' : '现货';
+  const assetClassLabel = inst.assetClass === 'etf' ? 'ETF' : '股票';
   const statusLabel =
     inst.status === 'running' ? '运行中' : inst.status === 'paused' ? '暂停' : inst.status;
   const haystack = normalizeInstanceSearchText(
@@ -131,47 +131,25 @@ function instanceMatchesSearch(inst: TradingInstance, query: string): boolean {
   return tokens.every((token) => haystack.includes(token));
 }
 
-type StrategyTypeFilter = 'all' | 'cta' | 'martin' | 'ai' | 'market_making';
-type KlineTimeframeFilter = 'all' | '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '12h' | '1d';
-type CapitalVersionFilter = 'all' | '100u' | '1000u';
+type StrategyTypeFilter = 'all' | 'momentum' | 'mean_reversion' | 'multi_factor' | 'event' | 'other';
+type KlineTimeframeFilter = 'all' | '1d';
+type CapitalVersionFilter = 'all' | '1000000cny';
 type LeverageFilter = 'all' | '1x' | '2x' | '3x' | '5x' | '10x' | '20x' | '50x';
 
 function inferInstanceStrategyType(inst: TradingInstance): StrategyTypeFilter | 'other' {
   const normalized = normalizeInstanceSearchText(
     [inst.name, inst.symbol, inst.strategyType, inst.strategyKey].join(' '),
   );
-  if (
-    normalized.includes('做市') ||
-    normalized.includes('marketmaking') ||
-    normalized.includes('marketmaker')
-  ) {
-    return 'market_making';
-  }
-  if (inst.isAiAutonomous) return 'ai';
-  if (normalized.includes('[ai]')) return 'ai';
-  if (
-    normalized.includes('马丁') ||
-    normalized.includes('martin') ||
-    normalized.includes('martingale')
-  ) {
-    return 'martin';
-  }
-  if (normalized.includes('cta') || normalized.includes('趋势跟踪')) {
-    return 'cta';
-  }
+  if (normalized.includes('动量') || normalized.includes('趋势')) return 'momentum';
+  if (normalized.includes('回归') || normalized.includes('反转') || normalized.includes('超跌')) return 'mean_reversion';
+  if (normalized.includes('因子')) return 'multi_factor';
+  if (normalized.includes('打板') || normalized.includes('涨停')) return 'event';
   return 'other';
 }
 
 function normalizeInstanceTimeframe(value: unknown): KlineTimeframeFilter | 'other' {
   const normalized = String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
   if (
-    normalized === '1m' ||
-    normalized === '5m' ||
-    normalized === '15m' ||
-    normalized === '30m' ||
-    normalized === '1h' ||
-    normalized === '4h' ||
-    normalized === '12h' ||
     normalized === '1d'
   ) {
     return normalized;
@@ -183,21 +161,13 @@ function normalizeInstanceCapitalVersion(inst: TradingInstance): CapitalVersionF
   const capital = inst.capitalVersion;
   if (typeof capital === 'number' && Number.isFinite(capital)) {
     const rounded = Math.round(capital);
-    if (rounded === 100) return '100u';
-    if (rounded === 1000) return '1000u';
+    if (rounded === 1000000) return '1000000cny';
   }
-  const match = String(inst.name || '').match(/(?:^|[·\s])(\d+(?:\.\d+)?)U(?:$|\s|[·#])/i);
-  if (!match) return 'other';
-  const parsed = Number(match[1]);
-  if (!Number.isFinite(parsed)) return 'other';
-  const rounded = Math.round(parsed);
-  if (rounded === 100) return '100u';
-  if (rounded === 1000) return '1000u';
   return 'other';
 }
 
 function normalizeInstanceLeverage(inst: TradingInstance): LeverageFilter | 'other' {
-  if (inst.assetClass !== 'contract') return 'other';
+  if (inst.assetClass !== 'etf') return 'other';
   const leverage = inst.leverage;
   if (typeof leverage !== 'number' || !Number.isFinite(leverage) || leverage <= 0) {
     return 'other';
@@ -224,16 +194,13 @@ function formatInstanceTimeframePill(value: unknown): string {
 function formatInstanceCapitalVersionPill(inst: TradingInstance): string | null {
   const capital = inst.capitalVersion;
   if (typeof capital === 'number' && Number.isFinite(capital) && capital > 0) {
-    return `${Math.round(capital)}U`;
+    return `¥${Math.round(capital).toLocaleString('zh-CN')}`;
   }
-  const match = String(inst.name || '').match(/(?:^|[·\s])(\d+(?:\.\d+)?)U(?:$|\s|[·#])/i);
-  if (!match) return null;
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) && parsed > 0 ? `${Math.round(parsed)}U` : null;
+  return null;
 }
 
 function formatInstanceLeveragePill(inst: TradingInstance): string | null {
-  if (inst.assetClass !== 'contract') return null;
+  if (inst.assetClass !== 'etf') return null;
   const leverage = inst.leverage;
   if (typeof leverage !== 'number' || !Number.isFinite(leverage) || leverage <= 0) return null;
   const rounded = Math.round(leverage);
@@ -331,7 +298,7 @@ export default function InstanceDashboard({
   onClearAllPaper,
   openConfirmDialog,
 }: InstanceDashboardProps) {
-  const usdtBalance = balances.find((b) => b.currency === 'USDT');
+  const usdtBalance = balances.find((b) => b.currency === 'CNY');
   const isDryRun = tradeMode === 'paper';
   const [instanceSearchQuery, setInstanceSearchQuery] = useState('');
   const [strategyTypeFilter, setStrategyTypeFilter] = useState<StrategyTypeFilter>('all');
@@ -340,31 +307,24 @@ export default function InstanceDashboard({
   const [leverageFilter, setLeverageFilter] = useState<LeverageFilter>('all');
   const assetClassOptions: Array<{ value: AssetClassFilter; label: string }> = [
     { value: 'all', label: '全部' },
-    { value: 'spot', label: '现货' },
-    { value: 'contract', label: '合约' },
+    { value: 'stock', label: '股票' },
+    { value: 'etf', label: 'ETF' },
   ];
   const strategyTypeOptions: Array<{ value: StrategyTypeFilter; label: string }> = [
     { value: 'all', label: '全部' },
-    { value: 'cta', label: 'CTA' },
-    { value: 'martin', label: '马丁' },
-    { value: 'ai', label: 'AI' },
-    { value: 'market_making', label: '做市' },
+    { value: 'momentum', label: '动量趋势' },
+    { value: 'mean_reversion', label: '均值回归' },
+    { value: 'multi_factor', label: '多因子' },
+    { value: 'event', label: '事件驱动' },
+    { value: 'other', label: '其他' },
   ];
   const timeframeOptions: Array<{ value: KlineTimeframeFilter; label: string }> = [
     { value: 'all', label: '全部' },
-    { value: '1m', label: '1M' },
-    { value: '5m', label: '5M' },
-    { value: '15m', label: '15M' },
-    { value: '30m', label: '30M' },
-    { value: '1h', label: '1H' },
-    { value: '4h', label: '4H' },
-    { value: '12h', label: '12H' },
     { value: '1d', label: '1D' },
   ];
   const capitalVersionOptions: Array<{ value: CapitalVersionFilter; label: string }> = [
     { value: 'all', label: '全部' },
-    { value: '100u', label: '100U' },
-    { value: '1000u', label: '1000U' },
+    { value: '1000000cny', label: '100万' },
   ];
   const leverageOptions: Array<{ value: LeverageFilter; label: string }> = [
     { value: 'all', label: '全部' },
@@ -401,14 +361,15 @@ export default function InstanceDashboard({
   const strategyTypeCounts = useMemo(() => {
     const counts: Record<StrategyTypeFilter, number> = {
       all: instances.length,
-      cta: 0,
-      martin: 0,
-      ai: 0,
-      market_making: 0,
+      momentum: 0,
+      mean_reversion: 0,
+      multi_factor: 0,
+      event: 0,
+      other: 0,
     };
     for (const inst of instances) {
       const type = inferInstanceStrategyType(inst);
-      if (type === 'cta' || type === 'martin' || type === 'ai' || type === 'market_making') {
+      if (type !== 'all') {
         counts[type] += 1;
       }
     }
@@ -424,13 +385,6 @@ export default function InstanceDashboard({
   const timeframeCounts = useMemo(() => {
     const counts: Record<KlineTimeframeFilter, number> = {
       all: strategyTypeFilteredInstances.length,
-      '1m': 0,
-      '5m': 0,
-      '15m': 0,
-      '30m': 0,
-      '1h': 0,
-      '4h': 0,
-      '12h': 0,
       '1d': 0,
     };
     for (const inst of strategyTypeFilteredInstances) {
@@ -451,8 +405,7 @@ export default function InstanceDashboard({
   const capitalVersionCounts = useMemo(() => {
     const counts: Record<CapitalVersionFilter, number> = {
       all: timeframeFilteredInstances.length,
-      '100u': 0,
-      '1000u': 0,
+      '1000000cny': 0,
     };
     for (const inst of timeframeFilteredInstances) {
       const capitalVersion = normalizeInstanceCapitalVersion(inst);
@@ -512,7 +465,7 @@ export default function InstanceDashboard({
           <p className="text-sm text-gray-500 mt-1">
             {tradeMode === 'live'
               ? '实盘只展示真实下单实例；推荐从已验证模拟盘生成独立小资金实盘试运行。'
-              : '管理多路模拟实例；通过模拟盘验证后可在「实盘」入口晋级。'}
+              : '管理多路 A 股模拟实例；完整保留策略、回测、订单、成交、持仓和权益证据。'}
           </p>
         </div>
         {!readOnly && (
