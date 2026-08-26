@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from rebuild.audit_completion import BITPRO_SOURCE_SHA, audit, expected_migration_count
+from rebuild.audit_completion import BITPRO_SOURCE_SHA, _auth_evidence, audit, expected_migration_count
 
 
 def test_completion_audit_is_pinned_to_current_bitpro_baseline():
@@ -26,3 +26,13 @@ def test_expected_migration_count_tracks_repository_sql_files(tmp_path: Path):
     (migrations / "002.sql").write_text("SELECT 2;\n")
     (migrations / "README.md").write_text("ignored\n")
     assert expected_migration_count(tmp_path) == 2
+
+
+def test_postdeploy_auth_requires_every_secure_production_field(tmp_path: Path):
+    auth_dir=tmp_path/"backend/app/domain/auth";auth_dir.mkdir(parents=True)
+    for name in("service.py","repository.py","mcp_tokens.py"):(auth_dir/name).write_text("# active\n")
+    middleware=tmp_path/"backend/app/core/auth_middleware.py";middleware.parent.mkdir(parents=True);middleware.write_text("from app.domain.auth.service import active_auth_service\n")
+    disabled=_auth_evidence(tmp_path,"post-deploy",{"auth_enabled":False})
+    enabled=_auth_evidence(tmp_path,"post-deploy",{"auth":{"enabled":True,"username_configured":True,"password_hash_configured":True,"token_secret_configured":True,"cookie_secure":True}})
+    assert disabled["status"]=="failed"
+    assert enabled["status"]=="passed"
