@@ -45,6 +45,35 @@ class MarketDomainService:
             end,
         )
 
+    async def get_klines_payload(
+        self,
+        exchange_name: str,
+        symbol: str,
+        timeframe: str = "1h",
+        limit: int = 100,
+        start: Optional[int] = None,
+        end: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        if hasattr(self.repo, "get_klines_with_status"):
+            return await asyncio.to_thread(
+                self.repo.get_klines_with_status,
+                exchange_name,
+                symbol,
+                timeframe,
+                limit,
+                start,
+                end,
+            )
+        items = await self.get_klines(exchange_name, symbol, timeframe, limit, start, end)
+        return {
+            "exchange": exchange_name,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "items": items,
+            "data_status": "ok" if items else "empty",
+            "unavailable_reason": None if items else "cache returned no rows",
+        }
+
     async def get_technical_indicators(
         self,
         exchange_name: str,
@@ -216,6 +245,18 @@ class MarketDomainService:
 
     async def get_trades(self, exchange_name: str, symbol: str, limit: int = 50) -> List[Dict]:
         return await asyncio.to_thread(self.repo.get_trades, exchange_name, symbol, limit)
+
+    async def get_trades_payload(self, exchange_name: str, symbol: str, limit: int = 50) -> Dict[str, Any]:
+        if hasattr(self.repo, "get_trades_with_status"):
+            return await asyncio.to_thread(self.repo.get_trades_with_status, exchange_name, symbol, limit)
+        items = await self.get_trades(exchange_name, symbol, limit)
+        return {
+            "exchange": exchange_name,
+            "symbol": symbol,
+            "items": items,
+            "data_status": "ok" if items else "empty",
+            "unavailable_reason": None if items else "cache returned no rows",
+        }
 
     async def get_symbols(self, exchange_name: str, quote: str = "CNY", market_type: str = "stock") -> List[str]:
         asset_class = (market_type or "stock").strip().lower()

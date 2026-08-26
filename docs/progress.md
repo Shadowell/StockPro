@@ -1,5 +1,24 @@
 # Progress Log
 
+## GitHub #25 A 股实时/分钟/盘口/逐笔缓存底座（2026-08-26）
+
+- 从最新 `origin/main` 派生 `codex/issue-25-realtime-cache`，先做 #25 最小纵向切片：新增只读
+  A 股实时行情、分钟线、盘口和逐笔缓存 schema，并让现有 BitPro-first `/api/v2/market/*`
+  合同读取缓存或返回明确 unavailable 状态。
+- 新增 additive migration `202608260002_realtime_market_cache.sql`：`realtime_quotes`、
+  `minute_bars`、`orderbook_snapshots`、`trade_ticks` 四张缓存表和索引；同步计划
+  `ashare_realtime_cache_v1` 默认 disabled，只能由后续管理员显式任务或独立调度开关启用。
+- `GET /api/v2/market/klines` 对 `1m/5m/15m/30m/60m` 读取 `minute_bars`；无缓存或 unsupported
+  timeframe 时通过响应 `meta.data_status` / `meta.unavailable_reason` 明确说明，不再静默空数组
+  冒充正常。`data` 仍保持数组，兼容现有 K 线消费者。
+- `GET /api/v2/market/orderbook` 读取最新 `orderbook_snapshots` 并返回 trade_date、
+  snapshot_at、source、source_updated_at、collected_at、freshness；无盘口时保持 bids/asks 空数组
+  但带明确原因。
+- `GET /api/v2/market/trades` 读取 `trade_ticks` 近期成交；有缓存时保留 trade_time、price、
+  volume、side/unknown、source 与 freshness，无缓存时在响应 meta 中报告 empty 原因。
+- 本切片不接真实券商、不调用 TuShare/AKShare、不启动实时调度、不改变 Paper 历史；页面 GET
+  仍为只读缓存查询。
+
 ## GitHub #23 A 股数据集同步与封存底座（2026-08-26）
 
 - 从本地 `origin/main`/`HEAD` `ca5c3220` 开始 #23 最小纵向切片；当前会话无法创建 Git
