@@ -121,7 +121,7 @@ async def paper_trades(instance_id: int, limit: int = Query(100, ge=1, le=500)):
 
 @router.get("/accounts")
 async def paper_accounts():
-    return ok({"accounts": [{"account_id": "paper", "name": "A股 Paper 现金账本", "exchange": "CN", "exchange_alias": "A股", "is_default": True, "configured": True, "enabled": True, "testnet": True, "display_only": True, "can_trade": False}]})
+    return ok({"accounts": await paper_domain_service.accounts()})
 
 
 @router.get("/strategies")
@@ -131,12 +131,34 @@ async def paper_strategies():
 
 @router.get("/watchlist")
 async def paper_watchlist(account_id: str = Query("paper"), limit: int = Query(100)):
-    return ok({"account_id": account_id, "exchange": "CN", "items": []})
+    return ok({"account_id": account_id, "exchange": "CN", "items": await paper_domain_service.watchlist(account_id, limit)})
+
+
+@router.get("/watchlist/market")
+async def paper_watch_market(
+    symbol: str,
+    account_id: str = Query("paper"),
+    timeframe: str = Query("1d"),
+    limit: int = Query(180, ge=1, le=800),
+):
+    try:
+        return ok(await paper_domain_service.watch_market(account_id, symbol, timeframe, limit))
+    except ValueError as exc:
+        raise _translate(exc) from exc
+
+
+@router.get("/watchlist/markers")
+async def paper_watch_markers(
+    symbol: str,
+    account_id: str = Query("paper"),
+    limit: int = Query(400, ge=1, le=1000),
+):
+    return ok({"account_id": account_id, "exchange": "CN", "symbol": symbol, "markers": await paper_domain_service.trade_markers(account_id, symbol, limit)})
 
 
 @router.get("/accounts/{account_id}/positions")
-async def account_positions(account_id: str): return ok({"account_id": account_id, "exchange": "CN", "positions": []})
+async def account_positions(account_id: str): return ok({"account_id": account_id, "exchange": "CN", "positions": await paper_domain_service.account_positions(account_id)})
 
 
 @router.get("/accounts/{account_id}/orders/history")
-async def account_orders(account_id: str, limit: int = Query(50)): return ok({"account_id": account_id, "exchange": "CN", "orders": []})
+async def account_orders(account_id: str, limit: int = Query(50)): return ok({"account_id": account_id, "exchange": "CN", "orders": await paper_domain_service.account_orders(account_id, limit)})

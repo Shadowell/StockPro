@@ -120,6 +120,13 @@
 - 模拟页已从全局只读改为 `isAdmin` 权限门禁，保留 BitPro 原卡片、创建向导、暂停、继续、关闭和
   详情结构；候选单独读取 `/live/candidates`，创建改用 `/live/instances` 单次原子请求，Paper 默认
   1D、100 万 CNY，隐藏杠杆筛选、重复快捷验证和实盘飞行检查，关闭文案明确历史保留。
+- BitPro 原盯盘页已从空适配切到真实 Paper 账户：`/live/accounts` 返回 21 个运行/暂停实例，
+  account id 固定为 `paper:<public-id>`；持仓、订单历史和 watchlist 读取对应 portfolio/Paper 证据，
+  watch market 从实例绑定的 sealed dataset snapshot 返回最多 800 根 1D K线，成交标记来自真实
+  trades。实测账户 `paper:374730412` 返回 3 个非零持仓、10 条最近订单、4 个当前盯盘标的，
+  `000333.SZ` 返回 180 根日线、最新价 75.32、1 个持仓和 1 个成交标记。前端仍使用 BitPro 原
+  持仓卡/K线/成交点/订单表布局，但改为股数、T+1 可用、CNY 市值/浮盈、A股现金模式，移除
+  永续、USDT、保证金、强平、杠杆和 OKX 文案；真实浏览器写请求、API 错误和 console error 均为 0。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

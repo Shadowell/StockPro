@@ -3,11 +3,14 @@ from __future__ import annotations
 
 from typing import Callable
 import uuid
+from datetime import date, datetime, timezone
 
 import psycopg2
 import psycopg2.extras
 
 from app.core.config import settings
+from app.domain.backtest.input_repository import PostgresBacktestInputGateway
+from app.services.ashare_execution import explicit_instrument_key
 
 
 PAPER_ID_SQL = "((('x'||substr(replace(i.id::text,'-',''),1,8))::bit(32)::bigint & 2147483647)::integer)"
@@ -42,7 +45,7 @@ class PaperRepository:
                 cursor.execute(f"""
                     SELECT {PAPER_ID_SQL} AS id,i.id AS instance_uuid,i.name,i.status,
                            COALESCE(s.legacy_strategy_id,0) AS strategy_id,s.name AS strategy_name,
-                           p.initial_cash,p.cash_balance,i.created_at,i.started_at,i.updated_at,
+                           p.initial_cash,p.cash_balance,i.portfolio_id,i.dataset_snapshot_id,i.created_at,i.started_at,i.updated_at,
                            (SELECT e.equity FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id ORDER BY e.trade_date DESC,e.id DESC LIMIT 1) AS current_equity,
                            (SELECT MAX(e.drawdown) FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id) AS max_drawdown,
                            (SELECT COUNT(*) FROM trades t WHERE t.paper_instance_id=i.id) AS trade_count,
@@ -59,7 +62,7 @@ class PaperRepository:
                 cursor.execute(f"""
                     SELECT {PAPER_ID_SQL} AS id,i.id AS instance_uuid,i.name,i.status,
                            COALESCE(s.legacy_strategy_id,0) AS strategy_id,s.name AS strategy_name,
-                           p.initial_cash,p.cash_balance,i.created_at,i.started_at,i.updated_at,
+                           p.initial_cash,p.cash_balance,i.portfolio_id,i.dataset_snapshot_id,i.created_at,i.started_at,i.updated_at,
                            (SELECT e.equity FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id ORDER BY e.trade_date DESC,e.id DESC LIMIT 1) AS current_equity,
                            (SELECT MAX(e.drawdown) FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id) AS max_drawdown,
                            (SELECT COUNT(*) FROM trades t WHERE t.paper_instance_id=i.id) AS trade_count,
@@ -201,7 +204,7 @@ class PaperRepository:
                 cursor.execute(f"""
                     SELECT {PAPER_ID_SQL} AS id,i.id AS instance_uuid,i.name,i.status,
                            COALESCE(s.legacy_strategy_id,0) AS strategy_id,s.name AS strategy_name,
-                           p.initial_cash,p.cash_balance,i.created_at,i.started_at,i.updated_at,
+                           p.initial_cash,p.cash_balance,i.portfolio_id,i.dataset_snapshot_id,i.created_at,i.started_at,i.updated_at,
                            (SELECT e.equity FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id ORDER BY e.trade_date DESC,e.id DESC LIMIT 1) AS current_equity,
                            (SELECT MAX(e.drawdown) FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id) AS max_drawdown,
                            (SELECT COUNT(*) FROM trades t WHERE t.paper_instance_id=i.id) AS trade_count,
@@ -252,6 +255,186 @@ class PaperRepository:
 
     def stop(self, instance_id: int | str) -> dict:
         return self._transition(instance_id, allowed={"running", "paused", "failed"}, target="stopped", portfolio_status="archived", message="Paper 实例已停止，持仓、现金和历史证据保留", level="warning")
+
+    @staticmethod
+    def _timestamp_ms(value) -> int:
+        if isinstance(value, str):
+            value = datetime.fromisoformat(value.replace("Z", "+00:00")) if "T" in value else date.fromisoformat(value)
+        if isinstance(value, date) and not isinstance(value, datetime):
+            value = datetime.combine(value, datetime.min.time(), tzinfo=timezone.utc)
+        if isinstance(value, datetime):
+            observed = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+            return int(observed.timestamp() * 1000)
+        return 0
+
+    def _account_instance(self, account_id: str) -> dict:
+        raw = str(account_id or "").strip()
+        if raw.startswith("paper:"):
+            raw = raw.split(":", 1)[1]
+        if raw and raw not in {"paper", "default"}:
+            row = self.get_instance(raw)
+            if row:
+                return row
+        rows = [item for item in self.list_instances() if item.get("status") in {"running", "paused"}]
+        if not rows:
+            raise ValueError("没有可用 A 股 Paper 账户")
+        return rows[0]
+
+    def accounts(self) -> list[dict]:
+        rows = [item for item in self.list_instances() if item.get("status") in {"running", "paused"}]
+        return [
+            {
+                "account_id": f"paper:{item['id']}",
+                "name": item["name"],
+                "exchange": "CN",
+                "exchange_alias": "A股",
+                "is_default": index == 0,
+                "configured": True,
+                "enabled": item["status"] == "running",
+                "testnet": True,
+                "display_only": True,
+                "can_trade": False,
+                "created_at": item.get("created_at"),
+                "updated_at": item.get("updated_at"),
+            }
+            for index, item in enumerate(rows)
+        ]
+
+    def account_positions(self, account_id: str) -> list[dict]:
+        instance = self._account_instance(account_id)
+        output = []
+        for row in self.positions(instance["id"]):
+            quantity = float(row.get("quantity") or 0)
+            if quantity <= 0:
+                continue
+            free = float(row.get("available_quantity") or 0)
+            entry = float(row.get("avg_cost") or 0)
+            mark = float(row.get("last_price") or entry)
+            output.append(
+                {
+                    "symbol": explicit_instrument_key(row.get("symbol")) or row.get("symbol"),
+                    "currency": "CNY",
+                    "asset_type": "stock",
+                    "side": "long",
+                    "amount": quantity,
+                    "free": free,
+                    "used": max(0.0, quantity - free),
+                    "base_amount": quantity,
+                    "notional": float(row.get("market_value") or quantity * mark),
+                    "notional_usdt": float(row.get("market_value") or quantity * mark),
+                    "entry_price": entry,
+                    "mark_price": mark,
+                    "unrealized_pnl": (mark - entry) * quantity,
+                    "paper_instance_id": instance["id"],
+                }
+            )
+        return output
+
+    def account_orders(self, account_id: str, limit: int) -> list[dict]:
+        instance = self._account_instance(account_id)
+        with self._connect() as connection:
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT o.*,s.legacy_strategy_id,s.name AS strategy_name
+                    FROM orders o JOIN paper_instances i ON i.id=o.paper_instance_id
+                    LEFT JOIN strategy_versions s ON s.id=i.strategy_version_id
+                    WHERE i.id=%s ORDER BY o.created_at DESC,o.id DESC LIMIT %s
+                    """,
+                    (instance["instance_uuid"], max(1, min(int(limit), 500))),
+                )
+                rows = [dict(row) for row in cursor.fetchall()]
+        return [
+            {
+                "id": str(row["id"]), "symbol": explicit_instrument_key(row.get("symbol")) or row.get("symbol"),
+                "side": row.get("side"), "type": row.get("order_type"), "price": float(row.get("price") or 0),
+                "amount": float(row.get("quantity") or 0), "filled": float(row.get("filled_quantity") or 0),
+                "remaining": max(0.0, float(row.get("quantity") or 0) - float(row.get("filled_quantity") or 0)),
+                "status": row.get("status"), "created_timestamp": self._timestamp_ms(row.get("created_at")),
+                "created_datetime": str(row.get("created_at")), "source_strategy_id": int(row.get("legacy_strategy_id") or 0),
+                "source_strategy_name": row.get("strategy_name"), "bitpro_source": "strategy", "bitpro_source_label": "A 股 Paper",
+            }
+            for row in rows
+        ]
+
+    def watchlist(self, account_id: str, limit: int) -> list[dict]:
+        instance = self._account_instance(account_id)
+        positions = self.account_positions(account_id)
+        orders = self.account_orders(account_id, 500)
+        symbols = []
+        active_orders = [row for row in orders if row.get("status") in {"pending", "submitted", "partial"}]
+        for source in [*(row.get("symbol") for row in positions), *(row.get("symbol") for row in active_orders)]:
+            symbol = explicit_instrument_key(source)
+            if symbol and symbol not in symbols:
+                symbols.append(symbol)
+        output = []
+        trades = self.trades(instance["id"], 500)
+        for symbol in symbols[: max(1, min(int(limit), 100))]:
+            related_orders = [row for row in orders if row.get("symbol") == symbol]
+            related_trades = [row for row in trades if (explicit_instrument_key(row.get("symbol")) or row.get("symbol")) == symbol]
+            latest = related_trades[0] if related_trades else None
+            output.append(
+                {
+                    "symbol": symbol, "source_strategy_id": int(instance.get("strategy_id") or 0),
+                    "source_strategy_name": instance.get("strategy_name") or instance.get("name"),
+                    "last_side": latest.get("side") if latest else None, "last_action": latest.get("side") if latest else None,
+                    "last_price": float(latest.get("price") or 0) if latest else None,
+                    "last_quantity": float(latest.get("quantity") or 0) if latest else None,
+                    "last_notional_usdt": float(latest.get("amount") or 0) if latest else None,
+                    "last_execution_at": str(latest.get("traded_at")) if latest else None,
+                    "order_count": len(related_orders),
+                }
+            )
+        return output
+
+    def watch_market(self, account_id: str, symbol: str, timeframe: str, limit: int) -> dict:
+        if str(timeframe).lower() != "1d":
+            raise ValueError("A 股盯盘当前仅支持 1d")
+        instance = self._account_instance(account_id)
+        normalized = explicit_instrument_key(symbol)
+        if not normalized:
+            raise ValueError("无效 A 股标的")
+        gateway = PostgresBacktestInputGateway(self.database_url, connection_factory=self.connection_factory)
+        rows = gateway.load_dataset(int(instance["dataset_snapshot_id"]), "daily_bars", symbols=[normalized], start_date="1900-01-01", end_date="9999-12-31")
+        rows = sorted(rows, key=lambda row: str(row.get("trade_date")))[-max(1, min(int(limit), 800)):]
+        klines = [
+            {
+                "timestamp": self._timestamp_ms(row.get("trade_date")), "open": float(row.get("open") or 0),
+                "high": float(row.get("high") or 0), "low": float(row.get("low") or 0),
+                "close": float(row.get("close") or 0), "volume": float(row.get("volume") or 0),
+                "quote_volume": float(row.get("turnover") or 0),
+            }
+            for row in rows
+        ]
+        last = klines[-1] if klines else {"close": 0, "open": 0, "high": 0, "low": 0, "volume": 0}
+        first_close = klines[0]["close"] if klines else 0
+        return {
+            "account_id": account_id, "exchange": "CN", "symbol": normalized, "timeframe": "1d",
+            "ticker": {
+                "symbol": normalized, "last": last["close"], "open": last["open"], "high": last["high"],
+                "low": last["low"], "volume": last["volume"],
+                "change_percent": ((last["close"] / first_close) - 1) * 100 if first_close else 0,
+            },
+            "klines": klines, "orderbook": {"bids": [], "asks": []}, "recent_trades": [],
+            "positions": [row for row in self.account_positions(account_id) if row.get("symbol") == normalized],
+        }
+
+    def trade_markers(self, account_id: str, symbol: str, limit: int) -> list[dict]:
+        instance = self._account_instance(account_id)
+        normalized = explicit_instrument_key(symbol)
+        rows = [row for row in self.trades(instance["id"], limit) if explicit_instrument_key(row.get("symbol")) == normalized]
+        return [
+            {
+                "id": int(uuid.UUID(str(row["id"])).hex[:8], 16) & 2147483647,
+                "label": "B" if row.get("side") == "buy" else "S", "side": row.get("side"),
+                "action": row.get("side"), "symbol": normalized, "price": float(row.get("price") or 0),
+                "quantity": float(row.get("quantity") or 0), "timestamp": self._timestamp_ms(row.get("traded_at")),
+                "datetime": str(row.get("traded_at")), "source_strategy_id": int(instance.get("strategy_id") or 0),
+                "source_strategy_name": instance.get("strategy_name") or instance.get("name"),
+                "subscription_id": int(instance["id"]), "live_order_id": str(row.get("order_id") or ""),
+            }
+            for row in rows
+        ]
 
     def positions(self, instance_id: int | str) -> list[dict]:
         with self._connect() as connection:

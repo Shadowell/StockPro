@@ -302,6 +302,7 @@ BitPro 页面使用其成熟 ViewModel；适配层从现有 PostgreSQL 对象生
 第 9 步的 Paper 生命周期已接通 `paper_eligible` 回测门禁与 `/api/v2/live/instances|candidates`
 以及 `/live/start|pause|resume|stop` 兼容路径。所有状态切换必须保留现有 Paper 账本与可见历史，
 `clear_metrics` 永久拒绝；自动周期推进、盯盘持仓联动和跨重启运行验收仍未完成。
+盯盘持仓联动已恢复真实只读证据；剩余阻断收敛为显式周期推进、周期失败恢复与长期运行验收。
 
 每个页面切片遵循：
 

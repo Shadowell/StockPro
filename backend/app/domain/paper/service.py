@@ -63,6 +63,24 @@ class PaperDomainService:
     async def stop(self, instance_id: int | str) -> dict:
         return self._instance_view(await asyncio.to_thread(self.repository.stop, instance_id))
 
+    async def accounts(self) -> list[dict]:
+        return await asyncio.to_thread(self.repository.accounts)
+
+    async def account_positions(self, account_id: str) -> list[dict]:
+        return await asyncio.to_thread(self.repository.account_positions, account_id)
+
+    async def account_orders(self, account_id: str, limit: int) -> list[dict]:
+        return await asyncio.to_thread(self.repository.account_orders, account_id, limit)
+
+    async def watchlist(self, account_id: str, limit: int) -> list[dict]:
+        return await asyncio.to_thread(self.repository.watchlist, account_id, limit)
+
+    async def watch_market(self, account_id: str, symbol: str, timeframe: str, limit: int) -> dict:
+        return await asyncio.to_thread(self.repository.watch_market, account_id, symbol, timeframe, limit)
+
+    async def trade_markers(self, account_id: str, symbol: str, limit: int) -> list[dict]:
+        return await asyncio.to_thread(self.repository.trade_markers, account_id, symbol, limit)
+
     async def dashboard(self, instance_id: int | str | None) -> dict:
         if instance_id is None:
             return self._empty_dashboard()

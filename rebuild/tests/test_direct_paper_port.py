@@ -31,6 +31,12 @@ class FakePaperRepository:
     def pause(self, instance_id): self.status = "paused"; return self.list_instances()[0]
     def resume(self, instance_id): self.status = "running"; return self.list_instances()[0]
     def stop(self, instance_id): self.status = "stopped"; return self.list_instances()[0]
+    def accounts(self): return [{"account_id": "paper:11", "name": "A股模拟", "exchange": "CN", "exchange_alias": "A股", "is_default": True, "configured": True, "enabled": True, "testnet": True, "display_only": False, "can_trade": True}]
+    def account_positions(self, account_id): return [{"symbol": "600519.SH", "asset_type": "stock", "amount": 100, "free": 100, "notional": 150000, "entry_price": 1400, "mark_price": 1500, "unrealized_pnl": 10000}]
+    def account_orders(self, account_id, limit): return [{"id": "order-1", "symbol": "600519.SH", "side": "buy", "status": "filled"}]
+    def watchlist(self, account_id, limit): return [{"symbol": "600519.SH", "source_strategy_id": 224, "source_strategy_name": "A股动量", "order_count": 1}]
+    def watch_market(self, account_id, symbol, timeframe, limit): return {"account_id": account_id, "exchange": "CN", "symbol": symbol, "timeframe": "1d", "ticker": {"last": 1500}, "klines": [{"timestamp": 1, "open": 1400, "high": 1510, "low": 1390, "close": 1500, "volume": 1000}], "orderbook": {"bids": [], "asks": []}, "recent_trades": [], "positions": self.account_positions(account_id)}
+    def trade_markers(self, account_id, symbol, limit): return [{"id": 1, "label": "B", "symbol": symbol, "price": 1400, "quantity": 100, "timestamp": 1, "source_strategy_id": 224, "source_strategy_name": "A股动量", "subscription_id": 11}]
 
 
 def test_bitpro_live_workspace_maps_a_share_paper_instances_and_dashboard():
@@ -75,3 +81,19 @@ def test_bitpro_paper_ui_uses_admin_lifecycle_and_a_share_candidates():
     assert "模拟初始资金 (CNY)" in wizard
     assert "DEFAULT_PAPER_TIMEFRAME = '1d'" in constants
     assert "DEFAULT_PAPER_INITIAL_EQUITY = 1_000_000" in constants
+
+
+def test_watch_workspace_reads_real_paper_accounts_positions_orders_and_market():
+    service = PaperDomainService(FakePaperRepository())
+    accounts = asyncio.run(service.accounts())
+    positions = asyncio.run(service.account_positions("paper:11"))
+    orders = asyncio.run(service.account_orders("paper:11", 100))
+    watchlist = asyncio.run(service.watchlist("paper:11", 100))
+    market = asyncio.run(service.watch_market("paper:11", "600519.SH", "1d", 180))
+    markers = asyncio.run(service.trade_markers("paper:11", "600519.SH", 100))
+    assert accounts[0]["exchange"] == "CN"
+    assert positions[0]["symbol"] == "600519.SH" and positions[0]["free"] == 100
+    assert orders[0]["status"] == "filled"
+    assert watchlist[0]["order_count"] == 1
+    assert market["klines"][0]["close"] == 1500
+    assert markers[0]["label"] == "B"

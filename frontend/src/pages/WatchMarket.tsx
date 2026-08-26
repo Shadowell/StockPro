@@ -94,6 +94,7 @@ function normalizeWatchSymbolKey(symbol?: string | null): string {
 }
 
 function accountExchangeLabel(account?: LiveExecutionAccount | null): string {
+  if (account?.exchange === 'CN') return account.name || 'A股 Paper';
   return account?.exchangeAlias || account?.name || 'A股';
 }
 
@@ -155,7 +156,7 @@ function tickerDisplayPct(ticker?: Ticker | null): number | null {
 }
 
 function positionMarginValue(position: LiveExecutionPosition): number {
-  return finite(position.initialMargin ?? position.margin ?? position.used, 0);
+  return finite(position.initialMargin ?? position.margin ?? position.notional ?? position.notionalUsdt ?? position.used, 0);
 }
 
 function WatchHeaderMetric({
@@ -673,6 +674,7 @@ export default function WatchMarket() {
               readonly
               title="A 股持仓"
               emptyText="当前 A 股 Paper 账户无持仓"
+              assetMode="ashare"
               headerStats={
                 <>
                   <WatchHeaderMetric label="仓位" value={contractPositionStats.count} tone="blue" />
@@ -741,7 +743,7 @@ export default function WatchMarket() {
             </div>
           </div>
           <div className="watchOrdersWidePanel min-w-0">
-            <LiveOrderDetailsPanel orders={historyOrders} maxRows={100} onShowLog={setOrderLog} />
+            <LiveOrderDetailsPanel orders={historyOrders} maxRows={100} onShowLog={setOrderLog} assetMode="ashare" />
           </div>
         </section>
       </main>
