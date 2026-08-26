@@ -1,3 +1,3 @@
-from .api import api_router_v2
+"""BitPro v2 URL contracts retained for direct in-place A-share ports."""
 
-__all__ = ["api_router_v2"]
+__all__: list[str] = []

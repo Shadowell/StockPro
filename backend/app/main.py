@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.api.v2.endpoints.market import router as market_router
 
 
 @asynccontextmanager
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/api/auth/me")
+    @app.get("/api/v2/auth/me")
     async def auth_me() -> dict[str, object]:
         return {
             "auth_enabled": False,
@@ -63,6 +65,8 @@ def create_app() -> FastAPI:
             "role": "admin",
             "permissions": ["admin"],
         }
+
+    app.include_router(market_router, prefix="/api/v2/market", tags=["A-share Market"])
 
     return app
 

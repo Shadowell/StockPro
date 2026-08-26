@@ -1,3 +1,3 @@
-from .v2 import api_router_v2
+"""API modules are registered explicitly as each BitPro domain is ported."""
 
-__all__ = ["api_router_v2"]
+__all__: list[str] = []

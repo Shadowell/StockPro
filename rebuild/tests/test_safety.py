@@ -28,7 +28,7 @@ def test_safety_report_blocks_registered_private_exchange_and_sqlite_runtime(
 def test_safety_report_blocks_active_versioned_api_paths(tmp_path: Path) -> None:
     app = tmp_path / "frontend/src/App.tsx"
     app.parent.mkdir(parents=True)
-    app.write_text("axios.get('/api/v2/market')", encoding="utf-8")
+    app.write_text("axios.get('/api/v2/live/accounts')", encoding="utf-8")
 
     report = scan_rebuild_safety(tmp_path)
 
@@ -82,7 +82,7 @@ def test_imported_repository_has_no_active_unsafe_surface() -> None:
     assert report.quarantined_source_findings >= 0
 
 
-def test_direct_port_boots_only_write_free_safety_routes(
+def test_direct_port_boots_only_write_free_safety_and_a_share_market_routes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://stockpro@127.0.0.1/stockpro")
@@ -95,9 +95,10 @@ def test_direct_port_boots_only_write_free_safety_routes(
     finally:
         sys.path.remove(str(backend_root))
 
-    assert {"/api/health", "/api/health/storage", "/api/auth/me"}.issubset(paths)
-    assert not any(path.startswith(("/api/v1", "/api/v2")) for path in paths)
+    assert {"/api/health", "/api/health/storage", "/api/auth/me", "/api/v2/auth/me"}.issubset(paths)
+    assert "/api/v2/market/symbols" in paths
     assert not any(path.startswith(("/api/live", "/api/trading", "/api/arbitrage")) for path in paths)
+    assert not any(path.startswith(("/api/v2/live", "/api/v2/trading", "/api/v2/arbitrage", "/api/v2/funding")) for path in paths)
 
 
 def test_current_health_is_truthful_and_write_free(

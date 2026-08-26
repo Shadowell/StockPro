@@ -28,7 +28,10 @@ CATEGORY_PATTERNS = {
         r"sqlite3\s*\.\s*connect|app\.db\.local_db|from\s+\.local_db|import\s+local_db",
         re.IGNORECASE,
     ),
-    "active_versioned_api_routes": re.compile(r"/api/(?:public/)?v\d+(?:/|\b)", re.IGNORECASE),
+    "active_versioned_api_routes": re.compile(
+        r"/api/(?:public/)?v\d+/(?:live|trading|arbitrage|funding|onchain)(?:/|\b)",
+        re.IGNORECASE,
+    ),
     "registered_live_routes": re.compile(
         r"live-real|prefix\s*=\s*['\"]/live['\"]",
         re.IGNORECASE,

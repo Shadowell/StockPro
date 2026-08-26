@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     
     # 数据库配置
     DB_PATH: Optional[str] = None
+    DATABASE_URL: Optional[str] = None
     
     # 日志配置
     LOG_LEVEL: str = "INFO"

@@ -2,21 +2,15 @@ import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react'
 import { RefreshCw, TrendingUp } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../stores/useStore';
-import { marketApi, fundingApi } from '../api/client';
-import {
-  useTickerWebSocket,
-  useKlineWebSocket,
-  useOrderbookWebSocket,
-  type RealtimeTicker,
-} from '../hooks/useWebSocket';
+import { marketApi } from '../api/client';
 import OrderBookChart from '../components/OrderBookChart';
 import SymbolSearch from '../components/SymbolSearch';
-import type { FundingRate, Kline, OrderBook } from '../types';
+import type { Kline, OrderBook } from '../types';
 import { formatTimeframeLabel } from '../utils/timeframe';
 
 const KlineChart = lazy(() => import('../components/KlineChart'));
 
-const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
+const TIMEFRAMES = ['1d'];
 
 const REFRESH_INTERVALS: Record<string, number> = {
   '1m': 10_000,
@@ -27,14 +21,11 @@ const REFRESH_INTERVALS: Record<string, number> = {
   '1d': 300_000,
 };
 
-/** 1m：拉取最近 6h（360 根）；默认视口约 2h 实盘（120 根），可左滑看更早 */
-const KLINE_LIMIT_1M = 360;
-const VISIBLE_1M_REAL_BARS = 120;
-const MIN_KLINES_TO_RENDER = 20;
+const MIN_KLINES_TO_RENDER = 1;
 const MARKET_EMA_PERIODS = [5, 10, 20, 30];
 const RECENT_TRADES_LIMIT = 24;
 
-type MarketType = 'swap' | 'spot';
+type MarketType = 'stock' | 'etf' | 'index';
 
 type MarketTradeRow = {
   id?: string | number;
@@ -55,15 +46,6 @@ type MarketDataCacheEntry = {
   lastUpdateMs?: number;
 };
 
-function symbolBase(symbol: string): string {
-  return String(symbol || '').split('/')[0].replace(/-USDT-SWAP$/i, '').toUpperCase();
-}
-
-function symbolForMarketType(symbol: string, marketType: MarketType): string {
-  const base = symbolBase(symbol) || 'BTC';
-  return marketType === 'swap' ? `${base}/USDT:USDT` : `${base}/USDT`;
-}
-
 function marketDataCacheKey(exchange: string, symbol: string, timeframe: string): string {
   return [exchange, symbol, timeframe].join('|');
 }
@@ -74,11 +56,6 @@ function formatMarketCompact(value: number | null | undefined, digits = 2): stri
   if (abs >= 1e8) return `${(value / 1e8).toFixed(2)}亿`;
   if (abs >= 1e4) return `${(value / 1e4).toFixed(2)}万`;
   return value.toLocaleString(undefined, { maximumFractionDigits: digits });
-}
-
-function formatFundingRatePct(rate: number | null | undefined): string {
-  if (rate == null || !Number.isFinite(rate)) return '—';
-  return `${(rate * 100).toFixed(4)}%`;
 }
 
 function formatTradeTime(timestamp?: number): string {
@@ -98,18 +75,11 @@ export default function Market() {
   const [marketIndicatorTimestamps, setMarketIndicatorTimestamps] = useState<number[]>([]);
   const [orderbook, setOrderbook] = useState<OrderBook | null>(null);
   const [recentTrades, setRecentTrades] = useState<MarketTradeRow[]>([]);
-  const [fundingRate, setFundingRate] = useState<FundingRate | null>(null);
   const [loading, setLoading] = useState(false);
   const [allSymbols, setAllSymbols] = useState<string[]>([]);
-  const [marketType, setMarketType] = useState<MarketType>('swap');
-  const [timeframe, setTimeframe] = useState('1m');
-  const selectedSymbolMatchesMarketType = marketType === 'swap'
-    ? selectedSymbol.includes(':') || /-SWAP$/i.test(selectedSymbol)
-    : !selectedSymbol.includes(':') && !/-SWAP$/i.test(selectedSymbol);
-
-  const { ticker, isConnected } = useTickerWebSocket(selectedExchange, selectedSymbol);
-  const { kline: wsKline } = useKlineWebSocket(selectedExchange, selectedSymbol, timeframe);
-  const { orderbook: wsOrderbook } = useOrderbookWebSocket(selectedExchange, selectedSymbol);
+  const [marketType, setMarketType] = useState<MarketType>('stock');
+  const [timeframe, setTimeframe] = useState('1d');
+  const selectedSymbolMatchesMarketType = Boolean(selectedSymbol);
 
   // 价格闪烁动画状态
   const prevPriceRef = useRef<number>(0);
@@ -129,15 +99,11 @@ export default function Market() {
 
   useEffect(() => {
     let cancelled = false;
-    marketApi.getSymbols(selectedExchange, 'USDT', marketType)
+    marketApi.getSymbols(selectedExchange, 'CNY', marketType)
       .then((res) => {
         if (cancelled) return;
         const symbols = res.symbols || [];
-        const normalizedSymbol = symbolForMarketType(selectedSymbol, marketType);
-        const fallbackSymbol = symbols.find((symbol) => symbolBase(symbol) === symbolBase(selectedSymbol)) || symbols[0];
-        const nextSymbol = symbols.includes(normalizedSymbol)
-          ? normalizedSymbol
-          : (fallbackSymbol || normalizedSymbol);
+        const nextSymbol = symbols.includes(selectedSymbol) ? selectedSymbol : symbols[0];
 
         setAllSymbols(symbols);
         if (nextSymbol && nextSymbol !== selectedSymbol) {
@@ -178,7 +144,7 @@ export default function Market() {
       marketLoadingRequestSeqRef.current = requestSeq;
     }
 
-    const klineLimit = timeframe === '1m' ? KLINE_LIMIT_1M : 200;
+    const klineLimit = 500;
     const klineRequest = marketApi.getKlines(selectedExchange, selectedSymbol, timeframe, klineLimit);
     const indicatorsRequest = marketApi.getTechnicalIndicators(
       selectedExchange,
@@ -191,9 +157,6 @@ export default function Market() {
     );
     const orderbookRequest = marketApi.getOrderbook(selectedExchange, selectedSymbol, 20);
     const tradesRequest = marketApi.getTrades(selectedExchange, selectedSymbol, RECENT_TRADES_LIMIT);
-    const fundingRequest = marketType === 'swap'
-      ? fundingApi.getRate(selectedExchange, selectedSymbol).catch(() => null)
-      : Promise.resolve(null);
 
     klineRequest.then((klinesData) => {
       if (isStaleMarketDataRequest()) return;
@@ -247,15 +210,6 @@ export default function Market() {
         if (!isStaleMarketDataRequest()) console.error(error);
       });
 
-    fundingRequest
-      .then((fundingData) => {
-        if (isStaleMarketDataRequest()) return;
-        setFundingRate(fundingData);
-      })
-      .catch(() => {
-        if (isStaleMarketDataRequest()) return;
-        setFundingRate(null);
-      });
   }, [selectedExchange, selectedSymbol, selectedSymbolMatchesMarketType, timeframe, marketType, updateMarketDataCache]);
 
 
@@ -270,7 +224,6 @@ export default function Market() {
       setMarketIndicatorTimestamps([]);
       setOrderbook(null);
       setRecentTrades([]);
-      setFundingRate(null);
     }
     fetchData(Boolean(cachedEntry?.klines?.length));
   }, [applyMarketDataCacheEntry, fetchData, selectedExchange, selectedSymbol, timeframe]);
@@ -279,66 +232,9 @@ export default function Market() {
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     const base = REFRESH_INTERVALS[timeframe] || 15_000;
-    const pollMs = isConnected ? Math.max(base, 30_000) : base;
-    intervalRef.current = setInterval(() => fetchData(true), pollMs);
+    intervalRef.current = setInterval(() => fetchData(true), base);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [fetchData, timeframe, isConnected]);
-
-  // WebSocket kline 增量更新（主驱动）
-  useEffect(() => {
-    if (!wsKline || !selectedSymbol) return;
-    const bar = wsKline as any;
-    if (!bar.timestamp) return;
-    setKlines((prev) => {
-      if (prev.length === 0) return prev;
-      const next = [...prev];
-      const last = next[next.length - 1];
-      const sameTs = last && Number(last.timestamp) === Number(bar.timestamp);
-      if (sameTs) {
-        const vol = Number(bar.volume ?? 0);
-        const cl = Number(bar.close);
-        const qv =
-          bar.quote_volume != null && Number.isFinite(Number(bar.quote_volume))
-            ? Number(bar.quote_volume)
-            : cl * vol;
-        next[next.length - 1] = {
-          ...last,
-          open: Number(bar.open),
-          high: Number(bar.high),
-          low: Number(bar.low),
-          close: cl,
-          volume: vol,
-          quote_volume: qv,
-          timestamp: Number(bar.timestamp),
-        } as any;
-      } else {
-        const vol = Number(bar.volume ?? 0);
-        const cl = Number(bar.close);
-        const qv =
-          bar.quote_volume != null && Number.isFinite(Number(bar.quote_volume))
-            ? Number(bar.quote_volume)
-            : cl * vol;
-        next.push({
-          open: Number(bar.open),
-          high: Number(bar.high),
-          low: Number(bar.low),
-          close: cl,
-          volume: vol,
-          quote_volume: qv,
-          timestamp: Number(bar.timestamp),
-        } as any);
-      }
-      return next.slice(-(timeframe === '1m' ? KLINE_LIMIT_1M : 200));
-    });
-    setLastUpdate(new Date());
-  }, [wsKline, selectedSymbol, timeframe]);
-
-  // WebSocket orderbook 增量更新（主驱动）
-  useEffect(() => {
-    if (!wsOrderbook) return;
-    setOrderbook(wsOrderbook as any);
-    setLastUpdate(new Date());
-  }, [wsOrderbook]);
+  }, [fetchData, timeframe]);
 
   const handleManualRefresh = () => {
     fetchData(false);
@@ -347,20 +243,15 @@ export default function Market() {
     refreshTimerRef.current = setTimeout(() => setRefreshSpin(false), 1000);
   };
 
-  // 实时价格 & OKX App 口径涨跌幅：优先用后端按 OKX sodUtc0 计算的当日涨跌幅。
   const lastKline = klines[klines.length - 1];
-  const liveTicker = ticker as RealtimeTicker | null;
-  const currentPrice = liveTicker?.last || lastKline?.close || 0;
-  const priceChange = liveTicker?.changePercentToday ?? liveTicker?.change_percent_today ?? liveTicker?.changePercent ?? liveTicker?.change_percent ?? 0;
-  const high24h = liveTicker?.high;
-  const low24h = liveTicker?.low;
-  const volume24h = liveTicker?.baseVolume ?? liveTicker?.volume;
-  const quoteVolume24h = liveTicker?.quoteVolume ?? liveTicker?.quote_volume;
-  const markPrice = liveTicker?.markPrice ?? liveTicker?.mark_price;
-  const fundingRateValue = fundingRate?.currentRate;
-  const nextFundingLabel = fundingRate?.nextFundingTime
-    ? new Date(fundingRate.nextFundingTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
-    : null;
+  const previousKline = klines[klines.length - 2];
+  const currentPrice = lastKline?.close || 0;
+  const priceChange = previousKline?.close ? ((currentPrice / previousKline.close) - 1) * 100 : 0;
+  const high24h = lastKline?.high;
+  const low24h = lastKline?.low;
+  const volume24h = lastKline?.volume;
+  const quoteVolume24h = lastKline?.quote_volume;
+  const hasMarketData = klines.length > 0;
 
   // 价格变化时触发闪烁
   useEffect(() => {
@@ -413,21 +304,21 @@ export default function Market() {
           <div
             className={clsx(
               'market-connection-pill flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-medium',
-              isConnected ? 'bg-emerald-500/10 text-emerald-300' : 'bg-white/[0.03] text-gray-500'
+              hasMarketData ? 'bg-emerald-500/10 text-emerald-300' : 'bg-white/[0.03] text-gray-500'
             )}
           >
             <span className="relative flex h-2 w-2">
-              {isConnected && (
+              {hasMarketData && (
                 <span className="absolute inset-0 rounded-full bg-[#2ebd85] animate-ping opacity-50" />
               )}
               <span
                 className={clsx(
                   'relative inline-flex h-2 w-2 rounded-full',
-                  isConnected ? 'bg-[#2ebd85]' : 'bg-gray-500'
+                  hasMarketData ? 'bg-[#2ebd85]' : 'bg-gray-500'
                 )}
               />
             </span>
-            <span>{isConnected ? '实时' : '离线'}</span>
+            <span>{hasMarketData ? 'PostgreSQL 日线' : '暂无数据'}</span>
           </div>
 
         </div>
@@ -446,11 +337,12 @@ export default function Market() {
                 {/* 市场类型 */}
                 <div
                   className="market-type-toggle flex overflow-hidden rounded-lg border border-crypto-border bg-crypto-card"
-                  data-active-market={marketType === 'swap' ? 'swap' : 'spot'}
+                  data-active-market={marketType}
                 >
                   {([
-                    { value: 'swap', label: '合约' },
-                    { value: 'spot', label: '现货' },
+                    { value: 'stock', label: '股票' },
+                    { value: 'etf', label: 'ETF' },
+                    { value: 'index', label: '指数' },
                   ] as const).map((option) => (
                     <button
                       key={option.value}
@@ -481,7 +373,7 @@ export default function Market() {
                   'inline-flex rounded px-2 py-0.5 text-2xl font-bold leading-none tabular-nums transition-all duration-500',
                   priceFlashClass
                 )}>
-                  ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ¥{currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <span className={clsx('text-sm font-medium tabular-nums', priceChange >= 0 ? 'text-up' : 'text-down')}>
                   {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
@@ -512,19 +404,11 @@ export default function Market() {
                 </div>
               </div>
               <div className="flex basis-full flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
-                <span className="tabular-nums">24h 高 <span className="text-gray-200">{formatMarketCompact(high24h, 4)}</span></span>
-                <span className="tabular-nums">24h 低 <span className="text-gray-200">{formatMarketCompact(low24h, 4)}</span></span>
-                <span className="tabular-nums">24h 量 <span className="text-gray-200">{formatMarketCompact(volume24h)}</span></span>
-                <span className="tabular-nums">24h 额 <span className="text-gray-200">{formatMarketCompact(quoteVolume24h)}</span></span>
-                {marketType === 'swap' && (
-                  <>
-                    <span className="tabular-nums">标记价 <span className="text-gray-200">{formatMarketCompact(markPrice, 4)}</span></span>
-                    <span className="tabular-nums">资金费率 <span className={clsx(Number(fundingRateValue || 0) >= 0 ? 'text-up' : 'text-down')}>{formatFundingRatePct(fundingRateValue)}</span></span>
-                    {nextFundingLabel && (
-                      <span className="tabular-nums">下次结算 <span className="text-gray-200">{nextFundingLabel}</span></span>
-                    )}
-                  </>
-                )}
+                <span className="tabular-nums">当日高 <span className="text-gray-200">{formatMarketCompact(high24h, 4)}</span></span>
+                <span className="tabular-nums">当日低 <span className="text-gray-200">{formatMarketCompact(low24h, 4)}</span></span>
+                <span className="tabular-nums">成交量 <span className="text-gray-200">{formatMarketCompact(volume24h)}</span></span>
+                <span className="tabular-nums">成交额 <span className="text-gray-200">{formatMarketCompact(quoteVolume24h)}</span></span>
+                <span className="tabular-nums">制度 <span className="text-gray-200">T+1 · 100股整手</span></span>
                 <span className="ml-auto tabular-nums">共 {klines.length} 根K线</span>
               </div>
             </div>
@@ -550,9 +434,6 @@ export default function Market() {
                       indicatorSeries={marketIndicators}
                       indicatorTimestamps={marketIndicatorTimestamps}
                       showRealCandles
-                      defaultShowLastRealBars={
-                        timeframe === '1m' ? VISIBLE_1M_REAL_BARS : undefined
-                      }
                     />
                   </Suspense>
                 ) : (

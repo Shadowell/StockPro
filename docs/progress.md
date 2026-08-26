@@ -13,6 +13,11 @@
   数字资产源文件等待在原位逐项改为 A 股实现。
 - 安全后端只启动 `4445` 的 health/auth 读取端点，前端保持 BitPro 原导航和工作台结构。
   下一步从行情与数据层开始，在这份原代码上将字段、API 和数据源换为 A 股。
+- 行情第一个纵向切片已在 BitPro 原 `Market.tsx` / `SymbolSearch.tsx` / `MarketDomainService`
+  与 `/api/v2/market` 合同上完成：不换页面，后端直读 PostgreSQL A 股证券、报价和日线，
+  前端将合约/现货、USDT、资金费率和币种搜索原位换为股票/ETF/指数、人民币、
+  T+1/100 股整手和 A 股代码搜索。真实接口返回 5,000 个证券、`600519.SH` 报价与日线。
+  浏览器保持 BitPro 原 K 线/盘口/成交布局，写请求 0、API 5xx 0、console errors 0。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 
