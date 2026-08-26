@@ -31,6 +31,7 @@ await loginPage.goto(base + '/');
 await loginPage.waitForFunction(() =>
   document.querySelector('[data-testid="main-layout"]') ||
   [...document.querySelectorAll('h1')].some((item) => item.textContent?.includes('登录 StockPro')),
+  null,
   { timeout: 120000 },
 );
 if (await loginPage.getByRole('heading', { name: '登录 StockPro' }).isVisible()) {
@@ -72,7 +73,7 @@ for (const [viewport, width, height] of viewports) {
         const rect = element.getBoundingClientRect();
         return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
       });
-    }, { timeout: 120000 });
+    }, null, { timeout: 120000 });
     await page.waitForTimeout(300);
     const file = `${slug}-${viewport}.png`;
     await page.screenshot({ path: `${dir}/${file}`, fullPage: true });
