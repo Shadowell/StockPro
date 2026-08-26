@@ -7,6 +7,7 @@ from fastapi import APIRouter
 
 from app.core.config import settings
 from app.core.contracts import ok
+from app.domain.sync.ashare_dataset_foundation import ashare_dataset_foundation_service
 
 
 router = APIRouter()
@@ -31,6 +32,12 @@ def _snapshot():
 async def status():
     data = await asyncio.to_thread(_snapshot)
     return ok({"is_running": False, "current_job": None, "summary": {"total_records": data["rows"], "exchanges": ["CN"], "symbols_count": data["symbols"], "pairs": data["symbols"]}, "details": [{"exchange": "CN", "symbol": "ALL_A_SHARES", "timeframe": "1d", "data_type": "daily_bars", "first_timestamp": data["first_ms"], "last_timestamp": data["last_ms"], "total_records": data["rows"], "status": "sealed", "last_sync_at": data["last_date"], "error_message": None}]})
+
+
+@router.get("/ashare/dataset-foundation")
+async def ashare_dataset_foundation():
+    payload = await asyncio.to_thread(ashare_dataset_foundation_service.snapshot)
+    return ok(payload)
 
 
 @router.get("/table-stats")
