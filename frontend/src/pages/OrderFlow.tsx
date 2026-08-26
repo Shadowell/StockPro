@@ -46,6 +46,11 @@ const BAR_OPTIONS = [
   { label: '1 小时', minutes: 60 },
 ];
 
+const PANEL_CLASS = 'overflow-hidden rounded-xl border border-crypto-border bg-crypto-card';
+const PANEL_PADDED_CLASS = `${PANEL_CLASS} p-3`;
+const CONTROL_CLASS =
+  'h-10 rounded-xl border border-crypto-border bg-crypto-card px-3 text-sm text-gray-200 outline-none transition-colors hover:border-gray-600 focus:border-blue-500/60';
+
 function fmtUsdt(v: number | null | undefined): string {
   if (v == null) return '—';
   if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
@@ -291,7 +296,7 @@ export default function OrderFlow() {
         <div className="flex items-center gap-2">
           <Activity className="h-5 w-5 text-blue-400" />
           <h1 className="text-lg font-semibold">A 股资金流 · 大单微观结构</h1>
-          <span className={`rounded border px-2 py-0.5 text-xs ${statusBadge.cls}`}>
+          <span className={`rounded-xl border px-2 py-0.5 text-xs ${statusBadge.cls}`}>
             {statusBadge.text}
           </span>
           {streamStatus && (
@@ -315,7 +320,7 @@ export default function OrderFlow() {
           <button
             onClick={load}
             disabled={loading}
-            className="flex items-center gap-1 rounded border border-crypto-border bg-crypto-card px-3 py-1.5 text-xs hover:border-blue-500/50 disabled:opacity-50"
+            className="flex h-10 items-center gap-1 rounded-xl border border-crypto-border bg-crypto-card px-3 text-xs transition-colors hover:border-blue-500/50 disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             刷新
@@ -328,7 +333,7 @@ export default function OrderFlow() {
         <select
           value={symbol}
           onChange={(e) => setSymbol(e.target.value)}
-          className="rounded border border-crypto-border bg-crypto-card px-2 py-1.5"
+          className={CONTROL_CLASS}
         >
           {SYMBOL_OPTIONS.map((s) => (
             <option key={s} value={s}>
@@ -339,7 +344,7 @@ export default function OrderFlow() {
         <select
           value={hours}
           onChange={(e) => setHours(Number(e.target.value))}
-          className="rounded border border-crypto-border bg-crypto-card px-2 py-1.5"
+          className={CONTROL_CLASS}
         >
           {RANGE_OPTIONS.map((r) => (
             <option key={r.hours} value={r.hours}>
@@ -350,7 +355,7 @@ export default function OrderFlow() {
         <select
           value={threshold}
           onChange={(e) => setThreshold(Number(e.target.value))}
-          className="rounded border border-crypto-border bg-crypto-card px-2 py-1.5"
+          className={CONTROL_CLASS}
         >
           {THRESHOLD_OPTIONS.map((t) => (
             <option key={t.value} value={t.value}>
@@ -361,7 +366,7 @@ export default function OrderFlow() {
         <select
           value={barMinutes}
           onChange={(e) => setBarMinutes(Number(e.target.value))}
-          className="rounded border border-crypto-border bg-crypto-card px-2 py-1.5"
+          className={CONTROL_CLASS}
         >
           {BAR_OPTIONS.map((b) => (
             <option key={b.minutes} value={b.minutes}>
@@ -369,13 +374,13 @@ export default function OrderFlow() {
             </option>
           ))}
         </select>
-        <div className="flex overflow-hidden rounded border border-crypto-border">
+        <div className="flex h-10 overflow-hidden rounded-xl border border-crypto-border bg-crypto-card p-1">
           {(['all', 'buy', 'sell'] as const).map((s) => (
             <button
               key={s}
               onClick={() => setSideFilter(s)}
-              className={`px-3 py-1.5 ${
-                sideFilter === s ? 'bg-blue-500/20 text-blue-300' : 'bg-crypto-card text-gray-400'
+              className={`rounded-lg px-3 text-sm transition-colors ${
+                sideFilter === s ? 'bg-blue-500/20 text-blue-300' : 'text-gray-400 hover:text-gray-200'
               }`}
             >
               {s === 'all' ? '全部' : s === 'buy' ? '主买' : '主卖'}
@@ -385,7 +390,7 @@ export default function OrderFlow() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+        <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
           <AlertTriangle className="h-4 w-4" />
           {error}
         </div>
@@ -406,7 +411,7 @@ export default function OrderFlow() {
         ].map((item) => (
           <div
             key={item.label}
-            className="rounded border border-crypto-border bg-crypto-card px-3 py-2"
+            className={`${PANEL_CLASS} px-3 py-2`}
           >
             <div className="text-xs text-gray-500">{item.label}</div>
             <div className={`mt-1 text-base font-semibold ${item.cls}`}>{item.value}</div>
@@ -415,7 +420,7 @@ export default function OrderFlow() {
       </div>
 
       {/* 气泡图 */}
-      <div className="rounded border border-crypto-border bg-crypto-card p-3">
+      <div className={PANEL_PADDED_CLASS}>
         <div className="mb-1 text-xs text-gray-500">
           大单时间轴 · 气泡大小 = 单笔成交额（{formatSymbolLabel(symbol, symbolNames[symbol])}）
         </div>
@@ -429,7 +434,7 @@ export default function OrderFlow() {
       </div>
 
       {/* Delta 副图 */}
-      <div className="rounded border border-crypto-border bg-crypto-card p-3">
+      <div className={PANEL_PADDED_CLASS}>
         <div className="mb-1 text-xs text-gray-500">
           Bar 级主买/主卖净流与累积 CVD（{BAR_OPTIONS.find((b) => b.minutes === barMinutes)?.label}）
         </div>
@@ -437,7 +442,7 @@ export default function OrderFlow() {
       </div>
 
       {/* 明细表 */}
-      <div className="rounded border border-crypto-border bg-crypto-card">
+      <div className={PANEL_CLASS}>
         <div className="border-b border-crypto-border px-3 py-2 text-xs text-gray-500">
           大单明细（最近 {Math.min(trades.length, 200)} / {trades.length} 笔）
         </div>
