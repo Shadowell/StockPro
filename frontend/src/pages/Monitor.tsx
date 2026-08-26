@@ -3,15 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   Bell, Activity, Plus, Minus, Trash2, ToggleLeft, ToggleRight, X,
   BarChart3, ChevronRight,
-  RefreshCw, Zap, DollarSign, Eye, Clock, Send, Database, HeartPulse, ServerCog, ShieldAlert,
+  RefreshCw, Zap, DollarSign, Eye, Clock, Send,
 } from 'lucide-react';
 import clsx from 'clsx';
 import CryptoSelect from '../components/CryptoSelect';
 import ThemeDialog from '../components/ThemeDialog';
 import { SELECTED_SEGMENT_CLASS, SELECTED_SEGMENT_COUNT_CLASS } from '../utils/selectionStyles';
-import { liveExecutionApi, marketApi, monitorApi, monitorCurrentApi, settingsApi } from '../api/client';
-import type { MonitorSummary } from '../types/operations';
-import SchedulerPanel from './operations/SchedulerPanel';
+import { liveExecutionApi, monitorApi, settingsApi } from '../api/client';
 import type {
   LiveExecutionAccount,
   LiveExecutionAccountBinding,
@@ -117,7 +115,7 @@ interface MarketSentiment {
 
 function formatUsd(value: unknown, digits = 2): string {
   const n = Number(value ?? 0);
-  return `$${Number.isFinite(n) ? n.toFixed(digits) : '0.00'}`;
+  return `¥${Number.isFinite(n) ? n.toFixed(digits) : '0.00'}`;
 }
 
 function finiteNumber(value: unknown, fallback = 0): number {
@@ -128,7 +126,7 @@ function finiteNumber(value: unknown, fallback = 0): number {
 function formatSignedUsd(value: unknown): string {
   const n = finiteNumber(value);
   const sign = n > 0 ? '+' : n < 0 ? '-' : '';
-  return `${sign}$${Math.abs(n).toFixed(2)}`;
+  return `${sign}¥${Math.abs(n).toFixed(2)}`;
 }
 
 function formatSignedPercent(value: unknown, digits = 2): string {
@@ -183,7 +181,7 @@ function livePositionSize(position: LiveExecutionPosition): number {
 }
 
 function accountExchangeLabel(account?: LiveExecutionAccount | null): string {
-  return account?.exchange === 'binanceusdm' ? 'Binance USD-M' : 'OKX';
+  return account?.exchangeAlias || account?.name || 'A股';
 }
 
 function LiveMonitorAccountTabs({
@@ -633,7 +631,7 @@ const ALERT_TEMPLATES: AlertTemplate[] = [
   },
 ];
 
-export function BitProMonitorSource() {
+export default function Monitor() {
   const navigate = useNavigate();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [runningStrategies, setRunningStrategies] = useState<RunningStrategy[]>([]);
@@ -952,7 +950,7 @@ export function BitProMonitorSource() {
           : '全市场未平仓（OKX BTC-SWAP）';
       return { positionCardValue: main, positionCardSub: sub };
     }
-    return { positionCardValue: '--', positionCardSub: '暂无策略持仓与市场 OI' };
+    return { positionCardValue: '--', positionCardSub: '暂无策略持仓' };
   }, [strategyNotionalUsdt, sentiment.openInterest, sentiment.openInterestBtc]);
 
   const profitPushStatusText = useMemo(() => {
@@ -1261,11 +1259,9 @@ export function BitProMonitorSource() {
   const fetchMarketSentiment = async () => {
     setSentimentLoading(true);
     try {
-      // 并行请求多个数据源
-      const [lsRes, oiRes, _frRes] = await Promise.allSettled([
-        monitorApi.getLongShortRatio('okx', 'BTC/USDT:USDT'),
-        monitorApi.getOpenInterest('okx', 'BTC/USDT:USDT'),
-        marketApi.getTicker('okx', 'BTC/USDT'),
+      const [lsRes, oiRes] = await Promise.allSettled([
+        monitorApi.getLongShortRatio('CN', 'CN-A'),
+        monitorApi.getOpenInterest('CN', 'CN-A'),
       ]);
 
       const longShortValue =
@@ -1432,11 +1428,11 @@ export function BitProMonitorSource() {
               sub={monitorSummary.grossLoss > 0 ? '总盈利 / 总亏损' : '暂无亏损样本'}
             />
             <SentimentCard
-              label="多空比"
+              label="涨跌比"
               value={sentiment.longShortRatio != null ? sentiment.longShortRatio.toFixed(2) : '--'}
               icon={<BarChart3 className="w-4 h-4" />}
               color={sentiment.longShortRatio != null ? (sentiment.longShortRatio > 1 ? 'green' : sentiment.longShortRatio < 1 ? 'red' : 'gray') : 'gray'}
-              sub={sentiment.longShortRatio != null ? (sentiment.longShortRatio > 1 ? '多头占优' : sentiment.longShortRatio < 1 ? '空头占优' : '多空均衡') : '获取中...'}
+              sub={sentiment.longShortRatio != null ? (sentiment.longShortRatio > 1 ? '上涨家数占优' : sentiment.longShortRatio < 1 ? '下跌家数占优' : '涨跌均衡') : '首页展示市场广度'}
             />
             <SentimentCard
               label="策略/告警"
@@ -1448,7 +1444,7 @@ export function BitProMonitorSource() {
           </div>
         </section>
 
-        <section className="monitor-overview-panel rounded-xl border border-blue-500/15 bg-crypto-card p-4">
+        <section className="hidden monitor-overview-panel rounded-xl border border-blue-500/15 bg-crypto-card p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -1528,7 +1524,7 @@ export function BitProMonitorSource() {
         </section>
       </div>
 
-      <div className="monitorConfigPanel mb-6 rounded-xl border border-crypto-border bg-crypto-card">
+      <div className="hidden monitorConfigPanel mb-6 rounded-xl border border-crypto-border bg-crypto-card">
         <button
           type="button"
           onClick={() => setMonitorConfigOpen(open => !open)}
@@ -1810,7 +1806,7 @@ export function BitProMonitorSource() {
                       : 'border-emerald-500/20 bg-emerald-500/5 text-emerald-400/70 hover:bg-emerald-500/10 hover:text-emerald-300',
                   )}
                 >
-                  现货 {runningStrategyAssetCounts.spot}
+                  股票 {runningStrategyAssetCounts.spot}
                 </button>
                 <button
                   type="button"
@@ -1823,7 +1819,7 @@ export function BitProMonitorSource() {
                       : 'border-blue-500/20 bg-blue-500/5 text-blue-400/70 hover:bg-blue-500/10 hover:text-blue-300',
                   )}
                 >
-                  合约 {runningStrategyAssetCounts.contract}
+                  ETF {runningStrategyAssetCounts.contract}
                 </button>
               </div>
               <button
@@ -1947,7 +1943,7 @@ export function BitProMonitorSource() {
                 <p className="text-gray-600 text-xs mt-1">
                   {runningStrategies.length > 0
                     ? '可切换上方筛选查看其他资产类型'
-                    : '前往"模拟/实盘"页面启动策略'}
+                    : '前往“模拟”页面查看 A 股 Paper 策略'}
                 </p>
               </div>
             )}
@@ -1955,7 +1951,7 @@ export function BitProMonitorSource() {
         </div>
 
         {/* ====== 实盘监控 ====== */}
-        <div className="bg-crypto-card border border-crypto-border rounded-xl">
+        <div className="hidden bg-crypto-card border border-crypto-border rounded-xl">
           <div className="p-4 border-b border-crypto-border flex items-center gap-2">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-blue-400" />
@@ -2383,203 +2379,6 @@ function SentimentCard({ label, value, icon, color, sub }: {
       </div>
       <div className={clsx('min-w-0 truncate font-mono text-xl font-bold leading-tight tabular-nums', c.text)}>{value}</div>
       <div className="mt-2 border-t border-white/5 pt-2 text-[11px] font-medium leading-snug text-gray-300/75">{sub}</div>
-    </div>
-  );
-}
-
-function evidenceTime(value: unknown): string {
-  if (!value) return '--';
-  const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? String(value).slice(0, 19) : date.toLocaleString('zh-CN', { hour12: false });
-}
-
-function evidenceTone(value: unknown): 'green' | 'red' | 'blue' | 'yellow' | 'gray' {
-  const normalized = String(value || '').toLowerCase();
-  if (['healthy', 'fresh', 'sealed', 'delivered', 'success'].includes(normalized)) return 'green';
-  if (['critical', 'failed', 'error', 'missing'].includes(normalized)) return 'red';
-  if (['warning', 'stale', 'partial', 'pending'].includes(normalized)) return 'yellow';
-  return 'gray';
-}
-
-export default function Monitor() {
-  const [summary, setSummary] = useState<MonitorSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [configOpen, setConfigOpen] = useState(false);
-  const loadInFlight = useRef(false);
-
-  const load = async () => {
-    if (loadInFlight.current) return;
-    loadInFlight.current = true;
-    setLoading(true);
-    try {
-      setSummary(await monitorCurrentApi.summary('audit'));
-      setError('');
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.detail || requestError?.message || '监控证据读取失败');
-    } finally {
-      loadInFlight.current = false;
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void load();
-    }, 30_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const running = summary?.strategy_health.filter((item) => item.lifecycle_status === 'running').length ?? 0;
-  const unhealthy = summary?.strategy_health.filter((item) => ['stale', 'missing', 'failed', 'error'].includes(item.health_state)).length ?? 0;
-  const delivered = summary?.notifications.reduce((total, item) => total + (String(item.status) === 'delivered' ? Number(item.count || 0) : 0), 0) ?? 0;
-  const datasetStatus = summary?.data?.dataset?.status || 'missing';
-  const marketStatus = summary?.data?.market?.status || 'missing';
-
-  return (
-    <div className="flex h-full flex-col overflow-y-auto bg-crypto-bg p-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Eye className="h-6 w-6 text-blue-400" />
-          <div>
-            <h1 className="text-2xl font-bold text-white">监控中心</h1>
-            <p className="mt-1 text-xs text-gray-500">Paper 生命周期、运行健康、数据证据、风险与通知</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="flex items-center gap-1.5 rounded-xl border border-crypto-border bg-crypto-card px-3 py-2 text-xs text-gray-400 transition-colors hover:text-white disabled:opacity-50"
-        >
-          <RefreshCw className={clsx('h-3.5 w-3.5', loading && 'animate-spin')} />刷新证据
-        </button>
-      </div>
-
-      {error && <div className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</div>}
-
-      <div className="monitorOverviewGrid mb-6 grid grid-cols-1 gap-4 2xl:grid-cols-2">
-        <section className="monitor-overview-panel rounded-xl border border-blue-500/15 bg-crypto-card p-4">
-          <div className="mb-4">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Activity className="h-4 w-4 text-green-400" />模拟盘总览
-            </h2>
-            <p className="mt-1 text-[11px] text-gray-500">生命周期与健康分离；运行状态不代表账本健康</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <SentimentCard label="Paper 实例" value={String(summary?.strategy_health.length ?? 0)} icon={<Activity className="h-4 w-4" />} color="blue" sub="PostgreSQL 审计范围" />
-            <SentimentCard label="运行中" value={String(running)} icon={<HeartPulse className="h-4 w-4" />} color={running > 0 ? 'green' : 'gray'} sub="仅生命周期 running" />
-            <SentimentCard label="健康异常" value={String(unhealthy)} icon={<ShieldAlert className="h-4 w-4" />} color={unhealthy > 0 ? 'yellow' : 'green'} sub="stale / missing / failed" />
-            <SentimentCard label="活动告警" value={String(summary?.active_alerts.length ?? 0)} icon={<Bell className="h-4 w-4" />} color={(summary?.active_alerts.length ?? 0) > 0 ? 'yellow' : 'green'} sub="告警只记录，不创建订单" />
-          </div>
-        </section>
-
-        <section className="monitor-overview-panel rounded-xl border border-blue-500/15 bg-crypto-card p-4">
-          <div className="mb-4">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-              <ServerCog className="h-4 w-4 text-blue-400" />运行证据总览
-            </h2>
-            <p className="mt-1 text-[11px] text-gray-500">服务、封存数据和通知投递来自同一监控快照</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <SentimentCard label="整体状态" value={summary?.overall_status || '--'} icon={<HeartPulse className="h-4 w-4" />} color={evidenceTone(summary?.overall_status)} sub="当前监控聚合结论" />
-            <SentimentCard label="服务证据" value={String(summary?.services.length ?? 0)} icon={<ServerCog className="h-4 w-4" />} color="blue" sub="进程与依赖健康" />
-            <SentimentCard label="Dataset" value={String(datasetStatus)} icon={<Database className="h-4 w-4" />} color={evidenceTone(datasetStatus)} sub="封存研究输入" />
-            <SentimentCard label="已投递通知" value={String(delivered)} icon={<Send className="h-4 w-4" />} color={delivered > 0 ? 'green' : 'gray'} sub="按真实 delivery 状态统计" />
-          </div>
-        </section>
-      </div>
-
-      <div className="monitorConfigPanel mb-6 rounded-xl border border-crypto-border bg-crypto-card">
-        <button
-          type="button"
-          onClick={() => setConfigOpen((open) => !open)}
-          aria-expanded={configOpen}
-          className="flex w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-white/[0.02]"
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            <Bell className="h-4 w-4 text-blue-400" />
-            <h2 className="text-sm font-semibold text-white">监控配置</h2>
-            <span className="truncate text-xs text-gray-500">当前只读展示告警与通知证据，不自动修改运行时</span>
-          </div>
-          <ChevronRight className={clsx('h-4 w-4 text-gray-500 transition-transform', configOpen && 'rotate-90')} />
-        </button>
-        {configOpen && (
-          <div className="grid gap-4 border-t border-crypto-border p-4 xl:grid-cols-2">
-            <section className="rounded-xl border border-crypto-border bg-crypto-bg/60 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-white">风险告警</h3>
-              <div className="max-h-64 space-y-2 overflow-y-auto">
-                {(summary?.active_alerts || []).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-crypto-border bg-crypto-card p-3">
-                    <div className="flex justify-between gap-3 text-xs"><span className="text-gray-200">{item.title}</span><span className="text-amber-300">{item.severity}</span></div>
-                    <div className="mt-1 text-[10px] text-gray-500">{item.message || item.status}</div>
-                  </div>
-                ))}
-                {!summary?.active_alerts.length && <div className="py-6 text-center text-xs text-gray-500">当前没有活动告警</div>}
-              </div>
-            </section>
-            <section className="rounded-xl border border-crypto-border bg-crypto-bg/60 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-white">通知投递</h3>
-              <div className="space-y-2">
-                {(summary?.notifications || []).map((item, index) => (
-                  <div key={`${item.status}-${index}`} className="flex items-center justify-between rounded-lg border border-crypto-border bg-crypto-card px-3 py-2 text-xs">
-                    <span className="text-gray-300">{item.status}</span><span className="font-mono text-gray-400">{item.count ?? 0}</span>
-                  </div>
-                ))}
-                {!summary?.notifications.length && <div className="py-6 text-center text-xs text-gray-500">通知证据为空</div>}
-              </div>
-            </section>
-          </div>
-        )}
-      </div>
-
-      <div className="monitorRuntimeGrid grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_.65fr]">
-        <section className="rounded-xl border border-crypto-border bg-crypto-card">
-          <div className="flex items-center justify-between border-b border-crypto-border p-4">
-            <div className="flex items-center gap-2"><Activity className="h-4 w-4 text-green-400" /><h2 className="text-sm font-semibold text-white">模拟盘监控</h2></div>
-            <span className="text-[10px] text-gray-500">生命周期与健康分离</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-xs">
-              <thead className="border-b border-crypto-border text-[10px] text-gray-500"><tr>{['实例','生命周期','健康','心跳年龄','最近周期','权益日期','账本差异'].map((label) => <th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead>
-              <tbody className="divide-y divide-crypto-border/60">
-                {(summary?.strategy_health || []).map((item) => (
-                  <tr key={item.id} data-paper-instance-id={item.id}>
-                    <td className="px-3 py-2.5"><div className="max-w-64 truncate text-gray-200">{item.name}</div><div className="font-mono text-[10px] text-gray-600">{item.id}</div></td>
-                    <td className="px-3 py-2.5 text-gray-300">{item.lifecycle_status}</td>
-                    <td className={clsx('px-3 py-2.5', evidenceTone(item.health_state) === 'green' ? 'text-green-300' : evidenceTone(item.health_state) === 'red' ? 'text-red-300' : 'text-amber-300')}>{item.health_state}</td>
-                    <td className="px-3 py-2.5 font-mono text-gray-500">{item.heartbeat_age_seconds ?? '--'}</td>
-                    <td className="px-3 py-2.5 text-gray-500">{evidenceTime(item.latest_cycle_finished_at)}</td>
-                    <td className="px-3 py-2.5 text-gray-500">{String(item.latest_equity_trade_date || '--').slice(0, 10)}</td>
-                    <td className="px-3 py-2.5 font-mono text-gray-400">{item.latest_cycle_ledger_difference ?? '--'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-crypto-border bg-crypto-card">
-          <div className="flex items-center gap-2 border-b border-crypto-border p-4"><ServerCog className="h-4 w-4 text-blue-400" /><h2 className="text-sm font-semibold text-white">服务与数据健康</h2></div>
-          <div className="space-y-2 p-4">
-            {(summary?.services || []).map((service) => (
-              <div key={String(service.service_code)} className="rounded-lg border border-crypto-border bg-crypto-bg/60 p-3">
-                <div className="flex justify-between gap-3 text-xs"><span className="text-gray-200">{service.service_code}</span><span className={evidenceTone(service.status) === 'green' ? 'text-green-300' : 'text-amber-300'}>{service.status} · {service.freshness}</span></div>
-                <div className="mt-1 text-[10px] text-gray-600">{evidenceTime(service.observed_at)} · {service.latency_ms ?? '--'}ms</div>
-              </div>
-            ))}
-            <div className="grid grid-cols-2 gap-2">
-              {[['Dataset', datasetStatus], ['市场证据', marketStatus]].map(([label, status]) => (
-                <div key={label} className="rounded-lg border border-crypto-border bg-crypto-bg/60 p-3"><div className="text-[10px] text-gray-500">{label}</div><div className="mt-1 text-xs text-gray-200">{status}</div></div>
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div className="mt-6"><SchedulerPanel /></div>
-      <div className="mt-4 text-[10px] text-gray-600">{summary?.source_label || 'PostgreSQL runtime evidence'} · 证据更新时间 {evidenceTime(summary?.source_updated_at)}</div>
     </div>
   );
 }

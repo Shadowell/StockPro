@@ -58,6 +58,11 @@ export function extractSymbolBase(symbol: string | null | undefined): string {
 }
 
 export function getSymbolLogoUrl(symbol: string, base?: string): string | null {
+  const source = String(symbol || base || '').trim().toUpperCase();
+  const isAShareSymbol =
+    /(?:^|[^A-Z0-9])\d{6}\.(?:SH|SZ|BJ)(?:$|[^A-Z0-9])/.test(source) ||
+    /(?:^|[^A-Z0-9])(?:SH|SZ|BJ)_\d{6}(?:$|[^A-Z0-9])/.test(source);
+  if (isAShareSymbol) return null;
   const resolvedBase = extractSymbolBase(base || symbol);
   if (!resolvedBase || LOCAL_FALLBACK_ONLY.has(resolvedBase)) return null;
   const slug = LOGO_SLUG_ALIASES[resolvedBase] || resolvedBase.toLowerCase();

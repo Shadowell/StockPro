@@ -3,8 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { FlaskConical, Radio } from 'lucide-react';
 import clsx from 'clsx';
 import { liveApi, monitorApi, paperApi, tradingApi } from '../../api/client';
-import { useAuth } from '../../auth/AuthProvider';
 import { useStore } from '../../stores/useStore';
+import { useAuth } from '../../auth/AuthProvider';
 import ThemeDialog from '../../components/ThemeDialog';
 import type {
   Balance,
@@ -66,7 +66,6 @@ const InstanceMonitor = lazy(loadInstanceMonitor);
 
 const ACTIVE_INSTANCE_STATUSES = new Set(['running', 'paused']);
 const DASHBOARD_LIST_REFRESH_INTERVAL_MS = 60_000;
-const STRATEGY_PAGE_SIZE = 60;
 const INSTANCE_FAVORITES_STORAGE_KEY = 'bitpro_live_instance_favorites_v1';
 const AUTO_PREFERRED_DISMISSED_STORAGE_KEY =
   'bitpro_live_auto_preferred_dismissed_v1';
@@ -161,19 +160,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function stringList(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item || '').trim()).filter(Boolean);
-  }
-  if (typeof value === 'string' && value.trim()) {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return [];
-}
-
 function optionalText(value: unknown): string | null {
   if (value == null) return null;
   const text = String(value).trim();
@@ -261,11 +247,6 @@ function compareInstancesBySortMode(sortMode: InstanceSortMode) {
   };
 }
 
-function isContractSymbol(symbol: string): boolean {
-  const normalized = symbol.trim().toUpperCase();
-  return normalized.includes(':') || normalized.endsWith('-USDT-SWAP');
-}
-
 function inferAssetClass(source: {
   name?: unknown;
   symbol?: unknown;
@@ -277,29 +258,7 @@ function inferAssetClass(source: {
   inst_type?: unknown;
 }): ConcreteAssetClass {
   const cfg = asRecord(source.config);
-  const marketType = String(
-    source.marketType ?? source.market_type ?? cfg.marketType ?? cfg.market_type ?? '',
-  ).toLowerCase();
-  const instType = String(
-    source.instType ?? source.inst_type ?? cfg.instType ?? cfg.inst_type ?? '',
-  ).toUpperCase();
-  if (['swap', 'future', 'futures', 'contract'].includes(marketType) || instType === 'SWAP') {
-    return 'contract';
-  }
-
-  const name = String(source.name || '').trim();
-  if (name.startsWith('[合约]')) return 'contract';
-
-  const symbols = [
-    ...stringList(source.symbol),
-    ...stringList(source.symbols),
-    ...stringList(cfg.symbol),
-    ...stringList(cfg.symbols),
-    ...stringList(cfg.trade_symbols),
-    ...stringList(cfg.tradeSymbols),
-    ...stringList(cfg.contract_trade_symbols),
-  ];
-  return symbols.some(isContractSymbol) ? 'contract' : 'spot';
+  return String(cfg.assetClass ?? cfg.asset_class ?? '').toLowerCase() === 'etf' ? 'etf' : 'stock';
 }
 
 function resolveInstanceLeverage(cfg: Record<string, unknown>): number | undefined {
@@ -518,18 +477,8 @@ function deleteStrategyIdSearchParams(searchParams: URLSearchParams) {
 }
 
 async function loadAllStrategies() {
-  const firstPage = await liveApi.getStrategies({ page: 1, perPage: STRATEGY_PAGE_SIZE });
-  const totalPages = Math.max(1, Number(firstPage?.pages || 1));
-  if (totalPages === 1) return Array.isArray(firstPage?.items) ? firstPage.items : [];
-
-  const remainingPages = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, index) =>
-      liveApi.getStrategies({ page: index + 2, perPage: STRATEGY_PAGE_SIZE }),
-    ),
-  );
-  return [firstPage, ...remainingPages].flatMap((page) =>
-    Array.isArray(page?.items) ? page.items : [],
-  );
+  const result = await liveApi.getPaperInstances();
+  return Array.isArray(result?.items) ? result.items : [];
 }
 
 function dashboardMatchesInstance(
@@ -545,8 +494,8 @@ function dashboardMatchesInstance(
 
 function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
   const [initialPrefs] = useState<LivePrefsStored | null>(() => loadLivePrefs());
-  const { isGuest } = useAuth();
-  const readOnly = isGuest;
+  const { isAdmin } = useAuth();
+  const readOnly = !isAdmin;
   const { selectedExchange, setSelectedExchange } = useStore();
 
   useLayoutEffect(() => {
@@ -588,23 +537,24 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
     () => initialPrefs?.assetClassFilter ?? 'all',
   );
   const [instanceSortMode, setInstanceSortMode] = useState<InstanceSortMode>('return_desc');
-  const [instanceListView, setInstanceListView] = useState<InstanceListView>('favorites');
+  const [instanceListView, setInstanceListView] = useState<InstanceListView>('all');
   const [favoriteInstanceIds, setFavoriteInstanceIds] = useState<Set<string>>(
     loadFavoriteInstanceIds,
   );
   const [dismissedAutoPreferredInstanceIds, setDismissedAutoPreferredInstanceIds] =
     useState<Set<string>>(loadDismissedAutoPreferredInstanceIds);
   const [loading, setLoading] = useState(false);
+  const [paperAdvanceBusy, setPaperAdvanceBusy] = useState(false);
 
   const [config, setConfig] = useState(() => {
     const mode: TradeMode =
-      initialPrefs?.tradeMode === 'live' ? 'live' : 'paper';
+      modeScope ?? (initialPrefs?.tradeMode === 'live' ? 'live' : 'paper');
     const defaultTf =
       mode === 'paper' ? DEFAULT_PAPER_TIMEFRAME : DEFAULT_LIVE_CONFIG.timeframe;
     const defaultInitialEquity =
       mode === 'paper' ? DEFAULT_PAPER_INITIAL_EQUITY : DEFAULT_LIVE_CONFIG.initialEquity;
     const saved =
-      initialPrefs?.config && typeof initialPrefs.config === 'object'
+      !modeScope && initialPrefs?.config && typeof initialPrefs.config === 'object'
         ? initialPrefs.config
         : {};
     return {
@@ -631,6 +581,7 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
 
   const [paperResult, setPaperResult] = useState<any>(null);
   const [paperLoading, setPaperLoading] = useState(false);
+  const [paperCandidates, setPaperCandidates] = useState<StrategyInfo[]>([]);
   // /paper-trading/instances 僵尸 API 已移除（生产 review 2026-08-24）：该端点基于
   // 永远为空的内存列表，重启后恒为空且 getInstance 全部 404。模拟盘实例列表真实
   // 来源是 strategies（live:strategy:*）。props 链暂保留空数组以维持子组件编译，
@@ -666,29 +617,22 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
     isAlert: false,
   });
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
-  const [stopClearMetrics, setStopClearMetrics] = useState(false);
 
   const isDryRun = tradeMode === 'paper';
   const canSwitchMode = !modeScope;
+  const creatableStrategies = useMemo(
+    () => isDryRun ? paperCandidates : strategies,
+    [isDryRun, paperCandidates, strategies],
+  );
   const selectedStrategyInfo = useMemo(
-    () => strategies.find((s) => String(s.id) === String(selectedStrategy)),
-    [strategies, selectedStrategy],
+    () => creatableStrategies.find((s) => String(s.id) === String(selectedStrategy)),
+    [creatableStrategies, selectedStrategy],
   );
   const selectedStrategyRuntime = useMemo(
     () => strategyRuntimeDefaults(selectedStrategyInfo),
     [selectedStrategyInfo],
   );
-  const selectedStrategyTimeframe =
-    selectedStrategyRuntime.timeframe || DEFAULT_PAPER_TIMEFRAME;
-  const creatableStrategies = useMemo(
-    () =>
-      isDryRun
-        ? strategies.filter(
-            (strategy) => !ACTIVE_INSTANCE_STATUSES.has(normalizeInstanceStatus(strategy)),
-          )
-        : strategies,
-    [isDryRun, strategies],
-  );
+  const selectedStrategyTimeframe = selectedStrategyRuntime.timeframe || DEFAULT_PAPER_TIMEFRAME;
 
   const rawInstances = useMemo(
     () => buildTradingInstances(strategies),
@@ -773,8 +717,8 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
   const assetClassCounts = useMemo(
     () => ({
       all: viewModeInstances.length,
-      spot: viewModeInstances.filter((i) => i.assetClass === 'spot').length,
-      contract: viewModeInstances.filter((i) => i.assetClass === 'contract').length,
+      stock: viewModeInstances.filter((i) => i.assetClass === 'stock').length,
+      etf: viewModeInstances.filter((i) => i.assetClass === 'etf').length,
     }),
     [viewModeInstances],
   );
@@ -1060,7 +1004,7 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
 
   const loadStrategies = async () => {
     try {
-      const raw = await loadAllStrategies();
+      const [raw, candidates] = await Promise.all([loadAllStrategies(), liveApi.getPaperCandidates()]);
       const list: StrategyInfo[] = raw.map((s: any) => ({
         ...s,
         id: s.id ?? s.strategyId,
@@ -1074,6 +1018,23 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
         createdAt: s.createdAt ?? s.created_at ?? null,
       }));
       setStrategies(list);
+      setPaperCandidates((Array.isArray(candidates) ? candidates : []).map((candidate: any) => ({
+        id: candidate.strategyId,
+        name: candidate.strategyName || `策略 #${candidate.strategyId}`,
+        description: candidate.description || '已通过完整回测与 Paper 晋级门禁',
+        status: 'not_started',
+        timeframe: '1d',
+        initialCapital: Number(candidate.initialCash || 1_000_000),
+        config: {
+          asset_class: 'stock',
+          timeframe: '1d',
+          initial_capital: Number(candidate.initialCash || 1_000_000),
+          qualifying_backtest_run_id: candidate.qualifyingBacktestRunId,
+          return_pct: candidate.returnPct,
+          max_drawdown_pct: candidate.maxDrawdownPct,
+          sharpe_ratio: candidate.sharpeRatio,
+        },
+      })));
     } catch (err) {
       console.error('加载策略列表失败:', err);
     }
@@ -1390,6 +1351,24 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
     setShowLiveConfirm(false);
     setLoading(true);
     try {
+      if (isDryRun) {
+        const candidate = selectedStrategyInfo;
+        const qualifyingBacktestRunId = String(asRecord(candidate?.config).qualifying_backtest_run_id || '');
+        if (!candidate || !qualifyingBacktestRunId) {
+          throw new Error('请选择已通过 Paper 晋级门禁的 A 股策略');
+        }
+        await liveApi.createPaperInstance({
+          name: `${candidate.name} / Paper`,
+          qualifyingBacktestRunId,
+          initialCash: config.initialEquity,
+          start: true,
+        });
+        setView('dashboard');
+        setCreateStep('select');
+        setPreflightResult(null);
+        await loadStrategies();
+        return;
+      }
       await liveApi.configure({
         exchange: selectedExchange,
         strategy_type: String(selectedStrategy),
@@ -1739,7 +1718,6 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
       });
       return;
     }
-    setStopClearMetrics(false);
     setStopDialogOpen(true);
   };
 
@@ -1780,6 +1758,39 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
         content: String(e?.response?.data?.detail || e?.message),
         tone: 'danger',
       });
+    }
+  };
+
+  const handleAdvancePaper = async () => {
+    if (readOnly || !activeInstanceId || paperAdvanceBusy) return;
+    const qid = toLiveApiInstanceId(activeInstanceId);
+    if (qid == null) return;
+    setPaperAdvanceBusy(true);
+    try {
+      const result = await liveApi.advance(qid, 1);
+      const [dash, evts, curve, tradePayload] = await Promise.all([
+        liveApi.getDashboard(qid),
+        liveApi.getEvents(30, undefined, qid),
+        liveApi.getEquityCurve(qid),
+        liveApi.getStrategyTrades(Number(qid), 100),
+      ]);
+      setDashboard(dash);
+      setEvents(Array.isArray(evts) ? evts : evts?.events || []);
+      setEquityCurve(Array.isArray(curve) ? curve : []);
+      setTrades(normalizeStrategyTradesResponse(tradePayload));
+      await loadStrategies();
+      openAlertDialog({
+        title: result.processedDates?.length ? '周期推进完成' : '当前已到 sealed 快照末端',
+        content: result.processedDates?.length
+          ? `已处理 ${result.processedDates.join('、')}；信号 ${result.signalCount || 0}，订单 ${result.orderCount || 0}，成交 ${result.tradeCount || 0}。`
+          : '没有新的 sealed 交易日，实例和全部历史保持不变。',
+        tone: 'default',
+      });
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string };
+      openAlertDialog({ title: '周期推进失败', content: String(e?.response?.data?.detail || e?.message), tone: 'danger' });
+    } finally {
+      setPaperAdvanceBusy(false);
     }
   };
 
@@ -2059,6 +2070,8 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
             }}
             onPauseResume={handlePauseResume}
             onStop={handleMonitorStop}
+            onAdvance={handleAdvancePaper}
+            advanceBusy={paperAdvanceBusy}
             onClosePosition={handleClosePaperPosition}
             onDeletePaper={
               paperInstanceKey(activeInstanceId)
@@ -2083,30 +2096,17 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
           cancelText="取消"
           onCancel={() => setStopDialogOpen(false)}
           onConfirm={async () => {
-            const clear = stopClearMetrics;
             setStopDialogOpen(false);
-            await executeStop(clear);
+            await executeStop(false);
           }}
         >
           <div className="space-y-4 text-sm text-gray-300">
             <p>
               关闭会取消当前策略任务，不再产生新的交易。已有持仓不会因为关闭按钮自动卖出。
             </p>
-            <label className="flex items-start gap-3 rounded-xl border border-[#263142] bg-[#0b111d] p-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={stopClearMetrics}
-                onChange={(e) => setStopClearMetrics(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
-              />
-              <span>
-                <span className="block font-semibold text-white">清空之前的交易指标</span>
-                <span className="mt-1 block text-xs text-gray-500 leading-relaxed">
-                  勾选后会删除该策略的成交明细、收益曲线和诊断日志；下次启动按全新一轮统计。
-                  不勾选则保留现有指标，下次启动继续沿用本轮统计。
-                </span>
-              </span>
-            </label>
+            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-xs leading-relaxed text-emerald-100">
+              关闭只停止后续周期；当前现金、持仓、订单、成交、收益曲线、事件、运行游标和诊断历史全部保留。
+            </div>
           </div>
         </ThemeDialog>
       )}

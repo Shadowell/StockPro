@@ -13,10 +13,6 @@ import CryptoSelect from '../components/CryptoSelect';
 import ThemeDialog from '../components/ThemeDialog';
 import ThemeAlertDialog, { type ThemeAlertTone } from '../components/ThemeAlertDialog';
 import { SELECTED_SEGMENT_BORDER_CLASS } from '../utils/selectionStyles';
-import { aiCurrentApi, strategyCurrentApi } from '../api/client';
-import { useAuth } from '../auth/AuthProvider';
-import type { AIConfig, AITask } from '../types/ai';
-import type { StrategyVersionRecord } from '../types/strategy';
 import ResearchWorkbench from './aiLab/ResearchWorkbench';
 import AutoAgentPanel from './aiLab/AutoAgentPanel';
 import OrbitPostPanel from './aiLab/OrbitPostPanel';
@@ -27,10 +23,10 @@ api.interceptors.response.use((r) => r.data, (e) => Promise.reject(e));
 
 /* ---------- types ---------- */
 
-export function BitProAILabSource() {
+export default function AILab() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const activeTab: AssistantTab = tabParam === 'research' || tabParam === 'optimizer' || tabParam === 'autonomous' || tabParam === 'auto-agent' || tabParam === 'orbit-post' ? tabParam : 'auto-agent';
+  const activeTab = (tabParam === 'research' || tabParam === 'optimizer' ? tabParam : 'research') as AssistantTab;
   const [startDate, setStartDate] = useState(DEFAULT_BACKTEST_DATE_RANGE.start);
   const [endDate, setEndDate] = useState(DEFAULT_BACKTEST_DATE_RANGE.end);
   const [maxIter, setMaxIter] = useState(3);
@@ -1134,7 +1130,7 @@ export function BitProAILabSource() {
             <Sparkles className="text-yellow-400" size={28} />
             AI策略助手
           </h1>
-          <p className="mt-1 text-xs text-gray-500">AI自主交易、新策略研发与现有策略优化统一入口</p>
+          <p className="mt-1 text-xs text-gray-500">A 股新策略研发与现有策略优化统一入口；执行类能力保持关闭</p>
         </div>
         <div className="flex items-center gap-3">
           {task && (
@@ -1156,11 +1152,11 @@ export function BitProAILabSource() {
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-1 gap-2 rounded-xl border border-crypto-border bg-crypto-card p-1 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-1 gap-2 rounded-xl border border-crypto-border bg-crypto-card p-1 lg:grid-cols-2">
         <button
           type="button"
           onClick={() => switchTab('auto-agent')}
-          className={`flex min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
+          className={`hidden min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
             activeTab === 'auto-agent'
               ? SELECTED_SEGMENT_BORDER_CLASS
               : 'border-purple-500/30 bg-purple-950/45 text-purple-100/80 hover:border-purple-400/55 hover:bg-purple-900/45'
@@ -1175,7 +1171,7 @@ export function BitProAILabSource() {
         <button
           type="button"
           onClick={() => switchTab('autonomous')}
-          className={`flex min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
+          className={`hidden min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
             activeTab === 'autonomous'
               ? SELECTED_SEGMENT_BORDER_CLASS
               : 'border-yellow-500/30 bg-yellow-950/45 text-yellow-100/80 hover:border-yellow-400/55 hover:bg-yellow-900/45'
@@ -1214,13 +1210,13 @@ export function BitProAILabSource() {
           <Wrench size={18} className={activeTab === 'optimizer' ? 'text-green-300' : 'text-emerald-500/70'} />
           <span className="min-w-0">
             <span className="block text-sm font-semibold">现有策略优化</span>
-            <span className="block truncate text-[11px] text-current/60">4h 扫描、AI 诊断、候选试运行</span>
+            <span className="block truncate text-[11px] text-current/60">日线扫描、AI 诊断、候选试运行</span>
           </span>
         </button>
         <button
           type="button"
           onClick={() => switchTab('orbit-post')}
-          className={`flex min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
+          className={`hidden min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition ${
             activeTab === 'orbit-post'
               ? SELECTED_SEGMENT_BORDER_CLASS
               : 'border-cyan-500/30 bg-cyan-950/45 text-cyan-100/80 hover:border-cyan-400/55 hover:bg-cyan-900/45'
@@ -2908,126 +2904,4 @@ export function BitProAILabSource() {
       />
     </div>
   );
-}
-
-type AshareAssistantTab = 'auto-agent' | 'autonomous' | 'research' | 'optimizer';
-
-export default function AILab() {
-  const { role } = useAuth();
-  const [tab, setTab] = useState<AshareAssistantTab>('auto-agent');
-  const [config, setConfig] = useState<AIConfig | null>(null);
-  const [tasks, setTasks] = useState<AITask[]>([]);
-  const [strategies, setStrategies] = useState<StrategyVersionRecord[]>([]);
-  const [selected, setSelected] = useState<AITask | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
-  const [form, setForm] = useState({
-    name: 'A股因子策略研究',
-    user_prompt: '基于封存股票池、因子和成本证据研究稳健的只做多策略',
-    dataset_snapshot_id: '',
-    universe_snapshot_id: '',
-    pool_snapshot_id: '',
-    factor_snapshot_id: '',
-    start_date: '2024-01-01',
-    end_date: '2025-12-31',
-  });
-
-  const load = async () => {
-    const [configResult, taskResult, strategyResult] = await Promise.allSettled([
-      aiCurrentApi.config(),
-      aiCurrentApi.tasks(),
-      strategyCurrentApi.list(),
-    ]);
-    if (configResult.status === 'fulfilled') setConfig(configResult.value);
-    if (taskResult.status === 'fulfilled') setTasks(taskResult.value.items);
-    if (strategyResult.status === 'fulfilled') setStrategies(strategyResult.value.items);
-  };
-
-  useEffect(() => { void load(); }, []);
-
-  const createTask = async () => {
-    if (role !== 'admin') return;
-    setBusy(true);
-    try {
-      const task = await aiCurrentApi.create({
-        name: form.name,
-        user_prompt: form.user_prompt,
-        goal: { objective: 'risk_adjusted_return' },
-        research_config: {
-          dataset_snapshot_id: Number(form.dataset_snapshot_id),
-          universe_snapshot_id: Number(form.universe_snapshot_id),
-          pool_snapshot_id: Number(form.pool_snapshot_id),
-          factor_snapshot_id: Number(form.factor_snapshot_id),
-          start_date: form.start_date,
-          end_date: form.end_date,
-        },
-        max_iterations: 6,
-      });
-      setTasks((items) => [task, ...items]);
-      setSelected(task);
-      setMessage('任务已创建，尚未启动');
-    } catch (error: any) {
-      setMessage(error?.response?.data?.detail || error?.message || '创建失败');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const startTask = async (task: AITask) => {
-    setBusy(true);
-    try {
-      const next = await aiCurrentApi.start(task.id);
-      setSelected(next);
-      setTasks((items) => items.map((item) => item.id === next.id ? next : item));
-      setMessage(next.error_message || next.stage_label);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const tabs: Array<{ key: AshareAssistantTab; label: string; desc: string; icon: React.ReactNode; tone: string }> = [
-    { key: 'auto-agent', label: '自动交易Agent', desc: 'Planner→代码→沙箱→Quick→评估闭环', icon: <GitBranch size={18} />, tone: 'border-purple-500/30 bg-purple-950/45 text-purple-100/80' },
-    { key: 'autonomous', label: 'AI自主交易', desc: '研究任务自治，不直接控制 Paper', icon: <Activity size={18} />, tone: 'border-yellow-500/30 bg-yellow-950/45 text-yellow-100/80' },
-    { key: 'research', label: '新策略研发', desc: '封存证据、候选策略与迭代流水线', icon: <Sparkles size={18} />, tone: 'border-blue-500/30 bg-blue-950/45 text-blue-100/80' },
-    { key: 'optimizer', label: '现有策略优化', desc: '诊断当前版本并创建独立候选版本', icon: <Wrench size={18} />, tone: 'border-emerald-500/30 bg-emerald-950/45 text-emerald-100/80' },
-  ];
-
-  return (
-    <div className="h-full overflow-y-auto bg-crypto-bg p-4 text-gray-100">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="flex items-center gap-2 text-2xl font-bold"><Sparkles className="text-yellow-400" size={28} />AI策略助手</h1><p className="mt-1 text-xs text-gray-500">A 股自动研究、新策略研发与现有策略优化统一入口</p></div>
-        <button type="button" onClick={() => void load()} aria-label="刷新AI研发" className="rounded-lg border border-crypto-border bg-crypto-card p-2"><RefreshCw className="h-4 w-4 text-gray-400" /></button>
-      </header>
-
-      <section className={clsx('mb-4 rounded-xl border p-4', config?.model_state === 'ready' ? 'border-emerald-500/25 bg-emerald-500/[.05]' : 'border-amber-500/25 bg-amber-500/[.05]')}>
-        <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><Cpu className="h-4 w-4" /><span className="text-sm font-semibold">{config?.provider || '模型状态读取中'}</span><span className="font-mono text-xs text-gray-500">{config?.model}</span></div><span className={config?.model_state === 'ready' ? 'text-emerald-300' : 'text-amber-200'}>{config?.model_state || 'loading'}</span></div>
-        {config?.model_state === 'unavailable' && <p className="mt-2 text-xs text-amber-100/70">模型未配置：任务启动会明确失败，不生成 mock、随机或模板结论。</p>}
-        <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-gray-500"><span>封存证据研究</span><span>Quick 回测 only</span><span>不自动创建 Paper</span></div>
-      </section>
-
-      <div role="tablist" className="mb-4 grid grid-cols-1 gap-2 rounded-xl border border-crypto-border bg-crypto-card p-1 lg:grid-cols-4">
-        {tabs.map((item) => <button key={item.key} role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)} className={clsx('flex min-h-[62px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition', tab === item.key ? SELECTED_SEGMENT_BORDER_CLASS : item.tone)}>{item.icon}<span className="min-w-0"><span className="block text-sm font-semibold">{item.label}</span><span className="block truncate text-[11px] text-current/60">{item.desc}</span></span></button>)}
-      </div>
-
-      {message && <div className="mb-4 rounded-xl border border-blue-500/20 bg-blue-500/[.05] p-3 text-xs text-blue-100">{message}</div>}
-
-      {tab === 'auto-agent' && <div className="grid gap-4 xl:grid-cols-[.85fr_1.15fr]"><AshareResearchForm form={form} setForm={setForm} onCreate={createTask} disabled={busy || role !== 'admin'} /><AshareTaskList items={tasks} selected={selected} onSelect={async (task) => setSelected(await aiCurrentApi.task(task.id))} onStart={startTask} busy={busy} /></div>}
-      {tab === 'autonomous' && <div className="rounded-xl border border-amber-500/20 bg-amber-500/[.05] p-5"><h2 className="text-sm font-semibold text-white">受控自主研究</h2><p className="mt-2 text-xs leading-6 text-gray-400">Agent 可循环提出候选、验证代码并执行 Quick 回测，但不能自动运行完整回测、创建 Paper、修改现有策略版本或触发真实交易。</p><div className="mt-4 grid gap-3 sm:grid-cols-3">{[['研究任务', tasks.length], ['活动任务', tasks.filter((item) => ['pending','running'].includes(item.status)).length], ['自动 Paper', '禁用']].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-crypto-border bg-crypto-card p-3"><div className="text-[10px] text-gray-600">{label}</div><div className="mt-1 font-mono text-lg">{value}</div></div>)}</div></div>}
-      {tab === 'research' && <AshareResearchDetail task={selected} onPromote={async (id) => { const result = await aiCurrentApi.promote(id); setMessage(`候选已保存：${result.strategy_version_id}；仍需完整回测门控`); }} />}
-      {tab === 'optimizer' && <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{strategies.slice(0, 30).map((item) => <div key={item.id} className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="text-sm font-semibold">{item.name}</div><div className="mt-1 font-mono text-[10px] text-gray-600">v{item.version} · {item.id}</div><div className="mt-3 text-xs text-gray-500">{item.validation_status} · 优化创建独立任务和新版本，不改写当前版本。</div></div>)}</div>}
-    </div>
-  );
-}
-
-function AshareResearchForm({ form, setForm, onCreate, disabled }: { form: any; setForm: (value: any) => void; onCreate: () => void; disabled: boolean }) {
-  return <section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><h2 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Settings className="h-4 w-4 text-violet-300" />研究配置</h2><div className="space-y-3">{[['任务名称','name'],['Dataset snapshot ID','dataset_snapshot_id'],['Universe snapshot ID','universe_snapshot_id'],['股票池 snapshot ID','pool_snapshot_id'],['因子 snapshot ID','factor_snapshot_id'],['开始日期','start_date'],['结束日期','end_date']].map(([label, key]) => <label key={key} className="block text-[11px] text-gray-500">{label}<input value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="mt-1 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 py-2 text-xs text-gray-200" /></label>)}<label className="block text-[11px] text-gray-500">研究目标<textarea value={form.user_prompt} onChange={(event) => setForm({ ...form, user_prompt: event.target.value })} className="mt-1 min-h-24 w-full rounded-lg border border-crypto-border bg-crypto-bg p-3 text-xs" /></label><button type="button" disabled={disabled} onClick={onCreate} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold disabled:opacity-40">创建研究任务</button></div></section>;
-}
-
-function AshareTaskList({ items, selected, onSelect, onStart, busy }: { items: AITask[]; selected: AITask | null; onSelect: (value: AITask) => void; onStart: (value: AITask) => void; busy: boolean }) {
-  return <section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><h2 className="mb-3 text-sm font-semibold">任务与迭代</h2><div className="max-h-[700px] space-y-2 overflow-y-auto">{items.map((item) => <div key={item.id} onClick={() => void onSelect(item)} className={clsx('cursor-pointer rounded-lg border p-3', selected?.id === item.id ? 'border-violet-500/35 bg-violet-500/[.06]' : 'border-crypto-border bg-crypto-bg/50')}><div className="flex justify-between gap-2"><span className="text-xs font-semibold">{item.name}</span><span className={item.status === 'completed' ? 'text-emerald-300' : item.status === 'failed' ? 'text-red-300' : 'text-amber-200'}>{item.status}</span></div><div className="mt-1 text-[10px] text-gray-600">{item.stage_label} · {String(item.created_at || '').slice(0, 19)}</div>{item.error_message && <div className="mt-2 text-xs text-red-300">{item.error_message}</div>}{item.status === 'pending' && <button type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void onStart(item); }} className="mt-2 rounded border border-violet-500/30 px-2 py-1 text-[11px] text-violet-200">启动研究</button>}</div>)}</div></section>;
-}
-
-function AshareResearchDetail({ task, onPromote }: { task: AITask | null; onPromote: (id: string) => void }) {
-  if (!task) return <div className="rounded-xl border border-dashed border-crypto-border p-10 text-center text-xs text-gray-500">请从自动交易Agent选择任务</div>;
-  return <div><div className="grid gap-3 sm:grid-cols-3">{[['状态', task.status], ['阶段', task.stage_label], ['迭代', task.current_iteration ?? 0]].map(([label, value]) => <div key={String(label)} className="rounded-xl border border-crypto-border bg-crypto-card p-3"><div className="text-[10px] text-gray-600">{label}</div><div className="mt-1 font-mono text-sm">{value}</div></div>)}</div><div className="mt-4 space-y-3">{(task.iterations || []).map((item) => <div key={item.id} className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="flex justify-between"><span className="text-sm font-semibold">{item.strategy_name}</span><span className="font-mono text-sm">{item.score}</span></div><div className="mt-2 grid gap-2 md:grid-cols-2"><pre className="max-h-64 overflow-auto rounded bg-crypto-bg p-3 text-[10px] text-gray-500">{item.strategy_code}</pre><pre className="max-h-64 overflow-auto rounded bg-crypto-bg p-3 text-[10px] text-gray-500">{JSON.stringify(item.backtest_metrics, null, 2)}</pre></div>{item.strategy_version_id && <button type="button" onClick={() => onPromote(item.id)} className="mt-3 rounded border border-emerald-500/30 px-3 py-2 text-xs text-emerald-200">保存验证候选</button>}</div>)}</div><div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/[.05] p-3 text-xs text-amber-100">保存候选不会运行完整回测或创建 Paper；仍需回测控制台完成晋级门控。</div></div>;
 }

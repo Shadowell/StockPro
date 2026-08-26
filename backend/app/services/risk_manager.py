@@ -57,6 +57,10 @@ class RiskConfig:
     max_daily_loss_pct: float = 0.05        # 日最大亏损 (5%)
     max_weekly_loss_pct: float = 0.10       # 周最大亏损 (10%)
     max_total_drawdown_pct: float = 0.20    # 总最大回撤 (20%)
+    # 总回撤熔断的重置模式：
+    #   permanent（默认）：触发后永久拒绝新开仓，需人工介入（回测忠实反映无人值守行为）
+    #   daily：触发后当日拒绝，次日按 bar 时间自动重置、峰值跟随当前权益（评估"每日人工重启"的操作假设）
+    circuit_breaker_reset_mode: str = "permanent"
 
     def __post_init__(self):
         """兼容前端不同字段名（别名映射）"""
@@ -393,6 +397,7 @@ class RiskManager:
         self._is_circuit_breaker: bool = False
         self._circuit_breaker_reason: str = ""
         self._circuit_breaker_triggered_at: Optional[float] = None
+        self._circuit_breaker_triggered_at_ms: int = 0
         self._circuit_breaker_context: Dict[str, Any] = {}
         
         # 统计
@@ -412,6 +417,7 @@ class RiskManager:
         self._is_circuit_breaker = False
         self._circuit_breaker_reason = ""
         self._circuit_breaker_triggered_at = None
+        self._circuit_breaker_triggered_at_ms = 0
         self._circuit_breaker_context = {}
         logger.info(f"RiskManager initialized: equity={initial_equity:.2f} USDT")
 
@@ -421,19 +427,45 @@ class RiskManager:
         if current_equity > self._equity_peak:
             self._equity_peak = current_equity
 
-    def check_account_drawdown(self, current_equity: float) -> RiskCheckResult:
+    @staticmethod
+    def _utc_day(ms: int) -> int:
+        """毫秒时间戳 → UTC 天序号（用于 daily 重置模式的跨日判定）。"""
+        return int(ms // 86_400_000)
+
+    def check_account_drawdown(self, current_equity: float, now_ms: Optional[int] = None) -> RiskCheckResult:
         """
         账户级硬风控巡检。
         只负责根据账户净值回撤触发全局熔断，不执行平仓动作。
+
+        now_ms: 当前 bar 时间（毫秒）。daily 重置模式用它判定跨日；
+                缺省时 daily 模式退化为 permanent 语义（无时间上下文不自动重置）。
         """
         result = RiskCheckResult()
         self.update_equity(current_equity)
 
         if self._is_circuit_breaker:
-            result.approved = False
-            result.risk_level = RiskLevel.CIRCUIT_BREAKER
-            result.reasons.append(f"熔断触发: {self._circuit_breaker_reason}")
-            return result
+            if (
+                self.config.circuit_breaker_reset_mode == "daily"
+                and now_ms is not None
+                and self._circuit_breaker_triggered_at_ms > 0
+                and self._utc_day(int(now_ms)) > self._utc_day(self._circuit_breaker_triggered_at_ms)
+            ):
+                # daily 模式：熔断次日自动重置，峰值跟随当前权益——
+                # 语义为"每跌满一次上限停一天"，用于回测评估每日人工重启的操作假设。
+                self._is_circuit_breaker = False
+                self._circuit_breaker_reason = ""
+                self._circuit_breaker_triggered_at = None
+                self._circuit_breaker_triggered_at_ms = 0
+                self._circuit_breaker_context = {}
+                self._equity_peak = current_equity
+                logger.warning(
+                    "Circuit breaker daily reset: equity_peak -> %.2f, trading resumed", current_equity
+                )
+            else:
+                result.approved = False
+                result.risk_level = RiskLevel.CIRCUIT_BREAKER
+                result.reasons.append(f"熔断触发: {self._circuit_breaker_reason}")
+                return result
 
         if self._equity_peak <= 0:
             return result
@@ -452,7 +484,8 @@ class RiskManager:
                     "equity_peak": self._equity_peak,
                     "drawdown_pct": drawdown,
                     "max_allowed_drawdown_pct": self.config.max_total_drawdown_pct,
-                }
+                },
+                now_ms=now_ms,
             )
 
         return result
@@ -794,13 +827,47 @@ class RiskManager:
     # 熔断与恢复
     # ========================================
     
-    def _trigger_circuit_breaker(self, reason: str, context: Optional[Dict[str, Any]] = None):
+    def _trigger_circuit_breaker(self, reason: str, context: Optional[Dict[str, Any]] = None, now_ms: Optional[int] = None):
         """触发熔断"""
         self._is_circuit_breaker = True
         self._circuit_breaker_reason = reason
         self._circuit_breaker_triggered_at = time.time()
+        self._circuit_breaker_triggered_at_ms = int(now_ms) if now_ms else int(time.time() * 1000)
         self._circuit_breaker_context = context or {}
         logger.warning(f"CIRCUIT BREAKER TRIGGERED: {reason}")
+
+    def export_circuit_state(self) -> Dict[str, Any]:
+        """导出熔断状态（供策略写入 runtime state，跨重启恢复）。"""
+        return {
+            "active": self._is_circuit_breaker,
+            "reason": self._circuit_breaker_reason,
+            "triggered_at": self._circuit_breaker_triggered_at,
+            "triggered_at_ms": self._circuit_breaker_triggered_at_ms,
+            "equity_peak": self._equity_peak,
+            "initial_equity": self._initial_equity,
+            "reset_mode": self.config.circuit_breaker_reset_mode,
+        }
+
+    def restore_circuit_state(self, state: Dict[str, Any]) -> None:
+        """恢复熔断状态（策略 on_init 时调用；active=False 的空状态为 no-op）。"""
+        if not isinstance(state, dict) or not state.get("active"):
+            return
+        self._is_circuit_breaker = True
+        self._circuit_breaker_reason = str(state.get("reason") or "最大回撤达到上限")
+        triggered_at = state.get("triggered_at")
+        self._circuit_breaker_triggered_at = float(triggered_at) if triggered_at else time.time()
+        triggered_ms = state.get("triggered_at_ms")
+        self._circuit_breaker_triggered_at_ms = int(triggered_ms) if triggered_ms else int(time.time() * 1000)
+        try:
+            peak = float(state.get("equity_peak") or 0)
+            if peak > 0:
+                self._equity_peak = peak
+            initial = float(state.get("initial_equity") or 0)
+            if initial > 0:
+                self._initial_equity = initial
+        except (TypeError, ValueError):
+            pass
+        logger.warning("Circuit breaker state restored from runtime state: %s", self._circuit_breaker_reason)
     
     def reset_circuit_breaker(self):
         """手动解除熔断"""

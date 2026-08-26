@@ -1,3 +1,8 @@
-"""StockPro domain package with explicit, side-effect-free imports."""
+"""StockPro domains enabled as their BitPro implementations are ported."""
 
-__all__: list[str] = []
+from app.domain.market import MarketDomainService, market_domain_service
+from app.domain.strategy import StrategyDomainService, strategy_domain_service
+from app.domain.backtest import BacktestDomainService, backtest_domain_service
+from app.domain.paper import PaperDomainService, paper_domain_service
+
+__all__ = ["market_domain_service", "MarketDomainService", "strategy_domain_service", "StrategyDomainService", "backtest_domain_service", "BacktestDomainService", "paper_domain_service", "PaperDomainService"]

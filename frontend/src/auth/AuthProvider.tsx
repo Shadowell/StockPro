@@ -24,16 +24,10 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 function normalizeSession(session: AuthSession | null | undefined): AuthSession {
   if (!session) return DEFAULT_SESSION;
   return {
-    authEnabled: session.authEnabled ?? DEFAULT_SESSION.authEnabled,
-    authenticated: session.authenticated ?? DEFAULT_SESSION.authenticated,
+    ...DEFAULT_SESSION,
+    ...session,
     permissions: session.permissions || [],
     role: (session.role || null) as AuthRole,
-    expiresAt: session.expiresAt,
-    sessionId: session.sessionId,
-    guestCodeId: session.guestCodeId,
-    maxBacktestsPerDay: session.maxBacktestsPerDay,
-    maxConcurrentBacktests: session.maxConcurrentBacktests,
-    maxBacktestDays: session.maxBacktestDays,
   };
 }
 
@@ -56,7 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const next = normalizeSession(await authApi.me());
       setSession(next);
-      setMessage('');
+      if (next.authEnabled && !next.authenticated) {
+        setMessage('登录态已过期或被撤销，请重新登录。');
+      } else {
+        setMessage('');
+      }
       return next;
     } catch (error: any) {
       setSession(DEFAULT_SESSION);

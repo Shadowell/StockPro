@@ -23,6 +23,7 @@ MCP_STABILITY_POLICY: Final[str] = (
 READ_TOOLS: Final[tuple[str, ...]] = (
     "bitpro_capabilities",
     "bitpro_health",
+    "mcp_selfcheck",
     "market_symbols",
     "market_klines",
     "market_indicators",
@@ -148,6 +149,7 @@ MCP_AGENT_AUTH_POLICY: Final[dict[str, object]] = {
 MCP_TOOL_ENDPOINTS: Final[dict[str, dict[str, str]]] = {
     "bitpro_capabilities": {"method": "LOCAL", "path": "bitpro://capabilities"},
     "bitpro_health": {"method": "GET", "path": "/system/health"},
+    "mcp_selfcheck": {"method": "GET", "path": "/system/health"},
     "market_symbols": {"method": "GET", "path": "/market/symbols"},
     "market_klines": {"method": "GET", "path": "/market/klines"},
     "market_indicators": {"method": "GET", "path": "/market/indicators"},

@@ -49,14 +49,16 @@ def drawdown_series(nav: Sequence[float]) -> Tuple[List[float], Optional[float],
 
 def monthly_returns(rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
     grouped: Dict[str, List[Mapping[str, Any]]] = defaultdict(list)
-    for row in rows:
+    for row in sorted(rows, key=lambda item: str(item["trade_date"])):
         grouped[str(row["trade_date"])[:7]].append(row)
     output = []
+    previous_month_end: Optional[float] = None
     for month in sorted(grouped):
         values = grouped[month]
-        start_nav = float(values[0]["strategy_nav"])
+        start_nav = previous_month_end if previous_month_end is not None else float(values[0]["strategy_nav"])
         end_nav = float(values[-1]["strategy_nav"])
         output.append({"month": month, "return": _safe_div(end_nav, start_nav) - 1 if start_nav else None})
+        previous_month_end = end_nav
     return output
 
 
@@ -80,11 +82,16 @@ def calculate_backtest_metrics(
     benchmark_nav = [float(item["benchmark_nav"]) for item in rows if item.get("benchmark_nav") is not None]
     strategy_returns = [float(item["strategy_return"]) for item in rows if item.get("strategy_return") is not None]
     benchmark_returns = [float(item["benchmark_return"]) for item in rows if item.get("benchmark_return") is not None]
-    paired_count = min(len(strategy_returns), len(benchmark_returns))
-    paired_strategy = strategy_returns[-paired_count:] if paired_count else []
-    paired_benchmark = benchmark_returns[-paired_count:] if paired_count else []
+    paired_rows = [
+        item for item in rows
+        if item.get("strategy_return") is not None and item.get("benchmark_return") is not None
+    ]
+    paired_strategy = [float(item["strategy_return"]) for item in paired_rows]
+    paired_benchmark = [float(item["benchmark_return"]) for item in paired_rows]
+    paired_count = len(paired_rows)
     excess_returns = [left - right for left, right in zip(paired_strategy, paired_benchmark)]
-    excess_nav = [float(item["excess_nav"]) for item in rows if item.get("excess_nav") is not None]
+    excess_rows = [item for item in rows if item.get("excess_nav") is not None]
+    excess_nav = [float(item["excess_nav"]) for item in excess_rows]
     drawdowns, maximum_drawdown, peak_index, trough_index = drawdown_series(strategy_nav)
     _, excess_maximum_drawdown, excess_peak, excess_trough = drawdown_series(excess_nav)
     periods = max(len(rows) - 1, 0)
@@ -150,8 +157,8 @@ def calculate_backtest_metrics(
     if peak_index is not None and trough_index is not None and rows:
         interval_payload = {"peak_date": str(rows[peak_index]["trade_date"]), "trough_date": str(rows[trough_index]["trade_date"])}
     excess_interval = {}
-    if excess_peak is not None and excess_trough is not None and rows:
-        excess_interval = {"peak_date": str(rows[excess_peak]["trade_date"]), "trough_date": str(rows[excess_trough]["trade_date"])}
+    if excess_peak is not None and excess_trough is not None and excess_rows:
+        excess_interval = {"peak_date": str(excess_rows[excess_peak]["trade_date"]), "trough_date": str(excess_rows[excess_trough]["trade_date"])}
 
     rejection_counts = defaultdict(int)
     for item in orders:

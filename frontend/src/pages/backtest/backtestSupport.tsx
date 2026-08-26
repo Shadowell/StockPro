@@ -119,7 +119,7 @@ export type BacktestSortMode =
 export type BacktestSortField = 'created' | 'return' | 'drawdown' | 'win_rate';
 export type BacktestSortDirection = 'asc' | 'desc';
 
-export type BacktestPerformanceMetrics = {
+export type CryptoBacktestPerformanceMetrics = {
   annualizedVolatility: number | null;
   sortinoRatio: number | null;
   calmarRatio: number | null;
@@ -152,7 +152,7 @@ export const BACKTEST_HISTORY_PAGE_SIZE = 20;
 export const BACKTEST_WIZARD_STEPS = [
   { step: 1, title: '选择策略', desc: '策略与资金模式' },
   { step: 2, title: '配置参数', desc: '区间、资金与成本' },
-  { step: 3, title: '确认运行', desc: '异步任务并行运行' },
+  { step: 3, title: '执行回测', desc: '异步任务并行运行' },
   { step: 4, title: '查看结果', desc: '绩效、交易与历史' },
 ] as const;
 export const HISTORY_ASSET_FILTERS: Array<{ value: HistoryAssetFilter; label: string }> = [
@@ -173,13 +173,7 @@ export const BACKTEST_SORT_CONTROLS: Array<{ field: BacktestSortField; label: st
   { field: 'win_rate', label: '胜率' },
   { field: 'created', label: '创建时间' },
 ];
-export const BACKTEST_TIMEFRAME_OPTIONS = [
-  { value: '5m', label: '5M' },
-  { value: '15m', label: '15M' },
-  { value: '30m', label: '30M' },
-  { value: '60m', label: '60M' },
-  { value: '1d', label: '1D' },
-] as const;
+export const BACKTEST_TIMEFRAME_OPTIONS = [{ value: '1d', label: '1D' }] as const;
 export const BACKTEST_TIMEFRAME_MODES: Array<{ value: BacktestTimeframeMode; label: string; hint: string }> = [
   { value: 'strategy', label: '策略定义', hint: '沿用策略配置周期' },
   { value: 'single', label: '指定周期', hint: '本次回测覆盖一个周期' },
@@ -193,16 +187,15 @@ export type BacktestPrefsV1 = {
   symbol?: string;
   startDate?: string;
   initialCapital?: number;
-  /** @deprecated execution costs now reset to A-share defaults for each new run. */
+  /** @deprecated execution costs now reset to OKX defaults for each new run. */
   makerFeeBps?: number;
-  /** @deprecated execution costs now reset to A-share defaults for each new run. */
+  /** @deprecated execution costs now reset to OKX defaults for each new run. */
   takerFeeBps?: number;
-  /** @deprecated execution costs now reset to A-share defaults for each new run. */
+  /** @deprecated execution costs now reset to OKX defaults for each new run. */
   slippageBps?: number;
 };
 
-export const ASHARE_STOCK_BACKTEST_COSTS = { makerFeeBps: 3, takerFeeBps: 8, slippageBps: 5 } as const;
-export const ASHARE_ETF_BACKTEST_COSTS = { makerFeeBps: 3, takerFeeBps: 3, slippageBps: 3 } as const;
+export const ASHARE_BACKTEST_COSTS = { makerFeeBps: 3, takerFeeBps: 3, slippageBps: 10 } as const;
 
 export type JobProgressState = {
   currentBar: number;
@@ -215,7 +208,6 @@ export type BacktestTimeframeMode = 'strategy' | 'single' | 'matrix';
 
 export type BacktestInstanceConfig = {
   selectedStrategy: number | null;
-  runMode: 'quick' | 'full';
   startDate: string;
   endDate: string;
   initialCapital: number;
@@ -316,7 +308,6 @@ export function createBacktestInstance(
         partial.selectedStrategy != null && Number.isFinite(Number(partial.selectedStrategy))
           ? Number(partial.selectedStrategy)
           : null,
-      runMode: partial.runMode === 'full' ? 'full' : 'quick',
       startDate: clampIsoDateToToday(partial.startDate, range.start),
       endDate: clampIsoDateToToday(partial.endDate, range.end),
       initialCapital:
@@ -327,7 +318,7 @@ export function createBacktestInstance(
       timeframe: partial.timeframe || '1d',
       timeframes: Array.isArray(partial.timeframes) && partial.timeframes.length > 0
         ? partial.timeframes
-        : ['30m', '60m', '1d'],
+        : ['1d'],
       makerFeeBps:
         typeof partial.makerFeeBps === 'number' && partial.makerFeeBps >= 0
           ? partial.makerFeeBps
@@ -407,7 +398,6 @@ export function normalizeBacktestInstance(raw: any, index: number): BacktestInst
         cfg.selectedStrategy != null && Number.isFinite(Number(cfg.selectedStrategy))
           ? Number(cfg.selectedStrategy)
           : null,
-      runMode: cfg.runMode === 'full' ? 'full' : 'quick',
       startDate: clampIsoDateToToday(typeof cfg.startDate === 'string' ? cfg.startDate : undefined, range.start),
       endDate: clampIsoDateToToday(typeof cfg.endDate === 'string' ? cfg.endDate : undefined, range.end),
       initialCapital:
@@ -415,14 +405,14 @@ export function normalizeBacktestInstance(raw: any, index: number): BacktestInst
           ? cfg.initialCapital
           : Number(cfg.initialCapital) > 0
             ? Number(cfg.initialCapital)
-            : 1_000_000,
+            : 10000,
       timeframeMode: (['strategy', 'single', 'matrix'] as BacktestTimeframeMode[]).includes(cfg.timeframeMode)
         ? cfg.timeframeMode
         : 'strategy',
-      timeframe: typeof cfg.timeframe === 'string' && cfg.timeframe ? cfg.timeframe : '1d',
+      timeframe: typeof cfg.timeframe === 'string' && cfg.timeframe ? cfg.timeframe : '15m',
       timeframes: Array.isArray(cfg.timeframes) && cfg.timeframes.length > 0
         ? cfg.timeframes.map((value: unknown) => String(value)).filter(Boolean)
-        : ['30m', '60m', '1d'],
+        : ['5m', '15m', '1h'],
       makerFeeBps:
         cfg.makerFeeBps != null && Number(cfg.makerFeeBps) >= 0 ? Number(cfg.makerFeeBps) : null,
       takerFeeBps:
@@ -747,7 +737,7 @@ export function backtestResultTimeframes(result: BacktestResult | null | undefin
 export function backtestEffectiveTimeframe(config: BacktestInstanceConfig, strategy: any | null | undefined): string {
   if (config.timeframeMode === 'single' && config.timeframe) return config.timeframe;
   if (config.timeframeMode === 'matrix' && config.timeframes.length > 0) return config.timeframes[0];
-  return strategyTimeframe(strategy) || config.timeframe || '1h';
+  return strategyTimeframe(strategy) || config.timeframe || '1d';
 }
 
 export function backtestEffectiveTimeframes(config: BacktestInstanceConfig, strategy: any | null | undefined): string[] {
@@ -813,30 +803,15 @@ export function backtestRequestMatchesInstance(request: Record<string, unknown> 
   return Math.abs(requestCapital - instance.config.initialCapital) < 1e-9;
 }
 
-export function strategyIsContract(strategy: any | null | undefined): boolean {
-  if (!strategy) return false;
-  const cfg = strategy.config && typeof strategy.config === 'object' ? strategy.config as Record<string, unknown> : {};
-  if (String(cfg.assetClass ?? cfg.asset_class ?? '').toLowerCase() === 'etf') return true;
-  const name = String(strategy.name || '');
-  const symbols = [
-    ...stringList(strategy.symbols),
-    ...stringList(cfg.symbols),
-    ...stringList(cfg.tradeSymbols),
-    ...stringList(cfg.trade_symbols),
-  ];
-  return name.startsWith('[ETF]') || symbols.some((symbol) => /^(15|16|51|56|58)/.test(symbol.split('.')[0]));
-}
-
 export function inferStrategyAssetClassFromName(name: unknown): StrategyAssetClass | null {
   const text = String(name || '').trim();
   if (!text) return null;
-  if (text.startsWith('[ETF]')) return 'etf';
-  if (text.startsWith('[股票]') || text.startsWith('[A股]')) return 'stock';
-  return null;
+  return text.includes('[ETF]') ? 'etf' : 'stock';
 }
 
 export function strategyAssetClass(strategy: any | null | undefined): StrategyAssetClass {
-  return strategyIsContract(strategy) ? 'etf' : 'stock';
+  const cfg = strategy?.config && typeof strategy.config === 'object' ? strategy.config as Record<string, unknown> : {};
+  return String(cfg.assetClass ?? cfg.asset_class ?? '').toLowerCase() === 'etf' ? 'etf' : 'stock';
 }
 
 export function strategyAssetClassById(strategies: any[], strategyId: number | null | undefined): StrategyAssetClass {
@@ -865,12 +840,12 @@ export function backtestInstanceAssetClass(strategies: any[], instance: Backtest
 }
 
 export function strategyNameColorClass(assetClass: StrategyAssetClass): string {
-  return assetClass === 'etf' ? 'text-[#FFAB73]' : 'text-yellow-300';
+  return assetClass === 'etf' ? 'text-cyan-300' : 'text-yellow-300';
 }
 
 export function strategyAssetBadgeClass(assetClass: StrategyAssetClass): string {
   return assetClass === 'etf'
-    ? 'border-purple-500/30 bg-purple-500/10 text-purple-300'
+    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
     : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300';
 }
 
@@ -902,14 +877,11 @@ export function strategyIsBacktestSelectable(strategy: any | null | undefined): 
   return !['live', 'real', 'production'].some((token) => mode.includes(token));
 }
 
-export function strategyBacktestCostDefaults(strategy: any | null | undefined) {
-  const isEtf = strategyIsContract(strategy);
-  const costs = isEtf ? ASHARE_ETF_BACKTEST_COSTS : ASHARE_STOCK_BACKTEST_COSTS;
-
+export function strategyBacktestCostDefaults(_strategy: any | null | undefined) {
   return {
-    makerFeeBps: costs.makerFeeBps,
-    takerFeeBps: costs.takerFeeBps,
-    slippageBps: costs.slippageBps,
+    makerFeeBps: ASHARE_BACKTEST_COSTS.makerFeeBps,
+    takerFeeBps: ASHARE_BACKTEST_COSTS.takerFeeBps,
+    slippageBps: ASHARE_BACKTEST_COSTS.slippageBps,
   };
 }
 
@@ -922,7 +894,7 @@ export function symbolSummary(symbols: string[], max = 5): string {
 export function backtestStrategySearchText(strategy: any): string {
   const cfg = strategy?.config && typeof strategy.config === 'object' ? strategy.config : {};
   const symbols = [...strategySymbols(strategy), ...strategyTradeSymbols(strategy)];
-  const assetText = strategyIsContract(strategy) ? 'ETF 指数基金' : '股票 A股';
+  const assetText = strategyAssetClass(strategy) === 'etf' ? 'ETF' : 'A股 股票';
   return [
     strategy?.name,
     strategy?.description,
@@ -972,7 +944,7 @@ export function backtestInstanceSearchText(
     instance.historyId,
     instance.activeJobId,
     instance.resumeJobId,
-    assetClass === 'etf' ? 'ETF 指数基金' : '股票 A股',
+    assetClass === 'etf' ? 'ETF' : 'A股 股票',
     statusMeta.label,
     instance.status,
     instance.result?.dataQualityStatus,
@@ -1373,7 +1345,6 @@ export function historyItemToBacktestInstance(item: BacktestHistoryItem, strateg
     status: normalizeBacktestHistoryStatus(item.status),
     config: {
       selectedStrategy: Number(item.strategyId),
-      runMode: (item as any).runMode === 'full' ? 'full' : 'quick',
       startDate: item.startDate,
       endDate: item.endDate,
       initialCapital: item.initialCapital,
@@ -1522,7 +1493,7 @@ export function backtestDurationDays(result: BacktestResult): number | null {
   return Math.max(1, (end - start) / 86_400_000);
 }
 
-export function buildBacktestPerformanceMetrics(result: BacktestResult): BacktestPerformanceMetrics {
+export function buildCryptoBacktestPerformanceMetrics(result: BacktestResult): CryptoBacktestPerformanceMetrics {
   const durationDays = backtestDurationDays(result);
   const annualizedVolatility = annualizedVolatilityFromEquityCurve(result.equityCurve || []);
   const tradePnlSamples = deriveBacktestTradePnlSamples(result.trades || [], result.totalTrades);

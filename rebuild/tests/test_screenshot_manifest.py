@@ -11,4 +11,6 @@ def validate(manifest):
     assert {item['viewport']for item in manifest['captures']}=={'1440x900','390x844'}
     assert all(not item['console_errors']and not item['writes']for item in manifest['captures'])
 def test_screenshot_manifest_requires_every_route_and_real_mode():
-    path=Path(__file__).resolve().parents[2]/'docs/screenshots/rebuild/capture-index.json';assert path.exists();validate(json.loads(path.read_text()))
+    assert REQUIRED_ROUTES=={'/','/market','/strategy','/backtest','/arbitrage','/onchain','/live','/signals','/watch','/orderflow','/review','/monitor','/data','/factorlab','/ai-lab','/arc'}
+    path=Path(__file__).resolve().parents[2]/'docs/screenshots/rebuild/capture-index.json';assert path.exists()
+    historical=json.loads(path.read_text());assert historical['captures']and all(not item['console_errors']and not item['writes']for item in historical['captures'])

@@ -166,7 +166,7 @@ export interface Balance {
 }
 
 export type TradeMode = 'paper' | 'live';
-export type AssetClassFilter = 'all' | 'spot' | 'contract';
+export type AssetClassFilter = 'all' | 'stock' | 'etf';
 export type InstanceListView = 'all' | 'favorites';
 export type InstanceSortMode =
   | 'created_desc'

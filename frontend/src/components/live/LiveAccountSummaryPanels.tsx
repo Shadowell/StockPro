@@ -26,6 +26,13 @@ function formatSignedUsd(value: unknown): string {
   return `${sign}$${Math.abs(num).toFixed(2)}`;
 }
 
+function formatSignedCny(value: unknown): string {
+  const num = finiteNumber(value);
+  if (num == null) return '--';
+  const sign = num > 0 ? '+' : num < 0 ? '-' : '';
+  return `${sign}¥${Math.abs(num).toFixed(2)}`;
+}
+
 function formatSignedPct(value: unknown): string {
   const num = finiteNumber(value);
   if (num == null) return '--';
@@ -434,6 +441,9 @@ export function LiveContractPositionsPanel({
   closingKey,
   onClosePosition,
   onCloseAll,
+  title = '合约持仓',
+  emptyText = '当前账户无合约持仓',
+  assetMode = 'contract',
 }: {
   rows: LiveExecutionPosition[];
   readonly?: boolean;
@@ -442,7 +452,11 @@ export function LiveContractPositionsPanel({
   closingKey?: string | null;
   onClosePosition?: (position: LiveExecutionPosition) => void;
   onCloseAll?: (position: LiveExecutionPosition) => void;
+  title?: string;
+  emptyText?: string;
+  assetMode?: 'contract' | 'ashare';
 }) {
+  const isAshare = assetMode === 'ashare';
   const visibleRows = maxRows && maxRows > 0 ? rows.slice(0, maxRows) : rows;
 
   const renderActions = (position: LiveExecutionPosition) => {
@@ -478,14 +492,14 @@ export function LiveContractPositionsPanel({
     <div className={liveContractPositionsPanelShell}>
       <div className={liveAccountPanelHeader}>
         <CircleDollarSign className="h-4 w-4 text-amber-300" />
-        <span className="text-sm font-semibold text-gray-100">合约持仓</span>
+        <span className="text-sm font-semibold text-gray-100">{title}</span>
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-          {headerStats || <span className="text-[10px] text-gray-500">衍生品仓位</span>}
+          {headerStats || <span className="text-[10px] text-gray-500">{isAshare ? 'A 股现金持仓' : '衍生品仓位'}</span>}
         </div>
       </div>
       <div className={liveAccountPanelBody}>
         {visibleRows.length === 0 ? (
-          <div className="py-6 text-center text-xs text-gray-600">当前账户无合约持仓</div>
+          <div className="py-6 text-center text-xs text-gray-600">{emptyText}</div>
         ) : (
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             {visibleRows.map((position, index) => {
@@ -493,20 +507,38 @@ export function LiveContractPositionsPanel({
               const base = contractBaseSymbol(symbol);
               const sideBadge = contractSideBadge(position);
               const leverage = finiteNumber(position.leverage);
-              const pnlPct = positionPnlPct(position);
+              const pnlPct = isAshare
+                ? (() => {
+                    const pnl = finiteNumber(position.unrealizedPnl);
+                    const entry = finiteNumber(position.entryPrice);
+                    const quantity = finiteNumber(position.amount ?? position.baseAmount);
+                    return pnl != null && entry != null && quantity != null && entry * quantity > 0
+                      ? (pnl / (entry * quantity)) * 100
+                      : null;
+                  })()
+                : positionPnlPct(position);
               const baseAmount = positionBaseAmount(position);
               const maintenanceRatio = positionMaintenanceRatio(position);
-              const positionMetrics = [
-                { label: `持仓量 (${base})`, value: formatPositionNumber(baseAmount, 6) },
-                { label: '保证金', value: formatPositionNumber(positionMargin(position), 2) },
-                {
-                  label: '维持保证金率',
-                  value: maintenanceRatio == null ? '--' : `${formatPositionNumber(maintenanceRatio, 2)}%`,
-                },
-                { label: '开仓均价', value: formatPositionPrice(position.entryPrice) },
-                { label: '标记价格', value: formatPositionPrice(position.markPrice) },
-                { label: '预估强平价', value: formatPositionPrice(position.liquidationPrice) },
-              ];
+              const positionMetrics = isAshare
+                ? [
+                    { label: '持仓数量（股）', value: formatPositionNumber(position.amount, 0) },
+                    { label: 'T+1 可用（股）', value: formatPositionNumber(position.free, 0) },
+                    { label: '持仓成本', value: formatPositionPrice(position.entryPrice) },
+                    { label: '最新价格', value: formatPositionPrice(position.markPrice) },
+                    { label: '持仓市值（CNY）', value: formatPositionNumber(position.notional, 2) },
+                    { label: '浮动盈亏（CNY）', value: formatSignedCny(position.unrealizedPnl) },
+                  ]
+                : [
+                    { label: `持仓量 (${base})`, value: formatPositionNumber(baseAmount, 6) },
+                    { label: '保证金', value: formatPositionNumber(positionMargin(position), 2) },
+                    {
+                      label: '维持保证金率',
+                      value: maintenanceRatio == null ? '--' : `${formatPositionNumber(maintenanceRatio, 2)}%`,
+                    },
+                    { label: '开仓均价', value: formatPositionPrice(position.entryPrice) },
+                    { label: '标记价格', value: formatPositionPrice(position.markPrice) },
+                    { label: '预估强平价', value: formatPositionPrice(position.liquidationPrice) },
+                  ];
               return (
                 <div
                   key={`${symbol}-${index}`}
@@ -518,24 +550,22 @@ export function LiveContractPositionsPanel({
                         <span className={clsx('flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold', assetBadgeClass(base))}>
                           {base.slice(0, 1)}
                         </span>
-                        <span className="truncate text-sm font-semibold text-gray-100">{contractDisplaySymbol(symbol)}</span>
+                        <span className="truncate text-sm font-semibold text-gray-100">{isAshare ? symbol : contractDisplaySymbol(symbol)}</span>
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1">
                         <span className={clsx('rounded-md px-1.5 py-0.5 text-[11px] font-semibold', sideBadge.className)}>
-                          {sideBadge.label}
+                          {isAshare ? 'A 股多头' : sideBadge.label}
                         </span>
-                        <span className="rounded-md bg-white/[0.04] px-1.5 py-0.5 text-[11px] font-semibold text-gray-200">
-                          {marginModeLabel(position.marginMode)}
-                        </span>
-                        <span className="rounded-md bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-gray-200">
-                          {leverage != null ? `${formatPositionNumber(leverage, 2)}x` : '--'}
-                        </span>
+                        {!isAshare && <>
+                          <span className="rounded-md bg-white/[0.04] px-1.5 py-0.5 text-[11px] font-semibold text-gray-200">{marginModeLabel(position.marginMode)}</span>
+                          <span className="rounded-md bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-gray-200">{leverage != null ? `${formatPositionNumber(leverage, 2)}x` : '--'}</span>
+                        </>}
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="text-[10px] font-semibold text-gray-500">收益额 (USDT)</div>
+                      <div className="text-[10px] font-semibold text-gray-500">{isAshare ? '浮动盈亏 (CNY)' : '收益额 (USDT)'}</div>
                       <div className={clsx('mt-0.5 font-mono text-base font-bold', signedMetricColor(position.unrealizedPnl))}>
-                        {formatSignedUsd(position.unrealizedPnl)}
+                        {isAshare ? formatSignedCny(position.unrealizedPnl) : formatSignedUsd(position.unrealizedPnl)}
                         <span className="ml-1 text-xs">
                           ({formatSignedPct(pnlPct)})
                         </span>
@@ -562,11 +592,14 @@ export function LiveOrderDetailsPanel({
   orders,
   maxRows = 20,
   onShowLog,
+  assetMode = 'contract',
 }: {
   orders: LiveExecutionOrder[];
   maxRows?: number;
   onShowLog?: (order: LiveExecutionOrder) => void;
+  assetMode?: 'contract' | 'ashare';
 }) {
+  const isAshare = assetMode === 'ashare';
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const orderSearchTokens = useMemo(
     () => normalizeOrderSearchText(orderSearchQuery).split(/\s+/).filter(Boolean),
@@ -595,7 +628,7 @@ export function LiveOrderDetailsPanel({
           <input
             value={orderSearchQuery}
             onChange={(event) => setOrderSearchQuery(event.target.value)}
-            placeholder="搜索交易对 / 策略 / 订单号..."
+            placeholder={isAshare ? '搜索 A 股标的 / 策略 / 订单号...' : '搜索交易对 / 策略 / 订单号...'}
             className="h-8 w-full rounded-lg border border-crypto-border bg-crypto-card/70 pl-8 pr-8 text-xs font-medium text-gray-200 outline-none placeholder:text-gray-600 focus:border-blue-500/60 focus:bg-crypto-card"
           />
           {hasOrderSearch && (
@@ -638,7 +671,7 @@ export function LiveOrderDetailsPanel({
                 <tr className="text-gray-500">
                   <th className="py-2 pr-2 font-medium">时间</th>
                   <th className="py-2 pr-2 font-medium text-center">方向</th>
-                  <th className="py-2 pr-2 font-medium">交易对</th>
+                  <th className="py-2 pr-2 font-medium">{isAshare ? 'A 股标的' : '交易对'}</th>
                   <th className="w-[320px] py-2 pr-4 font-medium">策略来源</th>
                   <th className="py-2 pr-2 font-medium text-center">状态</th>
                   <th className="py-2 pr-2 font-medium text-right">均价</th>
@@ -670,7 +703,7 @@ export function LiveOrderDetailsPanel({
                       <td className="py-2 pr-2">
                         <div className="font-mono font-semibold text-gray-100">{order.symbol || '--'}</div>
                         <div className="mt-0.5 text-[10px] text-gray-500">
-                          {instType || 'OKX'} · {orderTypeLabel(order.type)}
+                          {isAshare ? 'A股' : (instType || 'OKX')} · {orderTypeLabel(order.type)}
                         </div>
                       </td>
                       <td className="w-[320px] py-2 pr-4 align-top">
@@ -699,7 +732,7 @@ export function LiveOrderDetailsPanel({
                         {orderPnl(order)}
                       </td>
                       <td className="py-2 pr-2 text-center text-gray-400">
-                        {orderModeLabel(orderString(order, ['tdMode']))}
+                        {isAshare ? '现金' : orderModeLabel(orderString(order, ['tdMode']))}
                       </td>
                       <td className="py-2 pr-2 text-right font-mono text-[11px] text-gray-500">
                         {String(order.id || order.clientOrderId || '--').slice(-8)}

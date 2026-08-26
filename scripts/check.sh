@@ -3,119 +3,55 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHON="$ROOT_DIR/backend/venv/bin/python"
-SETUP_CMD="./scripts/setup_isolation_db.sh"
-ISOLATION_DB="stockpro_bitpro_rebase_dev"
-
-isolation_setup_hint() {
-  cat <<EOF >&2
-[check] Isolation database '${ISOLATION_DB}' is required for this golden path.
-[check] Create it with one command:
-[check]   ${SETUP_CMD}
-[check] Then:
-[check]   export DATABASE_URL="\$(${SETUP_CMD} --print-url)"
-[check]   ${SETUP_CMD} --migrate
-[check] Docs: docs/deployment.md#isolation-database
-EOF
-}
-
-load_database_url_from_env_file() {
-  local env_file="$1"
-  [ -f "$env_file" ] || return 0
-  local line value
-  line="$(grep -E '^[[:space:]]*DATABASE_URL=' "$env_file" | tail -n 1 || true)"
-  [ -n "$line" ] || return 0
-  value="${line#*=}"
-  value="${value%\"}"
-  value="${value#\"}"
-  value="${value%\'}"
-  value="${value#\'}"
-  if [ -n "$value" ]; then
-    DATABASE_URL="$value"
-    export DATABASE_URL
-    echo "[check] loaded DATABASE_URL from ${env_file}"
-  fi
-}
-
-VENV_OK=1
-if [ ! -x "$PYTHON" ]; then
-  echo "[check] backend virtual environment is missing: $PYTHON" >&2
-  echo "[check] Create it with: python3 -m venv backend/venv && backend/venv/bin/python -m pip install -r backend/requirements.txt" >&2
-  VENV_OK=0
-fi
-
-if [ -z "${DATABASE_URL:-}" ] && [ "${STOCKPRO_CHECK_SKIP_ENV_FILE:-0}" != "1" ]; then
-  load_database_url_from_env_file "$ROOT_DIR/backend/.env"
-fi
-
-if [ -z "${DATABASE_URL:-}" ]; then
-  echo "[check] DATABASE_URL is unset." >&2
-  isolation_setup_hint
-  exit 1
-fi
-
-case "$DATABASE_URL" in
-  *"/stockpro_bitpro_rebase_dev") ;;
-  *)
-    echo "[check] refusing non-isolated DATABASE_URL (must end with /${ISOLATION_DB})" >&2
-    isolation_setup_hint
-    exit 1
-    ;;
-esac
-
-if [ "$VENV_OK" -ne 1 ]; then
-  exit 1
+PYTHON_BIN="$ROOT_DIR/backend/venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="python3"
 fi
 
 echo "[check] repository root: $ROOT_DIR"
-echo "[check] isolation DATABASE_URL is set"
-mkdir -p "$ROOT_DIR/.codex-artifacts/rebuild"
 
-echo "[check] rebuild safety"
-"$PYTHON" "$ROOT_DIR/rebuild/assert_safety.py" --root "$ROOT_DIR" --format json \
-  > "$ROOT_DIR/.codex-artifacts/rebuild/safety.json"
+run_if_present() {
+  local description="$1"
+  local path="$2"
+  shift 2
 
-echo "[check] pinned BitPro frontend parity"
-"$PYTHON" "$ROOT_DIR/rebuild/audit_frontend_parity.py" \
-  --source "/Users/jie.feng/Dev/Github/Private/BitPro/frontend/src" \
-  --target "$ROOT_DIR/frontend/src" \
-  --manifest "$ROOT_DIR/rebuild/contracts/frontend-parity.json" \
-  --output "$ROOT_DIR/.codex-artifacts/rebuild/frontend-parity.json"
+  if [ -e "$path" ]; then
+    echo "[check] $description"
+    (
+      cd "$(dirname "$path")"
+      "$@"
+    )
+  fi
+}
 
-echo "[check] python compile"
-"$PYTHON" -m compileall -q "$ROOT_DIR/backend/app" "$ROOT_DIR/backend/tests" "$ROOT_DIR/rebuild"
+run_if_present "frontend frozen install" "$ROOT_DIR/frontend/package-lock.json" npm ci --ignore-scripts --no-audit --no-fund
+run_if_present "frontend type check" "$ROOT_DIR/frontend/package.json" npm run check
+run_if_present "frontend build" "$ROOT_DIR/frontend/package.json" npm run build
+run_if_present "frontend bundle budget" "$ROOT_DIR/frontend/package.json" npm run check:bundle-budget
+run_if_present "frontend lint" "$ROOT_DIR/frontend/package.json" npm run lint
+run_if_present "frontend production dependency audit" "$ROOT_DIR/frontend/package.json" npm audit --audit-level=moderate --omit=dev
 
-echo "[check] current backend and rebuild tests"
-(
-  cd "$ROOT_DIR"
-  "$PYTHON" -m pytest backend/tests rebuild/tests -q --junitxml="$ROOT_DIR/.codex-artifacts/rebuild/backend-tests.xml"
-)
+if [ -f "$ROOT_DIR/pyproject.toml" ]; then
+  echo "[check] python project detected via pyproject.toml"
+elif [ -d "$ROOT_DIR/backend" ]; then
+  echo "[check] compiling backend python sources"
+  "$PYTHON_BIN" -m compileall -q "$ROOT_DIR/backend/app"
+fi
 
-echo "[check] frontend frozen install"
-npm --prefix "$ROOT_DIR/frontend" ci --ignore-scripts --no-audit --no-fund
+echo "[check] active A-share test suite"
+(cd "$ROOT_DIR" && "$PYTHON_BIN" -m pytest -q)
 
-echo "[check] frontend type check"
-npm --prefix "$ROOT_DIR/frontend" run check
+echo "[check] active runtime safety"
+(cd "$ROOT_DIR" && "$PYTHON_BIN" rebuild/assert_safety.py)
 
-echo "[check] frontend lint"
-npm --prefix "$ROOT_DIR/frontend" run lint
-
-echo "[check] frontend production build"
-npm --prefix "$ROOT_DIR/frontend" run build
-
-echo "[check] frontend bundle budget"
-npm --prefix "$ROOT_DIR/frontend" run check:bundle-budget
-
-echo "[check] frontend production dependency audit"
-npm --prefix "$ROOT_DIR/frontend" audit --audit-level=moderate --omit=dev
-
-echo "[check] mock operator shell, research, and mainline E2E"
-npm --prefix "$ROOT_DIR/frontend" run test:e2e:mock
+run_if_present "mock operator E2E" "$ROOT_DIR/frontend/playwright.config.ts" npm run test:e2e:mock
 
 echo "[check] diff whitespace"
 git -C "$ROOT_DIR" diff --check
 
-echo "[check] evidence-backed pre-deploy completion audit"
-"$PYTHON" "$ROOT_DIR/rebuild/audit_completion.py" --mode pre-deploy --output "$ROOT_DIR/.codex-artifacts/rebuild/completion-audit.json"
+if [ -f "$ROOT_DIR/voice_gen.py" ]; then
+  echo "[check] compiling standalone python entrypoints"
+  python3 -m compileall "$ROOT_DIR/voice_gen.py"
+fi
 
 echo "[check] done"

@@ -22,53 +22,55 @@ function isStrategyRunningOrPaused(status: string | undefined): boolean {
 }
 
 // ============================================
-// 策略模板 — 保持 BitPro 工作台结构，运行语义替换为 A 股
+// 策略模板 — 基于 BaseStrategy 异步架构
 // ============================================
-const STRATEGY_TEMPLATES = [
+export const BITPRO_SOURCE_STRATEGY_TEMPLATES = [
   {
-    key: 'ashare_multi_momentum',
-    name: 'A股多股动量模板',
-    category: '趋势 / 多股',
+    key: 'kairos_30m_horizon_dca',
+    name: 'Kairos 30分钟视界 DCA（1m）',
+    category: '预测 / DCA',
     difficulty: '进阶',
     description:
-      '使用封存股票池和日线数据计算动量，只做多，并由撮合层执行 T+1、100 股整手和涨跌停约束。',
-    tags: ['A股', '动量', '多股'],
-    code: `def initialize(context):
-    context.parameters["lookback"] = 20
-    context.parameters["max_positions"] = 10
+      '与后端 Kairos30mHorizonDcaStrategy 一致：1m 执行、预测约 T+30m、信号通过则固定 USDT 买入、30 根 1m 后 FIFO 卖出。请优先使用种子导入。',
+    tags: ['Kairos', 'DCA', '1m'],
+    code: `"""使用内置类：config 设 strategy_key=kairos_30m_horizon_dca（见种子）。勿粘贴完整策略源码。"""
 
-def handle_data(context, data):
-    # 只读取知识截止时间内的数据；下单由 A 股撮合层校验。
-    pass
+from app.core.execution.base_strategy import BaseStrategy, BarData
+
+class _UseSeedKairosDca(BaseStrategy):
+    async def on_bar(self, bar: BarData):
+        raise RuntimeError("请通过种子/DB 使用 kairos_30m_horizon_dca，勿执行本占位")
 `,
     defaultConfig: {
-      timeframe: '1d',
-      lookback: 20,
-      max_positions: 10,
-      lot_size: 100,
-      long_only: true,
+      strategy_key: 'kairos_30m_horizon_dca',
+      timeframe: '1m',
+      quote_per_order: 10,
+      confidence_threshold: 0.24,
+      hold_bars: 30,
+      window_size: 256,
+      warmup_bars: 300,
     },
   },
   {
     key: 'beginner_guide',
-    name: '新手入门：A股双均线策略',
+    name: '新手入门：如何写自己的策略',
     category: '教程',
     difficulty: '入门',
     description:
-      '演示 A 股 K 线、参数配置、T+1、100 股整手、只做多与完整回测晋级边界。',
-    tags: ['教程', 'A股', '双均线'],
+      '写给小白：K 线与 on_bar 是干什么的、config 怎么配、何时下单/平仓。内含双均线示例，默认仅日志，可自行打开真实下单行做回测。',
+    tags: ['教程', 'BaseStrategy', '双均线'],
     code: `"""
 ===============================================================================
-新手必读 — 用 StockPro 编写 A 股策略
+新手必读 — 用自己的方式写 BitPro 策略（BaseStrategy）
 ===============================================================================
 
 【1】策略在系统里怎么跑？
   - 回测：引擎按时间顺序喂给你一根根 K 线；每根 K 线会调用一次下面的 on_bar。
-  - 模拟：逻辑相同，但委托必须通过 A 股交易日历、T+1、整手和涨跌停校验。
+  - 实盘：逻辑相同，只是 K 线来自交易所实时推送。你写的这一套代码两种环境共用。
 
 【2】K 线（Bar）里有什么？
   - bar.open / high / low / close / volume：这根 K 线的开高低收、成交量
-  - bar.symbol：证券代码，如 600000.SH（与左侧配置一致）
+  - bar.symbol：交易对，如 BTC/USDT（与左侧配置里的交易对一致）
   - bar.timeframe：周期，如 1h、15m（与实例/回测选用的周期一致）
 
 【3】你必须实现的核心：async def on_bar(self, bar)
@@ -82,8 +84,8 @@ def handle_data(context, data):
   - pos = self.broker.get_position_size(bar.symbol)  # 正数多仓数量，大概为 0 表示空仓（取决于 broker）
 
 【6】下单金额单位
-  - self.buy(symbol, shares) 里的 shares 是股数，普通买入必须为 100 股整数倍。
-  - 先完成封存输入和完整回测，再晋级 Paper 模拟。
+  - self.buy(symbol, amount) 里的 amount 是币的数量（如 BTC 个数），不是 USDT。
+  - 建议先用很小 amount + 回测验证，再考虑实盘。
 
 【7】常见错误
   - 前 N 根 K 线数据不够算指标时：先 return，等窗口攒够（「预热」）。
@@ -109,15 +111,15 @@ class BeginnerMaCrossStrategy(BaseStrategy):
         # 从配置里读参数；左侧 JSON 里没有的话就用第二个参数的默认值
         self.fast = int(self.config.get("fast_period", 12))
         self.slow = int(self.config.get("slow_period", 26))
-        self.order_shares = int(self.config.get("order_shares", 100))
+        self.order_amount = float(self.config.get("order_amount", 0.001))
         # 只保留最近 slow+5 根收盘价就够了
         self.closes = deque(maxlen=max(self.slow + 5, 32))
 
         logger.info(
-            "策略初始化: fast=%s slow=%s order_shares=%s",
+            "策略初始化: fast=%s slow=%s order_amount=%s",
             self.fast,
             self.slow,
-            self.order_shares,
+            self.order_amount,
         )
 
     async def on_bar(self, bar: BarData):
@@ -145,7 +147,7 @@ class BeginnerMaCrossStrategy(BaseStrategy):
         if golden and pos <= 0:
             logger.info("[信号] 金叉 | bar=%s close=%s", bar.timestamp, bar.close)
             # 确认逻辑后再取消注释，先在回测里试：
-            # await self.buy(bar.symbol, self.order_shares)
+            # await self.buy(bar.symbol, self.order_amount)
 
         elif death and pos > 0:
             logger.info("[信号] 死叉 | 当前持仓=%s", pos)
@@ -155,24 +157,145 @@ class BeginnerMaCrossStrategy(BaseStrategy):
     defaultConfig: {
       fast_period: 12,
       slow_period: 26,
-      order_shares: 100,
-      timeframe: '1d',
+      order_amount: 0.001,
+      timeframe: '1h',
     },
   },
   {
     key: 'empty',
-    name: '空白 A股策略模板',
+    name: '空白策略模板',
     category: '自定义',
     difficulty: '自定义',
-    description: '从零编写 Strategy API v1 策略；快速预检不可晋级，完整回测通过后才能进入模拟盘。',
-    tags: ['自定义', 'A股', 'Strategy API v1'],
-    code: `def initialize(context):
-    pass
+    description: '从零开始编写策略。继承 BaseStrategy，实现 on_bar 即可，支持回测和实盘。',
+    tags: ['自定义', '灵活', 'BaseStrategy'],
+    code: `"""自定义策略 — BaseStrategy 架构"""
+import logging
+from collections import deque
+from app.core.execution.base_strategy import BaseStrategy, BarData
+
+logger = logging.getLogger(__name__)
+
+
+class MyStrategy(BaseStrategy):
+    async def on_init(self):
+        \"\"\"初始化：从 self.config 读取参数，创建 deque 容器。\"\"\"
+        self.trade_amount = self.config.get("trade_amount", 0.001)
+        self.closes = deque(maxlen=50)
+
+    async def on_bar(self, bar: BarData):
+        \"\"\"每根 K 线触发，在此编写交易逻辑。\"\"\"
+        self.closes.append(bar.close)
+        if len(self.closes) < 20:
+            return
+
+        # 示例：获取当前持仓
+        pos = self.broker.get_position_size(bar.symbol)
+
+        # 在此编写你的信号逻辑
+        # await self.buy(bar.symbol, self.trade_amount)
+        # await self.sell(bar.symbol, self.trade_amount)
+        # await self.close_position(bar.symbol)
+`,
+    defaultConfig: { trade_amount: 0.001, timeframe: '1h' },
+  },
+];
+
+const STRATEGY_TEMPLATES = [
+  {
+    key: 'a_share_momentum',
+    name: 'A 股日线动量轮动',
+    category: '动量趋势',
+    difficulty: '入门',
+    description: '每周选择 20 日动量最强的 A 股标的，按等权方式调仓；使用沪深 300 基准和 A 股成本。',
+    tags: ['A股', '日线', '动量'],
+    code: `"""A 股日线动量轮动模板。"""
+LOOKBACK = 20
+TOP_N = 5
+
+def initialize(context):
+    set_benchmark("000300.SH")
+    set_option("avoid_future_data", True)
+    set_order_cost(open_tax=0.0, close_tax=0.0005, commission=0.0003, min_commission=5.0)
+    set_slippage(0.001)
+    run_weekly(rebalance)
 
 def handle_data(context, data):
-    pass
+    record(held=len(context.portfolio.positions))
+
+def rebalance(context):
+    ranked = []
+    for symbol in context.universe:
+        closes = history(symbol, LOOKBACK + 1, "1d", "close")
+        if len(closes) < LOOKBACK + 1 or float(closes[0]) <= 0:
+            continue
+        ranked.append(((float(closes[-1]) / float(closes[0])) - 1.0, symbol))
+    targets = [item[1] for item in sorted(ranked, reverse=True)[:TOP_N]]
+    for symbol in list(context.portfolio.positions):
+        if symbol not in targets:
+            order_target_percent(symbol, 0.0)
+    weight = 1.0 / len(targets) if targets else 0.0
+    for symbol in targets:
+        order_target_percent(symbol, weight)
 `,
-    defaultConfig: { timeframe: '1d', lot_size: 100, long_only: true },
+    defaultConfig: { asset_class: 'stock', timeframe: '1d', capital: '1000000CNY' },
+  },
+  {
+    key: 'a_share_mean_reversion',
+    name: 'A 股五日超跌反弹',
+    category: '均值回归',
+    difficulty: '进阶',
+    description: '在 A 股候选池中选择五日跌幅较大的标的，并通过日线调度和等权上限控制风险。',
+    tags: ['A股', '日线', '均值回归'],
+    code: `"""A 股五日超跌反弹模板。"""
+LOOKBACK = 5
+TOP_N = 5
+
+def initialize(context):
+    set_benchmark("000300.SH")
+    set_option("avoid_future_data", True)
+    set_order_cost(open_tax=0.0, close_tax=0.0005, commission=0.0003, min_commission=5.0)
+    set_slippage(0.001)
+    run_daily(rebalance)
+
+def handle_data(context, data):
+    record(held=len(context.portfolio.positions))
+
+def rebalance(context):
+    ranked = []
+    for symbol in context.universe:
+        closes = history(symbol, LOOKBACK + 1, "1d", "close")
+        if len(closes) < LOOKBACK + 1 or float(closes[0]) <= 0:
+            continue
+        ranked.append(((float(closes[-1]) / float(closes[0])) - 1.0, symbol))
+    targets = [item[1] for item in sorted(ranked)[:TOP_N]]
+    for symbol in list(context.portfolio.positions):
+        if symbol not in targets:
+            order_target_percent(symbol, 0.0)
+    weight = 1.0 / len(targets) if targets else 0.0
+    for symbol in targets:
+        order_target_percent(symbol, weight)
+`,
+    defaultConfig: { asset_class: 'stock', timeframe: '1d', capital: '1000000CNY' },
+  },
+  {
+    key: 'empty',
+    name: 'A 股空白策略模板',
+    category: '自定义',
+    difficulty: '自定义',
+    description: '从 stockpro.v1 安全策略契约开始，使用日线、人民币和 A 股交易规则。',
+    tags: ['A股', 'stockpro.v1', '日线'],
+    code: `"""A 股自定义策略。"""
+
+def initialize(context):
+    set_benchmark("000300.SH")
+    set_option("avoid_future_data", True)
+    set_order_cost(open_tax=0.0, close_tax=0.0005, commission=0.0003, min_commission=5.0)
+    set_slippage(0.001)
+
+def handle_data(context, data):
+    record(held=len(context.portfolio.positions))
+`,
+    defaultConfig: { asset_class: 'stock', timeframe: '1d', capital: '1000000CNY' },
   },
 ];
 
@@ -184,9 +307,9 @@ type ListTab = 'my' | 'plaza';
 type StrategyStatusFilter = 'all' | 'running' | 'paused' | 'not_started';
 type StrategyAssetClass = 'stock' | 'etf';
 type StrategyAssetFilter = 'all' | StrategyAssetClass;
-type StrategyTypeFilter = 'all' | 'momentum' | 'mean_reversion' | 'multi_factor' | 'event' | 'ai';
-type StrategyTimeframeFilter = 'all' | '5m' | '15m' | '30m' | '60m' | '1d';
-type StrategyCapitalFilter = 'all' | '100k' | '1m';
+type StrategyTypeFilter = 'all' | 'momentum' | 'mean_reversion' | 'multi_factor' | 'event' | 'other';
+type StrategyTimeframeFilter = 'all' | '1d';
+type StrategyCapitalFilter = 'all' | '1000000CNY';
 
 const STATUS_FILTERS: Array<{
   value: StrategyStatusFilter;
@@ -212,11 +335,11 @@ const STRATEGY_TYPE_FILTERS: Array<{
   label: string;
 }> = [
   { value: 'all', label: '全部' },
-  { value: 'momentum', label: '动量' },
+  { value: 'momentum', label: '动量趋势' },
   { value: 'mean_reversion', label: '均值回归' },
   { value: 'multi_factor', label: '多因子' },
-  { value: 'event', label: '事件' },
-  { value: 'ai', label: 'AI' },
+  { value: 'event', label: '事件驱动' },
+  { value: 'other', label: '其他' },
 ];
 
 const STRATEGY_TIMEFRAME_FILTERS: Array<{
@@ -224,10 +347,6 @@ const STRATEGY_TIMEFRAME_FILTERS: Array<{
   label: string;
 }> = [
   { value: 'all', label: '全部' },
-  { value: '5m', label: '5M' },
-  { value: '15m', label: '15M' },
-  { value: '30m', label: '30M' },
-  { value: '60m', label: '60M' },
   { value: '1d', label: '1D' },
 ];
 
@@ -236,8 +355,7 @@ const STRATEGY_CAPITAL_FILTERS: Array<{
   label: string;
 }> = [
   { value: 'all', label: '全部' },
-  { value: '100k', label: '10万' },
-  { value: '1m', label: '100万' },
+  { value: '1000000CNY', label: '100万' },
 ];
 
 const MISSING_SELECTION_LOGIC = '该策略尚未补充核心标的说明。';
@@ -286,34 +404,13 @@ function getStrategyConfigArray(config: Record<string, unknown>, keys: string[])
   return [];
 }
 
-function isEtfStrategySymbol(symbol: string): boolean {
-  const normalized = symbol.trim().toUpperCase();
-  const code = normalized.split('.')[0];
-  return /^(15|16|51|56|58)/.test(code);
-}
-
 function inferStrategyAssetClass(strategy: StrategyType): StrategyAssetClass {
   const config = isRecord(strategy.config) ? strategy.config : {};
-  const name = strategy.name.trim();
-  if (name.startsWith('[ETF]')) return 'etf';
-  if (name.startsWith('[股票]')) return 'stock';
-
-  const symbols = [
-    ...(strategy.symbols || []),
-    ...getStrategyConfigArray(config, [
-      'symbol',
-      'symbols',
-      'tradeSymbols',
-      'trade_symbols',
-      'stockPoolSymbols',
-      'stock_pool_symbols',
-    ]),
-  ];
-  return symbols.some(isEtfStrategySymbol) ? 'etf' : 'stock';
+  return readTextField(config, ['assetClass', 'asset_class']).toLowerCase() === 'etf' ? 'etf' : 'stock';
 }
 
 function strategyNameColorClass(assetClass: StrategyAssetClass): string {
-  return assetClass === 'etf' ? 'text-[#FFAB73]' : 'text-yellow-300';
+  return assetClass === 'etf' ? 'text-cyan-300' : 'text-yellow-300';
 }
 
 // ============================================
@@ -321,8 +418,9 @@ function strategyNameColorClass(assetClass: StrategyAssetClass): string {
 // ============================================
 export default function Strategy() {
   const navigate = useNavigate();
-  const { isGuest } = useAuth();
-  const canWriteStrategy = !isGuest;
+  const { isAdmin } = useAuth();
+  const canWriteStrategy = isAdmin;
+  const canUseAiStrategy = false;
   const [strategies, setStrategies] = useState<StrategyType[]>([]);
   const [isLoadingStrategies, setIsLoadingStrategies] = useState(false);
   const [strategyListError, setStrategyListError] = useState<string | null>(null);
@@ -347,20 +445,15 @@ export default function Strategy() {
     mean_reversion: 0,
     multi_factor: 0,
     event: 0,
-    ai: 0,
+    other: 0,
   });
   const [strategyTimeframeCounts, setStrategyTimeframeCounts] = useState<Record<StrategyTimeframeFilter, number>>({
     all: 0,
-    '5m': 0,
-    '15m': 0,
-    '30m': 0,
-    '60m': 0,
     '1d': 0,
   });
   const [strategyCapitalCounts, setStrategyCapitalCounts] = useState<Record<StrategyCapitalFilter, number>>({
     all: 0,
-    '100k': 0,
-    '1m': 0,
+    '1000000CNY': 0,
   });
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType | null>(null);
 
@@ -383,8 +476,8 @@ export default function Strategy() {
     name: '',
     description: '',
     scriptContent: EMPTY_STRATEGY_TEMPLATE.code,
-    exchange: 'cn',
-    symbols: '600000.SH',
+    exchange: 'CN',
+    symbols: '600519.SH',
     config: JSON.stringify(EMPTY_STRATEGY_TEMPLATE.defaultConfig, null, 2),
   });
 
@@ -395,7 +488,7 @@ export default function Strategy() {
   // AI 写策略
   const [showAiGen, setShowAiGen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
-  const [aiSymbol, setAiSymbol] = useState('600000.SH');
+  const [aiSymbol, setAiSymbol] = useState('600519.SH');
   const [aiTimeframe, setAiTimeframe] = useState('1d');
   const [aiGenerating, setAiGenerating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
@@ -454,23 +547,18 @@ export default function Strategy() {
         setStrategyTypeCounts({
           all: result.typeCounts?.all ?? 0,
           momentum: result.typeCounts?.momentum ?? 0,
-          mean_reversion: result.typeCounts?.mean_reversion ?? 0,
-          multi_factor: result.typeCounts?.multi_factor ?? 0,
+          mean_reversion: result.typeCounts?.meanReversion ?? result.typeCounts?.mean_reversion ?? 0,
+          multi_factor: result.typeCounts?.multiFactor ?? result.typeCounts?.multi_factor ?? 0,
           event: result.typeCounts?.event ?? 0,
-          ai: result.typeCounts?.ai ?? 0,
+          other: result.typeCounts?.other ?? 0,
         });
         setStrategyTimeframeCounts({
           all: result.timeframeCounts?.all ?? 0,
-          '5m': result.timeframeCounts?.['5m'] ?? 0,
-          '15m': result.timeframeCounts?.['15m'] ?? 0,
-          '30m': result.timeframeCounts?.['30m'] ?? 0,
-          '60m': result.timeframeCounts?.['60m'] ?? 0,
           '1d': result.timeframeCounts?.['1d'] ?? 0,
         });
         setStrategyCapitalCounts({
           all: result.capitalCounts?.all ?? 0,
-          '100k': result.capitalCounts?.['100k'] ?? 0,
-          '1m': result.capitalCounts?.['1m'] ?? 0,
+          '1000000CNY': result.capitalCounts?.['1000000CNY'] ?? 0,
         });
       })
       .catch((err: any) => {
@@ -552,8 +640,8 @@ export default function Strategy() {
       name: template.name,
       description: template.description,
       scriptContent: template.code,
-      exchange: 'cn',
-      symbols: '600000.SH',
+      exchange: 'CN',
+      symbols: '600519.SH',
       config: JSON.stringify(template.defaultConfig, null, 2),
     });
     setView('editor');
@@ -570,8 +658,8 @@ export default function Strategy() {
       name: strategy.name,
       description: strategy.description || '',
       scriptContent: strategy.scriptContent || '',
-      exchange: strategy.exchange || 'cn',
-      symbols: strategy.symbols?.join(', ') || '600000.SH',
+      exchange: strategy.exchange || 'CN',
+      symbols: strategy.symbols?.join(', ') || '600519.SH',
       config: JSON.stringify(strategy.config || {}, null, 2),
     });
     setView('editor');
@@ -630,7 +718,7 @@ export default function Strategy() {
   const runDeleteStrategy = async () => {
     if (!canWriteStrategy) {
       setDeleteTarget(null);
-      setMessage({ type: 'error', text: '访客只能查看策略，不能删除策略' });
+      setMessage({ type: 'error', text: '访客只能查看策略，不能归档策略' });
       return;
     }
     if (!deleteTarget) return;
@@ -644,7 +732,7 @@ export default function Strategy() {
     setDeleteTarget(null);
     try {
       await strategyApi.delete(id);
-      setMessage({ type: 'success', text: `策略「${name}」已删除` });
+      setMessage({ type: 'success', text: `策略「${name}」已归档，历史版本仍保留` });
       refreshStrategyPage();
     } catch (err: unknown) {
       const e = err as {
@@ -653,14 +741,14 @@ export default function Strategy() {
       const msg =
         e?.response?.data?.error?.message ||
         (typeof e?.response?.data?.detail === 'string' ? e.response.data.detail : null) ||
-        '删除失败';
+        '归档失败';
       setMessage({ type: 'error', text: msg });
     }
   };
 
   const visibleStrategies = strategies;
 
-  const filteredTemplates = STRATEGY_TEMPLATES.filter(t => t.key !== 'beginner_guide').filter(t =>
+  const filteredTemplates = STRATEGY_TEMPLATES.filter(t =>
     t.name.toLowerCase().includes(normalizedSearchQuery) ||
     t.description.toLowerCase().includes(normalizedSearchQuery) ||
     t.tags.some(tag => tag.includes(normalizedSearchQuery))
@@ -680,7 +768,7 @@ export default function Strategy() {
         </div>
         {canWriteStrategy && (
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowAiGen(!showAiGen)}
+            {canUseAiStrategy && <button onClick={() => setShowAiGen(!showAiGen)}
               className={clsx(
                 'inline-flex h-11 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition-colors',
                 showAiGen
@@ -688,7 +776,7 @@ export default function Strategy() {
                   : 'border-purple-500/30 bg-purple-500/[0.12] text-purple-200 hover:border-purple-500/45 hover:bg-purple-500/[0.18] hover:text-purple-100'
               )}>
               <Zap className="w-4 h-4" />AI 写策略
-            </button>
+            </button>}
             <button onClick={() => handleCreateFromTemplate(EMPTY_STRATEGY_TEMPLATE)}
               className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-colors">
               <Plus className="w-4 h-4" />新建策略
@@ -698,12 +786,12 @@ export default function Strategy() {
       </div>
 
       {/* AI 写策略面板 */}
-      {showAiGen && canWriteStrategy && (
+      {showAiGen && canWriteStrategy && canUseAiStrategy && (
         <div className="bg-gradient-to-r from-purple-500/5 to-blue-500/5 border border-purple-500/20 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <Zap className="w-4 h-4 text-purple-400" />
             <span className="text-sm font-semibold text-white">用自然语言描述你的策略</span>
-            <span className="text-[10px] text-gray-500 ml-auto">AI 将生成符合 StockPro Strategy API v1 的候选代码</span>
+            <span className="text-[10px] text-gray-500 ml-auto">AI 将自动生成合规的 BaseStrategy 代码</span>
           </div>
           <textarea
             value={aiPrompt}
@@ -714,12 +802,12 @@ export default function Strategy() {
           />
           <div className="flex items-center gap-3 mt-3">
             <CryptoSelect value={aiSymbol} onChange={e => setAiSymbol(e.target.value)} controlSize="xs" fullWidth={false}>
-              {['600000.SH', '000001.SZ', '300750.SZ', '510300.SH', '159915.SZ'].map(s => (
+              {['600519.SH', '000001.SZ', '300750.SZ', '510300.SH'].map(s => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </CryptoSelect>
             <CryptoSelect value={aiTimeframe} onChange={e => setAiTimeframe(e.target.value)} controlSize="xs" fullWidth={false}>
-              {['5m', '15m', '30m', '60m', '1d'].map(t => (
+              {['1d'].map(t => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </CryptoSelect>
@@ -979,7 +1067,7 @@ export default function Strategy() {
                     : riskLevel === '中高' ? 'text-orange-400 bg-orange-500/10 border-orange-500/10'
                     : 'text-gray-400 bg-gray-500/10 border-gray-500/10';
                   return (
-                    <div key={s.id} data-testid="strategy-card" className="self-start bg-crypto-card border border-crypto-border rounded-xl overflow-hidden hover:border-gray-600 transition-all group">
+                    <div key={s.id} className="self-start bg-crypto-card border border-crypto-border rounded-xl overflow-hidden hover:border-gray-600 transition-all group">
                       {/* 卡片头部 */}
                       <div className="p-5 pb-3">
                         <div className="flex items-start justify-between mb-2">
@@ -1005,7 +1093,7 @@ export default function Strategy() {
                                   setDeleteTarget({ id: s.id, name: s.name });
                                 }}
                                 className="opacity-0 group-hover:opacity-100 p-1 text-gray-600 hover:text-red-400 transition-all"
-                                title="删除策略">
+                                title="归档策略">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
@@ -1060,19 +1148,18 @@ export default function Strategy() {
                           onClick={() => {
                             if (isStrategyRunningOrPaused(s.status)) {
                               navigate(`/live?strategyId=${encodeURIComponent(String(s.id))}`);
-                            } else {
-                              navigate(`/backtest?strategy_version_id=${encodeURIComponent(String(s.id))}`);
                             }
                           }}
+                          disabled={!isStrategyRunningOrPaused(s.status)}
                           className={clsx(
                             'h-11 min-w-0 flex items-center justify-center gap-1.5 px-3 text-xs border-r border-crypto-border transition-colors',
                             isStrategyRunningOrPaused(s.status)
                               ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10'
-                              : 'text-blue-400 hover:text-blue-300 hover:bg-blue-500/10',
+                              : 'text-gray-700 cursor-not-allowed',
                           )}
                         >
-                          {isStrategyRunningOrPaused(s.status) ? <Activity className="w-3 h-3 shrink-0" /> : <BarChart3 className="w-3 h-3 shrink-0" />}
-                          <span className="truncate">{isStrategyRunningOrPaused(s.status) ? '实例控制台' : '回测'}</span>
+                          <Activity className="w-3 h-3 shrink-0" />
+                          <span className="truncate">实例控制台</span>
                         </button>
                         <button
                           type="button"
@@ -1229,7 +1316,7 @@ export default function Strategy() {
                 <span className={clsx(
                   'rounded-md px-2 py-0.5 text-xs font-semibold',
                   assetClass === 'etf'
-                    ? 'bg-purple-500/15 text-purple-300'
+                    ? 'bg-cyan-500/15 text-cyan-300'
                     : 'bg-amber-500/15 text-amber-300',
                 )}>
                   {assetClassLabel}
@@ -1287,17 +1374,6 @@ export default function Strategy() {
         </section>
 
         <StrategyParameterSections sections={parameterSections} />
-
-        <section className="rounded-xl border border-crypto-border bg-crypto-card p-5">
-          <h2 className="mb-3 text-sm font-semibold text-white">封存输入</h2>
-          <div className="flex flex-wrap gap-2 text-xs">
-            {['100股', 'T+1', '只做多'].map((item) => (
-              <span key={item} className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-blue-200">
-                {item}
-              </span>
-            ))}
-          </div>
-        </section>
 
         <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
           <div className="rounded-xl border border-crypto-border bg-crypto-card p-5">
@@ -1376,13 +1452,13 @@ export default function Strategy() {
           <div>
             <label className="block text-xs text-gray-400 mb-1.5">市场</label>
             <CryptoSelect value={formData.exchange} onChange={e => setFormData({ ...formData, exchange: e.target.value })}>
-              <option value="cn">中国 A股</option>
+              <option value="CN">A 股</option>
             </CryptoSelect>
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1.5">股票代码（逗号分隔）</label>
+            <label className="block text-xs text-gray-400 mb-1.5">A 股标的（逗号分隔）</label>
             <input type="text" value={formData.symbols} onChange={e => setFormData({ ...formData, symbols: e.target.value })}
-              placeholder="600000.SH, 000001.SZ"
+              placeholder="600519.SH, 000001.SZ"
               className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
@@ -1396,12 +1472,11 @@ export default function Strategy() {
           <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
             <div className="text-[10px] text-blue-400 font-semibold mb-1.5">可用 API</div>
             <div className="text-[10px] text-gray-400 space-y-1 font-mono">
-              <div><span className="text-green-400">buy</span>(symbol, shares)</div>
-              <div><span className="text-red-400">sell</span>(symbol, shares)</div>
-              <div><span className="text-blue-400">get_klines</span>(symbol, tf, n)</div>
-              <div><span className="text-blue-400">get_ticker</span>(symbol)</div>
-              <div><span className="text-yellow-400">log</span>(message)</div>
-              <div><span className="text-gray-500">config</span> · <span className="text-gray-500">symbols</span></div>
+              <div><span className="text-blue-400">history</span>(symbol, count, "1d", field)</div>
+              <div><span className="text-blue-400">get_current_data</span>()</div>
+              <div><span className="text-green-400">order_target_percent</span>(symbol, weight)</div>
+              <div><span className="text-yellow-400">record</span>(metric=value)</div>
+              <div><span className="text-gray-500">set_benchmark</span> · <span className="text-gray-500">set_order_cost</span></div>
             </div>
           </div>
         </div>
@@ -1450,8 +1525,8 @@ export default function Strategy() {
       <ThemeDialog
         open={deleteBlockedOpen}
         variant="alert"
-        title="无法删除"
-        content="该策略正在运行或已暂停。请前往「模拟盘」页面停止策略后再删除。"
+        title="无法归档"
+        content="该策略正在运行或已暂停。请前往「模拟」页面暂停策略后再归档。"
         tone="warning"
         confirmText="我知道了"
         onClose={() => setDeleteBlockedOpen(false)}
@@ -1460,19 +1535,19 @@ export default function Strategy() {
       <ThemeDialog
         open={deleteTarget !== null}
         variant="confirm"
-        title="删除策略"
+        title="归档策略"
         content={
           deleteTarget
-            ? `确定要删除策略「${deleteTarget.name}」吗？删除后不可恢复。`
+            ? `确定要归档策略「${deleteTarget.name}」吗？历史版本和验证记录会继续保留。`
             : ''
         }
         tone="danger"
-        confirmText="删除"
+        confirmText="归档"
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => void runDeleteStrategy()}
       />
 
-      {/* 启动策略请前往模拟盘模块 */}
+      {/* 启动策略请前往「模拟」模块 */}
     </div>
   );
 }

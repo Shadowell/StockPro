@@ -9,6 +9,7 @@ import {
   List,
   Pause,
   Play,
+  RefreshCw,
   Settings2,
   ShieldCheck,
   Square,
@@ -104,7 +105,7 @@ const EQUITY_METRIC_OPTIONS: Array<{
   fillColor: string;
 }> = [
   { value: 'returnPct', label: '收益率', axisName: '%', unit: '%', color: '#FF1744', fillColor: 'rgba(255,23,68,0.16)' },
-  { value: 'totalPnl', label: '收益', axisName: 'USDT', unit: ' USDT', color: '#60a5fa', fillColor: 'rgba(96,165,250,0.18)' },
+  { value: 'totalPnl', label: '收益', axisName: 'CNY', unit: ' CNY', color: '#60a5fa', fillColor: 'rgba(96,165,250,0.18)' },
   { value: 'winRate', label: '胜率', axisName: '%', unit: '%', color: '#f59e0b', fillColor: 'rgba(245,158,11,0.14)' },
   { value: 'profitFactor', label: '盈亏比', axisName: '', unit: '', color: '#a78bfa', fillColor: 'rgba(167,139,250,0.14)' },
 ];
@@ -129,6 +130,8 @@ export interface InstanceMonitorProps {
   onBack: () => void;
   onPauseResume: () => void;
   onStop: () => void;
+  onAdvance?: () => void;
+  advanceBusy?: boolean;
   onClosePosition?: (position: PaperPositionCloseRequest) => Promise<void> | void;
   onDeletePaper?: () => void;
   /** 策略 WS 诊断：交易所 slug，默认 okx */
@@ -153,13 +156,13 @@ function formatDiagField(label: string, value: unknown, suffix = '', digits = 4)
 
 function formatSignedUsd(value: number): string {
   const sign = value > 0 ? '+' : value < 0 ? '-' : '';
-  return `${sign}$${Math.abs(value).toFixed(2)}`;
+  return `${sign}¥${Math.abs(value).toFixed(2)}`;
 }
 
 function formatUsd(value: unknown): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return '--';
-  return `$${n.toLocaleString(undefined, {
+  return `¥${n.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -801,6 +804,8 @@ export default function InstanceMonitor({
   onBack,
   onPauseResume,
   onStop,
+  onAdvance,
+  advanceBusy = false,
   onClosePosition,
   onDeletePaper,
   wsExchange = 'okx',
@@ -938,6 +943,7 @@ export default function InstanceMonitor({
   }, []);
 
   const { isConnected, subscribe, unsubscribe } = useWebSocket({
+    enabled: false,
     onMessage: onStrategyWsMessage,
   });
 
@@ -1529,8 +1535,6 @@ export default function InstanceMonitor({
   const hasContractTrades = trades.some((trade) => (
     isContractTradeSide(trade.side) || String(trade.symbol ?? '').includes(':')
   ));
-  const positionQuantityLabel = '张数/数量';
-  const tradeQuantityLabel = '张数/数量';
   const equityRowsForMetrics = normalizeEquityRows(equityCurve);
   const initialEquityForMetrics = resolveInitialEquity(
     equity?.initial,
@@ -1584,6 +1588,8 @@ export default function InstanceMonitor({
         : sys.mode === 'paper'
           ? true
           : sys.dryRun === true;
+  const positionQuantityLabel = runningDryRun ? '持仓数量（股）' : '张数/数量';
+  const tradeQuantityLabel = runningDryRun ? '成交数量（股）' : '张数/数量';
   const feishu = dashboard?.feishu;
   const logicSummary = getStrategyLogicSummary(strategyInfo);
   const parameterSections = getStrategyParameterSections(isRecord(strategyInfo?.config) ? strategyInfo.config : {});
@@ -1617,8 +1623,8 @@ export default function InstanceMonitor({
             ? 'border-blue-500/30 bg-blue-500/10 text-blue-200'
             : 'border-crypto-border bg-white/[0.03] text-gray-300',
           description: hasContractPositions
-            ? '合约持仓会持续暴露方向、杠杆、保证金和浮盈亏风险，新增信号仍需通过策略参数和 broker 风控。'
-            : '当前没有合约仓位；下一次交易信号仍会受单笔风险、仓位上限和账户资金边界约束。',
+            ? 'A 股持仓会持续暴露市场与流动性风险，新增信号仍需通过 T+1、涨跌停、整手和仓位上限风控。'
+            : '当前没有 A 股持仓；下一次交易信号仍会受现金、T+1、涨跌停和仓位上限约束。',
         },
       ]
     : [];
@@ -1699,6 +1705,17 @@ export default function InstanceMonitor({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+          {runningDryRun && isRunning && !readOnly && onAdvance && (
+            <button
+              type="button"
+              onClick={onAdvance}
+              disabled={advanceBusy}
+              className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-600/20 px-4 py-2 text-sm text-blue-300 transition-colors hover:bg-blue-600/30 disabled:cursor-wait disabled:opacity-60"
+            >
+              <RefreshCw className={clsx('h-4 w-4', advanceBusy && 'animate-spin')} />
+              {advanceBusy ? '推进中…' : '推进下一交易日'}
+            </button>
+          )}
           {(isRunning || isPaused) && !readOnly && (
             <button
               type="button"
@@ -2012,7 +2029,7 @@ export default function InstanceMonitor({
                   )}
                 >
                   {unrealizedTotal >= 0 ? '+' : ''}
-                  {typeof unrealizedTotal === 'number' ? unrealizedTotal.toFixed(2) : String(unrealizedTotal)} USDT
+                  {typeof unrealizedTotal === 'number' ? unrealizedTotal.toFixed(2) : String(unrealizedTotal)} CNY
                 </span>
               </div>
               {positions.length === 0 ? (
@@ -2024,19 +2041,19 @@ export default function InstanceMonitor({
                   <table className="w-full min-w-[880px] text-xs text-left">
               <thead>
                 <tr className="text-gray-500 border-b border-crypto-border">
-                  <th className="py-2 pr-2 font-medium text-left">交易对</th>
+                  <th className="py-2 pr-2 font-medium text-left">{runningDryRun ? 'A 股标的' : '交易对'}</th>
                   <th className="py-2 pr-2 font-medium text-center">方向</th>
                   <th className="py-2 pr-2 font-medium text-right">{positionQuantityLabel}</th>
                   {hasContractPositions && (
                     <th className="py-2 pr-2 font-medium text-right">每张数量</th>
                   )}
                   <th className="py-2 pr-2 font-medium text-right">
-                    {hasContractPositions ? '持仓名义' : '持仓金额'}
+                    {hasContractPositions ? '持仓名义' : runningDryRun ? '持仓市值（CNY）' : '持仓金额'}
                   </th>
                   <th className="py-2 pr-2 font-medium text-right">持仓均价</th>
-                  <th className="py-2 pr-2 font-medium text-right">标记价</th>
+                  <th className="py-2 pr-2 font-medium text-right">{runningDryRun ? '最新价' : '标记价'}</th>
                   <th className="py-2 pr-2 font-medium text-right">浮动盈亏</th>
-                  <th className="py-2 font-medium text-right">操作</th>
+                  {!runningDryRun && <th className="py-2 font-medium text-right">操作</th>}
                 </tr>
               </thead>
               <tbody>
@@ -2091,7 +2108,7 @@ export default function InstanceMonitor({
                         {(row.unrealizedPnl ?? 0) >= 0 ? '+' : ''}
                         {Number(row.unrealizedPnl ?? 0).toFixed(2)}
                       </td>
-                      <td className="py-2 text-right">
+                      {!runningDryRun && <td className="py-2 text-right">
                         <button
                           type="button"
                           aria-label={`平仓 ${row.symbol}`}
@@ -2109,7 +2126,7 @@ export default function InstanceMonitor({
                           <XCircle className="h-3.5 w-3.5" />
                           平仓
                         </button>
-                      </td>
+                      </td>}
                     </tr>
                   );
                 })}
@@ -2209,15 +2226,15 @@ export default function InstanceMonitor({
                     <tr className="text-gray-500">
                       <th className="py-2 pr-2 font-medium text-left">时间</th>
                       <th className="py-2 pr-2 font-medium text-center">方向</th>
-                      <th className="py-2 pr-2 font-medium text-left">交易对</th>
+                      <th className="py-2 pr-2 font-medium text-left">{runningDryRun ? 'A 股标的' : '交易对'}</th>
                       <th className="py-2 pr-2 font-medium text-right">价格</th>
                       <th className="py-2 pr-2 font-medium text-right">{tradeQuantityLabel}</th>
                       {hasContractTrades && (
                         <th className="py-2 pr-2 font-medium text-right">每张数量</th>
                       )}
-                      <th className="py-2 pr-2 font-medium text-center">杠杆</th>
+                      {!runningDryRun && <th className="py-2 pr-2 font-medium text-center">杠杆</th>}
                       <th className="py-2 pr-2 font-medium text-right">
-                        {hasContractTrades ? '成交名义' : '交易金额'}
+                        {hasContractTrades ? '成交名义' : runningDryRun ? '成交金额（CNY）' : '交易金额'}
                       </th>
                       {hasContractTrades && (
                         <th className="py-2 pr-2 font-medium text-right">保证金</th>
@@ -2252,16 +2269,16 @@ export default function InstanceMonitor({
                             {t.price != null ? Number(t.price).toLocaleString() : '—'}
                           </td>
                           <td className="py-2 pr-2 text-right tabular-nums">
-                            {t.quantity != null ? Number(t.quantity).toFixed(6) : '—'}
+                            {t.quantity != null ? Number(t.quantity).toFixed(runningDryRun ? 0 : 6) : '—'}
                           </td>
                           {hasContractTrades && (
                             <td className="py-2 pr-2 text-right tabular-nums text-gray-300">
                               {formatContractUnitSize(tradeContractUnitSize)}
                             </td>
                           )}
-                          <td className="py-2 pr-2 text-center tabular-nums text-gray-300">
+                          {!runningDryRun && <td className="py-2 pr-2 text-center tabular-nums text-gray-300">
                             {formatLeverage(tradeLeverage)}
-                          </td>
+                          </td>}
                           <td className="py-2 pr-2 text-right tabular-nums">
                             {tradeNotional != null ? tradeNotional.toFixed(2) : '—'}
                           </td>
@@ -2644,7 +2661,7 @@ export default function InstanceMonitor({
           <div className="rounded-xl border border-crypto-border bg-crypto-bg px-3 py-2 font-mono text-xs text-gray-300">
             <div>{closePositionTarget?.symbol || '—'}</div>
             <div className="mt-1 text-gray-500">
-              {closePositionTarget?.marketType === 'swap' ? '合约' : '现货'} · {closePositionTarget?.side || 'long'}
+              A 股 · {closePositionTarget?.side || 'long'}
             </div>
           </div>
         </div>

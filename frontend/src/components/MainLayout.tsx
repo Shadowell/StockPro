@@ -1,7 +1,8 @@
 import { Suspense, useState, useRef, useEffect, useCallback } from 'react';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import {
+  Waves,
   LayoutDashboard,
   TrendingUp,
   Code2,
@@ -25,6 +26,7 @@ import {
   ScanLine,
   LogOut,
   KeyRound,
+  Network,
   Trash2,
   ShieldCheck,
   ClipboardList,
@@ -32,29 +34,33 @@ import {
   RefreshCw,
   UsersRound,
   LibraryBig,
-  Sigma,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS } from '../utils/selectionStyles';
 import {
   authApi,
+  parseApiError,
   settingsApi,
   type GuestAccessCode,
   type LLMModelSettings,
-  type LLMProviderSettings,
   type McpAgentTokenItem,
   type McpTokenSettings,
 } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { useSettingsStore, type ColorScheme } from '../stores/useSettingsStore';
 import CryptoSelect from './CryptoSelect';
+import { BitProLogo } from './BitProLogo';
 import { PageErrorBoundary } from './PageErrorBoundary';
-import { WorkspaceStatePanel } from '../shell/WorkspaceState';
+import LLMProviderCard from './settings/LLMProviderCard';
+import { getActiveLLMProvider, mergeLLMProviderSettings } from './settings/providerState';
 
 type NavRole = 'admin' | 'guest';
 type SettingsTabId = 'ai' | 'agent' | 'access' | 'notifications' | 'appearance';
 type LLMProviderFormState = {
   providerKey: string;
   name: string;
+  transportType: 'openai_chat' | 'xai_api';
+  credentialMode: 'env';
   apiKeyEnv: string;
   baseUrl: string;
   defaultModel: string;
@@ -64,22 +70,25 @@ type LLMProviderFormState = {
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: '首页', allowedRoles: ['admin', 'guest'] },
   { path: '/market', icon: TrendingUp, label: '行情', allowedRoles: ['admin', 'guest'] },
-  { path: '/pools', icon: LibraryBig, label: '股票池', allowedRoles: ['admin', 'guest'] },
-  { path: '/factors', icon: Sigma, label: '因子', allowedRoles: ['admin', 'guest'] },
   { path: '/strategy', icon: Code2, label: '策略', allowedRoles: ['admin', 'guest'] },
   { path: '/backtest', icon: FlaskConical, label: '回测', allowedRoles: ['admin', 'guest'] },
-  { path: '/paper', icon: Activity, label: '模拟', allowedRoles: ['admin', 'guest'] },
+  { path: '/live', icon: Activity, label: '模拟', allowedRoles: ['admin', 'guest'] },
   { path: '/watch', icon: ScanLine, label: '盯盘', allowedRoles: ['admin', 'guest'] },
-  { path: '/signals', icon: Bell, label: '信号', allowedRoles: ['admin', 'guest'] },
+  { path: '/orderflow', icon: Waves, label: '资金流', allowedRoles: ['admin', 'guest'] },
   { path: '/monitor', icon: Eye, label: '监控', allowedRoles: ['admin', 'guest'] },
   { path: '/review', icon: ClipboardList, label: '复盘', allowedRoles: ['admin', 'guest'] },
   { path: '/data', icon: Database, label: '数据', allowedRoles: ['admin', 'guest'] },
+  { path: '/factorlab', icon: LibraryBig, label: '因子', allowedRoles: ['admin', 'guest'] },
+  { path: '/onchain', icon: Network, label: '基本面', allowedRoles: ['admin', 'guest'] },
   { path: '/ai-lab', icon: Sparkles, label: 'AI研发', allowedRoles: ['admin', 'guest'] },
+  { path: '/arc', icon: Bot, label: '自主研究', allowedRoles: ['admin'] },
 ];
 
 const createEmptyLLMProviderForm = (): LLMProviderFormState => ({
   providerKey: '',
   name: '',
+  transportType: 'openai_chat',
+  credentialMode: 'env',
   apiKeyEnv: '',
   baseUrl: '',
   defaultModel: '',
@@ -92,6 +101,8 @@ const llmProviderTemplates: Array<{ label: string; form: LLMProviderFormState }>
     form: {
       providerKey: 'openai',
       name: 'OpenAI',
+      transportType: 'openai_chat',
+      credentialMode: 'env',
       apiKeyEnv: 'OPENAI_API_KEY',
       baseUrl: 'https://api.openai.com/v1',
       defaultModel: 'gpt-5.1',
@@ -103,6 +114,8 @@ const llmProviderTemplates: Array<{ label: string; form: LLMProviderFormState }>
     form: {
       providerKey: 'anthropic',
       name: 'Anthropic',
+      transportType: 'openai_chat',
+      credentialMode: 'env',
       apiKeyEnv: 'ANTHROPIC_API_KEY',
       baseUrl: 'https://api.anthropic.com/v1',
       defaultModel: 'claude-4.5-sonnet',
@@ -114,13 +127,36 @@ const llmProviderTemplates: Array<{ label: string; form: LLMProviderFormState }>
     form: {
       providerKey: 'gemini',
       name: 'Google Gemini',
+      transportType: 'openai_chat',
+      credentialMode: 'env',
       apiKeyEnv: 'GOOGLE_API_KEY',
       baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
       defaultModel: 'gemini-3-pro',
       modelsText: 'gemini-3-pro\ngemini-3-flash',
     },
   },
+  {
+    label: 'xAI',
+    form: {
+      providerKey: 'grok-custom',
+      name: 'xAI',
+      transportType: 'xai_api',
+      credentialMode: 'env',
+      apiKeyEnv: 'XAI_API_KEY',
+      baseUrl: 'https://api.x.ai/v1',
+      defaultModel: 'grok-4.6',
+      modelsText: 'grok-4.6',
+    },
+  },
 ];
+
+function providerTransportLabel(transportType?: string): string {
+  if (transportType === 'codex_cli') return 'Codex CLI';
+  if (transportType === 'cursor_cli') return 'Cursor CLI';
+  if (transportType === 'xai_api') return 'xAI API';
+  if (transportType === 'openai_chat') return 'OpenAI 兼容 HTTP';
+  return '未加载';
+}
 
 /** 颜色方案预览卡片 */
 function ColorSchemeCard({
@@ -144,7 +180,7 @@ function ColorSchemeCard({
       className={clsx(
         'flex h-full flex-col items-center justify-center rounded-xl border p-4 transition-all w-full',
         selected
-          ? 'border-blue-500 bg-blue-500/15 shadow-[0_0_0_1px_rgba(59,130,246,0.25)]'
+          ? SELECTED_SEGMENT_BORDER_CLASS
           : 'border-crypto-border hover:border-gray-500 bg-crypto-bg/60'
       )}
     >
@@ -238,66 +274,6 @@ function SettingsConfigBlock({
   );
 }
 
-function LLMProviderCard({
-  provider,
-  activating,
-  onActivate,
-}: {
-  provider: LLMProviderSettings;
-  activating?: boolean;
-  onActivate?: (providerKey: string) => void;
-}) {
-  return (
-    <div className="rounded-lg border border-crypto-border bg-crypto-bg/45 px-3 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="truncate text-xs font-semibold text-gray-100">{provider.name}</div>
-            {provider.builtin && <SettingsStatusBadge tone="blue">内置</SettingsStatusBadge>}
-            {provider.active && <SettingsStatusBadge tone="cyan">当前路由</SettingsStatusBadge>}
-          </div>
-          <div className="mt-1 truncate font-mono text-[11px] text-gray-500">{provider.providerKey}</div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <SettingsStatusBadge tone={provider.apiKeyConfigured ? 'green' : 'amber'}>
-            {provider.apiKeyConfigured ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-            {provider.apiKeyConfigured ? '已配置' : '未配置'}
-          </SettingsStatusBadge>
-          {!provider.active && onActivate && (
-            <button
-              type="button"
-              onClick={() => onActivate(provider.providerKey)}
-              disabled={!provider.apiKeyConfigured || activating}
-              className="inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border border-cyan-500/35 bg-cyan-500/10 px-2.5 text-[11px] font-medium text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-crypto-border disabled:bg-crypto-bg disabled:text-gray-600"
-            >
-              <PlugZap className="h-3.5 w-3.5" />
-              {activating ? '启用中' : '启用厂商'}
-            </button>
-          )}
-        </div>
-      </div>
-      <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2">
-        <div className="min-w-0">
-          <div className="text-gray-600">API Key 环境变量</div>
-          <div className="mt-1 truncate font-mono text-gray-300">{provider.apiKeyEnv}</div>
-        </div>
-        <div className="min-w-0">
-          <div className="text-gray-600">默认模型</div>
-          <div className="mt-1 truncate font-mono text-gray-300">{provider.defaultModel}</div>
-        </div>
-        <div className="min-w-0 sm:col-span-2">
-          <div className="text-gray-600">Base URL</div>
-          <div className="mt-1 truncate font-mono text-gray-300">{provider.baseUrl}</div>
-        </div>
-        <div className="min-w-0 sm:col-span-2">
-          <div className="text-gray-600">模型候选</div>
-          <div className="mt-1 truncate text-gray-300">{provider.models.length} 个</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ProviderPlaceholderBlock({
   name,
   envVar,
@@ -341,8 +317,8 @@ function GuestCodeManager() {
     try {
       const res = await authApi.listGuestCodes();
       setCodes(res.items || []);
-    } catch (error: any) {
-      setStatus(error?.response?.data?.detail || error?.message || '读取邀请码失败');
+    } catch (error) {
+      setStatus(parseApiError(error, '读取邀请码失败'));
     } finally {
       setLoading(false);
     }
@@ -362,8 +338,8 @@ function GuestCodeManager() {
       setCreatedCode(created.code);
       setForm((current) => ({ ...current, note: '' }));
       await loadCodes();
-    } catch (error: any) {
-      setStatus(error?.response?.data?.detail || error?.message || '生成邀请码失败');
+    } catch (error) {
+      setStatus(parseApiError(error, '生成邀请码失败'));
     } finally {
       setSaving(false);
     }
@@ -375,8 +351,8 @@ function GuestCodeManager() {
       await authApi.revokeGuestCode(codeId);
       setCodes((current) => current.filter((code) => code.id !== codeId));
       await loadCodes();
-    } catch (error: any) {
-      setStatus(error?.response?.data?.detail || error?.message || '撤销邀请码失败');
+    } catch (error) {
+      setStatus(parseApiError(error, '撤销邀请码失败'));
     }
   };
 
@@ -536,8 +512,8 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
       setTokens(res.items || []);
       setActiveCount(res.status?.activeTokenCount || 0);
       setEnvConfigured(Boolean(res.status?.envTokenConfigured));
-    } catch (error: any) {
-      setStatus(error?.response?.data?.detail || error?.message || '读取 MCP Agent Token 失败');
+    } catch (error) {
+      setStatus(parseApiError(error, '读取 MCP Agent Token 失败'));
     } finally {
       setLoading(false);
     }
@@ -555,14 +531,14 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
     try {
       const created = await settingsApi.createMcpAgentToken({
         ...form,
-        toolGroups: ['read', 'research_backtest_paper_mutation'],
+        toolGroups: ['read', 'research_backtest_paper_mutation', 'live_diagnostic'],
       });
       setCreatedToken(created.token);
       await loadTokens();
       await onStatusChanged?.();
       setStatus('已生成，请立即复制保存');
-    } catch (error: any) {
-      setStatus(error?.response?.data?.detail || error?.message || '生成 MCP Agent Token 失败');
+    } catch (error) {
+      setStatus(parseApiError(error, '生成 MCP Agent Token 失败'));
     } finally {
       setSaving(false);
     }
@@ -576,8 +552,8 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
       setTokens((current) => current.filter((token) => token.id !== tokenId));
       await loadTokens();
       await onStatusChanged?.();
-    } catch (error: any) {
-      setStatus(error?.response?.data?.detail || error?.message || '撤销 MCP Agent Token 失败');
+    } catch (error) {
+      setStatus(parseApiError(error, '撤销 MCP Agent Token 失败'));
     }
   };
 
@@ -591,7 +567,7 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
     <SettingsConfigBlock
       title="MCP Agent Token"
       icon={<ShieldCheck className="h-4 w-4 text-cyan-300" />}
-      description="给 Hermes、Codex 或外部 Agent 访问 StockPro MCP/API 使用；明文只显示一次。当前不发放实盘诊断权限。"
+      description="给 Hermes、Codex 或外部 Agent 访问 BitPro MCP/API 使用；明文只显示一次。"
       status={
         <SettingsStatusBadge tone={activeCount || envConfigured ? 'green' : 'neutral'}>
           {activeCount || envConfigured ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
@@ -664,7 +640,6 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
       <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-gray-500 sm:grid-cols-2">
         <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 px-3 py-2">
           Header: <span className="font-mono text-gray-300">X-BitPro-MCP-Token</span>
-          <span className="ml-1 text-gray-600">（StockPro Agent 兼容头）</span>
         </div>
         <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 px-3 py-2">
           兼容环境变量: <span className="font-mono text-gray-300">BITPRO_MCP_API_TOKEN</span>
@@ -732,6 +707,9 @@ export default function MainLayout() {
   const [llmAdding, setLlmAdding] = useState(false);
   const [llmSaving, setLlmSaving] = useState(false);
   const [llmTesting, setLlmTesting] = useState(false);
+  const llmTestAbortRef = useRef<AbortController | null>(null);
+  const llmConfigReloadEpochRef = useRef(0);
+  const llmConfigReloadAbortRef = useRef<AbortController | null>(null);
   const [llmStatus, setLlmStatus] = useState('');
   const [llmDeletingModel, setLlmDeletingModel] = useState('');
   const [llmProviderAdding, setLlmProviderAdding] = useState(false);
@@ -741,6 +719,11 @@ export default function MainLayout() {
   const [mcpTokenStatus, setMcpTokenStatus] = useState<McpTokenSettings | null>(null);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTabId>('ai');
   const settingsRef = useRef<HTMLDivElement>(null);
+  const settingsCloseRef = useRef<HTMLButtonElement>(null);
+  const settingsPreviousFocusRef = useRef<HTMLElement | null>(null);
+  const providerFormRef = useRef<HTMLDivElement>(null);
+  const providerFormInitialFocusRef = useRef<HTMLInputElement>(null);
+  const providerFormPreviousFocusRef = useRef<HTMLElement | null>(null);
   const activeRole: NavRole = role === 'guest' ? 'guest' : 'admin';
   const visibleNavItems = navItems.filter((item) => item.allowedRoles.includes(activeRole));
   const llmProviders = llmConfig ? llmConfig.providers || [] : [];
@@ -748,10 +731,49 @@ export default function MainLayout() {
   const llmModelChoices = llmConfig?.models?.length
     ? llmConfig.models
     : [llmModel || llmConfig?.defaultModel || 'qwen3.6-plus'].filter(Boolean);
+  const llmProviderCards = mergeLLMProviderSettings(llmConfig);
+  const activeProvider = getActiveLLMProvider(llmProviderCards, llmConfig?.providerKey);
+  const activeProviderTransport = providerTransportLabel(activeProvider?.transportType);
+  const activeProviderEndpoint = activeProvider?.transportType === 'codex_cli' || activeProvider?.transportType === 'cursor_cli'
+    ? '服务器托管 CLI'
+    : activeProvider?.baseUrl || '未配置';
+  const activeProviderCredential = activeProvider?.credentialSource || activeProvider?.apiKeyEnv || '未提供凭据来源';
+  const activeProviderConfigured = activeProvider?.apiKeyConfigured ?? llmConfig?.apiKeyConfigured ?? false;
 
   const loadMcpTokenStatus = useCallback(async () => {
     const res = await settingsApi.getMcpToken();
     setMcpTokenStatus(res);
+  }, []);
+  const applyLLMConfig = useCallback((config: LLMModelSettings) => {
+    setLlmConfig(config);
+    setLlmModel(config.model);
+  }, []);
+  const commitLLMConfig = useCallback((config: LLMModelSettings) => {
+    llmConfigReloadAbortRef.current?.abort();
+    llmConfigReloadEpochRef.current += 1;
+    applyLLMConfig(config);
+  }, [applyLLMConfig]);
+  const reloadLLMConfig = useCallback(async () => {
+    const epoch = ++llmConfigReloadEpochRef.current;
+    llmConfigReloadAbortRef.current?.abort();
+    const controller = new AbortController();
+    llmConfigReloadAbortRef.current = controller;
+    try {
+      const res = await settingsApi.getLLMModel(controller.signal);
+      if (controller.signal.aborted || epoch !== llmConfigReloadEpochRef.current) return;
+      applyLLMConfig(res);
+    } catch (error) {
+      if (controller.signal.aborted || epoch !== llmConfigReloadEpochRef.current) return;
+      setLlmStatus(parseApiError(error, '读取大模型配置失败'));
+    }
+  }, [applyLLMConfig]);
+  const closeSettings = useCallback(() => {
+    setShowSettings(false);
+    setLlmProviderAdding(false);
+    setLlmProviderForm(createEmptyLLMProviderForm());
+    llmTestAbortRef.current?.abort();
+    llmConfigReloadAbortRef.current?.abort();
+    llmConfigReloadEpochRef.current += 1;
   }, []);
 
   // 点击外部关闭设置面板
@@ -759,12 +781,84 @@ export default function MainLayout() {
     if (!showSettings) return;
     const handleClick = (e: MouseEvent) => {
       if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
-        setShowSettings(false);
+        closeSettings();
       }
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [showSettings]);
+  }, [closeSettings, showSettings]);
+
+  useEffect(() => {
+    if (!showSettings || !isAdmin) {
+      settingsPreviousFocusRef.current?.focus();
+      settingsPreviousFocusRef.current = null;
+      return;
+    }
+    settingsPreviousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = settingsRef.current;
+    const focusableSelector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusInitial = () => settingsCloseRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSettings();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const frame = window.requestAnimationFrame(focusInitial);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeSettings, isAdmin, showSettings]);
+
+  useEffect(() => {
+    if (!llmProviderAdding) {
+      providerFormPreviousFocusRef.current?.focus();
+      providerFormPreviousFocusRef.current = null;
+      return;
+    }
+    providerFormPreviousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => providerFormInitialFocusRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [llmProviderAdding]);
+
+  const handleProviderFormKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setLlmProviderAdding(false);
+      setLlmProviderForm(createEmptyLLMProviderForm());
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const dialog = providerFormRef.current;
+    if (!dialog) return;
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   useEffect(() => {
     if (!showSettings || !isAdmin) return;
@@ -777,18 +871,10 @@ export default function MainLayout() {
         setFeishuWebhookConfigured(res.webhookConfigured);
         setFeishuMaskedWebhookUrl(res.maskedWebhookUrl || null);
       })
-      .catch(() => {
-        if (!cancelled) setFeishuError('读取飞书 Webhook 配置失败');
+      .catch((error) => {
+        if (!cancelled) setFeishuError(parseApiError(error, '读取飞书 Webhook 配置失败'));
       });
-    settingsApi.getLLMModel()
-      .then((res) => {
-        if (cancelled) return;
-        setLlmConfig(res);
-        setLlmModel(res.model);
-      })
-      .catch(() => {
-        if (!cancelled) setLlmStatus('读取大模型配置失败');
-      });
+    void reloadLLMConfig();
     loadMcpTokenStatus()
       .catch(() => {
         if (!cancelled) {
@@ -798,7 +884,7 @@ export default function MainLayout() {
     return () => {
       cancelled = true;
     };
-  }, [isAdmin, loadMcpTokenStatus, showSettings]);
+  }, [isAdmin, loadMcpTokenStatus, reloadLLMConfig, showSettings]);
 
   const saveFeishuWebhook = async () => {
     const next = feishuWebhookUrl.trim();
@@ -812,8 +898,8 @@ export default function MainLayout() {
       setFeishuMaskedWebhookUrl(res.maskedWebhookUrl || null);
       setFeishuWebhookUrl('');
       setFeishuSaved(true);
-    } catch {
-      setFeishuError('保存飞书 Webhook 失败');
+    } catch (error) {
+      setFeishuError(parseApiError(error, '保存飞书 Webhook 失败'));
     } finally {
       setFeishuSaving(false);
     }
@@ -826,11 +912,10 @@ export default function MainLayout() {
     setLlmStatus('');
     try {
       const res = await settingsApi.setLLMModel(next);
-      setLlmConfig(res);
-      setLlmModel(res.model);
+      commitLLMConfig(res);
       setLlmStatus('大模型配置已保存，后续 AI 研发和行情分析会使用该模型');
-    } catch (e: any) {
-      setLlmStatus(e?.response?.data?.detail || e.message || '保存大模型配置失败');
+    } catch (error) {
+      setLlmStatus(parseApiError(error, '保存大模型配置失败'));
     } finally {
       setLlmSaving(false);
     }
@@ -843,13 +928,12 @@ export default function MainLayout() {
     setLlmStatus('');
     try {
       const res = await settingsApi.addLLMModel(next);
-      setLlmConfig(res);
-      setLlmModel(res.model);
+      commitLLMConfig(res);
       setLlmNewModel('');
       setLlmAdding(false);
       setLlmStatus(`已新增并启用模型：${res.model}`);
-    } catch (e: any) {
-      setLlmStatus(e?.response?.data?.detail || e.message || '新增模型失败');
+    } catch (error) {
+      setLlmStatus(parseApiError(error, '新增模型失败'));
     } finally {
       setLlmSaving(false);
     }
@@ -857,13 +941,18 @@ export default function MainLayout() {
 
   const testLLMModel = async () => {
     if (llmTesting) return;
+    const controller = new AbortController();
+    llmTestAbortRef.current?.abort();
+    llmTestAbortRef.current = controller;
     setLlmTesting(true);
     setLlmStatus('');
     try {
-      const res = await settingsApi.testLLMModel();
+      const res = await settingsApi.testLLMModel(controller.signal);
+      if (controller.signal.aborted) return;
       setLlmStatus(`模型连接正常：${res.model} · ${res.reply || 'OK'}`);
-    } catch (e: any) {
-      setLlmStatus(e?.response?.data?.detail || e.message || '模型连接测试失败');
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setLlmStatus(parseApiError(error, '模型连接测试失败'));
     } finally {
       setLlmTesting(false);
     }
@@ -884,11 +973,10 @@ export default function MainLayout() {
     setLlmStatus('');
     try {
       const res = await settingsApi.deleteLLMModel(target);
-      setLlmConfig(res);
-      setLlmModel(res.model);
+      commitLLMConfig(res);
       setLlmStatus(`已删除模型：${target}`);
-    } catch (e: any) {
-      setLlmStatus(e?.response?.data?.detail || e.message || '删除模型失败');
+    } catch (error) {
+      setLlmStatus(parseApiError(error, '删除模型失败'));
     } finally {
       setLlmDeletingModel('');
     }
@@ -903,26 +991,31 @@ export default function MainLayout() {
     const payload = {
       providerKey: llmProviderForm.providerKey.trim(),
       name: llmProviderForm.name.trim(),
+      transportType: llmProviderForm.transportType,
+      credentialMode: 'env' as const,
       apiKeyEnv: llmProviderForm.apiKeyEnv.trim(),
       baseUrl: llmProviderForm.baseUrl.trim(),
       defaultModel: llmProviderForm.defaultModel.trim(),
       models,
     };
-    if (!payload.providerKey || !payload.name || !payload.apiKeyEnv || !payload.baseUrl || !payload.defaultModel) {
+    if (!payload.providerKey || !payload.name || !payload.defaultModel || !models.length) {
       setLlmStatus('请填写完整的模型厂商配置');
+      return;
+    }
+    if (!payload.apiKeyEnv || !payload.baseUrl) {
+      setLlmStatus('HTTP Provider 需要 Base URL 和 API Key 环境变量');
       return;
     }
     setLlmProviderSaving(true);
     setLlmStatus('');
     try {
       const res = await settingsApi.addLLMProvider(payload);
-      setLlmConfig(res);
-      setLlmModel(res.model);
+      commitLLMConfig(res);
       setLlmProviderForm(createEmptyLLMProviderForm());
       setLlmProviderAdding(false);
       setLlmStatus(`已保存模型厂商：${payload.name}`);
-    } catch (e: any) {
-      setLlmStatus(e?.response?.data?.detail || e.message || '保存模型厂商失败');
+    } catch (error) {
+      setLlmStatus(parseApiError(error, '保存模型厂商失败'));
     } finally {
       setLlmProviderSaving(false);
     }
@@ -934,11 +1027,10 @@ export default function MainLayout() {
     setLlmStatus('');
     try {
       const res = await settingsApi.setLLMProvider(providerKey);
-      setLlmConfig(res);
-      setLlmModel(res.model);
+      commitLLMConfig(res);
       setLlmStatus(`当前路由已切换：${res.providerName || providerKey} · ${res.model}`);
-    } catch (e: any) {
-      setLlmStatus(e?.response?.data?.detail || e.message || '启用模型厂商失败');
+    } catch (error) {
+      setLlmStatus(parseApiError(error, '启用模型厂商失败'));
     } finally {
       setLlmProviderActivating('');
     }
@@ -957,8 +1049,8 @@ export default function MainLayout() {
       title: 'AI 与模型',
       description: '模型、Provider 和 API Key 来源',
       icon: <Bot className="h-4 w-4" />,
-      status: llmConfig?.apiKeyConfigured ? '已配置' : '待配置',
-      tone: llmConfig?.apiKeyConfigured ? 'green' : 'amber',
+      status: activeProviderConfigured ? '已配置' : '待配置',
+      tone: activeProviderConfigured ? 'green' : 'amber',
     },
     {
       id: 'agent',
@@ -997,18 +1089,12 @@ export default function MainLayout() {
   const activeSettings = settingsTabs.find((tab) => tab.id === activeSettingsTab) || settingsTabs[0];
 
   return (
-    <div className="flex h-screen bg-crypto-bg" data-testid="main-layout">
+    <div data-testid="main-layout" className="flex h-screen bg-crypto-bg">
       {/* 侧边栏 */}
       <aside className="w-16 shrink-0 bg-crypto-card border-r border-crypto-border flex flex-col overflow-hidden">
         {/* Logo */}
         <div className="h-16 flex items-center justify-center border-b border-crypto-border">
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-300"
-            title="StockPro"
-          >
-            <TrendingUp className="h-5 w-5" />
-            <span className="sr-only">StockPro</span>
-          </div>
+          <BitProLogo className="h-11 w-11" />
         </div>
 
         {/* 导航 */}
@@ -1075,7 +1161,7 @@ export default function MainLayout() {
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
               <p className="min-w-0">
                 <span className="font-semibold text-cyan-200">访客模式：</span>
-                部分页面功能不可用，仅支持查看和受限回测；策略运行控制、配置修改、数据/AI 写入需管理员权限。
+                部分页面功能不可用，仅支持查看和受限回测；策略启停、实盘控制、配置修改、数据/AI 写入需管理员权限。
               </p>
             </div>
           </div>
@@ -1083,11 +1169,9 @@ export default function MainLayout() {
         <PageErrorBoundary resetKey={location.pathname}>
           <Suspense
             fallback={
-              <WorkspaceStatePanel
-                kind="loading"
-                title="页面加载中"
-                description="工作台壳层保持挂载，只切换当前 Owner 页面。"
-              />
+              <div className="flex min-h-[40vh] items-center justify-center text-sm text-gray-500">
+                页面加载中…
+              </div>
             }
           >
             <div data-operator-page={location.pathname} className="contents">
@@ -1102,16 +1186,20 @@ export default function MainLayout() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6">
           <div
             ref={settingsRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-title"
             className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-crypto-border bg-crypto-card shadow-2xl"
           >
             {/* 头部 */}
             <div className="flex items-start justify-between gap-4 border-b border-crypto-border px-6 py-5">
               <div>
-                <h3 className="text-base font-semibold text-white">设置中心</h3>
+                <h3 id="settings-title" className="text-base font-semibold text-white">设置中心</h3>
                 <p className="mt-1 text-xs text-gray-500">按配置域拆分管理，后续 Provider、Key 和通知通道可独立扩展。</p>
               </div>
               <button
-                onClick={() => setShowSettings(false)}
+                ref={settingsCloseRef}
+                onClick={closeSettings}
                 aria-label="关闭设置"
                 className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white"
               >
@@ -1131,7 +1219,7 @@ export default function MainLayout() {
                       className={clsx(
                         'flex min-h-[74px] items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors',
                         activeSettingsTab === tab.id
-                          ? 'border-blue-500/60 bg-blue-500/10 text-gray-100'
+                          ? SELECTED_SEGMENT_BORDER_CLASS
                           : 'border-transparent text-gray-400 hover:border-crypto-border hover:bg-crypto-card/80 hover:text-gray-200',
                       )}
                     >
@@ -1139,7 +1227,7 @@ export default function MainLayout() {
                         className={clsx(
                           'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border',
                           activeSettingsTab === tab.id
-                            ? 'border-blue-500/40 bg-blue-500/15 text-blue-300'
+                            ? SELECTED_SEGMENT_CLASS
                             : 'border-crypto-border bg-crypto-card text-gray-500',
                         )}
                       >
@@ -1175,13 +1263,11 @@ export default function MainLayout() {
                       <SettingsConfigBlock
                         title="当前模型路由"
                         icon={<Cpu className="h-4 w-4 text-blue-400" />}
-                        description={`${llmConfig?.providerName || 'DashScope / Qwen'} · ${llmConfig?.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'}${llmConfig?.requestTimeout ? ` · 超时 ${llmConfig.requestTimeout}s` : ''}${llmConfig?.enableThinking ? ' · thinking 开启' : ' · thinking 关闭'}`}
+                        description={`${activeProvider?.name || llmConfig?.providerName || 'Provider 未加载'} · ${activeProviderTransport} · ${activeProviderEndpoint} · ${activeProviderCredential}${llmConfig?.requestTimeout ? ` · 超时 ${llmConfig.requestTimeout}s` : ''}`}
                         status={
-                          <SettingsStatusBadge tone={llmConfig?.apiKeyConfigured ? 'green' : 'amber'}>
-                            {llmConfig?.apiKeyConfigured ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-                            {llmConfig?.apiKeyConfigured
-                              ? `${llmConfig.apiKeySource || 'DASHSCOPE_API_KEY'} 已配置`
-                              : `${llmConfig?.apiKeySource || 'DASHSCOPE_API_KEY'} 未配置`}
+                          <SettingsStatusBadge tone={activeProviderConfigured ? 'green' : 'amber'}>
+                            {activeProviderConfigured ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+                            {activeProviderConfigured ? '凭据已配置' : '凭据未配置'}
                           </SettingsStatusBadge>
                         }
                       >
@@ -1311,7 +1397,7 @@ export default function MainLayout() {
                         <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-3">
                           <div className="rounded-lg border border-crypto-border bg-crypto-bg/50 px-3 py-2">
                             <div className="text-gray-600">Key 来源</div>
-                            <div className="mt-1 truncate font-mono text-gray-300">{llmConfig?.apiKeySource || 'DASHSCOPE_API_KEY'}</div>
+                            <div className="mt-1 truncate font-mono text-gray-300">{activeProviderCredential}</div>
                           </div>
                           <div className="rounded-lg border border-crypto-border bg-crypto-bg/50 px-3 py-2">
                             <div className="text-gray-600">默认模型</div>
@@ -1344,31 +1430,31 @@ export default function MainLayout() {
                         }
                       >
                         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-                          {(llmProviders.length ? llmProviders : [
-                            {
-                              providerKey: 'dashscope',
-                              name: 'DashScope / Qwen',
-                              apiKeyEnv: llmConfig?.apiKeySource || 'DASHSCOPE_API_KEY',
-                              baseUrl: llmConfig?.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-                              defaultModel: llmConfig?.defaultModel || 'qwen3.6-plus',
-                              models: llmConfig?.models || [],
-                              apiKeyConfigured: Boolean(llmConfig?.apiKeyConfigured),
-                              builtin: true,
-                              active: true,
-                            },
-                          ]).map((provider) => (
+                          {llmProviderCards.length ? llmProviderCards.map((provider) => (
                             <LLMProviderCard
                               key={provider.providerKey}
                               provider={provider}
                               activating={llmProviderActivating === provider.providerKey}
                               onActivate={(providerKey) => void setLLMProvider(providerKey)}
+                              onProviderUpdated={() => reloadLLMConfig()}
                             />
-                          ))}
+                          )) : (
+                            <div className="rounded-lg border border-dashed border-crypto-border px-3 py-4 text-xs text-gray-500" role="status">
+                              服务端尚未返回 Provider 配置，点击设置中心重新加载后再试。
+                            </div>
+                          )}
                         </div>
                         {llmProviderAdding && (
-                          <div className="mt-4 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3">
+                          <div
+                            ref={providerFormRef}
+                            className="mt-4 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="provider-form-title"
+                            onKeyDown={handleProviderFormKeyDown}
+                          >
                             <div className="mb-3 flex flex-wrap items-center gap-2">
-                              <span className="text-[11px] text-gray-500">快速模板</span>
+                              <span id="provider-form-title" className="text-[11px] text-gray-500">新增 Provider · 快速模板</span>
                               {llmProviderTemplates.map((template) => (
                                 <button
                                   key={template.label}
@@ -1387,6 +1473,7 @@ export default function MainLayout() {
                               <label className="block">
                                 <span className="text-[11px] text-gray-500">厂商名称</span>
                                 <input
+                                  ref={providerFormInitialFocusRef}
                                   value={llmProviderForm.name}
                                   onChange={(e) => setLlmProviderForm((form) => ({ ...form, name: e.target.value }))}
                                   className="mt-1 h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-white outline-none placeholder:text-gray-600 focus:border-cyan-500/60"
@@ -1401,6 +1488,24 @@ export default function MainLayout() {
                                   className="mt-1 h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 font-mono text-sm text-white outline-none placeholder:text-gray-600 focus:border-cyan-500/60"
                                   placeholder="openai"
                                 />
+                              </label>
+                              <label className="block">
+                                <span className="text-[11px] text-gray-500">传输方式</span>
+                                <select
+                                  value={llmProviderForm.transportType}
+                                  onChange={(e) => {
+                                    const transportType = e.target.value as 'openai_chat' | 'xai_api';
+                                    setLlmProviderForm((form) => ({
+                                      ...form,
+                                      transportType,
+                                      credentialMode: 'env',
+                                    }));
+                                  }}
+                                  className="mt-1 h-10 w-full rounded-lg border border-crypto-border bg-crypto-bg px-3 text-sm text-white outline-none focus:border-cyan-500/60"
+                                >
+                                  <option value="openai_chat">OpenAI 兼容 HTTP</option>
+                                  <option value="xai_api">xAI API</option>
+                                </select>
                               </label>
                               <label className="block">
                                 <span className="text-[11px] text-gray-500">API Key 环境变量</span>
@@ -1440,6 +1545,7 @@ export default function MainLayout() {
                                 />
                               </label>
                             </div>
+                            <p className="mt-2 text-[11px] leading-relaxed text-gray-500">HTTP Provider 才需要 Base URL 和 API Key 环境变量；前端只保存环境变量名，不接收或保存 API Key 明文。Codex CLI、Cursor CLI 和 Grok 的内置 Provider 由服务器能力列表管理，不允许在浏览器创建任意命令。</p>
                             <div className="mt-3 flex items-center justify-end gap-2">
                               <button
                                 type="button"

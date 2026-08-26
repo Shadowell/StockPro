@@ -26,9 +26,9 @@ def test_safety_report_blocks_registered_private_exchange_and_sqlite_runtime(
 
 
 def test_safety_report_blocks_active_versioned_api_paths(tmp_path: Path) -> None:
-    client = tmp_path / "frontend/src/api/client.ts"
-    client.parent.mkdir(parents=True)
-    client.write_text("axios.get('/api/v2/market')", encoding="utf-8")
+    app = tmp_path / "frontend/src/App.tsx"
+    app.parent.mkdir(parents=True)
+    app.write_text("axios.get('/api/v2/live/accounts')", encoding="utf-8")
 
     report = scan_rebuild_safety(tmp_path)
 
@@ -82,7 +82,7 @@ def test_imported_repository_has_no_active_unsafe_surface() -> None:
     assert report.quarantined_source_findings >= 0
 
 
-def test_current_api_registers_only_unversioned_rebuild_routes(
+def test_direct_port_boots_only_safe_a_share_routes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://stockpro@127.0.0.1/stockpro")
@@ -95,9 +95,38 @@ def test_current_api_registers_only_unversioned_rebuild_routes(
     finally:
         sys.path.remove(str(backend_root))
 
-    assert "/api/health" in paths
-    assert "/api/health/storage" in paths
-    assert not any(path.startswith(("/api/v1", "/api/v2")) for path in paths)
+    assert {"/api/health", "/api/health/storage", "/api/auth/me", "/api/v2/auth/me"}.issubset(paths)
+    assert "/api/v2/auth/guest-codes" in paths
+    assert "/api/v2/market/symbols" in paths
+    assert "/api/v2/strategies" in paths
+    assert "/api/v2/backtest/results" in paths
+    assert "/api/v2/live/instances" in paths
+    assert "/api/v2/monitor/active_strategies" in paths
+    assert "/api/v2/system/health" in paths
+    assert "/api/v2/market/native-sentiment" in paths
+    assert "/api/v2/sync/status" in paths
+    assert "/api/v2/factorlab/summary" in paths
+    assert "/api/v2/settings/llm-model" in paths
+    assert "/api/v2/review/summary" in paths
+    assert "/api/v2/orderflow/stream-status" in paths
+    assert "/api/v2/onchain/summary" in paths
+    assert "/api/v2/arc/config" in paths
+    assert "/api/v2/arbitrage/summary" in paths
+    assert "/api/v2/agent/tasks" in paths
+    assert not any(path.startswith(("/api/live", "/api/trading", "/api/arbitrage")) for path in paths)
+    assert not any(path.startswith(("/api/v2/trading", "/api/v2/funding")) for path in paths)
+    assert "/api/v2/live/start" in paths
+    assert "/api/v2/live/advance" in paths
+    assert "/api/v2/backtest/run_running_strategies" in paths
+    assert not any(path.startswith(("/api/v2/live/deploy", "/api/v2/live/positions/close")) for path in paths)
+
+    strategy_methods = {
+        method
+        for route in create_app().routes
+        if route.path == "/api/v2/strategies"
+        for method in (route.methods or set())
+    }
+    assert {"GET", "POST"}.issubset(strategy_methods)
 
 
 def test_current_health_is_truthful_and_write_free(
@@ -124,15 +153,15 @@ def test_current_health_is_truthful_and_write_free(
     }
 
 
-def test_frontend_registers_only_stockpro_routes() -> None:
+def test_frontend_preserves_bitpro_workspaces_but_disables_real_execution() -> None:
     app_source = (PROJECT_ROOT / "frontend/src/App.tsx").read_text(encoding="utf-8")
     navigation = (PROJECT_ROOT / "frontend/src/components/MainLayout.tsx").read_text(
         encoding="utf-8"
     )
 
-    for forbidden in ("live-real", "onchain", "arbitrage", 'path="arc"'):
+    for forbidden in ("live-real", "label: '实盘'"):
         assert forbidden not in app_source
         assert forbidden not in navigation
-    for required in ("paper", "watch", "signals", "monitor", "review"):
+    for required in ("live", "watch", "orderflow", "monitor", "review", "onchain", "ai-lab", "arc"):
         assert f'path="{required}"' in app_source
         assert f"path: '/{required}'" in navigation

@@ -12,8 +12,6 @@ import {
   RefreshCw,
   Target,
   TimerReset,
-  FileText,
-  Activity,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { SELECTED_SEGMENT_CLASS } from '../utils/selectionStyles';
@@ -29,9 +27,6 @@ import {
   type ReviewWindow,
 } from '../api/client';
 import { useSettingsStore } from '../stores/useSettingsStore';
-import { reviewCurrentApi } from '../api/client';
-import { useAuth } from '../auth/AuthProvider';
-import type { DailyReviewView } from '../types/operations';
 
 const REVIEW_AUTO_REFRESH_MS = 60 * 60 * 1000;
 const REVIEW_WINDOWS: Array<{ key: ReviewWindow; label: string }> = [
@@ -489,7 +484,7 @@ function TagPanel({ tags, nextActions }: { tags: ReviewTag[]; nextActions: strin
   );
 }
 
-export function BitProReviewDashboardSource() {
+export default function ReviewDashboard() {
   const [windowKey, setWindowKey] = useState<ReviewWindow>('24h');
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -671,111 +666,6 @@ export function BitProReviewDashboardSource() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-const ASHARE_REVIEW_CATEGORIES = ['all', 'market', 'pool', 'strategy', 'risk', 'order', 'trade', 'performance'] as const;
-const ASHARE_REVIEW_LABELS: Record<string, string> = { all: '全部', market: '市场', pool: '股票池', strategy: '策略', risk: '风险', order: '订单', trade: '成交', performance: '表现' };
-
-function ashareReviewTime(value: unknown): string {
-  return value ? String(value).replace('T', ' ').slice(0, 19) : '--';
-}
-
-export default function ReviewDashboard() {
-  const { role } = useAuth();
-  const [dates, setDates] = useState<string[]>([]);
-  const [tradeDate, setTradeDate] = useState('');
-  const [view, setView] = useState<DailyReviewView | null>(null);
-  const [category, setCategory] = useState('all');
-  const [summaryText, setSummaryText] = useState('');
-  const [plan, setPlan] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const loadDate = async (date: string) => {
-    setLoading(true);
-    try {
-      const next = await reviewCurrentApi.get(date);
-      setView(next);
-      setSummaryText(next.review?.summary || '');
-      setPlan(next.review?.next_day_plan || '');
-      setError('');
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.detail || requestError?.message || '复盘读取失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [dateResult, listResult] = await Promise.all([reviewCurrentApi.dates(), reviewCurrentApi.list()]);
-        setDates(dateResult.items);
-        const target = String(listResult.items[0]?.trade_date || dateResult.items[0] || '').slice(0, 10);
-        setTradeDate(target);
-        if (target) await loadDate(target); else setLoading(false);
-      } catch (requestError: any) {
-        setError(requestError?.message || '复盘日期读取失败');
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const visible = useMemo(() => view?.items.filter((item) => category === 'all' || item.category === category) || [], [category, view]);
-  const metricGroups = useMemo(() => {
-    const groups = new Map<string, Array<Record<string, any>>>();
-    for (const metric of view?.metrics || []) {
-      const key = String(metric.metric_code || 'other').split(':')[0];
-      groups.set(key, [...(groups.get(key) || []), metric]);
-    }
-    return [...groups.entries()];
-  }, [view]);
-  const leaderboard = useMemo(() => (view?.items || [])
-    .filter((item) => ['strategy', 'performance'].includes(item.category))
-    .slice(0, 10), [view]);
-
-  const save = async () => {
-    if (!tradeDate) return;
-    setSaving(true);
-    try { setView(await reviewCurrentApi.save(tradeDate, { summary: summaryText, next_day_plan: plan })); }
-    finally { setSaving(false); }
-  };
-  const seal = async () => {
-    if (!tradeDate || !window.confirm('确认封存？封存后的复盘和证据不可修改。')) return;
-    setSaving(true);
-    try { setView(await reviewCurrentApi.seal(tradeDate)); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="h-full overflow-y-auto bg-crypto-bg p-6 text-gray-100">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="flex items-center gap-2 text-xl font-bold text-white"><ClipboardList className="h-5 w-5 text-blue-400" />复盘中心</h1><p className="mt-1 text-xs text-gray-500">A 股交易日快照、策略表现、复盘结论和可追溯证据</p></div>
-        <div className="flex gap-2"><select aria-label="复盘交易日" value={tradeDate} onChange={(event) => { setTradeDate(event.target.value); void loadDate(event.target.value); }} className="rounded-lg border border-crypto-border bg-crypto-card px-3 py-2 text-xs">{dates.map((date) => <option key={date} value={date}>{date}</option>)}</select><button type="button" onClick={() => tradeDate && void loadDate(tradeDate)} aria-label="刷新复盘" className="rounded-lg border border-crypto-border bg-crypto-card p-2"><RefreshCw className={clsx('h-4 w-4 text-gray-400', loading && 'animate-spin')} /></button></div>
-      </header>
-      {error && <div className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</div>}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{([
-        ['证据对象', view?.items.length ?? '--', FileText],
-        ['量化指标', view?.metrics.length ?? '--', Activity],
-        ['风险事件', view?.counts?.risk ?? 0, AlertTriangle],
-        ['状态', view?.status ?? '--', CheckCircle2],
-      ] as Array<[string, string | number, typeof FileText]>).map(([label, value, Icon]) => <div key={String(label)} className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="flex justify-between text-[11px] text-gray-500"><span>{label}</span><Icon className="h-4 w-4 text-blue-400/70" /></div><div className="mt-2 font-mono text-2xl font-semibold">{value}</div></div>)}</div>
-
-      <section className="mb-6 rounded-xl border border-crypto-border bg-crypto-card p-4">
-        <div className="mb-4 flex items-center justify-between"><h2 className="flex items-center gap-2 text-sm font-semibold"><Layers3 className="h-4 w-4 text-blue-300" />策略分层评分矩阵</h2><span className="text-[10px] text-gray-500">{metricGroups.length} 组</span></div>
-        {metricGroups.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{metricGroups.map(([group, metrics]) => <div key={group} className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4"><div className="text-xs font-semibold text-gray-200">{group}</div><div className="mt-3 grid grid-cols-2 gap-2">{metrics.slice(0, 6).map((metric) => <div key={String(metric.id || metric.metric_code)} className="rounded-lg border border-crypto-border p-2"><div className="truncate text-[10px] text-gray-600">{metric.metric_code}</div><div className="mt-1 font-mono text-sm">{metric.metric_value ?? '--'}</div></div>)}</div></div>)}</div> : <div className="rounded-xl border border-dashed border-crypto-border p-8 text-center text-xs text-gray-500">暂无可评分的量化指标</div>}
-      </section>
-
-      <div className="mb-6 grid gap-4 xl:grid-cols-[1.1fr_.9fr]">
-        <section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><h2 className="mb-4 flex items-center gap-2 text-sm font-semibold"><Flame className="h-4 w-4 text-amber-300" />策略好坏榜</h2>{leaderboard.length ? <div className="space-y-2">{leaderboard.map((item, index) => <div key={String(item.id || item.item_key || index)} className="grid grid-cols-[28px_1fr_auto] items-center gap-3 rounded-lg border border-crypto-border bg-crypto-bg/50 px-3 py-2 text-xs"><span className="font-mono text-gray-600">{index + 1}</span><div><div className="text-gray-200">{item.title}</div><div className="mt-1 text-[10px] text-gray-600">{item.summary || '--'}</div></div><span className="text-gray-500">{item.category}</span></div>)}</div> : <div className="rounded-xl border border-dashed border-crypto-border p-8 text-center text-xs text-gray-500">暂无策略排名证据</div>}</section>
-        <section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">复盘结论</h2><span className={clsx('rounded border px-2 py-0.5 text-[10px]', view?.status === 'sealed' ? 'border-emerald-500/25 text-emerald-300' : 'border-amber-500/25 text-amber-200')}>{view?.status || '--'}</span></div><label className="block text-[11px] text-gray-500">当日总结<textarea disabled={view?.status === 'sealed' || role !== 'admin'} value={summaryText} onChange={(event) => setSummaryText(event.target.value)} className="mt-1 min-h-28 w-full rounded-lg border border-crypto-border bg-crypto-bg p-3 text-xs text-gray-200 disabled:opacity-70" /></label><label className="mt-3 block text-[11px] text-gray-500">次日计划<textarea disabled={view?.status === 'sealed' || role !== 'admin'} value={plan} onChange={(event) => setPlan(event.target.value)} className="mt-1 min-h-28 w-full rounded-lg border border-crypto-border bg-crypto-bg p-3 text-xs text-gray-200 disabled:opacity-70" /></label>{role === 'admin' && view?.status !== 'sealed' && <div className="mt-3 flex gap-2"><button type="button" disabled={saving} onClick={() => void save()} className="rounded-lg bg-blue-600 px-3 py-2 text-xs">保存</button><button type="button" disabled={saving} onClick={() => void seal()} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs text-emerald-200">封存</button></div>}</section>
-      </div>
-
-      <section className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold">证据时间线</h2><p className="mt-1 text-[10px] text-gray-600">所有对象保留 source route / ID / evidence hash</p></div><div className="flex max-w-full overflow-x-auto">{ASHARE_REVIEW_CATEGORIES.map((item) => <button key={item} onClick={() => setCategory(item)} className={clsx('shrink-0 rounded px-2.5 py-1.5 text-[11px]', category === item ? SELECTED_SEGMENT_CLASS : 'text-gray-500')}>{ASHARE_REVIEW_LABELS[item]} {item === 'all' ? view?.items.length ?? 0 : view?.counts[item] || 0}</button>)}</div></div><div className="space-y-2">{visible.map((item) => <div key={String(item.id || item.item_key)} className="grid gap-2 rounded-lg border border-crypto-border bg-crypto-bg/50 p-3 text-xs md:grid-cols-[150px_90px_1fr_260px]"><span className="text-gray-500">{ashareReviewTime(item.occurred_at)}</span><span className="text-blue-200">{ASHARE_REVIEW_LABELS[item.category] || item.category}</span><div><div className="text-gray-200">{item.title}</div><div className="mt-1 text-[10px] text-gray-600">{item.summary || '--'}</div></div><span className="truncate font-mono text-[10px] text-gray-700">{item.source_object_type}:{item.source_object_id}</span></div>)}</div></section>
-      <div className="mt-4 text-[10px] text-gray-700">GET 只读取已存复盘；writes_performed={String(view?.writes_performed ?? false)}</div>
     </div>
   );
 }

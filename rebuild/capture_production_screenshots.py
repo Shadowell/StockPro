@@ -9,11 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROUTES = [
-    ("home", "/"), ("market", "/market"), ("pools", "/pools"),
-    ("factors", "/factors"), ("strategy", "/strategy"),
-    ("backtest", "/backtest"), ("paper", "/paper"), ("watch", "/watch"),
-    ("signals", "/signals"), ("monitor", "/monitor"), ("review", "/review"),
-    ("data", "/data"), ("ai-lab", "/ai-lab"),
+    ("home", "/"), ("market", "/market"), ("strategy", "/strategy"),
+    ("backtest", "/backtest"), ("spread", "/arbitrage"), ("fundamentals", "/onchain"),
+    ("paper", "/live"), ("signals", "/signals"), ("watch", "/watch"),
+    ("orderflow", "/orderflow"), ("review", "/review"), ("monitor", "/monitor"),
+    ("data", "/data"), ("factors", "/factorlab"), ("ai-lab", "/ai-lab"),
+    ("arc", "/arc"),
 ]
 VIEWPORTS = [("1440x900", 1440, 900), ("390x844", 390, 844)]
 

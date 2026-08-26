@@ -1,5 +1,3 @@
-"""Unique current StockPro API router."""
+"""API modules are registered explicitly as each BitPro domain is ported."""
 
-from app.api.api import create_api_router
-
-__all__ = ["create_api_router"]
+__all__: list[str] = []

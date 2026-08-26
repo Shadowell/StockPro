@@ -17,7 +17,7 @@ from rebuild.capture_baseline import capture_baseline
 from rebuild.verify_paper_continuity import compare_continuity
 
 BITPRO_SOURCE_SHA="2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1"
-REQUIRED_ROUTES={"/","/market","/pools","/factors","/strategy","/backtest","/paper","/watch","/signals","/monitor","/review","/data","/ai-lab"}
+REQUIRED_ROUTES={"/","/market","/strategy","/backtest","/arbitrage","/onchain","/live","/signals","/watch","/orderflow","/review","/monitor","/data","/factorlab","/ai-lab","/arc"}
 
 @dataclass(frozen=True)
 class CompletionAuditResult:
@@ -64,10 +64,10 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
             baseline=json.loads((artifacts/"baseline.json").read_text());current=capture_baseline(database_url,root);continuity=compare_continuity(baseline,current);paper_ev={"status":"passed"if continuity.passed else"failed","differences":[asdict(item)for item in continuity.differences],"counts":current["paper"]}
         except Exception as error:db_evidence={"status":"failed","error":str(error)};future_count=-1
     else:future_count=-1
-    captures=[]
-    for path in sorted((root/"docs/screenshots").glob("rebuild-wave-*-capture.json")):
-        payload=json.loads(path.read_text());captures.extend(payload.get("pages",[]))
-    routes={str(item.get("route")or"").split("?",1)[0]for item in captures};ui_ok=REQUIRED_ROUTES.issubset(routes)and e2e_ev["status"]=="passed"
+    capture_path=artifacts/"real-ui"/"capture-index.json";real_capture=json.loads(capture_path.read_text())if capture_path.exists()else{};captures=list(real_capture.get("captures")or[]);routes={str(item.get("route")or"").split("?",1)[0]for item in captures}
+    current_sha=subprocess.run(["git","rev-parse","HEAD"],cwd=root,check=True,capture_output=True,text=True).stdout.strip()
+    real_ui_ok=(set(real_capture.get("routes")or[])==REQUIRED_ROUTES and len(captures)==len(REQUIRED_ROUTES)*2 and real_capture.get("deployed_sha")==current_sha and all(not item.get("console_errors")and not item.get("writes")for item in captures))
+    ui_ok=real_ui_ok and e2e_ev["status"]=="passed"
     active_total=sum(int(safety.get(key,0))for key in("registered_private_exchange_routes","active_sqlite_repository","active_versioned_api_routes","registered_live_routes","registered_crypto_jobs"))
     deploy_evidence:dict[str,object]={"status":"pending_final_confirmation"if mode=="pre-deploy"else"missing"}
     if mode=="post-deploy"and production_manifest and production_canary and production_manifest.exists()and production_canary.exists():
@@ -79,7 +79,7 @@ def collect(root:Path,mode:str,production_manifest:Path|None=None,production_can
         "DB-001":db_evidence,
         "PAPER-001":paper_ev,
         "SAFE-001":{"status":"passed"if safety.get("passed")and active_total==0 else"failed","active_findings":active_total},
-        "UI-001":{"status":"passed"if ui_ok else"failed","routes":sorted(routes),"e2e":e2e_ev},
+        "UI-001":{"status":"passed"if ui_ok else"failed","routes":sorted(routes),"real_capture":real_ui_ok,"capture_sha256":_sha(capture_path)if capture_path.exists()else None,"e2e":e2e_ev},
         "ASHARE-001":{"status":"passed"if pytest_ev["status"]=="passed"else"failed","backend_tests":pytest_ev},
         "FUTURE-001":{"status":"passed"if future_count==0 and e2e_ev["status"]=="passed"else"failed","future_records":future_count,"routes_hidden":True},
         "DEPLOY-001":deploy_evidence,

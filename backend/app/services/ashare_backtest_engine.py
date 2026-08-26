@@ -4,10 +4,10 @@ from __future__ import annotations
 import math
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 
-from app.services.ashare_execution import compute_fees, rejection_reason
+from app.services.ashare_execution import compute_fees, explicit_instrument_key, rejection_reason
 from app.services.backtest_metrics_service import calculate_backtest_metrics, drawdown_series, monthly_returns
 
 
@@ -30,6 +30,41 @@ def next_weekday(value: str) -> str:
     return current.isoformat()
 
 
+def _canonical_symbol(value: Any) -> str:
+    return explicit_instrument_key(value)
+
+
+def _stable_id(kind: str, *parts: Any) -> str:
+    identity = "|".join(str(part) for part in parts)
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"stockpro:{kind}:{identity}"))
+
+
+CN_TZ = timezone(timedelta(hours=8))
+
+
+def _timestamp(value: Any, *, fallback_date: str) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        text = f"{fallback_date}T00:00:00+08:00"
+    elif len(text) == 10:
+        text = f"{text}T00:00:00+08:00"
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    parsed = datetime.fromisoformat(text)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=CN_TZ)
+
+
+def _execution_at(trade_date: str) -> datetime:
+    return datetime.fromisoformat(f"{trade_date}T09:30:00+08:00")
+
+
+def _next_weekday_date(value: date) -> date:
+    current = value
+    while current.weekday() >= 5:
+        current += timedelta(days=1)
+    return current
+
+
 class AShareBacktestEngine:
     calculation_version = "ashare-broker.v1"
 
@@ -44,6 +79,7 @@ class AShareBacktestEngine:
         suspensions: Sequence[Mapping[str, Any]] = (),
         corporate_actions: Sequence[Mapping[str, Any]] = (),
         benchmark_bars: Sequence[Mapping[str, Any]] = (),
+        trading_calendar: Sequence[Mapping[str, Any]] = (),
         benchmark_symbol: str = "SH_000300",
         industry_by_symbol: Optional[Mapping[str, Optional[str]]] = None,
     ):
@@ -51,23 +87,68 @@ class AShareBacktestEngine:
         if self.initial_cash <= 0:
             raise ValueError("initial_cash 必须为正数")
         self.cost = dict(cost_model)
-        self.industry_by_symbol = dict(industry_by_symbol or {})
-        self.bars = [dict(item) for item in bars]
+        self.industry_by_symbol = {}
+        for raw, value in dict(industry_by_symbol or {}).items():
+            key = _canonical_symbol(raw)
+            if not key:
+                raise ValueError(f"INVALID_SYMBOL:industry:{raw}")
+            self.industry_by_symbol[key] = value
+        self.bars = []
+        for raw_item in bars:
+            item = dict(raw_item)
+            symbol = _canonical_symbol(item.get("symbol"))
+            if not symbol:
+                raise ValueError(f"INVALID_SYMBOL:{item.get('symbol')}")
+            self.bars.append({**item, "symbol": symbol})
         self.intents = [dict(item) for item in intents]
-        self.benchmark_symbol = str(benchmark_symbol)
+        self.benchmark_symbol = _canonical_symbol(benchmark_symbol)
+        if not self.benchmark_symbol:
+            raise ValueError(f"INVALID_BENCHMARK_SYMBOL:{benchmark_symbol}")
         self.bar_map = {(_date_text(item["trade_date"]), str(item["symbol"])): dict(item) for item in self.bars}
-        self.dates = sorted({_date_text(item["trade_date"]) for item in self.bars})
+        bar_dates = {_date_text(item["trade_date"]) for item in self.bars}
         self.symbols = sorted({str(item["symbol"]) for item in self.bars})
-        self.limit_map = {(_date_text(item["trade_date"]), str(item["symbol"])): dict(item) for item in price_limits}
-        self.suspension_map = {(_date_text(item["trade_date"]), str(item["symbol"])): dict(item) for item in suspensions if str(item.get("suspend_type") or "S") == "S"}
+        self.limit_map = {}
+        for item in price_limits:
+            symbol = _canonical_symbol(item.get("symbol"))
+            if not symbol:
+                raise ValueError(f"INVALID_SYMBOL:price_limit:{item.get('symbol')}")
+            self.limit_map[(_date_text(item["trade_date"]), symbol)] = {**dict(item), "symbol": symbol}
+        self.suspension_map = {}
+        for item in suspensions:
+            symbol = _canonical_symbol(item.get("symbol"))
+            if not symbol:
+                raise ValueError(f"INVALID_SYMBOL:suspension:{item.get('symbol')}")
+            if str(item.get("suspend_type") or "S") == "S":
+                self.suspension_map[(_date_text(item["trade_date"]), symbol)] = {**dict(item), "symbol": symbol}
         self.actions_by_date: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         for item in corporate_actions:
-            self.actions_by_date[_date_text(item.get("ex_date"))].append(dict(item))
-        self.benchmark_map = {
-            _date_text(item["trade_date"]): dict(item)
-            for item in benchmark_bars
-            if str(item.get("symbol")) == self.benchmark_symbol
+            symbol = _canonical_symbol(item.get("symbol"))
+            if not symbol:
+                raise ValueError(f"INVALID_SYMBOL:corporate_action:{item.get('symbol')}")
+            self.actions_by_date[_date_text(item.get("ex_date"))].append({**dict(item), "symbol": symbol})
+        self.benchmark_map = {}
+        for item in benchmark_bars:
+            symbol = _canonical_symbol(item.get("symbol"))
+            if not symbol:
+                raise ValueError(f"INVALID_SYMBOL:benchmark:{item.get('symbol')}")
+            if symbol == self.benchmark_symbol:
+                self.benchmark_map[_date_text(item["trade_date"])] = {**dict(item), "symbol": symbol}
+        calendar_dates = {
+            _date_text(item.get("trade_date") or item.get("cal_date"))
+            for item in trading_calendar
+            if str(item.get("is_open", 1)).strip().lower() in {"1", "true"}
         }
+        evidence_dates = {
+            *(day for day, _ in self.limit_map),
+            *(day for day, _ in self.suspension_map),
+            *self.actions_by_date.keys(),
+            *self.benchmark_map.keys(),
+            *calendar_dates,
+        }
+        if bar_dates:
+            first_date, last_date = min(bar_dates), max(bar_dates)
+            evidence_dates = {day for day in evidence_dates if first_date <= day <= last_date}
+        self.dates = sorted(bar_dates | evidence_dates)
 
     def run(
         self,
@@ -88,7 +169,8 @@ class AShareBacktestEngine:
         capacity_warning_count = 0
         cost_totals = defaultdict(float)
         turnover_amount = 0.0
-        realized_by_symbol = defaultdict(float)
+        gross_cashflow_by_symbol = defaultdict(float)
+        last_close_by_symbol: Dict[str, float] = {}
         peak_single_weight = 0.0
         first_benchmark_close: Optional[float] = None
         last_benchmark_nav: Optional[float] = None
@@ -102,7 +184,7 @@ class AShareBacktestEngine:
                 progress_hook(date_index, len(self.dates))
             for position in positions.values():
                 position["available_quantity"] = position["quantity"]
-            cash = self._apply_corporate_actions(current_date, positions, cash, logs)
+            cash = self._apply_corporate_actions(current_date, positions, cash, logs, gross_cashflow_by_symbol)
 
             for order in orders:
                 if order["status"] != "created" or order["earliest_fill_date"] > current_date:
@@ -118,7 +200,10 @@ class AShareBacktestEngine:
                     order["last_blocker"] = "INVALID_EXECUTION_PRICE"
                     continue
                 portfolio_at_open = cash + sum(
-                    item["quantity"] * _number((self.bar_map.get((current_date, code)) or {}).get("open"), item["avg_cost"])
+                    item["quantity"] * _number(
+                        (self.bar_map.get((current_date, code)) or {}).get("open"),
+                        last_close_by_symbol.get(code, item["avg_cost"]),
+                    )
                     for code, item in positions.items()
                 )
                 delta, rejection = self._resolve_quantity(order, positions.get(symbol), portfolio_at_open, base_price)
@@ -130,19 +215,18 @@ class AShareBacktestEngine:
                     continue
                 side = "buy" if delta > 0 else "sell"
                 quantity = abs(int(delta))
+                slippage_rate = _number(self.cost.get("slippage_rate"))
+                execution_price = base_price * (1 + slippage_rate if side == "buy" else 1 - slippage_rate)
                 rule = self.limit_map.get((current_date, symbol))
                 if rule is None:
                     quality_warnings.add(f"MISSING_PRICE_LIMIT:{current_date}:{symbol}")
                 elif bool(rule.get("has_price_limit", True)):
-                    if side == "buy" and rule.get("up_limit") is not None and base_price >= _number(rule["up_limit"]):
+                    if side == "buy" and rule.get("up_limit") is not None and execution_price >= _number(rule["up_limit"]):
                         self._reject(order, "LIMIT_UP", current_date)
                         continue
-                    if side == "sell" and rule.get("down_limit") is not None and base_price <= _number(rule["down_limit"]):
+                    if side == "sell" and rule.get("down_limit") is not None and execution_price <= _number(rule["down_limit"]):
                         self._reject(order, "LIMIT_DOWN", current_date)
                         continue
-
-                slippage_rate = _number(self.cost.get("slippage_rate"))
-                execution_price = base_price * (1 + slippage_rate if side == "buy" else 1 - slippage_rate)
                 if side == "buy":
                     quantity = self._affordable_quantity(quantity, execution_price, cash)
                     if quantity <= 0:
@@ -180,12 +264,13 @@ class AShareBacktestEngine:
                     old_cost = position["avg_cost"] * position["quantity"]
                     position["quantity"] += quantity
                     position["avg_cost"] = (old_cost + total_cost) / position["quantity"]
+                    gross_cashflow_by_symbol[symbol] -= base_price * quantity
                 else:
                     position = positions[symbol]
                     cash += amount - fees["commission"] - fees["tax"] - fees["transfer_fee"]
                     realized_pnl = (execution_price - position["avg_cost"]) * quantity - fees["commission"] - fees["tax"] - fees["transfer_fee"]
                     holding_days = (date.fromisoformat(current_date) - date.fromisoformat(position["first_acquired_date"])).days
-                    realized_by_symbol[symbol] += realized_pnl
+                    gross_cashflow_by_symbol[symbol] += base_price * quantity
                     position["quantity"] -= quantity
                     position["available_quantity"] -= quantity
                     if position["quantity"] <= 0:
@@ -204,7 +289,7 @@ class AShareBacktestEngine:
                     "capacity_ratio": capacity_ratio,
                 })
                 trades.append({
-                    "id": str(uuid.uuid4()), "backtest_order_id": order_id, "trade_date": current_date,
+                    "id": _stable_id("trade", order_id, current_date, side, quantity), "backtest_order_id": order_id, "trade_date": current_date,
                     "symbol": symbol, "name": bar.get("name") or "", "side": side,
                     "price": round(execution_price, 4), "quantity": quantity, "amount": round(amount, 4),
                     "commission": round(fees["commission"], 4), "tax": round(fees["tax"], 4),
@@ -216,11 +301,26 @@ class AShareBacktestEngine:
                     "execution_price_source": "unadjusted_daily_open",
                 })
 
+            for known_symbol in self.symbols:
+                current_bar = self.bar_map.get((current_date, known_symbol))
+                observed_close = _number((current_bar or {}).get("close"))
+                if observed_close > 0 and (current_date, known_symbol) not in self.suspension_map:
+                    last_close_by_symbol[known_symbol] = observed_close
+
             market_value = 0.0
             position_marks: List[Dict[str, Any]] = []
             for symbol, position in positions.items():
                 bar = self.bar_map.get((current_date, symbol))
-                close = _number((bar or {}).get("close"), position["avg_cost"])
+                suspended_mark = (current_date, symbol) in self.suspension_map
+                close = (
+                    last_close_by_symbol.get(symbol, position["avg_cost"])
+                    if suspended_mark
+                    else _number((bar or {}).get("close"), last_close_by_symbol.get(symbol, position["avg_cost"]))
+                )
+                if suspended_mark:
+                    quality_warnings.add(f"SUSPENDED_MARK_PRICE:{current_date}:{symbol}")
+                elif not bar or _number(bar.get("close")) <= 0:
+                    quality_warnings.add(f"MISSING_MARK_PRICE:{current_date}:{symbol}")
                 value = close * position["quantity"]
                 market_value += value
                 position_marks.append({"symbol": symbol, "position": position, "close": close, "market_value": value})
@@ -232,10 +332,14 @@ class AShareBacktestEngine:
             benchmark_close = _number((benchmark or {}).get("close"))
             if benchmark_close > 0 and first_benchmark_close is None:
                 first_benchmark_close = benchmark_close
-            benchmark_nav = benchmark_close / first_benchmark_close if benchmark_close > 0 and first_benchmark_close else last_benchmark_nav
-            benchmark_return = benchmark_nav / last_benchmark_nav - 1 if benchmark_nav is not None and last_benchmark_nav else None
-            if benchmark_nav is not None:
+            if benchmark_close > 0 and first_benchmark_close:
+                benchmark_nav = benchmark_close / first_benchmark_close
+                benchmark_return = benchmark_nav / last_benchmark_nav - 1 if last_benchmark_nav else None
                 last_benchmark_nav = benchmark_nav
+            else:
+                benchmark_nav = last_benchmark_nav
+                benchmark_return = None
+                quality_warnings.add(f"MISSING_BENCHMARK_PRICE:{current_date}:{self.benchmark_symbol}")
             excess_nav = strategy_nav / benchmark_nav if benchmark_nav else None
             equity_rows.append({
                 "trade_date": current_date, "strategy_nav": strategy_nav, "strategy_return": strategy_return,
@@ -281,9 +385,10 @@ class AShareBacktestEngine:
             capacity_warning_count=capacity_warning_count, data_quality_warning_count=len(quality_warnings),
         )
         ending_positions = {item["symbol"]: item for item in daily_positions if item["trade_date"] == self.dates[-1]}
+        ending_market_value = {symbol: float(item["market_value"]) for symbol, item in ending_positions.items()}
         attribution = [
-            {"attribution_type": "symbol", "attribution_key": symbol, "amount": amount, "contribution": amount / self.initial_cash, "payload": {}}
-            for symbol, amount in sorted(realized_by_symbol.items())
+            {"attribution_type": "symbol", "attribution_key": symbol, "amount": amount + ending_market_value.get(symbol, 0.0), "contribution": (amount + ending_market_value.get(symbol, 0.0)) / self.initial_cash, "payload": {"includes_ending_market_value": True}}
+            for symbol, amount in sorted(gross_cashflow_by_symbol.items())
         ]
         attribution.extend([
             {"attribution_type": "cost", "attribution_key": "commission", "amount": -cost_totals["commission"], "contribution": -cost_totals["commission"] / self.initial_cash, "payload": {}},
@@ -291,6 +396,10 @@ class AShareBacktestEngine:
             {"attribution_type": "cost", "attribution_key": "transfer_fee", "amount": -cost_totals["transfer_fee"], "contribution": -cost_totals["transfer_fee"] / self.initial_cash, "payload": {}},
             {"attribution_type": "cost", "attribution_key": "slippage", "amount": -cost_totals["slippage_cost"], "contribution": -cost_totals["slippage_cost"] / self.initial_cash, "payload": {}},
         ])
+        ending_pnl = float(equity_rows[-1]["equity"]) - self.initial_cash
+        attributed_pnl = sum(float(item["amount"]) for item in attribution)
+        if abs(attributed_pnl - ending_pnl) > max(0.01, abs(ending_pnl) * 1e-10):
+            raise RuntimeError(f"ATTRIBUTION_RECONCILIATION_FAILED:{attributed_pnl}:{ending_pnl}")
         return {
             "status": "success", "orders": orders, "trades": trades, "daily_equity": equity_rows,
             "daily_positions": daily_positions, "metrics": metrics, "logs": logs,
@@ -304,21 +413,39 @@ class AShareBacktestEngine:
         for raw in self.intents:
             payload = dict(raw.get("payload") or raw)
             signal_date = _date_text(raw.get("simulated_at") or payload.get("simulated_at"))
-            future_dates = [item for item in self.dates if item > signal_date]
-            earliest_date = future_dates[0] if future_dates else next_weekday(signal_date)
+            available_at = str(raw.get("available_at") or payload.get("available_at") or raw.get("simulated_at") or payload.get("simulated_at"))
+            signal_at = _timestamp(raw.get("simulated_at") or payload.get("simulated_at"), fallback_date=signal_date)
+            available_timestamp = _timestamp(available_at, fallback_date=signal_date)
+            future_dates = [
+                item for item in self.dates
+                if _execution_at(item) > signal_at and _execution_at(item) >= available_timestamp
+            ]
+            if future_dates:
+                earliest_date = future_dates[0]
+            else:
+                candidate = _next_weekday_date(max(signal_at.astimezone(CN_TZ).date(), available_timestamp.astimezone(CN_TZ).date()))
+                while _execution_at(candidate.isoformat()) <= signal_at or _execution_at(candidate.isoformat()) < available_timestamp:
+                    candidate = _next_weekday_date(candidate + timedelta(days=1))
+                earliest_date = candidate.isoformat()
+            raw_symbol = str(raw.get("symbol") or payload.get("symbol") or "")
+            symbol = _canonical_symbol(raw_symbol)
+            ordinal = int(raw.get("event_ordinal") or payload.get("event_ordinal") or 0)
+            intent_type = str(raw.get("intent_type") or payload.get("intent_type") or "")
+            order_id = _stable_id("order", raw.get("id"), ordinal, signal_date, available_at, raw_symbol, intent_type, payload.get("value"))
             output.append({
-                "id": str(uuid.uuid4()), "replay_intent_id": raw.get("id"),
-                "event_ordinal": int(raw.get("event_ordinal") or payload.get("event_ordinal") or 0),
-                "symbol": str(raw.get("symbol") or payload.get("symbol") or ""),
-                "intent_type": str(raw.get("intent_type") or payload.get("intent_type") or ""),
+                "id": order_id, "replay_intent_id": raw.get("id"),
+                "event_ordinal": ordinal,
+                "symbol": symbol or raw_symbol,
+                "intent_type": intent_type,
                 "side": None, "requested_value": payload.get("value"), "requested_quantity": None,
-                "filled_quantity": 0, "status": "created",
+                "filled_quantity": 0, "status": "created" if symbol else "rejected",
                 "signal_at": str(raw.get("simulated_at") or payload.get("simulated_at")),
-                "data_available_at": str(raw.get("available_at") or payload.get("available_at")),
+                "data_available_at": available_at,
                 "submitted_at": None, "earliest_fill_date": earliest_date,
                 "earliest_fill_at": f"{earliest_date}T09:30:00+08:00", "filled_at": None,
                 "execution_price": None, "execution_price_source": None,
-                "rejection_code": None, "rejection_reason": None, "capacity_ratio": None,
+                "rejection_code": None if symbol else "INVALID_SYMBOL",
+                "rejection_reason": None if symbol else rejection_reason("INVALID_SYMBOL"), "capacity_ratio": None,
                 "intent_payload": payload, "last_blocker": None,
             })
         return output
@@ -387,6 +514,7 @@ class AShareBacktestEngine:
         positions: Dict[str, Dict[str, Any]],
         cash: float,
         logs: List[Dict[str, Any]],
+        gross_cashflow_by_symbol: Dict[str, float],
     ) -> float:
         for action in self.actions_by_date.get(current_date, []):
             symbol = str(action.get("symbol") or "")
@@ -407,6 +535,7 @@ class AShareBacktestEngine:
             cash_dividend = action.get("cash_div_tax") if action.get("cash_div_tax") is not None else action.get("cash_div")
             cash_delta = old_quantity * _number(cash_dividend)
             cash += cash_delta
+            gross_cashflow_by_symbol[symbol] += cash_delta
             logs.append({
                 "simulated_at": f"{current_date}T09:00:00+08:00", "level": "info", "source": "corporate_action",
                 "message": f"{symbol} 公司行动已入账", "payload": {"share_rate": share_rate, "cash_delta": cash_delta},

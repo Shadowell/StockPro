@@ -29,8 +29,8 @@ interface AppState {
 
 export const useStore = create<AppState>((set, get) => ({
   // 初始状态
-  selectedExchange: 'okx',
-  selectedSymbol: 'BTC/USDT',
+  selectedExchange: 'SSE',
+  selectedSymbol: '600519.SH',
 
   tickers: [],
   isLoadingTickers: false,

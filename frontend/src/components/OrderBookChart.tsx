@@ -5,14 +5,12 @@ interface OrderBookChartProps {
   data: OrderBook | null;
   maxRows?: number;
   precision?: number;
-  unavailableReason?: string;
 }
 
 export default function OrderBookChart({
   data,
   maxRows = 15,
   precision = 2,
-  unavailableReason = '暂无盘口缓存',
 }: OrderBookChartProps) {
   // 计算最大数量（用于显示深度条）
   const { maxAmount, bids, asks, spread, spreadPercent, midPrice } = useMemo(() => {
@@ -38,8 +36,8 @@ export default function OrderBookChart({
 
   if (!data) {
     return (
-      <div className="py-8 text-center text-xs text-gray-500" data-testid="order-book-empty">
-        {unavailableReason}
+      <div className="text-center py-8 text-gray-400">
+        暂无订单簿数据
       </div>
     );
   }
@@ -54,9 +52,9 @@ export default function OrderBookChart({
     <div className="order-book text-sm">
       {/* 头部 */}
       <div className="grid grid-cols-3 text-xs text-gray-400 pb-2 border-b border-crypto-border">
-        <span>价格（CNY）</span>
-        <span className="text-right">委托量（股）</span>
-        <span className="text-right">累计（股）</span>
+        <span>价格</span>
+        <span className="text-right">数量</span>
+        <span className="text-right">总计</span>
       </div>
 
       {/* 卖单 (倒序显示) */}

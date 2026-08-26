@@ -6,6 +6,7 @@ or contract sizing. Instrument key is ``code.market`` (for example ``600000.SH``
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Mapping, Optional, Sequence
 
 LOT_SIZE = 100
@@ -27,6 +28,7 @@ REJECTION_REASONS = {
     "NOT_A_TRADING_DAY": "该日期不是交易日",
     "INVALID_EXECUTION_PRICE": "执行价格不可用",
     "INVALID_SYMBOL": "证券代码缺少交易所身份",
+    "INVALID_SIDE": "A 股委托方向只能为 buy 或 sell",
 }
 
 
@@ -64,6 +66,17 @@ def instrument_key(symbol: Any) -> str:
     if digits.startswith(("4", "8", "9")):
         return f"{digits}.BJ"
     return raw
+
+
+def explicit_instrument_key(symbol: Any) -> str:
+    """Return a canonical key only when the caller supplied exchange identity."""
+    raw = str(symbol or "").strip().upper().replace("-", "_")
+    if not (
+        re.fullmatch(r"\d{6}\.(?:SH|SZ|BJ)", raw)
+        or re.fullmatch(r"(?:SH|SZ|BJ)_\d{6}", raw)
+    ):
+        return ""
+    return instrument_key(raw)
 
 
 def storage_symbol(symbol: Any) -> str:
@@ -205,7 +218,9 @@ class AShareSpotBroker:
         bar: Mapping[str, Any] | None,
         explicit_lot: bool = False,
     ) -> dict[str, Any]:
-        key = instrument_key(symbol)
+        if side not in {"buy", "sell"}:
+            return self._reject("INVALID_SIDE")
+        key = explicit_instrument_key(symbol)
         if not key or "." not in key:
             return self._reject("INVALID_SYMBOL")
         if not is_trading_day(trade_date, self.calendar_rows):
@@ -256,4 +271,3 @@ class AShareSpotBroker:
             "fees": {"commission": 0.0, "tax": 0.0, "transfer_fee": 0.0},
             "cash_delta": 0.0,
         }
-

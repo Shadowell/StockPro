@@ -1,10 +1,10 @@
 # BitPro-first A股整仓重建设计合同
 
-- 状态：2026-08-25 重新打开；旧基线 Wave 0–6 已交付，但当前 BitPro 1:1 一致性不成立，正在整仓重移植
+- 状态：2026-08-26 再次重置；用户否决页面映射式复刻，当前以 BitPro 原代码整仓直接移植
 - 批准日期：2026-08-22
 - StockPro 基线：`99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`
 - BitPro 固定来源：`2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`（2026-08-26 当前 `main`；相对上一基线仅新增策略分析文档，应用树一致）
-- 目标分支：`codex/ashare-operations-restore`
+- 目标分支：`codex/bitpro-direct-port`
 - 目标 worktree：`/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share`
 - 上一轮生产应用合并 SHA：`4c7fe5194cae7abf6c07a8be005bbfb573b032d8`（仅作历史回滚证据）
 - 上一轮生产部署 SHA：`381ec5429114a52af71aae7948834a3f6538f366`（不代表当前复刻完成）
@@ -40,10 +40,9 @@ StockPro 当前启用 A股、ETF 和指数；为中国期货、美国股票和�
 
 ## 3. 仓库、分支和导入边界
 
-当前 BitPro `App.tsx`、`MainLayout.tsx` 与 `index.css` 的逐字基线副本保存在
-`frontend/src/_quarantine/*.disabled`。StockPro 活动壳层只允许 A 股路由映射、中文领域文案、
-Paper-only 安全边界和真实数据状态差异；真实交易不得因 1:1 复刻被重新注册。BitPro 的套利、
-链上、订单流、ARC 和交易深链必须解析到明确的 A 股 Owner 能力，不能展示数字资产实现。
+BitPro `App.tsx`、`MainLayout.tsx`、全部页面、组件、API、Service 和测试直接位于活动代码树，
+不再以 `_quarantine` 副本或 Owner 页映射代替原实现。每个数字资产模块必须在原文件或原交互结构上
+换成 A 股字段、数据源、风控与执行合同；真实下单在独立授权前不得注册。
 
 ### 3.1 隔离方式
 
@@ -82,8 +81,10 @@ PostgreSQL 接入和 A 股适配。最终 A 股产品可以删除不再需要的
 
 ## 4. 第一启动前的安全封锁
 
-Wave 0 当前证据：启动入口仅注册 `/api/health` 与 `/api/auth/me` 两个无版本号的
-临时安全端点；所有业务页显示“A股适配未完成”，且明确声明未启动业务服务、未执行写入。
+Wave 0 已完成并进入逐域恢复：后端启动入口已注册 BitPro 原页面所需的 `/api/v2/*`
+A 股适配合同，但仍不启动数字资产交易所、SQLite、真实下单、调度器或 WebSocket。
+策略域已恢复管理员显式写入：新增策略先通过 `stockpro.v1` AST 安全验证，编辑生成
+`strategy_versions` 不可变新版本，删除操作改为归档并保留验证记录；普通页面读取仍不隐式写入。
 静态门禁对私有交易所、SQLite、带版本号 API、实盘路由和加密后台任务五类可达面
 全部计数为 0。BitPro 遗留模块保留为不可达适配来源，不能从当前入口导入或注册。
 
@@ -291,6 +292,30 @@ BitPro 页面使用其成熟 ViewModel；适配层从现有 PostgreSQL 对象生
 13. 全页面、权限、性能、截图和恢复验收。
 14. 最新生产快照演练与切换前确认。
 15. 合并 `main`、Actions 部署和生产验收。
+
+当前第 8 步已恢复 A 股日线撮合、费用和指标内核；异步任务持久化、取消/恢复、
+策略隔离 worker、sealed 输入解析、结果原子写入与 BitPro 回测 UI 单任务入口已经接通。
+当前写合同为 `/api/v2/backtest/run_job`、`/job/{id}`、`/jobs`、`/job/{id}/cancel|resume`
+和 `/configuration`；历史结果在全部子证据写完后才切换为 success+sealed，不提供物理删除。
+管理员批量回测、运行中 Paper 去重、sealed 配置绑定、原子批量持久化，以及访客单任务
+PostgreSQL 区间/并发/每日配额压力，以及 18 个唯一策略的批量真实任务、失败修复、跨重启恢复
+验收现已完成；该步骤仅剩生产部署证据，因此在最终部署观察前仍不能视为关闭。
+
+第 9 步的 Paper 生命周期已接通 `paper_eligible` 回测门禁与 `/api/v2/live/instances|candidates`
+以及 `/live/start|pause|resume|stop` 兼容路径。所有状态切换必须保留现有 Paper 账本与可见历史，
+`clear_metrics` 永久拒绝；自动周期推进、盯盘持仓联动和跨重启运行验收仍未完成。
+盯盘持仓联动已恢复真实只读证据；剩余阻断收敛为显式周期推进、周期失败恢复与长期运行验收。
+显式周期推进、失败原子回滚、多日连续推进、服务重启续跑和双请求并发互斥现已在隔离库完成；
+该步骤剩余门禁为最终生产部署观察，不得用本地/隔离库证据代替生产运行证据。
+
+第 13 步的本地全页面、权限、双视口、错误边界、依赖、bundle、116 项活动后端测试、25 项
+Playwright Mock E2E、真实 16 路由只读矩阵和 Paper 连续性门禁均已完成。第 14–15 步仍需基于
+当前提交生成切换前 manifest，经最终确认后合并 `main`，再由 GitHub Actions 部署并核对生产 SHA、
+39 项迁移、服务健康与真实页面；本地通过不能替代这些证据。
+
+当前切换前 completion audit 已基于当前 HEAD 的 32 张真实双视口截图通过且无 blocker；允许进入
+第 14–15 步的功能分支推送、`main` 合并与 Actions 部署，但 Goal 仍须等生产 SHA、迁移、健康、
+Paper 连续性和生产页面复验后才能关闭。
 
 每个页面切片遵循：
 

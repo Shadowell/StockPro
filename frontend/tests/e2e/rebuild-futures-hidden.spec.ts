@@ -1,2 +1,3 @@
-import{expect,test}from'@playwright/test'
-test('futures remains hidden until a separate contract ships',async({page})=>{await page.route('**/api/auth/me',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({auth_enabled:false,authenticated:true,role:'admin',permissions:['admin']})}));await page.route('**/api/market/overview',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({indices:[],breadth:null,turnover:null,limit_ecology:null,sector_flows:[],source_label:'PostgreSQL',source_updated_at:null,trade_date:null,data_status:'empty'})}));await page.goto('/');await expect(page.getByRole('navigation').getByText('期货',{exact:true})).toHaveCount(0);await page.goto('/futures');await expect(page).toHaveURL('/')})
+import { expect, test } from '@playwright/test'
+import { installFinalFixtures } from './rebuild-final-fixtures'
+test('futures remains hidden until a separate contract ships',async({page})=>{await installFinalFixtures(page);await page.goto('/');await expect(page.getByRole('navigation').getByText('期货',{exact:true})).toHaveCount(0);await page.goto('/futures');await expect(page).toHaveURL('/')})

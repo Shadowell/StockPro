@@ -26,7 +26,6 @@ import {
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS } from '../utils/selectionStyles';
 import {
   dataSyncApi,
-  dataCurrentApi,
   marketApi,
   okxNativeSyncApi,
   type DataSyncConfigResponse,
@@ -40,10 +39,6 @@ import {
   type DataSyncTableStat,
   type OkxNativeSyncScheduleConfig,
 } from '../api/client';
-import { useAuth } from '../auth/AuthProvider';
-import type { DataJob, DataStatus, DatasetRecord, ExtensionImport, SnapshotRecord } from '../types/data';
-import ExtensionExchangePanel from './data/ExtensionExchangePanel';
-import QualityPanel from './data/QualityPanel';
 import { useStore } from '../stores/useStore';
 import ThemeDialog from '../components/ThemeDialog';
 import SymbolIcon, { extractSymbolBase } from '../components/SymbolIcon';
@@ -153,6 +148,7 @@ function formatCount(n: number): string {
 }
 
 function getCoinBase(symbol: string): string {
+  if (/^\d{6}\.(?:SH|SZ|BJ)$/i.test(symbol)) return symbol.split('.')[0];
   return extractSymbolBase(symbol) || symbol;
 }
 
@@ -161,7 +157,7 @@ function isUsdtSwapSymbol(symbol: string): boolean {
 }
 
 function dataMarketLabel(marketType: DataMarketType): string {
-  return marketType === 'swap' ? '合约' : '现货';
+  return marketType === 'swap' ? '期货预留' : 'A股';
 }
 
 function dedupeSymbols(symbols: Array<string | null | undefined>): string[] {
@@ -201,11 +197,11 @@ function DataMarketSplit({
   return (
     <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
       <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-2 py-1.5">
-        <div className="text-cyan-300/80">合约</div>
+        <div className="text-cyan-300/80">期货预留</div>
         <div className="mt-0.5 font-semibold text-white">{formatter(swap)}</div>
       </div>
       <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1.5">
-        <div className="text-emerald-300/80">现货</div>
+        <div className="text-emerald-300/80">A股</div>
         <div className="mt-0.5 font-semibold text-white">{formatter(spot)}</div>
       </div>
     </div>
@@ -350,7 +346,8 @@ function getCoveragePercent(firstTs: number | null, lastTs: number | null, targe
 // 数据管理页面
 // ============================================
 
-export function BitProDataManagerSource() {
+export default function DataManager() {
+  const canMutateData = false;
   const { selectedExchange } = useStore();
 
   const [config, setConfig] = useState<DataSyncConfigResponse | null>(null);
@@ -374,7 +371,7 @@ export function BitProDataManagerSource() {
   const [syncingMode, setSyncingMode] = useState<SyncDialogMode | null>(null);
   const [syncingTarget, setSyncingTarget] = useState<{ symbol: string; timeframe: string } | null>(null);
   const [targetSyncFeedback, setTargetSyncFeedback] = useState<Record<string, TargetSyncFeedback>>({});
-  const [dataMarketType, setDataMarketType] = useState<DataMarketType>('swap');
+  const [dataMarketType, setDataMarketType] = useState<DataMarketType>('spot');
   const [filterTf, setFilterTf] = useState<string>('');
   const [filterSymbol, setFilterSymbol] = useState('');
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
@@ -409,7 +406,7 @@ export function BitProDataManagerSource() {
   const [okxNativeEnabled, setOkxNativeEnabled] = useState(false);
   const [okxRubikInterval, setOkxRubikInterval] = useState('1440');
   const [okxOiInterval, setOkxOiInterval] = useState('60');
-  const [okxNativeBusy, setOkxNativeBusy] = useState(false);
+  const [okxNativeBusy] = useState(false);
   const [okxNativeFeedback, setOkxNativeFeedback] = useState('');
   // 展开详情中的单个同步日期
   const [detailStartDate, setDetailStartDate] = useState(() => {
@@ -623,42 +620,6 @@ export function BitProDataManagerSource() {
       setScheduleDialogError(`保存定时同步失败: ${getErrorMessage(e)}`);
     } finally {
       setSavingSchedule(false);
-    }
-  };
-
-  const submitOkxNativeSchedule = async () => {
-    try {
-      setOkxNativeBusy(true);
-      setOkxNativeFeedback('');
-      const res = await okxNativeSyncApi.updateSchedule({
-        enabled: okxNativeEnabled,
-        rubikIntervalMinutes: Math.max(10, Math.min(24 * 60, Number(okxRubikInterval) || 1440)),
-        oiIntervalMinutes: Math.max(10, Math.min(24 * 60, Number(okxOiInterval) || 60)),
-      });
-      setOkxNativeConfig(res);
-      setOkxNativeFeedback('OKX 原生数据同步配置已保存');
-    } catch (e) {
-      setOkxNativeFeedback(`保存失败: ${getErrorMessage(e)}`);
-    } finally {
-      setOkxNativeBusy(false);
-    }
-  };
-
-  const runOkxNativeNow = async (kind: 'rubik' | 'oi') => {
-    try {
-      setOkxNativeBusy(true);
-      setOkxNativeFeedback(kind === 'rubik' ? '正在手动执行资金流/多空比同步...' : '正在采集 OI 快照...');
-      const res = await okxNativeSyncApi.run(kind);
-      const rubikRes = res.rubik as { ok?: boolean; inserted?: number } | undefined;
-      const oiRes = res.oi as { ok?: boolean; instruments?: number } | undefined;
-      if (kind === 'rubik' && rubikRes?.ok) setOkxNativeFeedback(`资金流/多空比同步完成，新增 ${rubikRes.inserted ?? 0} 行`);
-      else if (kind === 'oi' && oiRes?.ok) setOkxNativeFeedback(`OI 快照完成，覆盖 ${oiRes.instruments ?? 0} 个合约`);
-      else setOkxNativeFeedback('执行完成');
-      void okxNativeSyncApi.getSchedule().then((r) => setOkxNativeConfig(r)).catch(() => undefined);
-    } catch (e) {
-      setOkxNativeFeedback(`执行失败: ${getErrorMessage(e)}`);
-    } finally {
-      setOkxNativeBusy(false);
     }
   };
 
@@ -1167,12 +1128,12 @@ export function BitProDataManagerSource() {
             </button>
             <div className="pointer-events-none absolute right-0 top-11 z-30 w-[560px] max-w-[calc(100vw-3rem)] rounded-xl border border-blue-500/25 bg-[#111827] p-4 text-xs leading-relaxed text-gray-400 shadow-2xl shadow-black/40 opacity-0 translate-y-1 transition-all duration-150 group-hover/data-help:opacity-100 group-hover/data-help:translate-y-0 group-focus-within/data-help:opacity-100 group-focus-within/data-help:translate-y-0">
               <div className="space-y-1.5">
-                <p><strong className="text-gray-200">全量同步</strong> — 拉取全部当前 OKX USDT 永续合约最近 <strong className="text-gray-200">3 个月</strong> 的 15m/30m/1h/4h/12h/1d 数据</p>
-                <p><strong className="text-gray-200">自定义同步</strong> — 选择日期范围、币种和周期，<strong className="text-gray-200">精确指定</strong>要拉取的历史数据</p>
-                <p><strong className="text-gray-200">增量更新</strong> — 自动刷新当前有效合约宇宙，从上次同步位置继续拉取上述六个周期的新数据</p>
+                <p><strong className="text-gray-200">全量同步</strong> — 按 A 股交易日历拉取全市场日线，完成质量检查后落入 PostgreSQL 分区</p>
+                <p><strong className="text-gray-200">自定义同步</strong> — 选择日期范围、证券代码和数据集，<strong className="text-gray-200">精确指定</strong>研究输入</p>
+                <p><strong className="text-gray-200">增量更新</strong> — 从上次交易日水位继续拉取，不在页面 GET 时隐式调用 Provider</p>
                 <p><strong className="text-gray-200">展开详情 → 按日期</strong> — 在每个交易对的展开面板中，通过顶部日期选择器指定范围后，点击"按日期"按钮同步</p>
                 <p><strong className="text-gray-200">数据覆盖率</strong> — 绿色({'>'}80%) = 完整 / 黄色(50-80%) = 部分 / 红色({'<'}50%) = 缺失较多</p>
-                <p><strong className="text-gray-200">分区存储</strong> — 15m/30m/1h/4h/12h/1d 各周期独立保存，已有现货和旧周期历史仅保留查看，不再进入同步任务</p>
+                <p><strong className="text-gray-200">分区存储</strong> — 日线、参考数据、因子和快照独立落库，封存后不可变</p>
               </div>
             </div>
           </div>
@@ -1182,6 +1143,7 @@ export function BitProDataManagerSource() {
           </button>
           <button
             onClick={openScheduleDialog}
+            disabled={!canMutateData}
             title={`定时同步: ${scheduleSummary}`}
             className={`h-9 px-4 rounded-lg border text-sm font-medium flex items-center gap-1.5 transition-all ${
               schedulePulseOn
@@ -1196,17 +1158,17 @@ export function BitProDataManagerSource() {
             <Clock className="w-3.5 h-3.5" />
             定时同步
           </button>
-          <button onClick={() => openSyncDialog('daily')} disabled={isBusy}
+          <button onClick={() => openSyncDialog('daily')} disabled={!canMutateData || isBusy}
             className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
             {dailyButtonBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
             增量更新
           </button>
-          <button onClick={() => openSyncDialog('custom')} disabled={isBusy}
+          <button onClick={() => openSyncDialog('custom')} disabled={!canMutateData || isBusy}
             className="h-9 px-4 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all border bg-purple-600/80 hover:bg-purple-500 text-white border-purple-400/30 shadow-sm shadow-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed">
             {customButtonBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Calendar className="w-3.5 h-3.5" />}
             自定义同步
           </button>
-          <button onClick={() => openSyncDialog('full')} disabled={isBusy}
+          <button onClick={() => openSyncDialog('full')} disabled={!canMutateData || isBusy}
             className="h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
             {fullButtonBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
             全量同步
@@ -1274,7 +1236,7 @@ export function BitProDataManagerSource() {
             formatter={(value) => value.toLocaleString()}
           />
           <div className="mt-2 text-[10px] text-gray-500">
-            后续同步名单 {configuredSymbols.length} 个 · 合约 {configuredMarketSymbolCounts.swap} / 现货 {configuredMarketSymbolCounts.spot}
+            后续同步名单 {configuredSymbols.length} 个 · 期货预留 {configuredMarketSymbolCounts.swap} / A股 {configuredMarketSymbolCounts.spot}
           </div>
         </div>
         {/* 时间周期 */}
@@ -1368,8 +1330,8 @@ export function BitProDataManagerSource() {
             aria-label="切换数据市场类型"
           >
             {([
-              { value: 'swap', label: '合约' },
-              { value: 'spot', label: '现货' },
+              { value: 'swap', label: '期货预留' },
+              { value: 'spot', label: 'A股' },
             ] as const).map((option) => (
               <button
                 key={option.value}
@@ -1444,12 +1406,12 @@ export function BitProDataManagerSource() {
               {/* 卡片头部 */}
               <div className="flex items-center px-5 py-3.5 cursor-pointer select-none gap-5"
                    onClick={() => setExpandedSymbol(isExpanded ? null : symbol)}>
-                {/* 币种标识 */}
+                {/* 证券标识 */}
                 <div className="flex items-center gap-3 w-32 flex-shrink-0">
                   <SymbolIcon symbol={symbol} base={coin} size="md" shape="rounded" />
                   <div>
-                    <div className="text-sm font-semibold text-white">{coin}</div>
-                    <div className="text-[10px] text-gray-500">{swapSymbol ? 'USDT 永续' : '/USDT'}</div>
+                    <div className="text-sm font-semibold text-white">{symbol}</div>
+                    <div className="text-[10px] text-gray-500">{swapSymbol ? '期货预留' : 'A股日线'}</div>
                   </div>
                 </div>
 
@@ -1878,16 +1840,16 @@ export function BitProDataManagerSource() {
               </div>
             </div>
 
-            {/* ========== OKX 原生数据同步（资金流/多空比/OI 快照） ========== */}
+            {/* ========== A 股扩展数据源 ========== */}
             <div className="px-6 py-5 border-t border-crypto-border space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-cyan-500/15 text-cyan-300 flex items-center justify-center">
                   <Activity className="w-4 h-4" />
                 </div>
                 <div className="flex-1">
-                  <div className="text-base font-semibold text-white">OKX 原生数据同步</div>
+                  <div className="text-base font-semibold text-white">A 股扩展数据源</div>
                   <div className="text-xs text-gray-500 mt-0.5">
-                    独立于 K 线同步的加密原生数据管道：taker 资金流 / 多空账户比（日频，约 180 天深度）与全市场 OI 快照
+                    独立于日线主数据的资金流、龙虎榜、股东与基本面 Provider 管道；当前只展示能力边界，不自动拉取。
                   </div>
                 </div>
                 <label className="flex items-center gap-2 text-sm text-gray-300">
@@ -1903,19 +1865,19 @@ export function BitProDataManagerSource() {
 
               <div className="grid grid-cols-4 gap-3">
                 <div className="rounded-xl border border-crypto-border bg-gray-900/45 px-4 py-3">
-                  <div className="text-[11px] text-gray-500">资金流/多空比行数</div>
+                  <div className="text-[11px] text-gray-500">资金流记录</div>
                   <div className="mt-1 text-sm font-semibold text-white/80">{okxNativeConfig?.rubikRowCount ?? 0}</div>
                 </div>
                 <div className="rounded-xl border border-crypto-border bg-gray-900/45 px-4 py-3">
-                  <div className="text-[11px] text-gray-500">OI 快照数</div>
+                  <div className="text-[11px] text-gray-500">龙虎榜/机构记录</div>
                   <div className="mt-1 text-sm font-semibold text-white/80">{okxNativeConfig?.oiSnapshotCount ?? 0}</div>
                 </div>
                 <div className="rounded-xl border border-crypto-border bg-gray-900/45 px-4 py-3">
-                  <div className="text-[11px] text-gray-500">上次资金流同步</div>
+                  <div className="text-[11px] text-gray-500">上次 Provider 同步</div>
                   <div className="mt-1 text-sm font-semibold text-white/80">{formatDateTime(okxNativeConfig?.lastRubikFinishedAt)}</div>
                 </div>
                 <div className="rounded-xl border border-crypto-border bg-gray-900/45 px-4 py-3">
-                  <div className="text-[11px] text-gray-500">上次 OI 快照</div>
+                  <div className="text-[11px] text-gray-500">上次封存快照</div>
                   <div className="mt-1 text-sm font-semibold text-white/80">{formatDateTime(okxNativeConfig?.lastOiFinishedAt)}</div>
                 </div>
               </div>
@@ -1928,7 +1890,7 @@ export function BitProDataManagerSource() {
 
               <div className="flex flex-wrap items-center gap-5">
                 <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-400">资金流/多空比间隔</label>
+                  <label className="text-xs text-gray-400">Provider 同步间隔</label>
                   <input
                     type="number"
                     min={10}
@@ -1940,7 +1902,7 @@ export function BitProDataManagerSource() {
                   <span className="text-xs text-gray-500">分钟</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-400">OI 快照间隔</label>
+                  <label className="text-xs text-gray-400">快照封存间隔</label>
                   <input
                     type="number"
                     min={10}
@@ -1951,15 +1913,15 @@ export function BitProDataManagerSource() {
                   />
                   <span className="text-xs text-gray-500">分钟</span>
                 </div>
-                <button onClick={() => void runOkxNativeNow('rubik')} disabled={okxNativeBusy}
+                <button disabled
                   className="h-9 px-4 rounded-lg bg-gray-800 border border-cyan-500/30 text-cyan-200 hover:bg-gray-700 text-xs font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                   {okxNativeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                  立即同步资金流
+                  受控同步未启用
                 </button>
-                <button onClick={() => void runOkxNativeNow('oi')} disabled={okxNativeBusy}
+                <button disabled
                   className="h-9 px-4 rounded-lg bg-gray-800 border border-cyan-500/30 text-cyan-200 hover:bg-gray-700 text-xs font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                   {okxNativeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                  立即采集 OI
+                  快照封存未启用
                 </button>
               </div>
 
@@ -1971,12 +1933,12 @@ export function BitProDataManagerSource() {
 
               <div className="flex items-center justify-between">
                 <div className="text-xs text-gray-500">
-                  数据落库 okx_rubik_stats 与 open_interest_history；OKX 资金费率历史仅回溯约 3 个月，由现有路径持续积累。
+                  数据最终必须落入 PostgreSQL 分区并封存快照；页面 GET 不会隐式调用 Provider。
                 </div>
-                <button onClick={() => void submitOkxNativeSchedule()} disabled={okxNativeBusy}
+                <button disabled
                   className="h-9 px-6 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                   {okxNativeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
-                  保存 OKX 原生同步
+                  写入门禁未开放
                 </button>
               </div>
             </div>
@@ -2392,122 +2354,4 @@ export function BitProDataManagerSource() {
       />
     </div>
   );
-}
-
-const ASHARE_DATA_TABS = ['总览', '研究数据', '行情覆盖', '同步任务', 'Qlib导出', '数据源', '质量', '导入导出'] as const;
-type AshareDataTab = (typeof ASHARE_DATA_TABS)[number];
-
-export default function DataManager() {
-  const { role } = useAuth();
-  const [tab, setTab] = useState<AshareDataTab>('总览');
-  const [status, setStatus] = useState<DataStatus | null>(null);
-  const [datasets, setDatasets] = useState<DatasetRecord[]>([]);
-  const [snapshots, setSnapshots] = useState<SnapshotRecord[]>([]);
-  const [jobs, setJobs] = useState<DataJob[]>([]);
-  const [providers, setProviders] = useState<Array<Record<string, any>>>([]);
-  const [quality, setQuality] = useState<Array<Record<string, any>>>([]);
-  const [imports, setImports] = useState<ExtensionImport[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const loadInFlight = useRef(false);
-
-  const load = useCallback(async () => {
-    if (loadInFlight.current) return;
-    loadInFlight.current = true;
-    setLoading(true);
-    try {
-      setStatus(await dataCurrentApi.status());
-      const [datasetResult, snapshotResult, jobResult, providerResult, qualityResult, importResult] = await Promise.allSettled([
-        dataCurrentApi.datasets(),
-        dataCurrentApi.snapshots(),
-        dataCurrentApi.jobs(),
-        dataCurrentApi.providers(),
-        dataCurrentApi.quality(),
-        dataCurrentApi.imports(),
-      ]);
-      if (datasetResult.status === 'fulfilled') setDatasets(datasetResult.value.items);
-      if (snapshotResult.status === 'fulfilled') setSnapshots(snapshotResult.value.items);
-      if (jobResult.status === 'fulfilled') setJobs(jobResult.value.items);
-      if (providerResult.status === 'fulfilled') setProviders(providerResult.value.items);
-      if (qualityResult.status === 'fulfilled') setQuality(qualityResult.value.items);
-      if (importResult.status === 'fulfilled') setImports(importResult.value.items);
-      setError('');
-    } catch (requestError: any) {
-      setError(requestError?.response?.data?.detail || requestError?.message || '数据中心读取失败');
-    } finally {
-      loadInFlight.current = false;
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const metrics = [
-    ['研究数据集', status?.datasets ?? '--', Database],
-    ['发布记录', status?.published_rows?.toLocaleString('zh-CN') ?? '--', BarChart3],
-    ['封存快照', status?.sealed_snapshots ?? '--', HardDrive],
-    ['Provider', status?.provider_state ?? '--', Activity],
-  ] as const;
-
-  return (
-    <div className="h-full overflow-y-auto bg-crypto-bg p-6 text-gray-100">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Database className="h-6 w-6 text-blue-400" />
-          <div><h1 className="text-xl font-bold text-white">数据管理中心</h1><p className="mt-1 text-xs text-gray-500">PostgreSQL · TuShare 主源 · AKShare 整类回退 · 封存证据</p></div>
-        </div>
-        <button type="button" onClick={() => void load()} disabled={loading} className="flex items-center gap-1.5 rounded-xl border border-crypto-border bg-crypto-card px-3 py-2 text-xs text-gray-400 disabled:opacity-50">
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />刷新
-        </button>
-      </header>
-      {error && <div className="mb-4 rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-200">{error}</div>}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map(([label, value, Icon]) => <div key={label} className="rounded-xl border border-crypto-border bg-crypto-card p-4"><div className="flex justify-between text-[11px] text-gray-500"><span>{label}</span><Icon className="h-4 w-4 text-blue-400/70" /></div><div className="mt-2 truncate font-mono text-2xl font-semibold">{value}</div></div>)}
-      </div>
-      <section className="rounded-xl border border-crypto-border bg-crypto-card">
-        <div role="tablist" className="flex overflow-x-auto border-b border-crypto-border p-2">
-          {ASHARE_DATA_TABS.map((item) => <button key={item} role="tab" aria-selected={tab === item} onClick={() => setTab(item)} className={`shrink-0 rounded-lg px-3 py-2 text-xs ${tab === item ? SELECTED_SEGMENT_CLASS : 'text-gray-500 hover:text-gray-300'}`}>{item}</button>)}
-        </div>
-        <div className="p-4">
-          {tab === '总览' && <AshareDataOverview status={status} snapshots={snapshots} />}
-          {tab === '研究数据' && <AshareDatasets items={datasets} />}
-          {tab === '行情覆盖' && <AshareCoverage items={datasets} />}
-          {tab === '同步任务' && <AshareJobs items={jobs} />}
-          {tab === 'Qlib导出' && <AshareQlib admin={role === 'admin'} />}
-          {tab === '数据源' && <AshareProviders items={providers} />}
-          {tab === '质量' && <QualityPanel items={quality} />}
-          {tab === '导入导出' && <ExtensionExchangePanel items={imports} admin={role === 'admin'} onChanged={() => void load()} />}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function AshareDataOverview({ status, snapshots }: { status: DataStatus | null; snapshots: SnapshotRecord[] }) {
-  return <div className="grid gap-4 xl:grid-cols-2"><div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><HardDrive className="h-4 w-4 text-blue-300" />封存研究快照</h2><div className="mt-3 space-y-2">{snapshots.slice(0, 8).map((item) => <div key={item.id} className="flex justify-between rounded-lg border border-crypto-border p-3 text-xs"><span>{item.name}</span><span className="text-emerald-300">{item.status} · {item.item_count}</span></div>)}</div></div><div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4"><h2 className="flex items-center gap-2 text-sm font-semibold"><ListChecks className="h-4 w-4 text-blue-300" />可信边界</h2><div className="mt-3 space-y-2 text-xs text-gray-500">{[['存储', status?.storage], ['Provider 状态', status?.provider_state], ['GET Provider 调用', status?.provider_calls_performed], ['质量问题', status?.quality_issues], ['暂存导入', status?.staged_imports]].map(([label, value]) => <div key={String(label)} className="flex justify-between border-b border-crypto-border py-2"><span>{label}</span><span className="font-mono text-gray-300">{value ?? '--'}</span></div>)}</div></div></div>;
-}
-
-function AshareDatasets({ items }: { items: DatasetRecord[] }) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="text-[10px] text-gray-600"><tr>{['代码/名称','主源','整类回退','分区','记录','Watermark','状态'].map((label) => <th key={label} className="border-b border-crypto-border px-3 py-2">{label}</th>)}</tr></thead><tbody>{items.map((item) => <tr key={item.id} className="border-b border-crypto-border/60"><td className="px-3 py-2"><div>{item.name}</div><div className="font-mono text-[10px] text-gray-600">{item.code}</div></td><td className="px-3 py-2">{item.primary_source}</td><td className="px-3 py-2">{item.fallback_source || '--'}</td><td className="px-3 py-2 font-mono">{item.partition_count}</td><td className="px-3 py-2 font-mono">{Number(item.row_count).toLocaleString()}</td><td className="px-3 py-2">{String(item.last_published_trade_date || '--')}</td><td className="px-3 py-2">{item.enabled ? 'enabled' : 'disabled'}</td></tr>)}</tbody></table></div>;
-}
-
-function AshareCoverage({ items }: { items: DatasetRecord[] }) {
-  return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{items.map((item) => <div key={item.id} className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4"><div className="text-xs font-semibold">{item.name}</div><div className="mt-2 font-mono text-lg">{Number(item.row_count).toLocaleString()}</div><div className="mt-1 text-[10px] text-gray-600">{item.partition_count} partitions · {item.last_published_trade_date || 'no watermark'}</div></div>)}</div>;
-}
-
-function AshareJobs({ items }: { items: DataJob[] }) {
-  return <div className="space-y-2">{items.map((item) => <div key={item.id} className="grid gap-2 rounded-lg border border-crypto-border bg-crypto-bg/50 p-3 text-xs md:grid-cols-[1fr_100px_100px_180px]"><span>{item.job_name}</span><span>{item.source}</span><span>{item.status}</span><span className="text-gray-600">{String(item.created_at || '').slice(0, 19)}</span></div>)}</div>;
-}
-
-function AshareProviders({ items }: { items: Array<Record<string, any>> }) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead><tr>{['Dataset','Source','权限','缓存策略','导出策略','检查时间'].map((label) => <th key={label} className="border-b border-crypto-border px-3 py-2 text-[10px] text-gray-600">{label}</th>)}</tr></thead><tbody>{items.map((item, index) => <tr key={`${item.dataset_code}-${index}`} className="border-b border-crypto-border/60"><td className="px-3 py-2">{item.dataset_code}</td><td className="px-3 py-2">{item.source}</td><td className="px-3 py-2">{item.permission_state}</td><td className="px-3 py-2">{item.cache_policy}</td><td className="px-3 py-2">{item.export_policy}</td><td className="px-3 py-2 text-gray-600">{String(item.checked_at || '').slice(0, 19)}</td></tr>)}</tbody></table></div>;
-}
-
-function AshareQlib({ admin }: { admin: boolean }) {
-  const [state, setState] = useState<Record<string, any> | null>(null);
-  const [busy, setBusy] = useState(false);
-  const load = async () => { try { setState(await dataCurrentApi.qlibStatus()); } catch { setState(null); } };
-  useEffect(() => { void load(); }, []);
-  const run = async () => { setBusy(true); try { await dataCurrentApi.qlibExport(true); await load(); } finally { setBusy(false); } };
-  return <div className="space-y-3"><div className="flex items-center justify-between"><h2 className="flex items-center gap-2 text-sm font-semibold"><Download className="h-4 w-4 text-blue-300" />Microsoft Qlib 数据导出</h2><button type="button" disabled={!admin || busy} onClick={() => void run()} className="rounded-lg border border-blue-500/35 bg-blue-500/10 px-3 py-2 text-xs text-blue-200 disabled:opacity-50">{busy ? '导出中…' : '全量导出'}</button></div><div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4 text-xs text-gray-500">{state?.exists ? `${state.instruments ?? '--'} 个标的 · ${state.calendar_days ?? '--'} 个交易日 · ${state.updated_at ?? '--'}` : '尚未生成 Qlib 导出；缺失值保持 NaN，不合成行情。'}</div></div>;
 }

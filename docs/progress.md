@@ -1,5 +1,207 @@
 # Progress Log
 
+## BitPro 原代码直接移植重置（2026-08-26）
+
+- 用户否决了 `116f543f` 的“页面映射 + A 股重写”结果：它不是所要求的
+  BitPro 原代码主体，不再作为当前实现基础，只保留为生产回滚点。
+- 新分支 `codex/bitpro-direct-port` 从当前 `origin/main` 建立；提交 `8f269c09`
+  使用 BitPro 固定源 `2e4b90c3` 直接覆盖 `backend/frontend/packages/scripts/tests`。
+  五个根目录 checksum 对比零差异，BitPro 前端原样 build/lint 通过。
+- 第二个切片只做启动安全封锁：BitPro 页面、组件和业务源文件继续原位保留；
+  StockPro 当前后端入口不导入 SQLite、交易所、下单、调度器、WebSocket 或策略引擎，
+  并移除 `/live-real` 实盘入口。安全扫描五类 active 计数均为 0，76 个 BitPro
+  数字资产源文件等待在原位逐项改为 A 股实现。
+- 安全后端只启动 `4445` 的 health/auth 读取端点，前端保持 BitPro 原导航和工作台结构。
+  下一步从行情与数据层开始，在这份原代码上将字段、API 和数据源换为 A 股。
+- 行情第一个纵向切片已在 BitPro 原 `Market.tsx` / `SymbolSearch.tsx` / `MarketDomainService`
+  与 `/api/v2/market` 合同上完成：不换页面，后端直读 PostgreSQL A 股证券、报价和日线，
+  前端将合约/现货、USDT、资金费率和币种搜索原位换为股票/ETF/指数、人民币、
+  T+1/100 股整手和 A 股代码搜索。真实接口返回 5,000 个证券、`600519.SH` 报价与日线。
+  浏览器保持 BitPro 原 K 线/盘口/成交布局，写请求 0、API 5xx 0、console errors 0。
+- 策略目录切片已在 BitPro 原 `Strategy.tsx`、`StrategyDomainService` 和
+  `/api/v2/strategies` 上完成只读接入：PostgreSQL 128 个版本按名称取最新后展示 78 个 A 股策略，
+  BitPro 原分页、搜索、卡片和详情交互保留；现货/合约、马丁/做市、USDT 资金档改为
+  股票/ETF、动量趋势/均值回归/多因子/事件驱动和人民币资金档。未完成不可变版本写入前，
+  新建/编辑/删除和 AI 写策略按钮不展示，真实浏览器读取写请求 0、API 5xx 0、console errors 0。
+- 回测历史切片已在 BitPro 原 `Backtest.tsx`、`backtestSupport.tsx` 和
+  `/api/v2/backtest` 合同上完成：直读 PostgreSQL `backtest_runs/trades/daily_equity`，将原始 A 股比例指标
+  转成 BitPro 页面 ViewModel，并保留原实例表、排序、筛选、对比和详情结构。当前真实页显示
+  20 条历史（18 完成/2 失败），详情可读 27 笔成交和 102 个权益点；基准改为沪深300，
+  现货/合约改为股票/ETF，资金改为 CNY。异步创建任务尚未接通前不展示创建入口。
+- 模拟盘切片已直接接入 BitPro 原 `/live` `InstanceDashboard` / `InstanceMonitor`：
+  `/api/v2/live/instances|dashboard|events|equity_curve|trades` 只读适配层映射 PostgreSQL
+  22 个 Paper 实例、现金账本、持仓、成交、事件和权益曲线，没有引入另一套 Paper 页。
+  实例页筛选改为股票/ETF、A 股策略类型、1D 和人民币资金档；详情的账户/收益单位改为 CNY，
+  仓位风控改为现金、T+1、涨跌停和整手语义。未完成生命周期写入前整页只读，Paper 详情不再连接币圈 WebSocket。
+- BitPro 原首页 `MarketUniversePanel` / `NativeDataPanel` 已切到 A 股口径：新增
+  `/api/v2/system/health` 和 `/api/v2/market/native-sentiment`，从 PostgreSQL 读取证券数、涨跌家数、
+  成交额、平均涨跌、日线记录数和交易日水位。原 OKX/USDT/BTC/资金费率数据请求与 WebSocket
+  已停用，榜单和大盘情绪结构保留并改为 A 股成交额/涨幅/跌幅榜和市场广度。
+- BitPro 原数据中心、FactorLab 和复盘中心已恢复真实只读数据：
+  `/api/v2/sync` 展示 17,362 条 A 股日线、5,544 个标的和 34 个封存数据快照；
+  `/api/v2/factorlab` 映射 112 个真实因子定义和 7 个封存因子快照；`/api/v2/review`
+  用当前 A 股回测证据生成分组、好坏榜、回撤和待办。数据/Factor 页的 Provider、同步、研究写入均默认禁用，
+  不在 GET 时拉取外部数据。
+- BitPro 原盯盘、资金流、监控、基本面、AI、ARC、价差与信号路由已恢复安全读取边界：
+  盯盘停用币圈 WebSocket/实盘平仓并改为 A 股 Paper 只读账户和 1D；`/api/v2/orderflow`、
+  `/onchain/summary`、`/arbitrage/summary`、`/agent/*`、`/arc/*`、`/monitor/*` 均返回明确的
+  A 股真实数据或“未接通”状态，不生成 synthetic 记录；信号中心新增只读
+  `/api/v2/signal-channels|signal-strategies|signals`，读取 78 个 A 股策略且不注册任何写路由。
+  侧栏“订单流/链上”改为“资金流/基本面”，未接通的基本面和价差页不再渲染 TVL、稳定币、
+  OKX/Binance 或 funding 面板。验证通过：direct-port pytest 14 项、前端 build/lint、
+  浏览器 `/watch|onchain|arbitrage|signals` 写请求 0、API 4xx/5xx 0、console errors 0。
+  当前仍在功能分支，未推送、未合并、未部署。
+- BitPro 原策略编辑器已恢复首个生产级写入闭环：管理员可从 A 股 `stockpro.v1`
+  `initialize/handle_data` 模板新建策略，编辑时写入带 `parent_version_id` 的不可变新版本，
+  原“删除”改为归档且保留历史版本与 `strategy_validation_runs`。后端拒绝非 CN 市场、危险
+  import/网络/文件/数据库能力、属性/下标动态调用、缺失生命周期和错误函数签名；认证开启时
+  写端点要求 admin，MCP Token 还必须具备 `W` scope。新版本不覆盖 legacy 脚本文本，
+  `asset_class` 仅允许 stock/ETF，标的必须为六位代码加 `.SH/.SZ/.BJ`，资金与周期强制 CNY/1D。
+  PostgreSQL 真实 schema 上使用强制 rollback 连接验证 POST/PUT/DELETE SQL 合同，响应分别为
+  201/200/200，探针行最终为 0，既有策略 224 仍保持唯一 draft 版本。真实浏览器确认 78 个策略、
+  新建入口、A 股市场/标的/API 提示与安全模板可见，API 错误和 console error 均为 0；未提交表单，
+  未污染策略或 Paper 历史。当前仍未推送、未合并、未部署。
+- 回测写入恢复的第一层已直接移入现有 StockPro A 股生产内核：从
+  `codex/ashare-operations-restore@9d42a00a` 恢复 `ashare_execution.py`、
+  `backtest_metrics_service.py` 与 `ashare_backtest_engine.py`，不使用 BitPro 数字资产
+  Backtrader 路径。内核覆盖收盘信号次交易日开盘成交、T+1 可用数量、100 股整手、
+  涨跌停/停牌、佣金最低 5 元、卖出印花税、过户费、滑点、容量、公司行动、基准和
+  权益/现金/持仓对账。新增 direct-port 回归测试 5 项，并重新执行原 StockPro 45 项
+  A 股引擎/指标测试全部通过；异步 job/API/UI 接线仍是下一切片，当前未写数据库、
+  未改变 Paper 历史，未推送、未合并、未部署。
+- 提交前独立审查补出并修复原内核未覆盖的生产缺陷：`available_at` 现在参与最早成交日
+  计算，所有证券边界统一为显式 `.SH/.SZ/.BJ`，历史 `SH_` 存储键只做规范化兼容；
+  缺失/停牌日按上一有效收盘估值并记录 `MISSING_MARK_PRICE` / `SUSPENDED_MARK_PRICE`，滑点后成交价再次执行
+  涨跌停门禁；订单与成交 ID 由固定输入确定性生成。指标按同一 `trade_date` 对齐策略与
+  基准，超额回撤日期使用压缩后真实日期，月收益包含上月末到本月首日。归因改为标的
+  毛现金流/期末市值加独立成本项，并以硬断言对账期末总盈亏；共享 Paper broker 同时拒绝
+  未知 side。完整 `available_at` 时间与 09:30 执行点比较，盘前已可得数据允许当日成交；
+  回放日期由封存交易日历与明确的停牌/基准证据驱动，全市场缺 bar 的交易日不会消失。
+  辅助涨跌停、停牌、公司行动和基准数据出现裸代码时 fail-closed，缺失基准日保持未知并
+  记录质量证据，不伪造成 0% 收益。新增反例后 direct-port 内核测试为 19 项，原 45 项继续全绿。
+- 回测恢复的第二个底层切片已直接移入 StockPro `stockpro.v1` 隔离 worker：用户策略只获得
+  安全 builtins、日线 history/current data、调度、委托意图和 record 接口，事件序号之前的
+  series 才可见；worker 输出只包含可序列化意图、记录、日志、基准和运行选项。新增 2 项
+  direct-port 测试验证 A 股意图携带同一 `simulated_at/available_at` 证据，并验证 history
+  不读取未来值。父进程资源信封、快照读取、任务持久化和 API/UI 接线继续在后续切片完成。
+- 回测封存输入解析层已完成：BitPro 简化请求被强制映射到 CN/1D/人民币成本，忽略旧 UI
+  maker/taker 数字资产费率并固定 A 股佣金、最低佣金、卖出印花税、过户费和容量上限；
+  策略必须是 valid 的 `stockpro.v1` 版本，证券必须显式携带 `.SH/.SZ/.BJ`，且只能来自与
+  dataset snapshot 同版本的 sealed 股票池。PostgreSQL gateway 只读解析同时覆盖日线、
+  交易日历、沪深300、涨跌停、停牌和公司行动，要求核心数据集覆盖完整日期区间。
+  真实数据库验证策略 224 自动解析到 snapshot 10 / pool 5 / 20 个标的，读取 9,700 条日线、
+  731 个日历日、485 条基准、9,700 条涨跌停、60 条公司行动且无 Provider 请求或数据库写入；
+  新增 6 项请求/证据合同测试。
+- 策略父进程回放层已完成：从 sealed 日线与交易日历构造 15:00 point-in-time event/series，
+  先用当前强化 AST 合同拒绝危险代码，再通过 `python -I` 独立进程执行 worker；父进程同时
+  施加墙钟、CPU、RSS、文件数、日志、意图、记录和输出大小限制，并生成确定性 event/input
+  hash。新增 2 项父进程测试。真实只读演练中，策略 224 在 snapshot 10 / pool 5 的 20 个标的、
+  485 个交易日上成功生成 283 个意图和 485 条记录，随后 A 股内核完成 283 单/33 成交，
+  策略收益 15.21%、最大回撤 23.60%、质量警告 0；该演练未持久化结果，也未修改 Paper。
+- BitPro 原异步回测合同现已接通 PostgreSQL：`run_job`、job 查询/列表、取消和恢复沿用前端
+  原路径；任务状态为 pending/running/cancelling/success/failed/cancelled/interrupted，进程重启后
+  遗留 active job 只读呈现 interrupted，用户显式恢复时创建带 parent/attempt 的新任务，普通
+  启动不隐式改库。进度按阶段变化/至少 5%/最长 5 秒节流，逐日取消检查使用同进程 Event，
+  避免 485 次 SSH/PG 往返。结果在同一事务内先建立 running/unsealed 父记录，写入订单、成交、
+  日权益、日持仓、指标、归因、日志和策略 record，全部成功后最后一步 success+sealed；中途错误
+  由数据库不可变触发器和事务整体回滚。
+- 真实全链路 rollback 演练成功写入 1 个 job、1 个 sealed run、283 单、33 成交、485 权益、
+  4,844 持仓、41 指标、17 归因、485 自定义记录，job 最终 success 并返回 result id；演练结束后
+  job/run 均为 0 残留，Paper 仍为 22。前端创建入口已恢复管理员可见，从 configuration 动态读取
+  snapshot 10 / pool 5 的 2023-01-03~2025-01-02 可用范围，隐藏尚未恢复的批量入口，成本文案改为
+  A 股买卖佣金、最低 5 元、卖出印花税和人民币；sealed 历史记录不再暴露删除按钮。
+- BitPro 原模拟盘生命周期已恢复管理员显式写入：候选只来自 success+sealed+full 且
+  `promotion_status=paper_eligible` 的回测，并要求策略、数据、因子、Universe、股票池、研究协议
+  全部一致且 11 项晋级检查 passed。创建事务原子生成 CNY Paper portfolio、draft instance、初始
+  cash ledger 和生命周期事件；start/pause/resume/stop 只切换状态和 portfolio 状态，停止不接受
+  `clear_metrics=true`，不删除成交、持仓、事件、权益、运行游标或现金历史。真实 PostgreSQL rollback
+  演练从 eligible run `15015031…` 完成 draft→running→paused→running→stopped，新增 5 条事件和
+  1 条初始账本，成交/权益变化均为 0；rollback 后实例仍为 22、探针实例为 0。
+- 模拟页已从全局只读改为 `isAdmin` 权限门禁，保留 BitPro 原卡片、创建向导、暂停、继续、关闭和
+  详情结构；候选单独读取 `/live/candidates`，创建改用 `/live/instances` 单次原子请求，Paper 默认
+  1D、100 万 CNY，隐藏杠杆筛选、重复快捷验证和实盘飞行检查，关闭文案明确历史保留。
+- BitPro 原盯盘页已从空适配切到真实 Paper 账户：`/live/accounts` 返回 21 个运行/暂停实例，
+  account id 固定为 `paper:<public-id>`；持仓、订单历史和 watchlist 读取对应 portfolio/Paper 证据，
+  watch market 从实例绑定的 sealed dataset snapshot 返回最多 800 根 1D K线，成交标记来自真实
+  trades。实测账户 `paper:374730412` 返回 3 个非零持仓、10 条最近订单、4 个当前盯盘标的，
+  `000333.SZ` 返回 180 根日线、最新价 75.32、1 个持仓和 1 个成交标记。前端仍使用 BitPro 原
+  持仓卡/K线/成交点/订单表布局，但改为股数、T+1 可用、CNY 市值/浮盈、A股现金模式，移除
+  永续、USDT、保证金、强平、杠杆和 OKX 文案；真实浏览器写请求、API 错误和 console error 均为 0。
+- Paper 显式周期推进已恢复为 `paper-runtime.v2`：管理员只能通过 `/live/advance` 或详情页
+  “推进下一交易日”按钮处理 sealed 下一日期，页面读取和服务启动都不自动推进。每个日期先锁定
+  instance 并用 `(paper_instance_id,cycle_key)` 幂等开周期，再批量执行上一日信号、隔离回放当前
+  `stockpro.v1` 策略、持久化当日新信号、公司行动、现金/持仓/订单/成交/账本/权益/事件和游标，
+  最终核对 cash ledger 差额为 0 后才 success；任一异常整事务回滚。隔离父进程同时支持 sealed
+  factor snapshot，只把 `available_at <= simulated_at` 的最新因子截面注入事件。
+- 真实 rollback 验收一：Paper `790604654` 从 2025-08-04 推进到 2025-08-05，新增一条权益、
+  无信号/订单/成交、ledger difference 0，36.82 秒完成。验收二：Paper `1479743622` 的 498 条
+  待处理空仓目标信号经批量 SQL 在 22.37 秒内全部收敛，无伪订单/成交，权益与账本对齐。
+  故意让 worker 抛错后，cycle 行 0、权益行 0、游标仍为 2025-08-04，证明失败原子回滚。
+- 干净重启后的真实管理员浏览器验收确认：Paper 详情可显示“推进下一交易日”、A 股标的、股数、
+  CNY 市值和最新价；数字资产/合约/杠杆/平仓文案、非 GET 请求、console error 与失败资源请求均为
+  0。实例卡片先规范并去重 `.SH/.SZ/.BJ` 标的，A 股代码只使用本地字母回退图标，不再请求币种
+  CDN。Paper 基线仍为 22 instances、137 cash ledger、115 trades、51 positions、1008 equity、
+  2080 events、1019 cycles，两次 2025-08-05 rollback 探针 cycle 为 0；75 项后端/重建测试、前端
+  production build、零警告 lint 与 `git diff --check` 全部通过。
+- 隔离库另用唯一命名临时 Paper 完成已提交的长期运行门禁：2025-08-05 首日成功后真实终止并
+  重启前后端，重启后的 `/live/advance` 只推进 2025-08-06；随后两路并发争抢 2025-08-07，
+  一路提交、一路在实例锁后复用同一 success cycle，重复订单/成交/权益均为 0。三日 ledger
+  difference 均为 0，单日分别耗时 17.55 秒、32.32 秒，并发完成窗口 44–45 秒。探针按精确 UUID
+  清理 1 ledger、3 equity、5 events、3 cycles、1 instance 和 1 portfolio 后，七张核心表计数逐项
+  恢复到测试前基线，候选回测重新可用，既有 22 个 Paper 及其历史没有变化。
+- 恢复 BitPro 原“批量回测”按钮、确认框和 `/backtest/run_running_strategies` 合同，只对管理员
+  开放。A 股适配以运行中 Paper 为来源，按策略 ID 去重并跳过暂停/无效版本，固定绑定确认框
+  显示的 sealed dataset/pool、1D、100 万 CNY 和 A 股成本参数，再复用普通 PostgreSQL 异步任务、
+  取消/恢复和原子结果链路。隔离库只读规划为 21 个 running Paper、18 个唯一有效策略、3 个重复
+  跳过；消除逐策略回读后的规划耗时从超过 30 秒降到 3.60 秒。18 个任务与 18 条队列日志改为
+  全批单事务持久化，真实 PostgreSQL rollback 压力耗时 0.70 秒、前后 `jobs=35/logs=756`，没有
+  半批残留，提交成功后才启动受两个 worker 槽约束的执行线程。真实浏览器确认框显示
+  2023-01-03 至 2025-01-02、100 万元、策略定义和异步实例，未出现 USDT/100U/OKX，写请求、
+  失败资源与 console error 均为 0；79 项后端/重建测试、production build 和零警告 lint 通过。
+- 从仓库自身 `37442eba` PostgreSQL 认证合同恢复活动 `/api/v2/auth/*`，移除启动入口硬编码的
+  `auth_enabled=false`。管理员继续使用 Argon2 密码哈希；Cookie 改为 HMAC-SHA256 签名会话，
+  PostgreSQL `auth_audit_events` 同时承担明确退出的 session denylist；邀请码只存 SHA-256，创建时
+  明文只返回一次，撤销后既有访客 Cookie 立即失效。MCP Token 验证也改读 PostgreSQL
+  `mcp_agent_tokens`，保留环境 token 常量时间 fallback；干净重启后的活动 Python 进程不再打开
+  `crypto_data.db`/WAL/SHM，安全扫描仍为 active 0。邀请码创建响应不暴露内部 hash；访客读取、
+  取消和恢复 job 都再次核对 `owner_session_id`，不能凭其他任务 UUID 越权操作。
+- 访客单回测的区间、并发和每日配额已在创建 PostgreSQL job 的同一事务中锁定邀请码并写
+  `guest_backtest_usage`，任务 success/failed/cancelled/interrupted 同步收敛用量状态。真实并发探针
+  在“并发 1、每日 1、最长 30 天”下只允许一路创建，另一路 429；任务结束后再次请求仍被每日
+  上限拒绝。HTTP 验收为管理员 `401→login 200→protected 200→logout→401`，访客
+  `login 200→read 200→batch 403→revoke→401`。探针清理后 guest codes/usage 为 0、auth audit
+  83、jobs 35、logs 756，全部恢复基线；86 项后端/重建测试和安全扫描通过。
+- 隔离库完成 18 个唯一运行中 Paper 策略的真实批量执行压力：全程最多 2 running，首轮 7 个
+  success、11 个因 validator 未识别 `initialize` 中安全 `context.<attr>={}` 与 `set.add` 而 failed。
+  validator 现只允许所有直接赋值均为安全容器的 context 属性；任何后续危险重赋仍 fail-closed。
+  干净重启后 11 个失败 job 全部通过 parent-linked attempt 2 自动恢复并 success，最终 18/18 个
+  策略形成唯一 sealed run，错误 0；证据包含 18 条 daily equity、738 metrics、72 attribution 和
+  11 custom records。两日区间没有伪造订单或成交。运行窗口为 19:07:24–19:20:07。
+- 清理这些 sealed QA run 时，数据库 `prevent_sealed_backtest_child_mutation` 正确拒绝删除，整个清理
+  事务回滚；未禁用触发器，也未篡改 success 状态。29 个 job lineage 和 18 个 QA run 作为隔离库
+  审计证据保留，当前 backtest jobs/logs/runs 为 64/955/380。Paper 基线仍为 22 instances、137
+  ledger、115 trades、51 positions、1008 equity、2080 events、1019 cycles，未受批量压力影响。
+- 最新真实管理员路由矩阵覆盖 `/`、行情、策略、回测、套利、基本面、模拟、信号、盯盘、资金流、
+  复盘、监控、数据、因子、AI研发和 ARC 共 16 个活动页面；全部在 8 秒观察窗内退出加载态，非 GET
+  请求、失败资源和 console error 均为 0。矩阵定位并修复首页情绪卡残留：保留 BitPro 原结构，
+  将资金费率/杠杆/多空/新币改为 A 股成交活跃、涨跌广度、风险偏好和交易日证据，首页不再调用
+  funding API，也不再发送 `quote=USDT/marketType=swap`。复验中相关可见词和相关请求 URL 均为 0，
+  A 股新指标可见，复盘页“实盘”只保留在“不会读取真实账户”的合规边界说明中。
+- 恢复 `d959a016` 中被精确 BitPro 导入删除的 PostgreSQL migration runner 与 39 个原 SQL 迁移；
+  当前文件清单与隔离库 `schema_migrations` 均为 39。根 `pytest.ini` 只收集活动 `rebuild/tests`，
+  旧 `tests/` 的数字资产/实盘/torch/ccxt 用例保留为不可达参考，不再冒充当前门禁；默认 pytest
+  现为 116/116。后端 requirements 恢复 PostgreSQL、Tushare、AkShare 的 A 股运行集合，不再递归
+  引用包含 ccxt/aiosqlite/Kairos/torch 的旧 base requirements。
+- 恢复冻结 frontend lockfile、`@bitpro/ui`、Playwright、bundle budget 与双模式 E2E 脚本；25 条
+  Mock E2E 已逐项更新为当前 16 路由、管理员/访客权限、错误边界、空态、双视口和 A 股禁词合同，
+  25/25 通过。增强后的 `./scripts/check.sh` 已一次性通过 frozen install、类型检查、production
+  build、bundle budget、零警告 lint、生产依赖审计 0 vulnerability、116 pytest、安全扫描 active 0、
+  25 E2E 和 diff whitespace，不再以“只编译”冒充全量门禁。
+- completion audit 已停止读取上一轮 `/paper|/pools|/factors` 截图，UI-001 现在强制要求当前 HEAD 的
+  16 路由、32 张 1440×900/390×844 真实截图，以及逐页 console/write 证据。切换前采集最大耗时
+  28.204 秒，32/32 console error 0、写请求 0；BASE、PARITY、API、DB 39/39、Paper continuity、
+  SAFE、UI、ASHARE、FUTURE 全部 passed，pre-deploy completion audit blockers 为空。
+
 ## BitPro 逐文件复刻对账（2026-08-26）
 
 ### 生产交付

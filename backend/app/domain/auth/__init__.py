@@ -1,3 +1,3 @@
-from app.domain.auth.models import AuthProfile, AuthToken
+from app.domain.auth.service import ActiveAuthService, active_auth_service
 
-__all__ = ["AuthProfile", "AuthToken"]
+__all__ = ["ActiveAuthService", "active_auth_service"]

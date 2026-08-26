@@ -100,13 +100,13 @@ export function paperQuickVerifyDaysBack(timeframe: string): number {
 export const LIVE_PREFS_KEY = 'bitpro_live_trading_prefs_v2';
 
 /** 模拟盘创建向导：未保存偏好时的默认周期（实盘仍用 DEFAULT_LIVE_CONFIG.timeframe） */
-export const DEFAULT_PAPER_TIMEFRAME = '1m';
-export const DEFAULT_PAPER_INITIAL_EQUITY = 100;
+export const DEFAULT_PAPER_TIMEFRAME = '1d';
+export const DEFAULT_PAPER_INITIAL_EQUITY = 1_000_000;
 
 export const DEFAULT_LIVE_CONFIG = {
-  symbol: 'BTC/USDT',
-  timeframe: '4h',
-  initialEquity: 1000,
+  symbol: '600519.SH',
+  timeframe: '1d',
+  initialEquity: 1_000_000,
   loopInterval: 60,
   riskPerTrade: 0.03,
   maxDailyLoss: 0.05,
