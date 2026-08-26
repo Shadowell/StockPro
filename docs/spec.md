@@ -40,11 +40,11 @@ StockPro 不以荐股、自动实盘或营销式 AI 评分为产品中心。系�
 | --- | --- | --- |
 | 总览 | 首页 | `/` |
 | 研究 | 行情 | `/market` |
-| 研究 | 股票池 | `/pools` |
-| 研究 | 因子 | `/factors` |
+| 研究 | 股票池/价差 | `/arbitrage` |
+| 研究 | 因子 | `/factorlab` |
 | 主线 | 策略 | `/strategy` |
 | 主线 | 回测 | `/backtest` |
-| 主线 | 模拟 | `/paper` |
+| 主线 | 模拟 | `/live` |
 | 运行 | 盯盘 | `/watch` |
 | 运行 | 信号 | `/signals` |
 | 运行 | 监控 | `/monitor` |
@@ -53,8 +53,8 @@ StockPro 不以荐股、自动实盘或营销式 AI 评分为产品中心。系�
 | 能力 | AI 研发 | `/ai-lab` |
 
 期货 `/futures` 仅领域预留，导航隐藏并回首页。真实交易 `/live-real` 不注册为产品路由；
-BitPro 遗留的 `/live`、`/trading`、`/arbitrage`、`/onchain`、`/orderflow`、`/arc`
-分别跳转到 A 股模拟盘、策略、数据、行情和 AI Owner 页，不保留数字资产语义。
+BitPro 遗留的 `/pools`、`/factors`、`/paper` 分别跳转到 `/arbitrage`、`/factorlab`、`/live`，
+不再作为最终截图或验收入口。
 
 首页首次就绪检查只读汇总管理员安全配置、PostgreSQL 迁移、TuShare 主源、封存研究快照以及后续策略/Paper/复盘状态；每项只提供 Owner 页面链接，不自动修复。首页和模拟页均提供统一盘后复盘入口。
 
@@ -63,11 +63,11 @@ BitPro 遗留的 `/live`、`/trading`、`/arbitrage`、`/onchain`、`/orderflow`
 ```text
 /            首页 / 市场大盘
 /market      行情（代码.市场）
-/pools       股票池
-/factors     因子
+/arbitrage   股票池/价差
+/factorlab   因子
 /strategy    策略
 /backtest    回测
-/paper       模拟盘 / 现金账本
+/live        模拟盘 / 现金账本
 /watch       盯盘
 /signals     信号
 /monitor     监控
@@ -191,7 +191,7 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 - Monitor 展示实例生命周期、心跳、最后处理日期、周期结果、异常、权益、回撤、账本差异和数据健康。
 - 运行实例心跳缺失或超过阈值时显示明确告警；响应生成时间不能刷新运行证据。
 - Review 顶部提供当日大盘 Snapshot：指数快照、市场宽度、情绪指标、涨停生态、板块资金与人气榜，全部来自封存/落库的真实数据源（TuShare/AKShare/东财/同花顺），并保留交易日绑定与结论、风险、次日计划编辑。
-- `/live` 与数字资产实盘深链不注册为产品页；遗留入口只显示不可用原因并指向 `/paper` 现金账本。真实委托需要独立合同、券商通道和 `LIVE_TRADING_ENABLED`，当前 sprint 不接入。
+- `/live` 是当前 Paper-only 模拟入口；数字资产实盘深链和真实券商委托不注册为产品页。旧 `/paper` 仅重定向到 `/live`，真实委托需要独立合同、券商通道和 `LIVE_TRADING_ENABLED`。
 
 ## 11. AI 与 Agent 接口
 

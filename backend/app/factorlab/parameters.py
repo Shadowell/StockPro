@@ -49,6 +49,8 @@ def normalize_parameters(
         raise FactorParameterError("EMA fast window must be smaller than slow window")
     if definition.kernel_name == "macd_hist_atr" and normalized["fast"] >= normalized["slow"]:
         raise FactorParameterError("MACD fast window must be smaller than slow window")
+    if definition.kernel_name == "amount_ratio" and normalized["short_window"] >= normalized["long_window"]:
+        raise FactorParameterError("amount ratio short window must be smaller than long window")
     return normalized
 
 
@@ -86,4 +88,16 @@ def required_bars_for(kernel_name: str, parameters: Mapping[str, Any]) -> int:
         return int(parameters["window"])
     if kernel_name in {"mfi", "price_volume_corr"}:
         return int(parameters["window"]) + 1
+    if kernel_name in {"max_return", "return_skew", "up_days"}:
+        return int(parameters["window"]) + 1
+    if kernel_name == "turnover_zscore":
+        return int(parameters["window"])
+    if kernel_name == "limit_up_count":
+        return int(parameters["window"])
+    if kernel_name == "amihud_illiq":
+        return int(parameters["window"]) + 1
+    if kernel_name == "amount_ratio":
+        return max(int(parameters["short_window"]), int(parameters["long_window"]))
+    if kernel_name in {"gap_return", "intraday_return"}:
+        return 2 if kernel_name == "gap_return" else 1
     raise FactorParameterError(f"unknown factor kernel: {kernel_name}")

@@ -55,16 +55,17 @@ def test_market_page_does_not_render_full_market_universe_panel_above_chart():
     assert "min-h-[560px] flex-col" not in panel
 
 
-def test_market_universe_tabs_have_distinct_symbol_universes_and_filters():
+def test_market_universe_tabs_have_a_share_universes_and_filters():
     text = PANEL.read_text(encoding="utf-8")
 
     assert "MARKET_TAB_SYMBOLS" in text
     assert "futures:" in text
     assert "spot:" in text
-    assert ":USDT" in text
-    assert "/BTC" in text
+    assert "股票" in text
+    assert "ETF" in text
+    assert "指数" in text
     assert "MARKET_TAB_SYMBOLS[activeTab]" in text
-    assert "activeTab === 'crypto'" in text
+    assert "activeTab === 'favorites'" in text
     assert "quoteFromSymbol" in text
     assert "formatQuoteVolume" in text
     assert "formatPrice(t.last, t.quote)" in text
@@ -77,25 +78,20 @@ def test_market_universe_tabs_use_requested_display_order():
     tabs_end = text.index("const MARKET_TAB_META")
     tabs_block = text[tabs_start:tabs_end]
 
-    labels = ["合约", "现货", "币币", "自选"]
+    labels = ["股票", "ETF", "指数", "自选"]
     positions = [tabs_block.index(f"label: '{label}'") for label in labels]
     assert positions == sorted(positions)
     assert "useState<MarketTabKey>('futures')" in text
 
 
-def test_market_universe_futures_tab_displays_contract_name_and_details():
+def test_market_universe_full_tab_displays_a_share_name_and_details():
     text = PANEL.read_text(encoding="utf-8")
 
-    assert "isContractSymbol" in text
-    assert "contractDisplayName" in text
-    assert "contractDisplayDetails" in text
-    assert "contractInstrumentId" in text
-    assert "${base}${quote} 永续" in text
-    assert "${symbol} · ${quote} 本位 · 线性永续" in text
-    assert "activeTab === 'futures' ? '合约' : '币种'" in text
+    assert "股票、ETF、指数和自选标的统一在行情页筛选" in text
+    assert "名称待同步" in text
+    assert "activeTab === 'futures' ? '股票' : '证券'" in text
     assert "t.displayName" in text
     assert "t.displayDetails" in text
-    assert "SWAP" in text
 
 
 def test_market_universe_overview_band_summarizes_current_view():
@@ -115,51 +111,31 @@ def test_market_universe_overview_band_summarizes_current_view():
     assert "marketOverview.turnoverLeader?.displayName" in text
 
 
-def test_market_universe_overview_renders_okx_app_style_rankings():
+def test_market_universe_overview_renders_a_share_rankings():
     text = PANEL.read_text(encoding="utf-8")
 
     assert "HOME_RANKING_LIMIT = 10" in text
-    new_listing_start = text.index("const NEW_LISTING_SYMBOLS = [")
-    new_listing_end = text.index("] as const;", new_listing_start)
-    new_listing_block = text[new_listing_start:new_listing_end]
-    assert new_listing_block.count("/USDT:USDT") >= 10
     assert "HOME_RANKING_TABS" in text
     assert "homeRankingKey" in text
     assert "homeRankings" in text
-    assert "热门榜" in text
-    assert "费率榜" in text
-    assert "OKX 资金费率" in text
-    assert "fundingItems" in text
-    assert "formatFundingRate" in text
-    assert "formatAnnualizedFunding" in text
-    assert "formatFundingTime" in text
-    assert "homeFundingRanking" in text
-    assert "b.currentRate - a.currentRate" in text
-    assert "当前资金费率" in text
-    assert "年化估算" in text
-    assert "下次结算" in text
+    assert "成交额榜" in text
+    assert "涨幅榜" in text
+    assert "跌幅榜" in text
+    assert "PostgreSQL 行情" in text
     assert "榜单列表" in text
     assert "选择榜单后查看右侧明细" in text
     assert "xl:grid-cols-[260px_minmax(0,1fr)]" in text
     assert "aria-pressed={activeKey === tab.key}" in text
-    assert "新币榜" in text
-    assert "TradFi" in text
-    assert "涨幅榜" in text
-    assert "跌幅榜" in text
-    assert "NEW_LISTING_SYMBOLS" in text
-    assert "TRADFI_SYMBOLS" in text
     assert "b.change_percent - a.change_percent" in text
     assert "a.change_percent - b.change_percent" in text
     assert "b.quote_volume - a.quote_volume" in text
-    assert "HOME_TICKER_SCOPE" in text
-    assert "marketApi.getAllTickers(selectedExchange, HOME_TICKER_SCOPE)" in text
-    assert "全部 USDT 永续" in text
+    assert "marketApi.getAllTickers(selectedExchange)" in text
+    assert "全部 A 股" in text
     assert "variant === 'summary'" in text
     assert "activeHomeRankingItems" in text
     assert "items={activeHomeRankingItems}" in text
-    assert "fundingItems={homeFundingRanking}" in text
     assert "HOME_TICKER_RANKING_GRID" in text
-    assert "grid-cols-[minmax(300px,1.35fr)_112px_92px_120px_116px_124px_minmax(220px,0.9fr)]" in text
+    assert "grid-cols-[minmax(220px,1.45fr)_96px_76px_88px_100px_108px_96px]" in text
     assert "HOME_TICKER_RANKING_VALUE_CLASS = 'self-start pt-0.5'" in text
     assert 'className={`${HOME_TICKER_RANKING_VALUE_CLASS} font-mono text-sm tabular-nums text-gray-100`}' in text
     assert "HOME_RANKING_TABLE_HEADER_CLASS" in text
@@ -169,11 +145,11 @@ def test_market_universe_overview_renders_okx_app_style_rankings():
     assert 'title={item.displayName}' in text
     assert 'className="shrink-0 rounded border border-amber-500/25' in text
     assert "<span>最新价</span>" in text
-    assert "<span>24h 涨跌</span>" in text
-    assert '<span className="text-center">24h 走势</span>' in text
-    assert "<span>24h 成交量</span>" in text
-    assert "<span>24h 成交额</span>" in text
-    assert "<span>24h 区间</span>" in text
+    assert "<span>当日涨跌</span>" in text
+    assert '<span className="text-center">当日走势</span>' in text
+    assert "<span>当日成交量</span>" in text
+    assert "<span>当日成交额</span>" in text
+    assert "<span>当日区间</span>" in text
     assert "<SparklineChart data={item.sparkline} isUp={item.change_percent >= 0} />" in text
     assert "<RangeBar low={item.low} high={item.high} current={item.last} quote={item.quote} />" in text
     assert 'className="h-[560px] overflow-auto"' in text
@@ -183,33 +159,27 @@ def test_market_universe_overview_renders_okx_app_style_rankings():
 def test_home_summary_fuses_market_overview_and_sentiment_index():
     text = PANEL.read_text(encoding="utf-8")
 
-    assert "HOME_FUNDING_SYMBOLS" in text
-    assert "fundingApi.getRates" in text
     assert "function HomeMarketSummaryModule" in text
     assert "overviewCards: ReactNode" in text
     assert "const homeOverviewCards" in text
     assert "overviewCards={homeOverviewCards}" in text
-    assert "OKX 市场概览 · 大盘情绪指数" in text
+    assert "A 股市场概览 · 大盘广度指数" in text
     assert "2xl:grid-cols-[280px_repeat(5,minmax(0,1fr))]" in text
     assert "marketSentiment" in text
-    assert "大盘情绪指数" in text
+    assert "大盘广度指数" in text
     assert "BitPro 大盘情绪指数" not in text
     assert "聚合市场榜单、广度指标和大盘情绪指数" not in text
     assert "由 OKX ticker 与资金费率聚合计算" not in text
     assert "综合分" in text
     assert "市场热度" in text
-    assert "杠杆情绪" in text
-    assert "多空拥挤" in text
+    assert "成交活跃" in text
+    assert "涨跌广度" in text
     assert "风险偏好" in text
-    assert "宏观事件" in text
-    assert "avgFundingRate" in text
-    assert "positiveFundingRatio" in text
-    assert "extremeFundingCount" in text
+    assert "交易日证据" in text
     assert "topTurnoverConcentration" in text
     assert "成交集中 ${formatRatio(marketOverview.topTurnoverConcentration * 100)}" in text
     assert "Top5 占视图成交额" in text
     assert "${marketOverview.gainers}/${marketOverview.total} 上涨" not in text
-    assert "newListingTurnoverRatio" in text
 
 
 def test_home_summary_renders_sector_heatmap_from_full_ticker_scope():

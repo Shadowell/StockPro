@@ -23,6 +23,9 @@ def _price_bar(close: float, *, high: float | None = None, low: float | None = N
         "low": close - 1 if low is None else low,
         "close": close,
         "volume": 10.0,
+        "amount": 1_000_000.0,
+        "turnover_rate": 1.0,
+        "limit_up": False,
     }
 
 
@@ -57,7 +60,7 @@ def test_local_database_initializes_factor_control_plane_tables(tmp_path) -> Non
     } <= table_names
 
 
-def test_registry_registers_sixteen_builtin_continuous_factors(tmp_path) -> None:
+def test_registry_registers_builtin_continuous_factors(tmp_path) -> None:
     from app.factorlab.registry import FactorRegistry
 
     database = LocalDatabase(str(tmp_path / "factor-registry.db"))
@@ -69,9 +72,18 @@ def test_registry_registers_sixteen_builtin_continuous_factors(tmp_path) -> None
     definitions = registry.list_definitions()
     assert [item.definition_id for item in definitions] == [
         "chop.price_ema_cross_count",
+        "event.limit_up_count_20d",
+        "event.limit_up_count_60d",
+        "liquidity.amihud_20d",
+        "liquidity.turnover_z_60d",
         "momentum.kdj_j",
+        "momentum.max_return_20d",
+        "momentum.return_skew_20d",
         "momentum.roc",
         "momentum.rsi",
+        "momentum.up_days_20d",
+        "price.gap_return",
+        "price.intraday_return",
         "reversal.bollinger_zscore",
         "trend.adx",
         "trend.efficiency_ratio",
@@ -79,6 +91,7 @@ def test_registry_registers_sixteen_builtin_continuous_factors(tmp_path) -> None
         "trend.macd_hist_atr",
         "volatility.atr_pct",
         "volatility.bollinger_bandwidth",
+        "volume.amount_ratio_5d",
         "volume.mfi",
         "volume.obv_slope",
         "volume.price_volume_corr",
@@ -407,7 +420,8 @@ def test_factor_engine_batch_and_incremental_paths_match_for_all_builtins(tmp_pa
         assert batch == incremental
         assert all(item.available_at == item.event_time + 3_600_000 for item in batch)
         assert all(item.computed_at == computed_at for item in batch)
-        assert batch[instance.required_bars - 2].value_status == "warming_up"
+        if instance.required_bars > 1:
+            assert batch[instance.required_bars - 2].value_status == "warming_up"
         assert batch[instance.required_bars - 1].value_status == "valid"
 
 
@@ -609,3 +623,44 @@ def test_factor_latest_repository_never_regresses_event_time(tmp_path) -> None:
         instance_id=instance.instance_id,
     )
     assert restored == latest
+
+
+def test_short_line_and_liquidity_factor_kernels_cover_issue_28_pack() -> None:
+    from app.factorlab.kernels import get_factor_kernel
+
+    rows = []
+    closes = [10, 10.5, 10.2, 11.4, 11.8, 12.0, 11.7, 12.6, 12.8, 13.1, 13.4]
+    for index, close in enumerate(closes):
+        previous = closes[index - 1] if index else close
+        rows.append({
+            "open": previous * (1.01 if index else 1.0),
+            "high": max(close, previous) + 0.2,
+            "low": min(close, previous) - 0.2,
+            "close": close,
+            "volume": 1000 + index * 20,
+            "amount": 100_000 + index * 5000,
+            "turnover_rate": 2.0 + index * 0.1,
+            "limit_up": index in {3, 7},
+        })
+
+    assert get_factor_kernel("max_return").compute_batch(rows, {"window": 5})[-1] is not None
+    assert get_factor_kernel("return_skew").compute_batch(rows, {"window": 5})[-1] is not None
+    assert get_factor_kernel("up_days").compute_batch(rows, {"window": 5})[-1] == 0.8
+    assert get_factor_kernel("turnover_zscore").compute_batch(rows, {"window": 5})[-1] is not None
+    assert get_factor_kernel("limit_up_count").compute_batch(rows, {"window": 10})[-1] == 2.0
+    assert get_factor_kernel("amihud_illiq").compute_batch(rows, {"window": 5})[-1] is not None
+    assert get_factor_kernel("amount_ratio").compute_batch(rows, {"short_window": 3, "long_window": 5})[-1] > 1
+    assert get_factor_kernel("gap_return").compute_batch(rows, {})[0] is None
+    assert get_factor_kernel("gap_return").compute_batch(rows, {})[-1] is not None
+    assert get_factor_kernel("intraday_return").compute_batch(rows, {})[-1] is not None
+
+
+def test_short_line_factor_kernels_preserve_null_for_missing_required_data() -> None:
+    from app.factorlab.kernels import get_factor_kernel
+
+    rows = [{"open": 10, "high": 11, "low": 9, "close": 10 + index, "volume": 1000} for index in range(25)]
+
+    assert get_factor_kernel("amount_ratio").compute_batch(rows, {"short_window": 5, "long_window": 20})[-1] is None
+    assert get_factor_kernel("amihud_illiq").compute_batch(rows, {"window": 20})[-1] is None
+    assert get_factor_kernel("turnover_zscore").compute_batch(rows, {"window": 20})[-1] is None
+    assert get_factor_kernel("limit_up_count").compute_batch(rows, {"window": 20})[-1] is None

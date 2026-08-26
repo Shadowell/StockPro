@@ -7,6 +7,11 @@ from typing import Any, Callable, Dict, List, Optional
 import psycopg2
 
 from app.core.config import settings
+from app.domain.market.research_metrics import (
+    ABNORMALITY_DEFINITION_VERSION,
+    MARKET_PHASE_DEFINITION_VERSION,
+    SECTOR_RPS_DEFINITION_VERSION,
+)
 
 
 class MarketRepository:
@@ -110,6 +115,10 @@ class MarketRepository:
         if rows:
             return {"data_status": "ok", "unavailable_reason": None}
         return {"data_status": "empty", "unavailable_reason": empty_reason}
+
+    @staticmethod
+    def _json_value(raw: Any, fallback: Any) -> Any:
+        return fallback if raw is None else raw
 
     def list_symbols(self, asset_class: str, limit: int = 5000) -> List[str]:
         return [item["symbol"] for item in self.list_instruments(asset_class, limit)]
@@ -504,3 +513,255 @@ class MarketRepository:
                 cursor.execute("SELECT COUNT(*),MIN(date),MAX(date) FROM stock_history")
                 daily_count, first_date, last_date = cursor.fetchone()
         return {"instrument_count": instruments, "rise_count": rise, "fall_count": fall, "turnover": turnover, "average_change_pct": average_change, "updated_at": updated_at.isoformat() if updated_at else None, "daily_bar_count": daily_count, "first_trade_date": str(first_date or ""), "trade_date": str(last_date or "")}
+
+    def get_market_phase(self, trade_date: str | None = None) -> Dict:
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "market_phase_results"):
+                    return {
+                        "trade_date": trade_date,
+                        "phase": "unknown",
+                        "status": "unavailable",
+                        "confidence": 0.0,
+                        "reasons": [],
+                        "missing_inputs": ["market_phase_results table is not migrated"],
+                        "definition_version": MARKET_PHASE_DEFINITION_VERSION,
+                    }
+                query = """
+                    SELECT trade_date,phase,status,confidence,reasons,missing_inputs,
+                           source_snapshot_id,input_trade_date,definition_version,
+                           available_at,knowledge_cutoff_at,computed_at
+                    FROM market_phase_results
+                """
+                params: list[object] = []
+                if trade_date:
+                    query += " WHERE trade_date=%s"
+                    params.append(trade_date)
+                query += " ORDER BY trade_date DESC,computed_at DESC LIMIT 1"
+                cursor.execute(query, tuple(params))
+                row = cursor.fetchone()
+        if not row:
+            return {
+                "trade_date": trade_date,
+                "phase": "unknown",
+                "status": "empty",
+                "confidence": 0.0,
+                "reasons": [],
+                "missing_inputs": ["market phase has not been computed for this trade_date"],
+                "definition_version": MARKET_PHASE_DEFINITION_VERSION,
+            }
+        return {
+            "trade_date": str(row[0]),
+            "phase": row[1],
+            "status": row[2],
+            "confidence": float(row[3] or 0),
+            "reasons": self._json_value(row[4], []),
+            "missing_inputs": self._json_value(row[5], []),
+            "source_snapshot_id": row[6],
+            "input_trade_date": str(row[7]) if row[7] else None,
+            "definition_version": row[8],
+            "available_at": self._iso(row[9]),
+            "knowledge_cutoff_at": self._iso(row[10]),
+            "computed_at": self._iso(row[11]),
+        }
+
+    def list_sector_rps(
+        self,
+        *,
+        trade_date: str | None = None,
+        classification_system: str = "industry",
+        limit: int = 20,
+    ) -> Dict:
+        bounded = max(1, min(int(limit), 200))
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "sector_rps_results"):
+                    return {
+                        "items": [],
+                        "data_status": "unavailable",
+                        "unavailable_reason": "sector_rps_results table is not migrated",
+                        "definition_version": SECTOR_RPS_DEFINITION_VERSION,
+                    }
+                query = """
+                    SELECT trade_date,classification_system,sector_code,sector_name,
+                           strength_score,rps_percentile,rank,rank_change,strong_days,
+                           member_coverage,leader_symbol,status,missing_inputs,source_snapshot_id,
+                           definition_version,available_at,knowledge_cutoff_at
+                    FROM sector_rps_results
+                    WHERE classification_system=%s
+                """
+                params: list[object] = [classification_system]
+                if trade_date:
+                    query += " AND trade_date=%s"
+                    params.append(trade_date)
+                else:
+                    query += " AND trade_date=(SELECT MAX(trade_date) FROM sector_rps_results WHERE classification_system=%s)"
+                    params.append(classification_system)
+                query += " ORDER BY rank NULLS LAST,strength_score DESC NULLS LAST,sector_code LIMIT %s"
+                params.append(bounded)
+                cursor.execute(query, tuple(params))
+                rows = cursor.fetchall()
+        items = [
+            {
+                "trade_date": str(row[0]),
+                "classification_system": row[1],
+                "sector_code": row[2],
+                "sector_name": row[3],
+                "strength_score": float(row[4]) if row[4] is not None else None,
+                "rps_percentile": float(row[5]) if row[5] is not None else None,
+                "rank": row[6],
+                "rank_change": row[7],
+                "strong_days": row[8],
+                "member_coverage": float(row[9]) if row[9] is not None else None,
+                "leader_symbol": row[10],
+                "status": row[11],
+                "missing_inputs": self._json_value(row[12], []),
+                "source_snapshot_id": row[13],
+                "definition_version": row[14],
+                "available_at": self._iso(row[15]),
+                "knowledge_cutoff_at": self._iso(row[16]),
+            }
+            for row in rows
+        ]
+        return {
+            "items": items,
+            **self._status_for_rows(items, empty_reason="no sector/concept RPS result for this query"),
+            "definition_version": SECTOR_RPS_DEFINITION_VERSION,
+        }
+
+    def get_sector_rps_history(self, sector_code: str, *, classification_system: str = "industry", limit: int = 60) -> Dict:
+        bounded = max(1, min(int(limit), 250))
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "sector_rps_results"):
+                    return {
+                        "items": [],
+                        "data_status": "unavailable",
+                        "unavailable_reason": "sector_rps_results table is not migrated",
+                        "definition_version": SECTOR_RPS_DEFINITION_VERSION,
+                    }
+                cursor.execute(
+                    """
+                    SELECT trade_date,sector_code,sector_name,strength_score,rps_percentile,rank,rank_change,status
+                    FROM sector_rps_results
+                    WHERE classification_system=%s AND sector_code=%s
+                    ORDER BY trade_date DESC LIMIT %s
+                    """,
+                    (classification_system, sector_code, bounded),
+                )
+                rows = list(reversed(cursor.fetchall()))
+        items = [
+            {
+                "trade_date": str(row[0]),
+                "sector_code": row[1],
+                "sector_name": row[2],
+                "strength_score": float(row[3]) if row[3] is not None else None,
+                "rps_percentile": float(row[4]) if row[4] is not None else None,
+                "rank": row[5],
+                "rank_change": row[6],
+                "status": row[7],
+            }
+            for row in rows
+        ]
+        return {
+            "items": items,
+            **self._status_for_rows(items, empty_reason=f"no RPS history for {sector_code}"),
+            "definition_version": SECTOR_RPS_DEFINITION_VERSION,
+        }
+
+    def list_symbol_abnormalities(self, *, trade_date: str | None = None, limit: int = 20) -> Dict:
+        bounded = max(1, min(int(limit), 200))
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "symbol_abnormal_metrics"):
+                    return {
+                        "items": [],
+                        "data_status": "unavailable",
+                        "unavailable_reason": "symbol_abnormal_metrics table is not migrated",
+                        "definition_version": ABNORMALITY_DEFINITION_VERSION,
+                    }
+                query = """
+                    SELECT symbol,trade_date,return_3d,return_10d,return_30d,
+                           benchmark_deviation_3d,benchmark_deviation_10d,benchmark_deviation_30d,
+                           sector_deviation_3d,sector_deviation_10d,sector_deviation_30d,
+                           amount_ratio_5d,distance_to_60d_high_pct,distance_to_60d_low_pct,
+                           tags,status,missing_inputs,definition_version,available_at,knowledge_cutoff_at
+                    FROM symbol_abnormal_metrics
+                """
+                params: list[object] = []
+                if trade_date:
+                    query += " WHERE trade_date=%s"
+                    params.append(trade_date)
+                else:
+                    query += " WHERE trade_date=(SELECT MAX(trade_date) FROM symbol_abnormal_metrics)"
+                query += " ORDER BY ABS(COALESCE(return_3d,0)) DESC,amount_ratio_5d DESC NULLS LAST,symbol LIMIT %s"
+                params.append(bounded)
+                cursor.execute(query, tuple(params))
+                rows = cursor.fetchall()
+        items = [self._abnormality_row(row) for row in rows]
+        return {
+            "items": items,
+            **self._status_for_rows(items, empty_reason="no abnormality metrics for this query"),
+            "definition_version": ABNORMALITY_DEFINITION_VERSION,
+        }
+
+    def get_symbol_abnormality(self, symbol: str, *, trade_date: str | None = None) -> Dict:
+        canonical = self._canonical_symbol(symbol)
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "symbol_abnormal_metrics"):
+                    return {
+                        "symbol": canonical,
+                        "data_status": "unavailable",
+                        "unavailable_reason": "symbol_abnormal_metrics table is not migrated",
+                        "definition_version": ABNORMALITY_DEFINITION_VERSION,
+                    }
+                query = """
+                    SELECT symbol,trade_date,return_3d,return_10d,return_30d,
+                           benchmark_deviation_3d,benchmark_deviation_10d,benchmark_deviation_30d,
+                           sector_deviation_3d,sector_deviation_10d,sector_deviation_30d,
+                           amount_ratio_5d,distance_to_60d_high_pct,distance_to_60d_low_pct,
+                           tags,status,missing_inputs,definition_version,available_at,knowledge_cutoff_at
+                    FROM symbol_abnormal_metrics WHERE symbol=%s
+                """
+                params: list[object] = [canonical]
+                if trade_date:
+                    query += " AND trade_date=%s"
+                    params.append(trade_date)
+                query += " ORDER BY trade_date DESC LIMIT 1"
+                cursor.execute(query, tuple(params))
+                row = cursor.fetchone()
+        if not row:
+            return {
+                "symbol": canonical,
+                "data_status": "empty",
+                "unavailable_reason": f"no abnormality metrics for {canonical}",
+                "definition_version": ABNORMALITY_DEFINITION_VERSION,
+            }
+        payload = self._abnormality_row(row)
+        payload["data_status"] = "ok"
+        return payload
+
+    def _abnormality_row(self, row: Any) -> Dict:
+        return {
+            "symbol": row[0],
+            "trade_date": str(row[1]),
+            "return_3d": float(row[2]) if row[2] is not None else None,
+            "return_10d": float(row[3]) if row[3] is not None else None,
+            "return_30d": float(row[4]) if row[4] is not None else None,
+            "benchmark_deviation_3d": float(row[5]) if row[5] is not None else None,
+            "benchmark_deviation_10d": float(row[6]) if row[6] is not None else None,
+            "benchmark_deviation_30d": float(row[7]) if row[7] is not None else None,
+            "sector_deviation_3d": float(row[8]) if row[8] is not None else None,
+            "sector_deviation_10d": float(row[9]) if row[9] is not None else None,
+            "sector_deviation_30d": float(row[10]) if row[10] is not None else None,
+            "amount_ratio_5d": float(row[11]) if row[11] is not None else None,
+            "distance_to_60d_high_pct": float(row[12]) if row[12] is not None else None,
+            "distance_to_60d_low_pct": float(row[13]) if row[13] is not None else None,
+            "tags": self._json_value(row[14], []),
+            "status": row[15],
+            "missing_inputs": self._json_value(row[16], []),
+            "definition_version": row[17],
+            "available_at": self._iso(row[18]),
+            "knowledge_cutoff_at": self._iso(row[19]),
+        }

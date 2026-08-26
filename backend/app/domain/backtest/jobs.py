@@ -14,6 +14,14 @@ class BacktestCancelled(RuntimeError):
     pass
 
 
+class BacktestResultDelivered(RuntimeError):
+    """Raised when the sealed run was committed but worker cleanup timed out."""
+
+    def __init__(self, message: str, *, result: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.result = result
+
+
 class JobRepository(Protocol):
     def create(self, payload: dict, *, parent_job_id: str | None = None, attempt: int = 1, owner: dict | None = None) -> dict: ...
     def create_many(self, payloads: list[dict], *, owner: dict | None = None) -> list[dict]: ...
@@ -133,6 +141,23 @@ class BacktestJobService:
                     backtest_run_id=result.get("run_id"),
                     result_payload={"result_id": result.get("result_id"), **dict(result.get("summary") or {})},
                 )
+            except BacktestResultDelivered as exc:
+                result = dict(exc.result or {})
+                if not result.get("run_id"):
+                    row = self.repository.transition(job_id, status="failed", progress=100.0, phase="failed", message="回测结果送达状态无效", error_message=str(exc)[:2000])
+                else:
+                    # Downstream Paper promotion evidence is success plus a sealed backtest_run_id;
+                    # cleanup warnings alone must not downgrade an already sealed run to failed.
+                    row = self.repository.transition(
+                        job_id,
+                        status="success",
+                        progress=100.0,
+                        phase="completed",
+                        message="回测结果已封存；worker 收尾超时已记录",
+                        error_message=str(exc)[:2000],
+                        backtest_run_id=result.get("run_id"),
+                        result_payload={"result_id": result.get("result_id"), **dict(result.get("summary") or {})},
+                    )
             except BacktestCancelled as exc:
                 row = self.repository.transition(job_id, status="cancelled", phase="cancelled", message=str(exc), error_message=None)
             except Exception as exc:

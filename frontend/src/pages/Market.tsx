@@ -1,8 +1,14 @@
 import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
-import { RefreshCw, TrendingUp } from 'lucide-react';
+import { Activity, Layers3, RefreshCw, TrendingUp, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../stores/useStore';
-import { marketApi, type MarketInstrument } from '../api/client';
+import {
+  marketApi,
+  type MarketInstrument,
+  type MarketPhase,
+  type SectorRpsRow,
+  type SymbolAbnormality,
+} from '../api/client';
 import OrderBookChart from '../components/OrderBookChart';
 import SymbolSearch from '../components/SymbolSearch';
 import type { Kline, OrderBook } from '../types';
@@ -68,6 +74,16 @@ function formatTradeTime(timestamp?: number): string {
   });
 }
 
+function formatPercent(value?: number | null, digits = 2): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%`;
+}
+
+function formatRatioLabel(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return value.toFixed(1);
+}
+
 export default function Market() {
   const { selectedExchange, selectedSymbol, setSelectedSymbol } = useStore();
   const [klines, setKlines] = useState<Kline[]>([]);
@@ -80,6 +96,9 @@ export default function Market() {
   const [allInstruments, setAllInstruments] = useState<MarketInstrument[]>([]);
   const [marketType, setMarketType] = useState<MarketType>('stock');
   const [timeframe, setTimeframe] = useState('1d');
+  const [marketPhase, setMarketPhase] = useState<MarketPhase | null>(null);
+  const [sectorRps, setSectorRps] = useState<SectorRpsRow[]>([]);
+  const [marketMovers, setMarketMovers] = useState<SymbolAbnormality[]>([]);
   const selectedSymbolMatchesMarketType = Boolean(selectedSymbol);
 
   // 价格闪烁动画状态
@@ -115,6 +134,21 @@ export default function Market() {
       .catch(console.error);
     return () => { cancelled = true; };
   }, [selectedExchange, selectedSymbol, setSelectedSymbol, marketType]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([
+      marketApi.getPhase(),
+      marketApi.getSectorRps('industry', undefined, 5),
+      marketApi.getMovers(undefined, 5),
+    ]).then(([phase, rps, movers]) => {
+      if (cancelled) return;
+      setMarketPhase(phase.status === 'fulfilled' ? phase.value : null);
+      setSectorRps(rps.status === 'fulfilled' ? rps.value : []);
+      setMarketMovers(movers.status === 'fulfilled' ? movers.value : []);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const applyMarketDataCacheEntry = useCallback(function applyMarketDataCacheEntry(entry?: MarketDataCacheEntry | null): boolean {
     if (!entry?.klines?.length) return false;
@@ -324,6 +358,65 @@ export default function Market() {
           </div>
 
         </div>
+      </div>
+
+      <div className="mb-4 grid gap-3 xl:grid-cols-[1.2fr_1fr_1fr]">
+        <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card/90">
+          <div className="flex items-center justify-between border-b border-crypto-border/60 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-blue-300" />
+              <span className="text-sm font-semibold text-gray-100">市场阶段</span>
+            </div>
+            <span className={clsx('rounded-lg border px-2 py-1 text-[11px]', marketPhase?.status === 'ok' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/25 bg-amber-500/10 text-amber-300')}>
+              {marketPhase?.status || 'empty'}
+            </span>
+          </div>
+          <div className="px-4 py-3">
+            <div className="flex items-end gap-3">
+              <div className="text-xl font-semibold text-white">{marketPhase?.phase || 'unknown'}</div>
+              <div className="pb-0.5 text-xs tabular-nums text-gray-500">
+                置信度 {marketPhase ? `${Math.round(marketPhase.confidence * 100)}%` : '—'}
+              </div>
+            </div>
+            <div className="mt-2 line-clamp-2 text-xs leading-5 text-gray-500">
+              {(marketPhase?.reasons?.length ? marketPhase.reasons : marketPhase?.missingInputs || ['暂无已计算结果']).join(' · ')}
+            </div>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card/90">
+          <div className="flex items-center gap-2 border-b border-crypto-border/60 px-4 py-3">
+            <Layers3 className="h-4 w-4 text-cyan-300" />
+            <span className="text-sm font-semibold text-gray-100">行业 RPS</span>
+          </div>
+          <div className="divide-y divide-crypto-border/40">
+            {sectorRps.length ? sectorRps.slice(0, 3).map((row) => (
+              <div key={row.sectorCode} className="grid grid-cols-[minmax(0,1fr)_64px_54px] items-center gap-2 px-4 py-2.5 text-xs">
+                <span className="truncate text-gray-200">{row.sectorName}</span>
+                <span className="text-right tabular-nums text-blue-200">{formatRatioLabel(row.rpsPercentile)}</span>
+                <span className={clsx('text-right tabular-nums', (row.rankChange || 0) >= 0 ? 'text-up' : 'text-down')}>{row.rankChange == null ? '—' : `${row.rankChange >= 0 ? '+' : ''}${row.rankChange}`}</span>
+              </div>
+            )) : <div className="px-4 py-8 text-center text-xs text-gray-500">暂无 RPS 结果</div>}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card/90">
+          <div className="flex items-center gap-2 border-b border-crypto-border/60 px-4 py-3">
+            <Zap className="h-4 w-4 text-amber-300" />
+            <span className="text-sm font-semibold text-gray-100">异动标签</span>
+          </div>
+          <div className="divide-y divide-crypto-border/40">
+            {marketMovers.length ? marketMovers.slice(0, 3).map((row) => (
+              <button key={row.symbol} type="button" onClick={() => setSelectedSymbol(row.symbol)} className="grid w-full grid-cols-[minmax(0,1fr)_72px] items-center gap-2 px-4 py-2.5 text-left text-xs hover:bg-white/[0.03]">
+                <span className="min-w-0">
+                  <span className="block truncate font-mono text-gray-200">{row.symbol}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-gray-500">{(row.tags || []).join(' · ') || row.status || 'partial'}</span>
+                </span>
+                <span className={clsx('text-right font-semibold tabular-nums', (row.return3d || 0) >= 0 ? 'text-up' : 'text-down')}>{formatPercent(row.return3d)}</span>
+              </button>
+            )) : <div className="px-4 py-8 text-center text-xs text-gray-500">暂无异动结果</div>}
+          </div>
+        </section>
       </div>
 
       {loading && klines.length < MIN_KLINES_TO_RENDER ? (

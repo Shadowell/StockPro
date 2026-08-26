@@ -672,6 +672,209 @@ class PriceVolumeCorrKernel(FactorKernel):
         return 0.0 if denominator <= 0 else covariance / denominator
 
 
+@dataclass
+class _ReturnWindowState:
+    returns: deque[float]
+    previous_close: Optional[float] = None
+
+
+class MaxReturnKernel(FactorKernel):
+    name = "max_return"
+
+    def init_state(self, parameters: Mapping[str, Any]) -> _ReturnWindowState:
+        return _ReturnWindowState(returns=deque(maxlen=int(parameters["window"])))
+
+    def update(self, state: _ReturnWindowState, confirmed_bar: Bar, parameters: Mapping[str, Any]) -> Optional[float]:
+        close = float(confirmed_bar["close"])
+        if state.previous_close is None:
+            state.previous_close = close
+            return None
+        daily_return = None if state.previous_close <= 0 else (close / state.previous_close - 1.0) * 100.0
+        state.previous_close = close
+        if daily_return is None:
+            return None
+        state.returns.append(daily_return)
+        if len(state.returns) < state.returns.maxlen:
+            return None
+        return max(state.returns)
+
+
+class ReturnSkewKernel(FactorKernel):
+    name = "return_skew"
+
+    def init_state(self, parameters: Mapping[str, Any]) -> _ReturnWindowState:
+        return _ReturnWindowState(returns=deque(maxlen=int(parameters["window"])))
+
+    def update(self, state: _ReturnWindowState, confirmed_bar: Bar, parameters: Mapping[str, Any]) -> Optional[float]:
+        close = float(confirmed_bar["close"])
+        if state.previous_close is None:
+            state.previous_close = close
+            return None
+        if state.previous_close <= 0:
+            state.previous_close = close
+            return None
+        state.returns.append(close / state.previous_close - 1.0)
+        state.previous_close = close
+        if len(state.returns) < state.returns.maxlen:
+            return None
+        values = list(state.returns)
+        avg = sum(values) / len(values)
+        variance = sum((value - avg) ** 2 for value in values) / len(values)
+        std = sqrt(max(variance, 0.0))
+        if std <= 0:
+            return 0.0
+        return sum(((value - avg) / std) ** 3 for value in values) / len(values)
+
+
+class UpDaysKernel(FactorKernel):
+    name = "up_days"
+
+    def init_state(self, parameters: Mapping[str, Any]) -> _ReturnWindowState:
+        return _ReturnWindowState(returns=deque(maxlen=int(parameters["window"])))
+
+    def update(self, state: _ReturnWindowState, confirmed_bar: Bar, parameters: Mapping[str, Any]) -> Optional[float]:
+        close = float(confirmed_bar["close"])
+        if state.previous_close is None:
+            state.previous_close = close
+            return None
+        if state.previous_close <= 0:
+            state.previous_close = close
+            return None
+        state.returns.append(1.0 if close > state.previous_close else 0.0)
+        state.previous_close = close
+        if len(state.returns) < state.returns.maxlen:
+            return None
+        return sum(state.returns) / len(state.returns)
+
+
+@dataclass
+class _FieldWindowState:
+    values: deque[float]
+
+
+class TurnoverZScoreKernel(FactorKernel):
+    name = "turnover_zscore"
+
+    def init_state(self, parameters: Mapping[str, Any]) -> _FieldWindowState:
+        return _FieldWindowState(values=deque(maxlen=int(parameters["window"])))
+
+    def update(self, state: _FieldWindowState, confirmed_bar: Bar, parameters: Mapping[str, Any]) -> Optional[float]:
+        raw = confirmed_bar.get("turnover_rate")
+        if raw is None:
+            return None
+        value = float(raw)
+        state.values.append(value)
+        if len(state.values) < state.values.maxlen:
+            return None
+        avg, std = _mean_and_population_std(state.values)
+        return 0.0 if std <= 0 else (value - avg) / std
+
+
+class LimitUpCountKernel(FactorKernel):
+    name = "limit_up_count"
+
+    def init_state(self, parameters: Mapping[str, Any]) -> _FieldWindowState:
+        return _FieldWindowState(values=deque(maxlen=int(parameters["window"])))
+
+    def update(self, state: _FieldWindowState, confirmed_bar: Bar, parameters: Mapping[str, Any]) -> Optional[float]:
+        if "limit_up" not in confirmed_bar:
+            return None
+        raw = confirmed_bar.get("limit_up")
+        if isinstance(raw, str):
+            is_limit_up = raw.strip().lower() in {"1", "true", "t", "yes", "y"}
+        else:
+            is_limit_up = bool(raw)
+        state.values.append(1.0 if is_limit_up else 0.0)
+        if len(state.values) < state.values.maxlen:
+            return None
+        return float(sum(state.values))
+
+
+@dataclass
+class _AmihudState:
+    values: deque[float]
+    previous_close: Optional[float] = None
+
+
+class AmihudIlliquidityKernel(FactorKernel):
+    name = "amihud_illiq"
+
+    def init_state(self, parameters: Mapping[str, Any]) -> _AmihudState:
+        return _AmihudState(values=deque(maxlen=int(parameters["window"])))
+
+    def update(self, state: _AmihudState, confirmed_bar: Bar, parameters: Mapping[str, Any]) -> Optional[float]:
+        close = float(confirmed_bar["close"])
+        amount = float(confirmed_bar.get("amount") or confirmed_bar.get("quote_volume") or 0)
+        if state.previous_close is None:
+            state.previous_close = close
+            return None
+        if state.previous_close <= 0 or amount <= 0:
+            state.previous_close = close
+            return None
+        state.values.append(abs(close / state.previous_close - 1.0) / amount)
+        state.previous_close = close
+        if len(state.values) < state.values.maxlen:
+            return None
+        return sum(state.values) / len(state.values)
+
+
+@dataclass
+class _AmountRatioState:
+    amounts: deque[float]
+
+
+class AmountRatioKernel(FactorKernel):
+    name = "amount_ratio"
+
+    def init_state(self, parameters: Mapping[str, Any]) -> _AmountRatioState:
+        return _AmountRatioState(amounts=deque(maxlen=int(parameters["long_window"])))
+
+    def update(self, state: _AmountRatioState, confirmed_bar: Bar, parameters: Mapping[str, Any]) -> Optional[float]:
+        amount = float(confirmed_bar.get("amount") or confirmed_bar.get("quote_volume") or 0)
+        if amount <= 0:
+            return None
+        state.amounts.append(amount)
+        if len(state.amounts) < state.amounts.maxlen:
+            return None
+        short_window = int(parameters["short_window"])
+        short_mean = sum(list(state.amounts)[-short_window:]) / short_window
+        long_mean = sum(state.amounts) / len(state.amounts)
+        return None if long_mean <= 0 else short_mean / long_mean
+
+
+@dataclass
+class _GapState:
+    previous_close: Optional[float] = None
+
+
+class GapReturnKernel(FactorKernel):
+    name = "gap_return"
+
+    def init_state(self, parameters: Mapping[str, Any]) -> _GapState:
+        return _GapState()
+
+    def update(self, state: _GapState, confirmed_bar: Bar, parameters: Mapping[str, Any]) -> Optional[float]:
+        open_price = float(confirmed_bar["open"])
+        if state.previous_close is None:
+            state.previous_close = float(confirmed_bar["close"])
+            return None
+        previous_close = state.previous_close
+        state.previous_close = float(confirmed_bar["close"])
+        return None if previous_close <= 0 else (open_price / previous_close - 1.0) * 100.0
+
+
+class IntradayReturnKernel(FactorKernel):
+    name = "intraday_return"
+
+    def init_state(self, parameters: Mapping[str, Any]) -> None:
+        return None
+
+    def update(self, state, confirmed_bar: Bar, parameters: Mapping[str, Any]) -> Optional[float]:
+        open_price = float(confirmed_bar["open"])
+        close = float(confirmed_bar["close"])
+        return None if open_price <= 0 else (close / open_price - 1.0) * 100.0
+
+
 _KERNELS: dict[str, FactorKernel] = {
     kernel.name: kernel
     for kernel in (
@@ -691,6 +894,15 @@ _KERNELS: dict[str, FactorKernel] = {
         VolumeZScoreKernel(),
         MFIKernel(),
         PriceVolumeCorrKernel(),
+        MaxReturnKernel(),
+        ReturnSkewKernel(),
+        UpDaysKernel(),
+        TurnoverZScoreKernel(),
+        LimitUpCountKernel(),
+        AmihudIlliquidityKernel(),
+        AmountRatioKernel(),
+        GapReturnKernel(),
+        IntradayReturnKernel(),
     )
 }
 

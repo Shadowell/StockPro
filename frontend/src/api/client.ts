@@ -1078,6 +1078,52 @@ export interface FactorLabSummary {
   };
 }
 
+export interface MarketPhase {
+  tradeDate?: string | null;
+  phase: string;
+  status: string;
+  confidence: number;
+  reasons: string[];
+  missingInputs: string[];
+  definitionVersion: string;
+  availableAt?: string | null;
+  knowledgeCutoffAt?: string | null;
+}
+
+export interface SectorRpsRow {
+  tradeDate: string;
+  classificationSystem: 'industry' | 'concept';
+  sectorCode: string;
+  sectorName: string;
+  strengthScore?: number | null;
+  rpsPercentile?: number | null;
+  rank?: number | null;
+  rankChange?: number | null;
+  strongDays?: number | null;
+  memberCoverage?: number | null;
+  leaderSymbol?: string | null;
+  status: string;
+  missingInputs: string[];
+}
+
+export interface SymbolAbnormality {
+  symbol: string;
+  tradeDate?: string | null;
+  return3d?: number | null;
+  return10d?: number | null;
+  return30d?: number | null;
+  benchmarkDeviation3d?: number | null;
+  sectorDeviation3d?: number | null;
+  amountRatio5d?: number | null;
+  distanceTo60dHighPct?: number | null;
+  distanceTo60dLowPct?: number | null;
+  tags?: string[];
+  status?: string;
+  missingInputs?: string[];
+  dataStatus?: string;
+  unavailableReason?: string;
+}
+
 export type FactorResearchMode = 'manual' | 'auto' | 'hybrid';
 export type FactorResearchStatus = 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
@@ -1479,6 +1525,22 @@ export const marketApi = {
 
   getSymbols: (exchange: string, quote = 'CNY', marketType = 'stock'): Promise<{ symbols: string[]; instruments: MarketInstrument[] }> =>
     getReq('/market/symbols', { params: { exchange, quote, market_type: marketType } }),
+
+  getPhase: (tradeDate?: string): Promise<MarketPhase> =>
+    getReq('/market/phase', { params: { tradeDate } }),
+
+  getSectorRps: (
+    classificationSystem: 'industry' | 'concept' = 'industry',
+    tradeDate?: string,
+    limit = 10
+  ): Promise<SectorRpsRow[]> =>
+    getReq('/market/sector-rps', { params: { classificationSystem, tradeDate, limit } }),
+
+  getMovers: (tradeDate?: string, limit = 10): Promise<SymbolAbnormality[]> =>
+    getReq('/market/movers', { params: { tradeDate, limit } }),
+
+  getSymbolMover: (symbol: string, tradeDate?: string): Promise<SymbolAbnormality> =>
+    getReq(`/market/movers/${symbol}`, { params: { tradeDate } }),
 };
 
 export interface MarketInstrument {
@@ -2839,6 +2901,12 @@ export interface OrderflowSymbolStat {
 }
 
 export interface OrderflowStreamStatus {
+  dataStatus?: string;
+  providerSource?: string;
+  permissionState?: string;
+  frequency?: string;
+  tables?: string[];
+  setupPath?: string;
   enabled: boolean;
   connected: boolean;
   subscribedCount: number;

@@ -288,6 +288,13 @@ export default function OrderFlow() {
     : streamStatus?.enabled
       ? { text: '重连中', cls: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' }
       : { text: '未启用', cls: 'bg-gray-500/10 text-gray-400 border-gray-500/30' };
+  const providerMissing = Boolean(
+    streamStatus &&
+      !streamStatus.connected &&
+      streamStatus.permissionState === 'requires_configuration' &&
+      trades.length === 0 &&
+      bars.length === 0,
+  );
 
   return (
     <div className="space-y-4 p-4 text-gray-200">
@@ -396,6 +403,16 @@ export default function OrderFlow() {
         </div>
       )}
 
+      {providerMissing && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-yellow-500/25 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
+          <AlertTriangle className="h-4 w-4" />
+          <span>A 股 tick Provider 未配置</span>
+          <span className="text-yellow-100/70">
+            数据源 {streamStatus?.providerSource || 'Level-2/tick vendor'} · 权限 {streamStatus?.permissionState} · 频率 {streamStatus?.frequency} · 表 {(streamStatus?.tables || []).join(' / ')}
+          </span>
+        </div>
+      )}
+
       {/* KPI 行 */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {[
@@ -419,78 +436,82 @@ export default function OrderFlow() {
         ))}
       </div>
 
-      {/* 气泡图 */}
-      <div className={PANEL_PADDED_CLASS}>
-        <div className="mb-1 text-xs text-gray-500">
-          大单时间轴 · 气泡大小 = 单笔成交额（{formatSymbolLabel(symbol, symbolNames[symbol])}）
-        </div>
-        <div ref={bubbleRef} className="h-72 w-full" />
-        {trades.length === 0 && !loading && (
-          <div className="flex items-center justify-center gap-2 py-6 text-xs text-gray-500">
-            <Database className="h-4 w-4" />
-            当前窗口无大单数据——采集服务自部署起实时写入，数据随运行时间累积
+      {!providerMissing && (
+        <>
+          {/* 气泡图 */}
+          <div className={PANEL_PADDED_CLASS}>
+            <div className="mb-1 text-xs text-gray-500">
+              大单时间轴 · 气泡大小 = 单笔成交额（{formatSymbolLabel(symbol, symbolNames[symbol])}）
+            </div>
+            <div ref={bubbleRef} className="h-72 w-full" />
+            {trades.length === 0 && !loading && (
+              <div className="flex items-center justify-center gap-2 py-6 text-xs text-gray-500">
+                <Database className="h-4 w-4" />
+                当前窗口无大单数据——采集服务自部署起实时写入，数据随运行时间累积
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Delta 副图 */}
-      <div className={PANEL_PADDED_CLASS}>
-        <div className="mb-1 text-xs text-gray-500">
-          Bar 级主买/主卖净流与累积 CVD（{BAR_OPTIONS.find((b) => b.minutes === barMinutes)?.label}）
-        </div>
-        <div ref={deltaRef} className="h-56 w-full" />
-      </div>
+          {/* Delta 副图 */}
+          <div className={PANEL_PADDED_CLASS}>
+            <div className="mb-1 text-xs text-gray-500">
+              Bar 级主买/主卖净流与累积 CVD（{BAR_OPTIONS.find((b) => b.minutes === barMinutes)?.label}）
+            </div>
+            <div ref={deltaRef} className="h-56 w-full" />
+          </div>
 
-      {/* 明细表 */}
-      <div className={PANEL_CLASS}>
-        <div className="border-b border-crypto-border px-3 py-2 text-xs text-gray-500">
-          大单明细（最近 {Math.min(trades.length, 200)} / {trades.length} 笔）
-        </div>
-        <div className="max-h-80 overflow-auto">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-crypto-card text-gray-500">
-              <tr>
-                <th className="px-3 py-2 text-left font-normal">时间</th>
-                <th className="px-3 py-2 text-left font-normal">方向</th>
-                <th className="px-3 py-2 text-right font-normal">价格</th>
-                <th className="px-3 py-2 text-right font-normal">数量(股)</th>
-                <th className="px-3 py-2 text-right font-normal">名义(U)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trades.slice(0, 200).map((t) => (
-                <tr key={t.tradeId} className="border-t border-crypto-border/50">
-                  <td className="px-3 py-1.5 text-gray-400">{fmtTime(t.tradeTs)}</td>
-                  <td className="px-3 py-1.5">
-                    <span
-                      className={`inline-flex items-center gap-0.5 ${
-                        t.side === 'buy' ? 'text-up' : 'text-down'
-                      }`}
-                    >
-                      {t.side === 'buy' ? (
-                        <ArrowUpRight className="h-3 w-3" />
-                      ) : (
-                        <ArrowDownRight className="h-3 w-3" />
-                      )}
-                      {t.side === 'buy' ? '主买' : '主卖'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{t.px}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">
-                    {t.szBase < 1 ? t.szBase.toFixed(4) : t.szBase.toFixed(2)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">
-                    {fmtUsdt(t.notionalUsdt)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {trades.length === 0 && !loading && (
-            <div className="px-3 py-8 text-center text-xs text-gray-500">暂无明细</div>
-          )}
-        </div>
-      </div>
+          {/* 明细表 */}
+          <div className={PANEL_CLASS}>
+            <div className="border-b border-crypto-border px-3 py-2 text-xs text-gray-500">
+              大单明细（最近 {Math.min(trades.length, 200)} / {trades.length} 笔）
+            </div>
+            <div className="max-h-80 overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-crypto-card text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-normal">时间</th>
+                    <th className="px-3 py-2 text-left font-normal">方向</th>
+                    <th className="px-3 py-2 text-right font-normal">价格</th>
+                    <th className="px-3 py-2 text-right font-normal">数量(股)</th>
+                    <th className="px-3 py-2 text-right font-normal">名义(U)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trades.slice(0, 200).map((t) => (
+                    <tr key={t.tradeId} className="border-t border-crypto-border/50">
+                      <td className="px-3 py-1.5 text-gray-400">{fmtTime(t.tradeTs)}</td>
+                      <td className="px-3 py-1.5">
+                        <span
+                          className={`inline-flex items-center gap-0.5 ${
+                            t.side === 'buy' ? 'text-up' : 'text-down'
+                          }`}
+                        >
+                          {t.side === 'buy' ? (
+                            <ArrowUpRight className="h-3 w-3" />
+                          ) : (
+                            <ArrowDownRight className="h-3 w-3" />
+                          )}
+                          {t.side === 'buy' ? '主买' : '主卖'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{t.px}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">
+                        {t.szBase < 1 ? t.szBase.toFixed(4) : t.szBase.toFixed(2)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">
+                        {fmtUsdt(t.notionalUsdt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {trades.length === 0 && !loading && (
+                <div className="px-3 py-8 text-center text-xs text-gray-500">暂无明细</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

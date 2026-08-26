@@ -7,7 +7,7 @@ from typing import Any
 
 
 ALLOWED_FACTOR_FIELDS = frozenset(
-    {"open", "high", "low", "close", "volume", "quote_volume"}
+    {"open", "high", "low", "close", "volume", "quote_volume", "amount", "turnover_rate", "limit_up"}
 )
 ALLOWED_FACTOR_OPERATORS = frozenset(
     {
@@ -58,10 +58,18 @@ ALLOWED_FACTOR_OPERATORS = frozenset(
         "volume_zscore",
         "mfi",
         "price_volume_corr",
+        "max_return",
+        "return_skew",
+        "up_days",
+        "zscore",
+        "count",
+        "amihud",
+        "ratio",
+        "lag",
     }
 )
 _OPERATOR_KEYS = frozenset(
-    {"op", "args", "left", "right", "condition", "true", "false", "field", "window", "periods"}
+    {"op", "args", "left", "right", "condition", "true", "false", "field", "window", "periods", "bars"}
 )
 
 
@@ -116,7 +124,7 @@ def _validate_node(
                 raise FactorExpressionError(f"{path}: future references are forbidden")
 
         for key, value in node.items():
-            if key in {"op", "field", "window", "periods"}:
+            if key in {"op", "field", "window", "periods", "bars"}:
                 _validate_parameter_reference(
                     value,
                     path=f"{path}.{key}",

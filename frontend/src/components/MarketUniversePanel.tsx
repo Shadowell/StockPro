@@ -155,7 +155,7 @@ const HOME_RANKING_TABS: { key: HomeRankingKey; label: string; desc: string; ico
   { key: 'losers', label: '跌幅榜', desc: '当日跌幅', icon: <TrendingDown className="h-4 w-4 text-rose-300" /> },
 ];
 const HOME_TICKER_RANKING_GRID =
-  'grid-cols-[minmax(300px,1.35fr)_112px_92px_120px_116px_124px_minmax(220px,0.9fr)]';
+  'grid-cols-[minmax(220px,1.45fr)_96px_76px_88px_100px_108px_96px]';
 const HOME_TICKER_RANKING_VALUE_CLASS = 'self-start pt-0.5';
 const HOME_RANKING_TABLE_HEADER_CLASS =
   'sticky top-0 z-10 grid items-center gap-x-3 border-y border-slate-500/25 bg-slate-800/80 px-4 py-2.5 text-xs font-semibold tracking-[0.04em] text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur';
@@ -174,25 +174,25 @@ const MARKET_TAB_META: Record<MarketTabKey, { title: string; desc: string; accen
     accent: 'text-amber-300',
   },
   crypto: {
-    title: 'USDT 现货市场',
-    desc: '覆盖高流动性 USDT 现货，用于观察主流资产的实时价格、成交额和强弱排序。',
+    title: 'ETF 市场',
+    desc: '覆盖高流动性 ETF，用于观察主题资金、成交额和强弱排序。',
     accent: 'text-sky-300',
   },
   spot: {
-    title: '币币交叉盘',
-    desc: '展示 BTC 计价交易对，帮助判断山寨币相对 BTC 的强弱和资金轮动。',
+    title: '指数市场',
+    desc: '展示主要指数，用于判断大盘、风格和主题轮动。',
     accent: 'text-violet-300',
   },
   futures: {
-    title: 'USDT 永续合约',
-    desc: '聚焦 A 股现釗标的的涨跌、成交额和策略候选。',
+    title: '股票市场',
+    desc: '聚焦 A 股现货标的的涨跌、成交额和策略候选。',
     accent: 'text-emerald-300',
   },
 };
 
 const HOME_SUMMARY_META = {
   title: 'A 股市场榜单',
-  desc: '聚合合约、新币、TradFi 和 24h 强弱排行，帮助先看市场氛围，再进入行情页查看具体 K 线。',
+  desc: '聚合股票、ETF、指数和当日强弱排行，帮助先看市场氛围，再进入行情页查看具体 K 线。',
   accent: 'text-blue-300',
 };
 
@@ -369,13 +369,13 @@ function generateSparkline(low: number, high: number, last: number, changePct: n
 function SparklineChart({ data, isUp }: { data: number[]; isUp: boolean }) {
   const { upColor, downColor } = useSettingsStore((s) => s.getColors());
 
-  if (!data || data.length < 2) return <div className="h-[40px] w-[120px]" />;
+  if (!data || data.length < 2) return <div className="h-[28px] w-[86px]" />;
 
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
-  const width = 120;
-  const height = 40;
+  const width = 86;
+  const height = 28;
   const padding = 2;
   const points = data.map((val, i) => {
     const x = padding + (i / (data.length - 1)) * (width - padding * 2);
@@ -396,24 +396,20 @@ function SparklineChart({ data, isUp }: { data: number[]; isUp: boolean }) {
   );
 }
 
-function RangeBar({ low, high, current, quote }: { low: number; high: number; current: number; quote: string }) {
+function RangeBar({ low, high, current, quote: _quote }: { low: number; high: number; current: number; quote: string }) {
   const range = high - low || 1;
   const pct = Math.max(0, Math.min(100, ((current - low) / range) * 100));
 
   return (
-    <div className="flex items-center space-x-2 text-xs">
-      <span className="w-[86px] text-right font-mono text-gray-500">
-        {formatPrice(low, quote)}
-      </span>
-      <div className="relative h-1 min-w-[60px] flex-1 rounded-full bg-gray-700">
+    <div className="inline-flex h-7 w-[88px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.035] px-2 text-[10px] text-gray-500">
+      <span className="font-semibold text-gray-400">1D</span>
+      <div className="relative h-1 min-w-0 flex-1 rounded-full bg-gray-700">
         <div
           className="absolute top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-white"
           style={{ left: `${pct}%` }}
         />
       </div>
-      <span className="w-[86px] font-mono text-gray-500">
-        {formatPrice(high, quote)}
-      </span>
+      <span className="w-6 text-right font-mono tabular-nums text-gray-400">{Number.isFinite(pct) ? `${pct.toFixed(0)}` : '—'}</span>
     </div>
   );
 }
@@ -548,7 +544,7 @@ function HomeRankingBoard({
             <div>
               <div className="text-sm font-semibold text-gray-100">{activeTab.label}明细</div>
               <div className="mt-0.5 text-[11px] text-gray-500">
-                {isFundingTab ? 'A股证据' : 'PostgreSQL ticker'} · {activeTab.desc}
+                {isFundingTab ? 'A股证据' : 'PostgreSQL 行情'} · {activeTab.desc}
               </div>
             </div>
           </div>
@@ -623,11 +619,11 @@ function HomeRankingBoard({
               <div className={`${HOME_RANKING_TABLE_HEADER_CLASS} ${HOME_TICKER_RANKING_GRID}`}>
                 <span>标的</span>
                 <span>最新价</span>
-                <span>24h 涨跌</span>
-                <span className="text-center">24h 走势</span>
-                <span>24h 成交量</span>
-                <span>24h 成交额</span>
-                <span>24h 区间</span>
+                <span>当日涨跌</span>
+                <span className="text-center">当日走势</span>
+                <span>当日成交量</span>
+                <span>当日成交额</span>
+                <span>当日区间</span>
               </div>
 
               {items.length === 0 ? (
@@ -1544,16 +1540,16 @@ export default function MarketUniversePanel({
           最新价 <SortIcon k="price" />
         </button>
         <button type="button" onClick={() => handleSort('change')} className="flex items-center text-left hover:text-gray-300">
-          24h 涨跌 <SortIcon k="change" />
+          当日涨跌 <SortIcon k="change" />
         </button>
-        <span className="text-center">24h 走势</span>
+        <span className="text-center">当日走势</span>
         <button type="button" onClick={() => handleSort('base_volume')} className="flex items-center text-left hover:text-gray-300">
-          24h 成交量 <SortIcon k="base_volume" />
+          当日成交量 <SortIcon k="base_volume" />
         </button>
         <button type="button" onClick={() => handleSort('volume')} className="flex items-center text-left hover:text-gray-300">
-          24h 成交额 <SortIcon k="volume" />
+          当日成交额 <SortIcon k="volume" />
         </button>
-        <span className="text-left">24h 区间</span>
+        <span className="text-left">当日区间</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4">

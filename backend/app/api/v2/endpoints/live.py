@@ -10,6 +10,7 @@ from app.domain.paper import paper_domain_service
 from app.domain.paper.cycle import PaperCycleService
 from app.domain.paper.cycle_repository import PostgresPaperCycleRepository
 from app.domain.backtest.strategy_process import StrategyProcessRunner
+from app.services.ashare_execution import explicit_instrument_key
 
 
 router = APIRouter()
@@ -48,6 +49,55 @@ def _require_write(request: Request) -> None:
 def _translate(exc: ValueError) -> HTTPException:
     code = 404 if "不存在" in str(exc) else 422
     return HTTPException(status_code=code, detail=str(exc))
+
+
+def _missing_paper_account(exc: ValueError) -> bool:
+    return str(exc) == "没有可用 A 股 Paper 账户"
+
+
+def _empty_watch_market(account_id: str, symbol: str, timeframe: str, message: str) -> dict[str, object]:
+    normalized = explicit_instrument_key(symbol) or symbol
+    return {
+        "account_id": account_id,
+        "exchange": "CN",
+        "symbol": normalized,
+        "timeframe": timeframe,
+        "ticker": {
+            "symbol": normalized,
+            "last": 0,
+            "open": 0,
+            "high": 0,
+            "low": 0,
+            "volume": 0,
+            "change_percent": 0,
+        },
+        "klines": [],
+        "orderbook": {"bids": [], "asks": []},
+        "recent_trades": [],
+        "positions": [],
+        "data_status": "unavailable",
+        "message": message,
+    }
+
+
+def _empty_derivatives(account_id: str, symbol: str, timeframe: str) -> dict[str, object]:
+    normalized = explicit_instrument_key(symbol) or symbol
+    empty = {
+        "points": None,
+        "status": "not_applicable",
+        "message": "A 股 Paper 盯盘不使用合约衍生品指标",
+    }
+    return {
+        "account_id": account_id,
+        "exchange": "CN",
+        "symbol": normalized,
+        "timeframe": timeframe,
+        "open_interest": dict(empty),
+        "funding_rate": dict(empty),
+        "long_short_ratio": dict(empty),
+        "taker_volume": dict(empty),
+        "basis": dict(empty),
+    }
 
 
 @router.get("/instances")
@@ -163,6 +213,8 @@ async def paper_watch_market(
     try:
         return ok(await paper_domain_service.watch_market(account_id, symbol, timeframe, limit))
     except ValueError as exc:
+        if _missing_paper_account(exc):
+            return ok(_empty_watch_market(account_id, symbol, timeframe, str(exc)))
         raise _translate(exc) from exc
 
 
@@ -172,7 +224,24 @@ async def paper_watch_markers(
     account_id: str = Query("paper"),
     limit: int = Query(400, ge=1, le=1000),
 ):
-    return ok({"account_id": account_id, "exchange": "CN", "symbol": symbol, "markers": await paper_domain_service.trade_markers(account_id, symbol, limit)})
+    try:
+        markers = await paper_domain_service.trade_markers(account_id, symbol, limit)
+    except ValueError as exc:
+        if not _missing_paper_account(exc):
+            raise _translate(exc) from exc
+        markers = []
+    return ok({"account_id": account_id, "exchange": "CN", "symbol": explicit_instrument_key(symbol) or symbol, "markers": markers})
+
+
+@router.get("/watchlist/derivatives-data")
+async def paper_watch_derivatives_data(
+    symbol: str,
+    account_id: str = Query("paper"),
+    timeframe: str = Query("1d"),
+    limit: int = Query(120, ge=1, le=500),
+):
+    _ = limit
+    return ok(_empty_derivatives(account_id, symbol, timeframe))
 
 
 @router.get("/accounts/{account_id}/positions")

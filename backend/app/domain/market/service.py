@@ -276,5 +276,42 @@ class MarketDomainService:
     async def market_pulse(self) -> Dict:
         return await asyncio.to_thread(self.repo.market_pulse)
 
+    async def get_market_phase(self, trade_date: str | None = None) -> Dict:
+        return await asyncio.to_thread(self.repo.get_market_phase, trade_date)
+
+    async def list_sector_rps(
+        self,
+        *,
+        trade_date: str | None = None,
+        classification_system: str = "industry",
+        limit: int = 20,
+    ) -> Dict:
+        return await asyncio.to_thread(
+            self.repo.list_sector_rps,
+            trade_date=trade_date,
+            classification_system=classification_system,
+            limit=limit,
+        )
+
+    async def get_sector_rps_history(
+        self,
+        sector_code: str,
+        *,
+        classification_system: str = "industry",
+        limit: int = 60,
+    ) -> Dict:
+        return await asyncio.to_thread(
+            self.repo.get_sector_rps_history,
+            sector_code,
+            classification_system=classification_system,
+            limit=limit,
+        )
+
+    async def list_symbol_abnormalities(self, *, trade_date: str | None = None, limit: int = 20) -> Dict:
+        return await asyncio.to_thread(self.repo.list_symbol_abnormalities, trade_date=trade_date, limit=limit)
+
+    async def get_symbol_abnormality(self, symbol: str, *, trade_date: str | None = None) -> Dict:
+        return await asyncio.to_thread(self.repo.get_symbol_abnormality, symbol, trade_date=trade_date)
+
 
 market_domain_service = MarketDomainService()

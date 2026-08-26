@@ -20,7 +20,7 @@ def read_text(path: str) -> str:
     return (PROJECT_ROOT / path).read_text(encoding="utf-8")
 
 
-def test_factorlab_bootstrap_registers_sixteen_default_instances_idempotently(tmp_path) -> None:
+def test_factorlab_bootstrap_registers_default_instances_idempotently(tmp_path) -> None:
     from app.services.factorlab_service import FactorLabService
 
     database = LocalDatabase(str(tmp_path / "factorlab-workbench.db"))
@@ -34,8 +34,8 @@ def test_factorlab_bootstrap_registers_sixteen_default_instances_idempotently(tm
     assert summary["status"] == "ready"
     assert summary["phase"] == "phase2_ml_research"
     assert summary["statistics"] == {
-        "definition_count": 16,
-        "instance_count": 16,
+        "definition_count": 26,
+        "instance_count": 26,
         "latest_value_count": 0,
         "materialized_partition_count": 0,
         "research_task_count": 0,
@@ -43,9 +43,18 @@ def test_factorlab_bootstrap_registers_sixteen_default_instances_idempotently(tm
     }
     assert [row["definition_id"] for row in summary["definitions"]] == [
         "chop.price_ema_cross_count",
+        "event.limit_up_count_20d",
+        "event.limit_up_count_60d",
+        "liquidity.amihud_20d",
+        "liquidity.turnover_z_60d",
         "momentum.kdj_j",
+        "momentum.max_return_20d",
+        "momentum.return_skew_20d",
         "momentum.roc",
         "momentum.rsi",
+        "momentum.up_days_20d",
+        "price.gap_return",
+        "price.intraday_return",
         "reversal.bollinger_zscore",
         "trend.adx",
         "trend.efficiency_ratio",
@@ -53,6 +62,7 @@ def test_factorlab_bootstrap_registers_sixteen_default_instances_idempotently(tm
         "trend.macd_hist_atr",
         "volatility.atr_pct",
         "volatility.bollinger_bandwidth",
+        "volume.amount_ratio_5d",
         "volume.mfi",
         "volume.obv_slope",
         "volume.price_volume_corr",
@@ -70,6 +80,9 @@ def test_factorlab_bootstrap_registers_sixteen_default_instances_idempotently(tm
         '{"window":12}',
         '{"window":14}',
         '{"window":20}',
+        '{"window":60}',
+        '{"long_window":20,"short_window":5}',
+        '{}',
     }
     assert summary["capabilities"] == {
         "api_mode": "controlled_research",
@@ -105,8 +118,8 @@ def test_factorlab_bootstrap_does_not_create_instances_for_future_custom_definit
     service.bootstrap()
     summary = service.summary()
 
-    assert summary["statistics"]["definition_count"] == 17
-    assert summary["statistics"]["instance_count"] == 16
+    assert summary["statistics"]["definition_count"] == 27
+    assert summary["statistics"]["instance_count"] == 26
 
 
 def test_factorlab_summary_endpoint_returns_real_catalog(monkeypatch, tmp_path) -> None:
@@ -126,8 +139,54 @@ def test_factorlab_summary_endpoint_returns_real_catalog(monkeypatch, tmp_path) 
     assert response.status_code == 200
     payload = response.json()
     assert payload["success"] is True
-    assert payload["data"]["statistics"]["definition_count"] == 16
+    assert payload["data"]["statistics"]["definition_count"] == 26
     assert payload["data"]["latest_values"] == []
+
+
+def test_factorlab_pit_fundamentals_returns_unavailable_before_migration(monkeypatch) -> None:
+    from app.api.v2.endpoints import factorlab
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, *_args, **_kwargs):
+            return None
+
+        def fetchone(self):
+            return {"to_regclass": None}
+
+    class Connection:
+        def set_session(self, **_kwargs):
+            return None
+
+        def cursor(self, **_kwargs):
+            return Cursor()
+
+        def rollback(self):
+            return None
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(factorlab, "factorlab_service", None)
+    monkeypatch.setattr(factorlab.settings, "DATABASE_URL", "postgresql://example/test")
+    monkeypatch.setattr(factorlab.psycopg2, "connect", lambda *_args, **_kwargs: Connection())
+
+    app = FastAPI()
+    app.include_router(factorlab.router, prefix="/api/v2/factorlab")
+    response = TestClient(app).get(
+        "/api/v2/factorlab/fundamentals/pit?symbol=600519.SH&simulated_at=2026-08-26T09:30:00%2B08:00"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"]["data_status"] == "unavailable"
+    assert payload["data"]["items"] == []
 
 
 def test_factorlab_route_sidebar_client_and_workbench_are_registered() -> None:
@@ -159,7 +218,7 @@ def test_factorlab_route_sidebar_client_and_workbench_are_registered() -> None:
         assert label in page
 
     assert "factorLabApi.getSummary()" in page
-    assert "factorLabApi.createResearchTask" in page
+    assert "启动研究待接通" in page
     assert "factorLabApi.listResearchTasks" in page
     assert "factorLabApi.listResearchTrials" in page
     assert "factorLabApi.pauseResearchTask" in page
@@ -186,12 +245,12 @@ def test_factorlab_route_sidebar_client_and_workbench_are_registered() -> None:
         "混合组合",
         "思考深度",
         "速度",
-        "启动研究",
+        "启动研究待接通",
         "暂停",
         "恢复",
         "20bps",
         "40bps",
-        "不会自动创建 Paper",
+        "不创建任务或 Paper",
         "拒绝原因",
     ]:
         assert label in page
@@ -203,7 +262,7 @@ def test_factorlab_copy_distinguishes_registered_instances_and_default_status() 
 
     for text in (page, docs):
         assert "已注册参数实例" in text
-        assert "默认内置十六个；目录读取全部已注册" in text
+        assert "默认内置二十六个；目录读取全部已注册" in text
     assert "instance.isDefault ? '默认实例' : '已注册实例'" in page
 
 
@@ -212,7 +271,7 @@ def test_factorlab_nav_sits_between_data_and_onchain() -> None:
 
     data_index = layout.index("{ path: '/data', icon: Database, label: '数据'")
     factor_index = layout.index("{ path: '/factorlab', icon: LibraryBig, label: '因子'")
-    onchain_index = layout.index("{ path: '/onchain', icon: Network, label: '链上'")
+    onchain_index = layout.index("{ path: '/onchain', icon: Network, label: '基本面'")
 
     assert data_index < factor_index < onchain_index
 
@@ -220,4 +279,4 @@ def test_factorlab_nav_sits_between_data_and_onchain() -> None:
 def test_sidebar_remains_scrollable_after_factorlab_menu_is_added() -> None:
     layout = read_text("frontend/src/components/MainLayout.tsx")
 
-    assert '<nav className="flex-1 overflow-y-auto py-4">' in layout
+    assert '<nav className="flex-1 overflow-y-auto py-3" aria-label="主导航">' in layout

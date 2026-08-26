@@ -3891,8 +3891,27 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - BitPro 对应盯盘源码 `WatchMarket.tsx`（765 行）与 `LiveAccountSummaryPanels` 已原样导入但未注册；默认 `/watch` 保持当前 A 股五工作区，只读 Paper 信号/订单/成交/规则/告警。TypeScript 与安全审计通过，活动 live 路由仍为 0。
 - BitPro 当前 `App.tsx`、`MainLayout.tsx` 与 `index.css` 已逐字保存为 `_quarantine/BitPro*.disabled` 基线；活动 App/MainLayout 保留 A 股 13 个 Owner 路由和 Paper-only 安全差异。BitPro 的 livePulse、progressShimmer、rowFadeIn 与 reduced-motion 动效已原样补入活动 `index.css`。
 
+## 2026-08-27 Open Issue Closure
+
+- GitHub issue #24/#26/#27/#29 已落地只读研究指标面：新增市场六阶段、行业 RPS、3/10/30 日异动/关键位置和 point-in-time 基本面读取合同；后端保留 `definition_version`、`source_snapshot_id`、`available_at`、`knowledge_cutoff_at`、缺失项和 partial 状态，前端 Market/Home 显示真实可用/缺失状态而不补假数据。
+- GitHub issue #25 数据证据链补齐：A 股日同步在单事务内同时发布 `security_master`、`daily_bars`、`trade_calendar`、`daily_basic`、`adj_factor`、`suspensions`、`price_limits`、`corporate_actions`、`benchmark_bars` 并封存 research snapshot；空停牌/分红日允许封存为空分区。
+- GitHub issue #28 新增 10 个 FactorLab 探索因子：20 日最大单日收益、20 日收益偏度、20 日上涨天数占比、60 日换手 Z-Score、20/60 日涨停次数、Amihud 20 日非流动性、5/20 成交额比、跳空收益和日内收益；输入不足保持 null/预热，不写入阈值。
+- GitHub issue #30 回测长任务恢复已加固：worker 在封存 run 后清理超时可用 `BacktestResultDelivered` 标记 success，并保留 cleanup warning；重复 start 不占用新 worker，后端重启后的 active job 在公共视图中标记 interrupted。代码注释明确下游证据必须是 `success + sealed backtest_run_id`。
+- GitHub issue #31/#32/#33 前端收口：FactorLab 控件、面板、状态 chip、表格和空态统一圆角与 operator UI；Home/Market 新增市场阶段、行业 RPS、异动标的入口；行情榜单右侧指标和 sparkline 压缩到稳定窄列，并将用户可见文案收敛为 A 股日线语义。
+- Verification: `backend/venv/bin/python -m pytest -q` 通过 141 项；目标测试 `tests/test_ashare_research_metrics.py tests/test_factor_lab_phase1.py tests/test_factorlab_workbench.py tests/test_backtest_long_task_semantics.py` 通过 44 项；`tests/test_home_market_tabs.py` 通过 16 项；`npm --prefix frontend run check/build/lint/check:bundle-budget` 与 production dependency audit 均通过；`./scripts/check.sh` 完整通过，含 29 项 Mock Playwright。
+
 ## 2026-08-27 首页指标与 A 股研究数据集
 
 - A 股每日同步不再只写业务行情表；同步链路会在同一成功 run 内规范化并发布 `security_master`、`trade_calendar`、`daily_bars`、`adj_factor`、`daily_basic`、`suspensions`、`price_limits`、`corporate_actions`、`benchmark_bars` 九类研究数据分区，写入 fetch run、水位、partition records，并生成 sealed dataset snapshot。允许当日停牌/除权除息为空，其余必需数据集为空时 fail-closed。
 - 首页新增“市场指标看板”，直接接入真实 `/market/phase`、`/market/sector-rps`、`/market/movers` 与 A 股 symbols/instruments；市场阶段、行业 RPS、异动标的、数据可用状态同屏展示，异动和龙头标的按“中文名（代码）”显示，不生成 mock 指标。
 - 验证通过：`npm run check`、`pytest -q` 141 项、`git diff --check`、本地 4445/4444 启动后 `/api/v2/system/health`、前端根页面和 `/api/v2/market/phase` 探测。当前本地研究指标接口返回 `unavailable` 的原因是 `market_phase_results` 等指标结果表尚未迁移到当前运行库。
+
+## 2026-08-27 Issue closure hardening
+
+- GitHub issue #35 完成 `scripts/setup_isolation_db.sh`、`scripts/provision_isolation_db.py`、Docker init SQL 和隔离库测试恢复；`scripts/check.sh` 现在在执行前强制要求 `DATABASE_URL` 指向 `stockpro_bitpro_rebase_dev`，普通 setup 日志脱敏连接串，`--print-url` 专供 shell export。
+- GitHub issue #36 修复 `/api/health/storage` 固定 false negative：health 现在用只读 PostgreSQL 探测返回连接状态、已应用迁移数、预期迁移数和 pending 数；隔离库 smoke 为 `healthy`、44/44、`writes_performed=false`。
+- GitHub issue #37/#38/#39 修复前后端契约漂移：旧 `/pools`、`/factors`、`/paper` 分别重定向到 `/arbitrage`、`/factorlab`、`/live`；`/sync/assets|data|quality|jobs`、Paper 盯盘空账户和 `/live/watchlist/derivatives-data` 均返回 200 且不伪造数据。
+- GitHub issue #42 资金流页增加 Provider 边界：后端 `stream-status` 明确 A 股 Level-2/tick vendor、权限、频率和目标表；前端在 `requires_configuration` 且无数据时收缩为短配置状态条，不渲染大面积空图。
+- GitHub issue #43 接通 A 股 research-workbench 本地 PostgreSQL ledger：新增 mandate/job/candidate/paper promotion/observation 表，POST 可保存任务输入、Provider 快照、输出、成本和版本证据；无 LLM Provider 时 run job fail-closed 为 `LLM Provider not configured`，不生成候选、不创建回测、不改 Paper。
+- GitHub issue #41 完成受控最小闭环脚本：`scripts/create_minimal_research_chain.py` 默认只 dry-run，从真实 `stock_history` 读取最新/前一交易日收盘价并计算因子、股票池、策略验证、sealed 回测、Paper 实例和复盘记录；真正写入必须同时提供 `--apply`、`--confirm-production-sample-write I_UNDERSTAND_THIS_WRITES_PRODUCTION_SAMPLE_DATA` 和 `STOCKPRO_ALLOW_PRODUCTION_SAMPLE_WRITE=1`，生产 apply 仍需用户显式授权。
+- Verification: `DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)" ./scripts/check.sh` 完整通过；`tests/test_minimal_research_chain_script.py` 通过 4 项；最小闭环脚本在隔离库 dry-run 与带确认 apply 均通过，二次 apply 幂等；本地重启 4445/4444 后 `/api/health`、`/api/health/storage`、`/sync/quality`、`/live/watchlist/derivatives-data`、`/orderflow/stream-status`、`/research-workbench/summary` 与前端 `/`、`/factors`、`/paper`、`/pools` smoke 通过。

@@ -129,3 +129,58 @@ async def lookup_symbol_names(symbols: str = Query("", max_length=10000)):
     requested = [item.strip() for item in symbols.split(",") if item.strip()][:500]
     names = await market_domain_service.lookup_names(requested)
     return ok({"names": names, "total": len(names)})
+
+
+@router.get("/phase")
+async def get_market_phase(
+    trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新"),
+):
+    return ok(await market_domain_service.get_market_phase(trade_date))
+
+
+@router.get("/sector-rps")
+async def get_sector_rps(
+    trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新"),
+    classification_system: str = Query("industry", pattern="^(industry|concept)$"),
+    limit: int = Query(20, ge=1, le=200),
+):
+    payload = await market_domain_service.list_sector_rps(
+        trade_date=trade_date,
+        classification_system=classification_system,
+        limit=limit,
+    )
+    meta = {key: value for key, value in payload.items() if key != "items"}
+    return ok(payload.get("items", []), meta=meta)
+
+
+@router.get("/sector-rps/{sector_code}/history")
+async def get_sector_rps_history(
+    sector_code: str,
+    classification_system: str = Query("industry", pattern="^(industry|concept)$"),
+    limit: int = Query(60, ge=1, le=250),
+):
+    payload = await market_domain_service.get_sector_rps_history(
+        sector_code,
+        classification_system=classification_system,
+        limit=limit,
+    )
+    meta = {key: value for key, value in payload.items() if key != "items"}
+    return ok(payload.get("items", []), meta=meta)
+
+
+@router.get("/movers")
+async def get_market_movers(
+    trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新"),
+    limit: int = Query(20, ge=1, le=200),
+):
+    payload = await market_domain_service.list_symbol_abnormalities(trade_date=trade_date, limit=limit)
+    meta = {key: value for key, value in payload.items() if key != "items"}
+    return ok(payload.get("items", []), meta=meta)
+
+
+@router.get("/movers/{symbol}")
+async def get_symbol_mover(
+    symbol: str,
+    trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新"),
+):
+    return ok(await market_domain_service.get_symbol_abnormality(symbol, trade_date=trade_date))

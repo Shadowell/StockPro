@@ -118,17 +118,17 @@ export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 
 ## 13 个一级工作区
 
-操作台以“策略 → 回测 → 模拟”为唯一执行主线，其余为研究与运行辅助。实盘、链上、套利和 ARC 不注册路由。
+操作台以“策略 → 回测 → 模拟”为唯一执行主线，其余为研究与运行辅助。旧版 `/pools`、`/factors`、`/paper` 保留为兼容重定向，不作为最终截图或验收入口。
 
 | 工作区 | 路由 | 主要用途 | 页面合同 |
 | --- | --- | --- | --- |
 | 首页 | `/` | 市场总览 | [首页](docs/pages/首页.md) |
 | 行情 | `/market` | 市场结构、情绪、事件、日历与个股研究 | [行情](docs/pages/行情.md) |
-| 股票池 | `/pools` | 规则、生成记录、快照与回测衔接 | [股票池](docs/pages/股票池.md) |
-| 因子 | `/factors` | 因子目录、计算、分析、相关性与因子值 | [因子库](docs/pages/因子库.md) |
+| 股票池/价差 | `/arbitrage` | 规则、生成记录、快照与回测衔接 | [股票池](docs/pages/股票池.md) |
+| 因子 | `/factorlab` | 因子目录、计算、分析、相关性与因子值 | [因子库](docs/pages/因子库.md) |
 | 策略 | `/strategy` | 策略目录、代码、参数、版本和验证 | [策略中心](docs/pages/策略中心.md) |
 | 回测 | `/backtest` | 异步任务、实验结果和完整证据 | [回测](docs/pages/回测.md) |
-| 模拟 | `/paper` | Paper 实例、模拟订单、成交、持仓与风控 | [模拟盘](docs/pages/模拟盘.md) |
+| 模拟 | `/live` | Paper 实例、模拟订单、成交、持仓与风控 | [模拟盘](docs/pages/模拟盘.md) |
 | 盯盘 | `/watch` | 信号与执行证据的人工观察面 | [盯盘](docs/pages/盯盘.md) |
 | 信号 | `/signals` | 信号 payload、Paper lineage 与投递审计 | [信号中心](docs/pages/信号中心.md) |
 | 监控 | `/monitor` | 策略、数据、风险与通知健康状态 | [监控](docs/pages/监控.md) |

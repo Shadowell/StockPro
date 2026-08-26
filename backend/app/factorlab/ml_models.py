@@ -7,11 +7,6 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
-import sklearn
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 
 
 class FactorModelError(ValueError):
@@ -23,6 +18,18 @@ class ModelPrediction:
     model_type: str
     values: tuple[float, ...]
     manifest: Mapping[str, Any]
+
+
+def _load_sklearn():
+    try:
+        import sklearn
+        from sklearn.impute import SimpleImputer
+        from sklearn.linear_model import LogisticRegression, Ridge
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+    except ImportError as exc:
+        raise FactorModelError("scikit-learn is required for FactorLab model training") from exc
+    return sklearn, SimpleImputer, LogisticRegression, Ridge, Pipeline, StandardScaler
 
 
 def _feature_matrix(frame: pd.DataFrame, feature_ids: tuple[str, ...], *, name: str) -> np.ndarray:
@@ -66,6 +73,7 @@ def train_and_predict(
         raise FactorModelError("feature_ids must be non-empty and unique")
     if train_frame.empty or test_frame.empty:
         raise FactorModelError("train and test frames must be non-empty")
+    sklearn, SimpleImputer, LogisticRegression, Ridge, Pipeline, StandardScaler = _load_sklearn()
     train_x = _feature_matrix(train_frame, features, name="train")
     test_x = _feature_matrix(test_frame, features, name="test")
     seed = int(seed)

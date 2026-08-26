@@ -42,6 +42,9 @@ function AppRoutes() {
         <Route index element={<Home />} />
         <Route path="market" element={<Market />} />
         <Route path="trading" element={<Navigate to="/" replace />} />
+        <Route path="pools" element={<Navigate to="/arbitrage" replace />} />
+        <Route path="factors" element={<Navigate to="/factorlab" replace />} />
+        <Route path="paper" element={<Navigate to="/live" replace />} />
         <Route path="strategy" element={<Strategy />} />
         <Route path="backtest" element={<Backtest />} />
         <Route path="arbitrage" element={<ArbitrageCenter />} />

@@ -4,11 +4,49 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON_BIN="$ROOT_DIR/backend/venv/bin/python"
+SETUP_CMD="./scripts/setup_isolation_db.sh"
+ISOLATION_DB="stockpro_bitpro_rebase_dev"
 if [ ! -x "$PYTHON_BIN" ]; then
   PYTHON_BIN="python3"
 fi
 
 echo "[check] repository root: $ROOT_DIR"
+
+isolation_setup_hint() {
+  echo "[check] Isolation database '${ISOLATION_DB}' is required for this golden path." >&2
+  echo "[check] Create it with one command:" >&2
+  echo "[check]   ${SETUP_CMD}" >&2
+  echo "[check] Then:" >&2
+  echo "[check]   export DATABASE_URL=\"\$(${SETUP_CMD} --print-url)\"" >&2
+  echo "[check]   ${SETUP_CMD} --migrate" >&2
+  echo "[check] Docs: docs/deployment.md#isolation-database" >&2
+}
+
+load_database_url_from_env_file() {
+  if [ "${STOCKPRO_CHECK_SKIP_ENV_FILE:-0}" = "1" ]; then
+    return 0
+  fi
+  local env_file="$ROOT_DIR/backend/.env"
+  if [ -n "${DATABASE_URL:-}" ] || [ ! -f "$env_file" ]; then
+    return 0
+  fi
+  local loaded
+  loaded="$(grep -E '^DATABASE_URL=' "$env_file" | tail -n 1 | sed -E 's/^DATABASE_URL=//; s/^"//; s/"$//; s/^'\''//; s/'\''$//')" || true
+  if [ -n "$loaded" ]; then
+    export DATABASE_URL="$loaded"
+  fi
+}
+
+load_database_url_from_env_file
+if [ -z "${DATABASE_URL:-}" ]; then
+  isolation_setup_hint
+  exit 1
+fi
+if [[ "${DATABASE_URL}" != */"${ISOLATION_DB}" ]]; then
+  echo "[check] refusing non-isolated DATABASE_URL (must end with /${ISOLATION_DB})" >&2
+  isolation_setup_hint
+  exit 1
+fi
 
 run_if_present() {
   local description="$1"

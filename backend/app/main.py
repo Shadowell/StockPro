@@ -7,6 +7,7 @@ BitPro SQLite, exchange, execution, scheduler, or private-account modules.
 """
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.auth_middleware import AuthMiddleware
 from app.core.errors import register_exception_handlers
+from app.core.storage_health import check_postgres_storage_health
 from app.api.v2.endpoints.auth import router as auth_router
 from app.api.v2.endpoints.market import router as market_router
 from app.api.v2.endpoints.strategy import router as strategy_router
@@ -76,12 +78,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health/storage")
     async def storage_health() -> dict[str, object]:
-        return {
-            "status": "conversion_pending",
-            "database": "postgresql",
-            "connected": False,
-            "writes_performed": False,
-        }
+        return await asyncio.to_thread(check_postgres_storage_health)
 
     app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
     app.include_router(auth_router, prefix="/api/v2/auth", tags=["Authentication"])
