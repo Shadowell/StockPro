@@ -197,6 +197,10 @@
   25/25 通过。增强后的 `./scripts/check.sh` 已一次性通过 frozen install、类型检查、production
   build、bundle budget、零警告 lint、生产依赖审计 0 vulnerability、116 pytest、安全扫描 active 0、
   25 E2E 和 diff whitespace，不再以“只编译”冒充全量门禁。
+- completion audit 已停止读取上一轮 `/paper|/pools|/factors` 截图，UI-001 现在强制要求当前 HEAD 的
+  16 路由、32 张 1440×900/390×844 真实截图，以及逐页 console/write 证据。切换前采集最大耗时
+  28.204 秒，32/32 console error 0、写请求 0；BASE、PARITY、API、DB 39/39、Paper continuity、
+  SAFE、UI、ASHARE、FUTURE 全部 passed，pre-deploy completion audit blockers 为空。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

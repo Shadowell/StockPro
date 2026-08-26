@@ -313,6 +313,10 @@ Playwright Mock E2E、真实 16 路由只读矩阵和 Paper 连续性门禁均�
 当前提交生成切换前 manifest，经最终确认后合并 `main`，再由 GitHub Actions 部署并核对生产 SHA、
 39 项迁移、服务健康与真实页面；本地通过不能替代这些证据。
 
+当前切换前 completion audit 已基于当前 HEAD 的 32 张真实双视口截图通过且无 blocker；允许进入
+第 14–15 步的功能分支推送、`main` 合并与 Actions 部署，但 Goal 仍须等生产 SHA、迁移、健康、
+Paper 连续性和生产页面复验后才能关闭。
+
 每个页面切片遵循：
 
 ```text
