@@ -12,7 +12,9 @@
   `get_klines_with_status()` 提前返回 list，`get_klines()` 读取 `["items"]` 触发 TypeError。
   已修复为日线分支统一返回 `{items,data_status,unavailable_reason}`，并补充回归测试。
 - 验证：`tests/test_market_chart_indicators.py` 9 项通过，相关后端 market 模块 compileall 通过。
-  生产库当前主数据表仍为空，需要管理员触发 A 股全量同步后再复核中文名与全市场数量。
+  管理员触发生产全量 A 股同步成功，`instrument_definitions=5889`、active stock `5550`、
+  active stock named `5550/5550`、`2026-08-26` 日线 `5547`、实时缓存 `5547`；受保护
+  API 抽样返回 `贵州茅台 600519.SH` 与 `平安银行 000001.SZ` 的中文名。
 
 ## GitHub #25 A 股实时/分钟/盘口/逐笔缓存底座（2026-08-26）
 
