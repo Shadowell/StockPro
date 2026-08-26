@@ -15,13 +15,13 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
     )
-    
+
     # API 配置
     PROJECT_NAME: str = "StockPro"
-    
+
     # CORS 配置
     BACKEND_CORS_ORIGINS: Annotated[List[str], NoDecode] = ["http://localhost:4444", "http://127.0.0.1:4444"]
-    
+
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v):
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
                 return json.loads(v)
             return [i.strip() for i in v.split(",")]
         return v
-    
+
     # 数据库配置
     DB_PATH: Optional[str] = None
     DATABASE_URL: str
@@ -41,10 +41,10 @@ class Settings(BaseSettings):
         if not value.startswith(("postgresql://", "postgresql+psycopg://")):
             raise ValueError("StockPro requires PostgreSQL")
         return value
-    
+
     # 日志配置
     LOG_LEVEL: str = "INFO"
-    
+
     # 交易所配置 - OKX
     OKX_API_KEY: Optional[str] = None
     OKX_API_SECRET: Optional[str] = None
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     BINANCE_API_KEY: Optional[str] = None
     BINANCE_API_SECRET: Optional[str] = None
     BINANCE_TESTNET: bool = False
-    
+
     # AI Agent 配置
     DASHSCOPE_API_KEY: Optional[str] = None
     QWEN_API_KEY: Optional[str] = None
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     HERMES_AGENT_ENABLED: bool = False
     HERMES_AGENT_COMMAND: str = "hermes"
     HERMES_AGENT_TIMEOUT: int = 240
-    
+
     # 飞书 Webhook 推送
     FEISHU_WEBHOOK_URL: Optional[str] = None
     ENABLE_FEISHU_NOTIFY: bool = False
@@ -105,11 +105,11 @@ class Settings(BaseSettings):
 
     # Redis 配置 (可选)
     REDIS_URL: Optional[str] = None
-    
+
     # 数据同步间隔 (秒)
     SYNC_INTERVAL_TICKER: int = 10
     SYNC_INTERVAL_FUNDING: int = 60
     SYNC_INTERVAL_KLINE: int = 300
-    
+
 # 全局配置实例
 settings = Settings()

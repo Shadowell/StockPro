@@ -31,9 +31,9 @@ class SignalResult:
 def analyze_market(klines: List[Dict], symbol: str = "") -> Dict[str, Any]:
     """
     综合技术分析
-    
+
     输入 K 线列表（至少 30 根），输出所有指标及综合信号。
-    
+
     Returns:
         {
             symbol, price, overall_signal, score, trend_strength,

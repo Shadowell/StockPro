@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class LocalDatabase(LocalDatabaseSchemaMixin):
     """本地 SQLite 数据库 (线程安全 + WAL 模式)"""
-    
+
     def __init__(self, db_path: str = None):
         if db_path is None:
             if settings.DB_PATH:
@@ -34,20 +34,20 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
                 # 默认使用项目目录内的 data，避免系统目录权限导致启动失败
                 project_root = Path(__file__).resolve().parents[3]
                 db_path = str(project_root / "data" / "crypto_data.db")
-        
+
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
         # FastAPI 的同步数据库调用可能在不同 worker/thread 中执行。sqlite3 连接不能随意跨线程共享，
         # 所以这里用 threading.local 让每个线程复用自己的连接，同时避免频繁 connect/close。
         self._local = threading.local()
-    
+
     def get_connection(self) -> sqlite3.Connection:
         """
         获取数据库连接 (线程安全)
         同一线程内复用连接，不同线程使用不同连接
         """
         conn = getattr(self._local, 'connection', None)
-        
+
         # 检测连接是否仍然有效
         if conn is not None:
             try:
@@ -55,11 +55,11 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             except Exception:
                 conn = None
                 self._local.connection = None
-        
+
         if conn is None:
             conn = sqlite3.connect(self.db_path, timeout=30)
             conn.row_factory = sqlite3.Row  # 支持字典访问
-            
+
             # 启用 WAL 模式: 允许并发读写
             conn.execute('PRAGMA journal_mode=WAL')
             # 同步模式设为 NORMAL: 在 WAL 模式下兼顾性能和安全
@@ -71,12 +71,12 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             # 增加 busy_timeout 防止 "database is locked"；回测 worker 与
             # 主进程并发写时 5s 不够（生产 48h 内 120 次锁超时）。
             conn.execute('PRAGMA busy_timeout=15000')
-            
+
             self._local.connection = conn
             logger.debug(f"New SQLite connection created for thread {threading.current_thread().name}")
-        
+
         return conn
-    
+
     def close_connection(self):
         """关闭当前线程的连接 (应用关闭时调用)"""
         conn = getattr(self._local, 'connection', None)
@@ -86,7 +86,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             except Exception:
                 pass
             self._local.connection = None
-    
+
 
     @staticmethod
     def _ensure_backtest_job_auth_columns(cursor: sqlite3.Cursor) -> None:
@@ -104,7 +104,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             CREATE INDEX IF NOT EXISTS idx_backtest_jobs_owner
             ON backtest_jobs(owner_role, owner_session_id, owner_guest_code_id, created_at)
         ''')
-    
+
     @staticmethod
     def _ensure_strategies_run_started_at_column(cursor: sqlite3.Cursor) -> None:
         cursor.execute("PRAGMA table_info(strategies)")
@@ -205,7 +205,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
         for col, sql in additions.items():
             if col not in cols:
                 cursor.execute(sql)
-    
+
     # ============================================
     # K线分表名映射
     # ============================================
@@ -220,12 +220,12 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
     # ============================================
     # K线数据操作
     # ============================================
-    
+
     def insert_klines(self, exchange: str, symbol: str, timeframe: str, klines: List[Dict]):
         """批量插入 K 线数据，同时写入分表和旧统一表。"""
         if not klines:
             return 0
-        
+
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -270,8 +270,8 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
         conn.commit()
         conn.close()
         return inserted
-    
-    def get_klines(self, exchange: str, symbol: str, timeframe: str, 
+
+    def get_klines(self, exchange: str, symbol: str, timeframe: str,
                    limit: int = 100, start: int = None, end: int = None) -> List[Dict]:
         """
         获取 K 线数据。
@@ -298,17 +298,17 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
                 WHERE exchange = ? AND symbol = ? AND timeframe = ?
             '''
             params = [exchange, symbol, timeframe]
-        
+
         if start:
             query += ' AND timestamp >= ?'
             params.append(start)
         if end:
             query += ' AND timestamp <= ?'
             params.append(end)
-        
+
         query += ' ORDER BY timestamp DESC LIMIT ?'
         params.append(limit)
-        
+
         cursor.execute(query, params)
         rows = cursor.fetchall()
         result = [dict(row) for row in rows][::-1]  # SQL 为了 LIMIT 取最近数据用倒序，返回前再恢复正序。
@@ -335,31 +335,31 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
 
         conn.close()
         return result
-    
+
     # ============================================
     # 资金费率操作
     # ============================================
-    
-    def insert_funding_rate(self, exchange: str, symbol: str, timestamp: int, 
+
+    def insert_funding_rate(self, exchange: str, symbol: str, timestamp: int,
                            rate: float, mark_price: float = None):
         """插入资金费率历史"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             INSERT OR REPLACE INTO funding_rate_history
             (exchange, symbol, timestamp, funding_rate, mark_price)
             VALUES (?, ?, ?, ?, ?)
         ''', (exchange, symbol, timestamp, rate, mark_price))
-        
+
         conn.commit()
         conn.close()
-    
+
     def get_funding_history(self, exchange: str, symbol: str, limit: int = 100) -> List[Dict]:
         """获取资金费率历史"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             SELECT timestamp, funding_rate as rate, mark_price
             FROM funding_rate_history
@@ -367,20 +367,20 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             ORDER BY timestamp DESC
             LIMIT ?
         ''', (exchange, symbol, limit))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]
-    
+
     def update_funding_realtime(self, exchange: str, symbol: str, data: Dict):
         """更新资金费率实时数据"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             INSERT OR REPLACE INTO funding_rate_realtime
-            (exchange, symbol, current_rate, predicted_rate, next_funding_time, 
+            (exchange, symbol, current_rate, predicted_rate, next_funding_time,
              mark_price, index_price, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ''', (
@@ -391,59 +391,59 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             data.get('mark_price'),
             data.get('index_price')
         ))
-        
+
         conn.commit()
         conn.close()
-    
+
     def get_funding_realtime(self, exchange: str, symbol: str = None) -> List[Dict]:
         """获取资金费率实时数据"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         if symbol:
             cursor.execute('''
-                SELECT exchange, symbol, current_rate, predicted_rate, 
+                SELECT exchange, symbol, current_rate, predicted_rate,
                        next_funding_time, mark_price, index_price
                 FROM funding_rate_realtime
                 WHERE exchange = ? AND symbol = ?
             ''', (exchange, symbol))
         else:
             cursor.execute('''
-                SELECT exchange, symbol, current_rate, predicted_rate, 
+                SELECT exchange, symbol, current_rate, predicted_rate,
                        next_funding_time, mark_price, index_price
                 FROM funding_rate_realtime
                 WHERE exchange = ?
                 ORDER BY current_rate DESC
             ''', (exchange,))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]
-    
+
     # ============================================
     # 策略操作
     # ============================================
-    
+
     def save_strategy(self, name: str, script_content: str, description: str = None,
                       config: Dict = None, exchange: str = None, symbols: List[str] = None) -> int:
         """保存策略定义；config/symbols 序列化为 JSON，便于 seed 导入和运行时恢复。"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         config_json = json.dumps(config) if config else None
         symbols_json = json.dumps(symbols) if symbols else None
-        
+
         cursor.execute('''
             INSERT OR REPLACE INTO strategies
             (name, description, script_content, config, exchange, symbols, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
         ''', (name, description, script_content, config_json, exchange, symbols_json))
-        
+
         strategy_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        
+
         return strategy_id
 
     def update_strategy(
@@ -482,22 +482,22 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
         conn.commit()
         conn.close()
         return affected > 0
-    
+
     def get_strategies(self) -> List[Dict]:
         """获取所有策略，并把 JSON 字段还原为 Python 对象供 API/service 层直接使用。"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
-            SELECT id, name, description, script_content, config, status, 
+            SELECT id, name, description, script_content, config, status,
                    exchange, symbols, run_started_at, created_at, updated_at
             FROM strategies
             ORDER BY updated_at DESC
         ''')
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         result = []
         for row in rows:
             item = dict(row)
@@ -506,40 +506,40 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             if item.get('symbols'):
                 item['symbols'] = json.loads(item['symbols'])
             result.append(item)
-        
+
         return result
-    
+
     def get_strategy_by_id(self, strategy_id: int) -> Optional[Dict]:
         """根据 ID 获取策略；不存在时返回 None，让 API 层决定 404 或业务错误。"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
-            SELECT id, name, description, script_content, config, status, 
+            SELECT id, name, description, script_content, config, status,
                    exchange, symbols, run_started_at, created_at, updated_at
             FROM strategies
             WHERE id = ?
         ''', (strategy_id,))
-        
+
         row = cursor.fetchone()
         conn.close()
-        
+
         if not row:
             return None
-        
+
         item = dict(row)
         if item.get('config'):
             item['config'] = json.loads(item['config'])
         if item.get('symbols'):
             item['symbols'] = json.loads(item['symbols'])
-        
+
         return item
-    
+
     def update_strategy_status(self, strategy_id: int, status: str, *, clear_run_started_at: bool = True):
         """更新策略状态。clear_run_started_at 时清除本轮运行起点；普通关闭应保留以便重启恢复。"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         if status in ("stopped", "error") and clear_run_started_at:
             cursor.execute(
                 '''
@@ -552,13 +552,13 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
         else:
             cursor.execute(
                 '''
-                UPDATE strategies 
+                UPDATE strategies
                 SET status = ?, updated_at = datetime('now')
                 WHERE id = ?
                 ''',
                 (status, strategy_id),
             )
-        
+
         conn.commit()
         conn.close()
 
@@ -580,7 +580,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
 
         conn.commit()
         conn.close()
-    
+
     def set_strategy_run_started_at(self, strategy_id: int, iso_utc: str) -> None:
         """记录策略本次连续运行起点（UTC ISO），用于进程重启后恢复仪表盘运行时间"""
         conn = self.get_connection()
@@ -624,7 +624,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
         conn.commit()
         conn.close()
         return affected > 0
-    
+
     def delete_strategy(self, strategy_id: int) -> bool:
         """删除策略"""
         conn = self.get_connection()
@@ -698,25 +698,25 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
 
         # 删除策略主记录
         cursor.execute('DELETE FROM strategies WHERE id = ?', (strategy_id,))
-        
+
         affected = cursor.rowcount
         conn.commit()
         conn.close()
-        
+
         return affected > 0
-    
+
     # ============================================
     # 策略交易记录操作
     # ============================================
-    
+
     def insert_strategy_trade(self, strategy_id: int, trade: Dict):
         """插入策略交易记录；meta 保存执行细节，供监控、K 线复盘和诊断页面复原上下文。"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             INSERT INTO strategy_trades
-            (strategy_id, exchange, symbol, order_id, timestamp, side, type, 
+            (strategy_id, exchange, symbol, order_id, timestamp, side, type,
              price, quantity, fee, fee_asset, pnl, meta)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
@@ -726,15 +726,15 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             trade.get('fee'), trade.get('fee_asset'), trade.get('pnl'),
             json.dumps(trade.get('meta'), ensure_ascii=False) if trade.get('meta') is not None else None,
         ))
-        
+
         conn.commit()
         conn.close()
-    
+
     def get_strategy_trades(self, strategy_id: int, limit: int = 50) -> List[Dict]:
         """获取策略交易记录"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             SELECT id, strategy_id, exchange, symbol, order_id, timestamp,
                    side, type, price, quantity, fee, fee_asset, pnl, meta
@@ -743,10 +743,10 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             ORDER BY timestamp DESC
             LIMIT ?
         ''', (strategy_id, limit))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]
 
     def get_strategy_trades_since(self, strategy_id: int, since_ts_ms: int) -> List[Dict]:
@@ -1388,16 +1388,16 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
         row = cursor.fetchone()
         conn.close()
         return int(row["count"] or 0) if row else 0
-    
+
     # ============================================
     # Ticker 缓存操作
     # ============================================
-    
+
     def update_ticker_cache(self, exchange: str, symbol: str, ticker: Dict):
         """更新 Ticker 缓存"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             INSERT OR REPLACE INTO ticker_cache
             (exchange, symbol, last, bid, ask, high, low, volume, quote_volume,
@@ -1410,46 +1410,46 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             ticker.get('quote_volume'), ticker.get('change'),
             ticker.get('change_percent'), ticker.get('timestamp')
         ))
-        
+
         conn.commit()
         conn.close()
-    
+
     def get_ticker_cache(self, exchange: str, symbol: str = None) -> List[Dict]:
         """获取 Ticker 缓存"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         if symbol:
             cursor.execute('''
-                SELECT exchange, symbol, last, bid, ask, high, low, volume, 
+                SELECT exchange, symbol, last, bid, ask, high, low, volume,
                        quote_volume, change, change_percent, timestamp
                 FROM ticker_cache
                 WHERE exchange = ? AND symbol = ?
             ''', (exchange, symbol))
         else:
             cursor.execute('''
-                SELECT exchange, symbol, last, bid, ask, high, low, volume, 
+                SELECT exchange, symbol, last, bid, ask, high, low, volume,
                        quote_volume, change, change_percent, timestamp
                 FROM ticker_cache
                 WHERE exchange = ?
             ''', (exchange,))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]
 
 
     # ============================================
     # 同步元数据操作
     # ============================================
-    
+
     def get_sync_metadata(self, exchange: str, symbol: str, timeframe: str,
                           data_type: str = 'kline') -> Optional[Dict]:
         """获取同步元数据"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             SELECT exchange, symbol, timeframe, data_type,
                    first_timestamp, last_timestamp, total_records,
@@ -1457,26 +1457,26 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             FROM sync_metadata
             WHERE exchange = ? AND symbol = ? AND timeframe = ? AND data_type = ?
         ''', (exchange, symbol, timeframe, data_type))
-        
+
         row = cursor.fetchone()
         conn.close()
-        
+
         return dict(row) if row else None
-    
+
     def update_sync_metadata(self, exchange: str, symbol: str, timeframe: str,
                              data_type: str = 'kline', **kwargs):
         """更新同步元数据"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         # 先尝试获取已有记录
         cursor.execute('''
             SELECT id FROM sync_metadata
             WHERE exchange = ? AND symbol = ? AND timeframe = ? AND data_type = ?
         ''', (exchange, symbol, timeframe, data_type))
-        
+
         row = cursor.fetchone()
-        
+
         if row:
             # 构建动态 UPDATE
             set_clauses = ['updated_at = datetime("now")']
@@ -1486,7 +1486,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
                 if key in kwargs:
                     set_clauses.append(f'{key} = ?')
                     params.append(kwargs[key])
-            
+
             params.extend([exchange, symbol, timeframe, data_type])
             cursor.execute(f'''
                 UPDATE sync_metadata
@@ -1509,15 +1509,15 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
                 kwargs.get('last_sync_at'),
                 kwargs.get('error_message')
             ))
-        
+
         conn.commit()
         conn.close()
-    
+
     def get_all_sync_metadata(self, exchange: str = None) -> List[Dict]:
         """获取所有同步元数据"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         if exchange:
             cursor.execute('''
                 SELECT exchange, symbol, timeframe, data_type,
@@ -1535,11 +1535,11 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
                 FROM sync_metadata
                 ORDER BY exchange, symbol, timeframe
             ''')
-        
+
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
-    
+
     def get_kline_count(self, exchange: str, symbol: str, timeframe: str) -> int:
         """获取K线数据条数 — 优先查分表"""
         conn = self.get_connection()
@@ -1558,7 +1558,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
                 FROM kline_history
                 WHERE exchange = ? AND symbol = ? AND timeframe = ?
             ''', (exchange, symbol, timeframe))
-        
+
         row = cursor.fetchone()
         cnt = row['cnt'] if row else 0
 
@@ -1574,7 +1574,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
 
         conn.close()
         return cnt
-    
+
     def get_kline_time_range(self, exchange: str, symbol: str, timeframe: str) -> Optional[Dict]:
         """获取K线数据的时间范围 — 优先查分表"""
         conn = self.get_connection()
@@ -1593,7 +1593,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
                 FROM kline_history
                 WHERE exchange = ? AND symbol = ? AND timeframe = ?
             ''', (exchange, symbol, timeframe))
-        
+
         row = cursor.fetchone()
 
         # 如果分表没数据，回退旧表
@@ -1606,7 +1606,7 @@ class LocalDatabase(LocalDatabaseSchemaMixin):
             row = cursor.fetchone()
 
         conn.close()
-        
+
         if row and row['cnt'] > 0:
             return {
                 'first_timestamp': row['first_ts'],

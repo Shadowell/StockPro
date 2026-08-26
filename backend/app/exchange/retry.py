@@ -117,4 +117,3 @@ def ccxt_retry(op_name: str, *, policy: Optional[RetryPolicy] = None):
         return _wrapped
 
     return _decorator
-

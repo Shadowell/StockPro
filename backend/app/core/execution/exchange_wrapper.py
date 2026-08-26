@@ -207,4 +207,3 @@ class ExchangeWrapper:
             return False
         denom = max(abs(expected), abs(actual), 1e-12)
         return (diff / denom) >= rel_tolerance
-
