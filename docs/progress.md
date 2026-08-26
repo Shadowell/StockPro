@@ -23,6 +23,11 @@
   BitPro 原分页、搜索、卡片和详情交互保留；现货/合约、马丁/做市、USDT 资金档改为
   股票/ETF、动量趋势/均值回归/多因子/事件驱动和人民币资金档。未完成不可变版本写入前，
   新建/编辑/删除和 AI 写策略按钮不展示，真实浏览器读取写请求 0、API 5xx 0、console errors 0。
+- 回测历史切片已在 BitPro 原 `Backtest.tsx`、`backtestSupport.tsx` 和
+  `/api/v2/backtest` 合同上完成：直读 PostgreSQL `backtest_runs/trades/daily_equity`，将原始 A 股比例指标
+  转成 BitPro 页面 ViewModel，并保留原实例表、排序、筛选、对比和详情结构。当前真实页显示
+  20 条历史（18 完成/2 失败），详情可读 27 笔成交和 102 个权益点；基准改为沪深300，
+  现货/合约改为股票/ETF，资金改为 CNY。异步创建任务尚未接通前不展示创建入口。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

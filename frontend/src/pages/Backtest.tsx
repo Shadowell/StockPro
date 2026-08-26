@@ -28,6 +28,7 @@ const BacktestCompareDialog = lazy(() => import('./backtest/BacktestCompareDialo
 // 类型定义
 // ============================================
 export default function Backtest() {
+  const canCreateBacktest = false;
   const { strategies, fetchStrategies } = useStore();
   const [initialBt] = useState(loadBacktestPrefs);
   const [view, setView] = useState<BacktestView>('dashboard');
@@ -239,7 +240,7 @@ export default function Backtest() {
 
     setTradeChartLoading(true);
     setTradeChartError('');
-    marketApi.getKlines('okx', selectedTradeChartSymbol, resultStrategyTimeframe, 1000, tradeChartStart, tradeChartEnd)
+    marketApi.getKlines('SSE', selectedTradeChartSymbol, resultStrategyTimeframe, 1000, tradeChartStart, tradeChartEnd)
       .then((rows) => {
         if (cancelled) return;
         setTradeChartKlines((rows || []).map(normalizeBacktestKline).filter(Boolean) as Kline[]);
@@ -287,7 +288,7 @@ export default function Backtest() {
   const shouldRenderBacktestInstances =
     unifiedBacktestInstances.length > 0 || isLoadingHistory || Boolean(historyError);
   const instanceAssetCounts = useMemo(() => {
-    const counts: Record<HistoryAssetFilter, number> = { all: unifiedBacktestInstances.length, spot: 0, contract: 0 };
+    const counts: Record<HistoryAssetFilter, number> = { all: unifiedBacktestInstances.length, stock: 0, etf: 0 };
     unifiedBacktestInstances.forEach((instance) => {
       counts[backtestInstanceAssetClass(backtestableStrategies, instance)] += 1;
     });
@@ -475,7 +476,7 @@ export default function Backtest() {
       const responseEndDate = response.defaults?.endDate ?? batchBacktestDefaults.end;
       showThemeAlert(
         '已创建批量回测实例',
-        `已为 ${createdInstances.length} 个运行中模拟策略创建回测任务${skippedText}。批量默认使用 100U，区间 ${responseStartDate} 至 ${responseEndDate}，周期沿用策略定义。`,
+        `已为 ${createdInstances.length} 个运行中模拟策略创建回测任务${skippedText}。批量默认使用 100 万元，区间 ${responseStartDate} 至 ${responseEndDate}，周期沿用策略定义。`,
         'default',
       );
     } catch (error: any) {
@@ -595,7 +596,7 @@ export default function Backtest() {
 
     try {
       const klinesRes = await marketApi.getKlines(
-        'okx',
+        'SSE',
         benchmark,
         '1d',
         1000,
@@ -1035,7 +1036,7 @@ export default function Backtest() {
     try {
       const { jobId } = await backtestApi.runJob({
         strategy_id: runConfig.selectedStrategy,
-        exchange: 'okx',
+        exchange: 'SSE',
         timeframe_mode: runConfig.timeframeMode,
         timeframe: effectiveTimeframe,
         timeframes: runConfig.timeframeMode === 'matrix' ? effectiveTimeframes : undefined,
@@ -1167,7 +1168,7 @@ export default function Backtest() {
         const effectiveTimeframe = backtestEffectiveTimeframe(target.config, strategyInfo);
         const { jobId: newJobId } = await backtestApi.runJob({
           strategy_id: target.config.selectedStrategy,
-          exchange: 'okx',
+          exchange: 'SSE',
           timeframe_mode: target.config.timeframeMode,
           timeframe: effectiveTimeframe,
           timeframes: target.config.timeframeMode === 'matrix' ? effectiveTimeframes : undefined,
@@ -1594,18 +1595,18 @@ export default function Backtest() {
     },
     {
       label: `${benchmarkSymbol} 同期`,
-      formula: 'BTC/USDT 同区间收盘到收盘收益',
-      description: '用同一回测起止日期的 BTC/USDT 真实 1D K 线作为市场基准。',
+      formula: '沪深300 同区间收盘到收盘收益',
+      description: '用同一回测起止日期的 000300.SH 真实日线作为市场基准。',
     },
     {
       label: '超额收益',
-      formula: '策略累计收益 - BTC/USDT 同期收益',
+      formula: '策略累计收益 - 沪深300 同期收益',
       description: '衡量策略是否跑赢基准，而不是只看自己绝对收益。',
     },
     {
       label: 'Beta',
       formula: 'Cov(策略日收益, 基准日收益) / Var(基准日收益)',
-      description: '衡量策略对 BTC 基准波动的敏感度，绝对值越大越像跟着市场一起动。',
+      description: '衡量策略对沪深300基准波动的敏感度，绝对值越大越像跟着市场一起动。',
     },
     {
       label: '年化波动',
@@ -1790,8 +1791,10 @@ export default function Backtest() {
     label: string,
     count: number | undefined,
     onClick: () => void,
+    key?: string,
   ) => (
     <button
+      key={key}
       type="button"
       aria-pressed={active}
       onClick={onClick}
@@ -1846,7 +1849,7 @@ export default function Backtest() {
                 创建异步任务，在列表比较结果，打开详情复盘路径和成交。
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {canCreateBacktest && <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <button
                 type="button"
                 aria-label="创建批量回测实例"
@@ -1870,7 +1873,7 @@ export default function Backtest() {
                 <Plus className="h-4 w-4" />
                 创建回测
               </button>
-            </div>
+            </div>}
           </div>
 
           {shouldRenderBacktestInstances && (
@@ -1884,6 +1887,7 @@ export default function Backtest() {
                       option.label,
                       instanceStatusCounts[option.value],
                       () => setInstanceStatusFilter(option.value),
+                      option.value,
                     ),
                   )}
                 </div>
@@ -1894,13 +1898,18 @@ export default function Backtest() {
                       option.label,
                       instanceAssetCounts[option.value],
                       () => setInstanceAssetFilter(option.value),
+                      option.value,
                     ),
                   )}
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   {instanceTimeframeFilterOptions.map((option) =>
-                    renderFilterChip(instanceTimeframeFilter === option.value, option.label, undefined, () =>
-                      setInstanceTimeframeFilter(option.value),
+                    renderFilterChip(
+                      instanceTimeframeFilter === option.value,
+                      option.label,
+                      undefined,
+                      () => setInstanceTimeframeFilter(option.value),
+                      option.value,
                     ),
                   )}
                 </div>
@@ -2064,7 +2073,7 @@ export default function Backtest() {
                                   </div>
                                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                     <span className={clsx('rounded border px-1.5 py-0.5 text-[10px] font-bold', strategyAssetBadgeClass(assetClass))}>
-                                      {assetClass === 'contract' ? '合约' : '现货'}
+                                      {assetClass === 'etf' ? 'ETF' : '股票'}
                                     </span>
                                     {instanceDataInvalidated && (
                                       <span className="rounded-full border border-red-500/40 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-bold text-red-200">
@@ -2230,7 +2239,7 @@ export default function Backtest() {
                 <div className="min-w-0">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className={clsx('rounded border px-2 py-0.5 text-[11px] font-bold', strategyAssetBadgeClass(resultAssetClass))}>
-                      {resultAssetClass === 'contract' ? '合约' : '现货'}
+                      {resultAssetClass === 'etf' ? 'ETF' : '股票'}
                     </span>
                     <span className={clsx('rounded-full border px-2 py-0.5 text-[11px] font-bold', detailStatusMeta.className)}>
                       {historyDetailResult ? '已完成' : detailStatusMeta.label}
@@ -2773,7 +2782,7 @@ export default function Backtest() {
                                     <div className="min-w-0">
                                       <div className="mb-1 flex min-w-0 items-center gap-2">
                                         <span className={clsx('shrink-0 rounded border px-2 py-0.5 text-[11px] font-bold', strategyAssetBadgeClass(optionAssetClass))}>
-                                          {optionAssetClass === 'contract' ? '合约' : '现货'}
+                                          {optionAssetClass === 'etf' ? 'ETF' : '股票'}
                                         </span>
                                         <span className={clsx('truncate text-sm font-semibold', strategyNameColorClass(optionAssetClass))}>
                                           {strategy.name}
@@ -2800,7 +2809,7 @@ export default function Backtest() {
                     <div className="rounded-xl border border-crypto-border bg-crypto-bg/50 p-4">
                       <div className="mb-2 flex items-center gap-2">
                         <span className={clsx('rounded border px-2 py-0.5 text-[11px] font-bold', strategyAssetBadgeClass(draftAssetClass))}>
-                          {draftAssetClass === 'contract' ? '合约' : '现货'}
+                          {draftAssetClass === 'etf' ? 'ETF' : '股票'}
                         </span>
                         <span className={clsx('truncate text-sm font-semibold', strategyNameColorClass(draftAssetClass))}>
                           {draftStrategyInfo.name}
@@ -2856,7 +2865,7 @@ export default function Backtest() {
                     ))}
                   </div>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <Field label="初始资金 (USDT)">
+                    <Field label="初始资金 (CNY)">
                       <input
                         type="number"
                         value={createDraft.initialCapital}
@@ -2965,7 +2974,7 @@ export default function Backtest() {
                   <div className="mb-3 text-sm font-semibold text-white">确认回测任务</div>
                   <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                     <StatRow label="策略" value={draftStrategyInfo?.name || '未选择'} color={strategyNameColorClass(draftAssetClass)} />
-                    <StatRow label="资产类型" value={draftAssetClass === 'contract' ? '合约' : '现货'} />
+                    <StatRow label="资产类型" value={draftAssetClass === 'etf' ? 'ETF' : '股票'} />
                     <StatRow label="区间" value={`${createDraft.startDate} 至 ${createDraft.endDate}`} />
                     <StatRow label="初始资金" value={`$${fmt(createDraft.initialCapital)}`} />
                     <StatRow label="Maker/Taker" value={`${fmt(draftEffectiveMakerFeeBps)}/${fmt(draftEffectiveTakerFeeBps)} bps`} />
@@ -3071,7 +3080,7 @@ export default function Backtest() {
             </div>
             <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
               <div className="text-xs font-semibold text-slate-500">默认资金</div>
-              <div className="mt-1 text-base font-semibold text-white">100U</div>
+              <div className="mt-1 text-base font-semibold text-white">100万元</div>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
               <div className="text-xs font-semibold text-slate-500">策略周期</div>
@@ -3083,7 +3092,7 @@ export default function Backtest() {
             </div>
           </div>
           <p className="text-xs leading-5 text-slate-400">
-            批量默认使用 100U，其余手续费、滑点、K线数据、任务轮询和结果落库逻辑与普通回测保持一致。
+            批量默认使用 100 万元，其余手续费、滑点、K线数据、任务轮询和结果落库逻辑与普通回测保持一致。
           </p>
         </div>
       </ThemeDialog>

@@ -103,7 +103,7 @@ export type BacktestHistoryDeleteTarget = {
   items: BacktestHistoryItem[];
 };
 
-export type StrategyAssetClass = 'spot' | 'contract';
+export type StrategyAssetClass = 'stock' | 'etf';
 export type HistoryAssetFilter = 'all' | StrategyAssetClass;
 export type BacktestView = 'dashboard' | 'detail';
 export type BacktestStatusFilter = 'all' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -147,7 +147,7 @@ export const SELECTED_BACKTEST_INSTANCE_KEY = 'bitpro_backtest_selected_instance
 /** @deprecated 旧版单任务恢复 key；新页面使用 BACKTEST_INSTANCES_KEY 保存多个实例。 */
 export const ACTIVE_BACKTEST_JOB_KEY = 'bitpro_backtest_active_job';
 export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-export const BACKTEST_BENCHMARK_SYMBOL = 'BTC/USDT';
+export const BACKTEST_BENCHMARK_SYMBOL = '000300.SH';
 export const BACKTEST_HISTORY_PAGE_SIZE = 20;
 export const BACKTEST_WIZARD_STEPS = [
   { step: 1, title: '选择策略', desc: '策略与资金模式' },
@@ -157,8 +157,8 @@ export const BACKTEST_WIZARD_STEPS = [
 ] as const;
 export const HISTORY_ASSET_FILTERS: Array<{ value: HistoryAssetFilter; label: string }> = [
   { value: 'all', label: '全部' },
-  { value: 'spot', label: '现货' },
-  { value: 'contract', label: '合约' },
+  { value: 'stock', label: '股票' },
+  { value: 'etf', label: 'ETF' },
 ];
 export const BACKTEST_STATUS_FILTERS: Array<{ value: BacktestStatusFilter; label: string }> = [
   { value: 'all', label: '全部' },
@@ -173,15 +173,7 @@ export const BACKTEST_SORT_CONTROLS: Array<{ field: BacktestSortField; label: st
   { field: 'win_rate', label: '胜率' },
   { field: 'created', label: '创建时间' },
 ];
-export const BACKTEST_TIMEFRAME_OPTIONS = [
-  { value: '1m', label: '1M' },
-  { value: '5m', label: '5M' },
-  { value: '15m', label: '15M' },
-  { value: '30m', label: '30M' },
-  { value: '1h', label: '1H' },
-  { value: '4h', label: '4H' },
-  { value: '1d', label: '1D' },
-] as const;
+export const BACKTEST_TIMEFRAME_OPTIONS = [{ value: '1d', label: '1D' }] as const;
 export const BACKTEST_TIMEFRAME_MODES: Array<{ value: BacktestTimeframeMode; label: string; hint: string }> = [
   { value: 'strategy', label: '策略定义', hint: '沿用策略配置周期' },
   { value: 'single', label: '指定周期', hint: '本次回测覆盖一个周期' },
@@ -203,8 +195,7 @@ export type BacktestPrefsV1 = {
   slippageBps?: number;
 };
 
-export const OKX_SPOT_BACKTEST_COSTS = { makerFeeBps: 8, takerFeeBps: 10, slippageBps: 1 } as const;
-export const OKX_SWAP_BACKTEST_COSTS = { makerFeeBps: 2, takerFeeBps: 5, slippageBps: 1 } as const;
+export const ASHARE_BACKTEST_COSTS = { makerFeeBps: 3, takerFeeBps: 8, slippageBps: 10 } as const;
 
 export type JobProgressState = {
   currentBar: number;
@@ -746,7 +737,7 @@ export function backtestResultTimeframes(result: BacktestResult | null | undefin
 export function backtestEffectiveTimeframe(config: BacktestInstanceConfig, strategy: any | null | undefined): string {
   if (config.timeframeMode === 'single' && config.timeframe) return config.timeframe;
   if (config.timeframeMode === 'matrix' && config.timeframes.length > 0) return config.timeframes[0];
-  return strategyTimeframe(strategy) || config.timeframe || '1h';
+  return strategyTimeframe(strategy) || config.timeframe || '1d';
 }
 
 export function backtestEffectiveTimeframes(config: BacktestInstanceConfig, strategy: any | null | undefined): string[] {
@@ -812,31 +803,15 @@ export function backtestRequestMatchesInstance(request: Record<string, unknown> 
   return Math.abs(requestCapital - instance.config.initialCapital) < 1e-9;
 }
 
-export function strategyIsContract(strategy: any | null | undefined): boolean {
-  if (!strategy) return false;
-  const cfg = strategy.config && typeof strategy.config === 'object' ? strategy.config as Record<string, unknown> : {};
-  if (String(cfg.marketType ?? cfg.market_type ?? '').toLowerCase() === 'swap') return true;
-  if (String(cfg.instType ?? cfg.inst_type ?? '').toUpperCase() === 'SWAP') return true;
-  const name = String(strategy.name || '');
-  const symbols = [
-    ...stringList(strategy.symbols),
-    ...stringList(cfg.symbols),
-    ...stringList(cfg.tradeSymbols),
-    ...stringList(cfg.trade_symbols),
-  ];
-  return name.startsWith('[合约]') || symbols.some((s) => s.includes(':USDT') || s.endsWith('-SWAP'));
-}
-
 export function inferStrategyAssetClassFromName(name: unknown): StrategyAssetClass | null {
   const text = String(name || '').trim();
   if (!text) return null;
-  if (text.startsWith('[合约]') || text.includes('/USDT:USDT') || text.includes('-SWAP')) return 'contract';
-  if (text.startsWith('[现货]')) return 'spot';
-  return null;
+  return text.includes('[ETF]') ? 'etf' : 'stock';
 }
 
 export function strategyAssetClass(strategy: any | null | undefined): StrategyAssetClass {
-  return strategyIsContract(strategy) ? 'contract' : 'spot';
+  const cfg = strategy?.config && typeof strategy.config === 'object' ? strategy.config as Record<string, unknown> : {};
+  return String(cfg.assetClass ?? cfg.asset_class ?? '').toLowerCase() === 'etf' ? 'etf' : 'stock';
 }
 
 export function strategyAssetClassById(strategies: any[], strategyId: number | null | undefined): StrategyAssetClass {
@@ -851,7 +826,7 @@ export function backtestResultAssetClass(
 ): StrategyAssetClass {
   const strategy = strategies.find((s) => Number(s.id) === Number(result?.strategyId ?? strategyId));
   if (strategy) return strategyAssetClass(strategy);
-  return inferStrategyAssetClassFromName(result?.strategyName) || 'spot';
+  return inferStrategyAssetClassFromName(result?.strategyName) || 'stock';
 }
 
 export function backtestInstanceAssetClass(strategies: any[], instance: BacktestInstance): StrategyAssetClass {
@@ -860,17 +835,17 @@ export function backtestInstanceAssetClass(strategies: any[], instance: Backtest
   return (
     inferStrategyAssetClassFromName(instance.result?.strategyName) ||
     inferStrategyAssetClassFromName(instance.name) ||
-    'spot'
+    'stock'
   );
 }
 
 export function strategyNameColorClass(assetClass: StrategyAssetClass): string {
-  return assetClass === 'contract' ? 'text-[#FFAB73]' : 'text-yellow-300';
+  return assetClass === 'etf' ? 'text-cyan-300' : 'text-yellow-300';
 }
 
 export function strategyAssetBadgeClass(assetClass: StrategyAssetClass): string {
-  return assetClass === 'contract'
-    ? 'border-purple-500/30 bg-purple-500/10 text-purple-300'
+  return assetClass === 'etf'
+    ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300'
     : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300';
 }
 
@@ -902,14 +877,11 @@ export function strategyIsBacktestSelectable(strategy: any | null | undefined): 
   return !['live', 'real', 'production'].some((token) => mode.includes(token));
 }
 
-export function strategyBacktestCostDefaults(strategy: any | null | undefined) {
-  const isContract = strategyIsContract(strategy);
-  const okxCosts = isContract ? OKX_SWAP_BACKTEST_COSTS : OKX_SPOT_BACKTEST_COSTS;
-
+export function strategyBacktestCostDefaults(_strategy: any | null | undefined) {
   return {
-    makerFeeBps: okxCosts.makerFeeBps,
-    takerFeeBps: okxCosts.takerFeeBps,
-    slippageBps: okxCosts.slippageBps,
+    makerFeeBps: ASHARE_BACKTEST_COSTS.makerFeeBps,
+    takerFeeBps: ASHARE_BACKTEST_COSTS.takerFeeBps,
+    slippageBps: ASHARE_BACKTEST_COSTS.slippageBps,
   };
 }
 
@@ -922,7 +894,7 @@ export function symbolSummary(symbols: string[], max = 5): string {
 export function backtestStrategySearchText(strategy: any): string {
   const cfg = strategy?.config && typeof strategy.config === 'object' ? strategy.config : {};
   const symbols = [...strategySymbols(strategy), ...strategyTradeSymbols(strategy)];
-  const assetText = strategyIsContract(strategy) ? '合约 contract swap perpetual futures' : '现货 spot';
+  const assetText = strategyAssetClass(strategy) === 'etf' ? 'ETF' : 'A股 股票';
   return [
     strategy?.name,
     strategy?.description,
@@ -972,7 +944,7 @@ export function backtestInstanceSearchText(
     instance.historyId,
     instance.activeJobId,
     instance.resumeJobId,
-    assetClass === 'contract' ? '合约 contract swap perpetual futures' : '现货 spot',
+    assetClass === 'etf' ? 'ETF' : 'A股 股票',
     statusMeta.label,
     instance.status,
     instance.result?.dataQualityStatus,
