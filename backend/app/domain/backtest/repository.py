@@ -9,7 +9,7 @@ import psycopg2.extras
 from app.core.config import settings
 
 
-RUN_ID_SQL = "((('x'||substr(replace(r.id::text,'-',''),1,8))::bit(32)::bigint %% 2147483647)::integer)"
+RUN_ID_SQL = "((('x'||substr(replace(r.id::text,'-',''),1,8))::bit(32)::bigint & 2147483647)::integer)"
 
 
 class BacktestRepository:
