@@ -110,3 +110,14 @@ def test_watch_workspace_reads_real_paper_accounts_positions_orders_and_market()
     assert watchlist[0]["order_count"] == 1
     assert market["klines"][0]["close"] == 1500
     assert markers[0]["label"] == "B"
+
+
+def test_watch_workspace_returns_honest_empty_lists_when_production_has_no_paper_account():
+    class EmptyPaperRepository(FakePaperRepository):
+        def account_positions(self, account_id): raise ValueError("没有可用 A 股 Paper 账户")
+        def account_orders(self, account_id, limit): raise ValueError("没有可用 A 股 Paper 账户")
+        def watchlist(self, account_id, limit): raise ValueError("没有可用 A 股 Paper 账户")
+    service = PaperDomainService(EmptyPaperRepository())
+    assert asyncio.run(service.account_positions("default")) == []
+    assert asyncio.run(service.account_orders("default", 50)) == []
+    assert asyncio.run(service.watchlist("default", 100)) == []

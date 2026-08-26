@@ -73,13 +73,25 @@ class PaperDomainService:
         return await asyncio.to_thread(self.repository.accounts)
 
     async def account_positions(self, account_id: str) -> list[dict]:
-        return await asyncio.to_thread(self.repository.account_positions, account_id)
+        try:
+            return await asyncio.to_thread(self.repository.account_positions, account_id)
+        except ValueError as exc:
+            if str(exc) == "没有可用 A 股 Paper 账户": return []
+            raise
 
     async def account_orders(self, account_id: str, limit: int) -> list[dict]:
-        return await asyncio.to_thread(self.repository.account_orders, account_id, limit)
+        try:
+            return await asyncio.to_thread(self.repository.account_orders, account_id, limit)
+        except ValueError as exc:
+            if str(exc) == "没有可用 A 股 Paper 账户": return []
+            raise
 
     async def watchlist(self, account_id: str, limit: int) -> list[dict]:
-        return await asyncio.to_thread(self.repository.watchlist, account_id, limit)
+        try:
+            return await asyncio.to_thread(self.repository.watchlist, account_id, limit)
+        except ValueError as exc:
+            if str(exc) == "没有可用 A 股 Paper 账户": return []
+            raise
 
     async def watch_market(self, account_id: str, symbol: str, timeframe: str, limit: int) -> dict:
         return await asyncio.to_thread(self.repository.watch_market, account_id, symbol, timeframe, limit)
