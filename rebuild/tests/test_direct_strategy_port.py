@@ -148,6 +148,22 @@ def test_strategy_validator_tracks_pure_helper_container_returns_without_opening
     assert validate_strategy_python(unsafe)["valid"] is False
 
 
+def test_strategy_validator_allows_initialized_context_containers_but_rejects_unsafe_reassignment():
+    safe = VALID_CODE.replace(
+        "def initialize(context):",
+        "def initialize(context):\n    context.active = {}\n    context.entry_prices = dict()",
+    ).replace(
+        "record(held=len(context.portfolio.positions))",
+        "targets = set()\n    targets.add('600519.SH')\n    record(active=context.active.get('600519.SH', False), entry=context.entry_prices.get('600519.SH', 0), targets=len(targets))",
+    )
+    unsafe = safe.replace(
+        "def handle_data(context, data):",
+        "def handle_data(context, data):\n    context.active = context.http",
+    )
+    assert validate_strategy_python(safe)["valid"] is True
+    assert validate_strategy_python(unsafe)["valid"] is False
+
+
 def test_strategy_writes_create_immutable_versions_and_archive():
     repository = FakeStrategyRepository()
     service = StrategyDomainService(repository)

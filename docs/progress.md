@@ -170,7 +170,17 @@
   在“并发 1、每日 1、最长 30 天”下只允许一路创建，另一路 429；任务结束后再次请求仍被每日
   上限拒绝。HTTP 验收为管理员 `401→login 200→protected 200→logout→401`，访客
   `login 200→read 200→batch 403→revoke→401`。探针清理后 guest codes/usage 为 0、auth audit
-  83、jobs 35、logs 756，全部恢复基线；85 项后端/重建测试和安全扫描通过。
+  83、jobs 35、logs 756，全部恢复基线；86 项后端/重建测试和安全扫描通过。
+- 隔离库完成 18 个唯一运行中 Paper 策略的真实批量执行压力：全程最多 2 running，首轮 7 个
+  success、11 个因 validator 未识别 `initialize` 中安全 `context.<attr>={}` 与 `set.add` 而 failed。
+  validator 现只允许所有直接赋值均为安全容器的 context 属性；任何后续危险重赋仍 fail-closed。
+  干净重启后 11 个失败 job 全部通过 parent-linked attempt 2 自动恢复并 success，最终 18/18 个
+  策略形成唯一 sealed run，错误 0；证据包含 18 条 daily equity、738 metrics、72 attribution 和
+  11 custom records。两日区间没有伪造订单或成交。运行窗口为 19:07:24–19:20:07。
+- 清理这些 sealed QA run 时，数据库 `prevent_sealed_backtest_child_mutation` 正确拒绝删除，整个清理
+  事务回滚；未禁用触发器，也未篡改 success 状态。29 个 job lineage 和 18 个 QA run 作为隔离库
+  审计证据保留，当前 backtest jobs/logs/runs 为 64/955/380。Paper 基线仍为 22 instances、137
+  ledger、115 trades、51 positions、1008 equity、2080 events、1019 cycles，未受批量压力影响。
 
 ## BitPro 逐文件复刻对账（2026-08-26）
 

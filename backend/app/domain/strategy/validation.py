@@ -29,7 +29,7 @@ SAFE_CALLS = {
     "tuple", "zip", "Exception", "ValueError",
 }
 SAFE_METHOD_CALLS = {
-    "append", "copy", "count", "extend", "get", "index", "items", "keys",
+    "add", "append", "copy", "count", "extend", "get", "index", "items", "keys",
     "pop", "remove", "reverse", "setdefault", "sort", "values",
 }
 
@@ -91,11 +91,37 @@ def _safe_local_containers(tree: ast.AST, safe_container_functions: set[str]) ->
     return {name for name, count in safe_initializer_counts.items() if count > 0 and store_counts[name] == count}
 
 
-def _is_safe_method_receiver(receiver: ast.AST, safe_local_containers: set[str], reassigned_names: set[str]) -> bool:
+def _safe_context_containers(tree: ast.AST, safe_container_functions: set[str]) -> set[str]:
+    assignment_counts: Counter[str] = Counter()
+    safe_assignment_counts: Counter[str] = Counter()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        value = node.value
+        safe_value = _container_literal(value) or (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id in safe_container_functions
+        )
+        for target in targets:
+            path = _attribute_path(target)
+            if not path.startswith("context.") or path.count(".") != 1:
+                continue
+            assignment_counts[path] += 1
+            if safe_value:
+                safe_assignment_counts[path] += 1
+    return {
+        path for path, count in safe_assignment_counts.items()
+        if count > 0 and assignment_counts[path] == count
+    }
+
+
+def _is_safe_method_receiver(receiver: ast.AST, safe_local_containers: set[str], safe_context_containers: set[str], reassigned_names: set[str]) -> bool:
     if isinstance(receiver, ast.Name):
         return (receiver.id == "data" and "data" not in reassigned_names) or receiver.id in safe_local_containers
     path = _attribute_path(receiver)
-    if path in {"context.portfolio.positions", "context.parameters"} and "context" not in reassigned_names:
+    if path in {"context.portfolio.positions", "context.parameters"} | safe_context_containers and "context" not in reassigned_names:
         return True
     return (
         isinstance(receiver, ast.Call)
@@ -119,6 +145,7 @@ def validate_strategy_python(code: str) -> dict[str, Any]:
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     safe_container_functions = _safe_container_functions(tree)
     safe_local_containers = _safe_local_containers(tree, safe_container_functions)
+    safe_context_containers = _safe_context_containers(tree, safe_container_functions)
     reassigned_names = {
         node.id
         for node in ast.walk(tree)
@@ -164,7 +191,7 @@ def validate_strategy_python(code: str) -> dict[str, Any]:
                 elif name not in functions and name not in SAFE_CALLS:
                     issues.append({"code": "UNSUPPORTED_API", "message": f"未支持的 API: {name}", "line": node.lineno})
             elif isinstance(node.func, ast.Attribute):
-                if node.func.attr not in SAFE_METHOD_CALLS or not _is_safe_method_receiver(node.func.value, safe_local_containers, reassigned_names):
+                if node.func.attr not in SAFE_METHOD_CALLS or not _is_safe_method_receiver(node.func.value, safe_local_containers, safe_context_containers, reassigned_names):
                     issues.append({"code": "FORBIDDEN_METHOD_CALL", "message": f"不允许方法调用: {node.func.attr}", "line": node.lineno})
             else:
                 issues.append({"code": "FORBIDDEN_DYNAMIC_CALL", "message": "不允许动态或下标函数调用", "line": node.lineno})
