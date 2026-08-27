@@ -156,11 +156,13 @@ function MarketIntelligencePanel({
   dashboard,
   onSelectSymbol,
   onSelectSector,
+  onOpenTimeline,
   onOpenMonitor,
 }: {
   dashboard: MarketHomeDashboard;
   onSelectSymbol: (symbol: string) => void;
   onSelectSector: (classificationSystem: 'industry' | 'concept', sectorCode: string) => void;
+  onOpenTimeline: () => void;
   onOpenMonitor: () => void;
 }) {
   const nameMap = useMemo(() => {
@@ -214,18 +216,21 @@ function MarketIntelligencePanel({
               <TrendingUp className="h-4 w-4 text-blue-300" />
               <span className="text-xs font-semibold text-gray-200">市场阶段</span>
             </div>
-            <span
-              className={clsx(
+            <div className="flex items-center gap-2">
+              <span className={clsx(
                 'rounded-md border px-2 py-0.5 text-[10px]',
                 phase?.status === 'ok'
                   ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
                   : phase?.status === 'partial'
                     ? 'border-amber-500/25 bg-amber-500/10 text-amber-300'
                     : 'border-slate-600/45 bg-slate-900/70 text-slate-400'
-              )}
-            >
-              {statusLabel(phase?.status)}
-            </span>
+              )}>
+                {statusLabel(phase?.status)}
+              </span>
+              <button type="button" onClick={onOpenTimeline} className="rounded-md border border-crypto-border px-2 py-0.5 text-[10px] text-gray-500 hover:text-white">
+                阶段时间轴
+              </button>
+            </div>
           </div>
           <div className="flex items-end gap-3">
             <div className="text-2xl font-semibold tracking-tight text-white">{phase?.phase || 'unknown'}</div>
@@ -533,6 +538,7 @@ export default function Home() {
             dashboard={dashboard}
             onSelectSymbol={handleSelectSymbol}
             onSelectSector={(classificationSystem, sectorCode) => navigate(`/market?classification=${classificationSystem}&sector=${encodeURIComponent(sectorCode)}`)}
+            onOpenTimeline={() => navigate('/market?timeline=1')}
             onOpenMonitor={() => navigate('/monitor')}
           />
         ) : null}

@@ -8,6 +8,7 @@ import {
   type MarketInstrument,
   type MarketKlinesMeta,
   type MarketPhase,
+  type MarketTimelinePayload,
   type SectorMember,
   type SectorMembersPayload,
   type SectorRpsRow,
@@ -131,8 +132,11 @@ export default function Market() {
   const [sectorHistory, setSectorHistory] = useState<SectorRpsRow[]>([]);
   const [sectorMembers, setSectorMembers] = useState<SectorMembersPayload | null>(null);
   const [sectorDetailLoading, setSectorDetailLoading] = useState(false);
+  const [marketTimeline, setMarketTimeline] = useState<MarketTimelinePayload | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const sectorCode = searchParams.get('sector') || '';
   const sectorClassification = searchParams.get('classification') === 'concept' ? 'concept' : 'industry';
+  const showTimeline = searchParams.get('timeline') === '1';
   const selectedSymbolMatchesMarketType = Boolean(selectedSymbol);
 
   // 价格闪烁动画状态
@@ -208,6 +212,19 @@ export default function Market() {
     });
     return () => { cancelled = true; };
   }, [sectorClassification, sectorCode]);
+
+  useEffect(() => {
+    if (!showTimeline) return;
+    let cancelled = false;
+    setTimelineLoading(true);
+    marketApi.getTimeline(60)
+      .then((payload) => { if (!cancelled) setMarketTimeline(payload); })
+      .catch(() => {
+        if (!cancelled) setMarketTimeline({ items: [], dataStatus: 'unavailable', unavailableReason: '市场情绪时间轴读取失败', limit: 60, writesPerformed: false, paperMutated: false });
+      })
+      .finally(() => { if (!cancelled) setTimelineLoading(false); });
+    return () => { cancelled = true; };
+  }, [showTimeline]);
 
   const applyMarketDataCacheEntry = useCallback(function applyMarketDataCacheEntry(entry?: MarketDataCacheEntry | null): boolean {
     if (!entry?.klines?.length) return false;
@@ -425,6 +442,62 @@ export default function Market() {
 
         </div>
       </div>
+
+      {showTimeline ? (
+        <section className="mb-4 overflow-hidden rounded-xl border border-blue-500/20 bg-crypto-card/95">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border/60 px-4 py-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-blue-300" />
+                <h2 className="text-sm font-semibold text-gray-100">市场情绪时间轴</h2>
+              </div>
+              <p className="mt-1 text-[10px] text-gray-500">仅展示已持久化的阶段与涨跌停情绪；不回填未计算历史。</p>
+            </div>
+            <button
+              type="button"
+              title="关闭市场情绪时间轴"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete('timeline');
+                setSearchParams(next, { replace: true });
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-crypto-border text-gray-500 hover:bg-slate-800 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {timelineLoading ? (
+            <div className="flex h-28 items-center justify-center text-xs text-gray-500">时间轴读取中...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="min-w-[980px]">
+                <div className="grid grid-cols-[92px_88px_64px_repeat(3,68px)_72px_72px_72px_80px_minmax(180px,1fr)] gap-2 border-b border-crypto-border/50 bg-slate-950/30 px-4 py-2 text-[10px] text-gray-600">
+                  <span>交易日</span><span>阶段</span><span>置信度</span><span>涨停</span><span>跌停</span><span>炸板</span><span>封板率</span><span>最高板</span><span>二板宽度</span><span>快照</span><span>阶段解释</span>
+                </div>
+                {(marketTimeline?.items || []).map((row) => (
+                  <div key={row.tradeDate} className="grid grid-cols-[92px_88px_64px_repeat(3,68px)_72px_72px_72px_80px_minmax(180px,1fr)] items-center gap-2 border-b border-crypto-border/35 px-4 py-2.5 text-[11px] text-gray-400">
+                    <span className="font-mono">{row.tradeDate}</span>
+                    <span className={clsx('font-medium', row.weakMarketVeto ? 'text-rose-300' : 'text-blue-200')}>{row.phase}</span>
+                    <span className="font-mono">{row.confidence == null ? '—' : `${(row.confidence * 100).toFixed(0)}%`}</span>
+                    <span className="font-mono text-up">{row.limitUpCount ?? '—'}</span>
+                    <span className="font-mono text-down">{row.limitDownCount ?? '—'}</span>
+                    <span className="font-mono text-amber-300">{row.failedLimitCount ?? '—'}</span>
+                    <span className="font-mono">{row.sealRatePct == null ? '—' : `${row.sealRatePct.toFixed(1)}%`}</span>
+                    <span className="font-mono">{row.highestStreak == null ? '—' : `${row.highestStreak} 板`}</span>
+                    <span className="font-mono">{row.ladderWidth ?? '—'}</span>
+                    <span className={clsx('font-mono', row.snapshotConsistent ? 'text-emerald-300' : 'text-amber-300')}>{row.sourceSnapshotId == null ? '不一致' : `#${row.sourceSnapshotId}`}</span>
+                    <span className="truncate" title={(row.reasons || []).join(' · ')}>{(row.reasons || []).join(' · ') || row.phaseMissingInputs.join(' · ') || '—'}</span>
+                  </div>
+                ))}
+                {!marketTimeline?.items.length ? (
+                  <div className="flex h-28 items-center justify-center px-4 text-center text-xs text-gray-500">{marketTimeline?.unavailableReason || '暂无已持久化的市场情绪历史'}</div>
+                ) : null}
+              </div>
+            </div>
+          )}
+          <div className="border-t border-crypto-border/50 px-4 py-2 text-[10px] text-gray-600">只读时间轴 · writes_performed=false · paper_mutated=false</div>
+        </section>
+      ) : null}
 
       {sectorCode ? (
         <section className="mb-4 overflow-hidden rounded-xl border border-cyan-500/20 bg-crypto-card/95">

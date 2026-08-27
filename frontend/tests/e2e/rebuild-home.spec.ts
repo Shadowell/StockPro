@@ -19,3 +19,13 @@ test('home remains readable on a narrow viewport', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '指数行情' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
 })
+
+test('home phase summary opens the persisted market timeline', async ({ page }) => {
+  await installFinalFixtures(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: '阶段时间轴' }).click()
+  await expect(page).toHaveURL(/\/market\?timeline=1/)
+  await expect(page.getByRole('heading', { name: '市场情绪时间轴' })).toBeVisible()
+  await expect(page.getByText('78', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('#7', { exact: true })).toBeVisible()
+})

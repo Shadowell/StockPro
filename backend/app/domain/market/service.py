@@ -408,6 +408,19 @@ class MarketDomainService:
                 "definition_version": "ashare-market-sentiment.v1",
             }
 
+    async def list_market_timeline(self, *, limit: int = 60) -> Dict[str, Any]:
+        try:
+            return await asyncio.to_thread(self.repo.list_market_timeline, limit=limit)
+        except Exception as exc:
+            return {
+                "items": [],
+                "data_status": "unavailable",
+                "unavailable_reason": f"A-share market timeline unavailable: {type(exc).__name__}",
+                "limit": limit,
+                "writes_performed": False,
+                "paper_mutated": False,
+            }
+
     async def get_home_dashboard(self, trade_date: str | None = None) -> Dict[str, Any]:
         """Read one coherent persisted home snapshot with a short single-flight cache."""
         cache_key = str(trade_date or "latest")

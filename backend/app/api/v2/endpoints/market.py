@@ -160,6 +160,11 @@ async def get_market_sentiment(
     return ok(await market_domain_service.get_market_sentiment(trade_date))
 
 
+@router.get("/timeline")
+async def get_market_timeline(limit: int = Query(60, ge=1, le=250)):
+    return ok(await market_domain_service.list_market_timeline(limit=limit))
+
+
 @router.get("/sector-rps")
 async def get_sector_rps(
     trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新"),

@@ -96,6 +96,9 @@ curl -fsS -H "Authorization: Bearer ${TOKEN}" \
   http://127.0.0.1:4445/api/v2/market/dashboard
 
 curl -fsS -H "Authorization: Bearer ${TOKEN}" \
+  'http://127.0.0.1:4445/api/v2/market/timeline?limit=60'
+
+curl -fsS -H "Authorization: Bearer ${TOKEN}" \
   'http://127.0.0.1:4445/api/paper/instances?scope=business'
 
 curl -fsS -H "Authorization: Bearer ${TOKEN}" \

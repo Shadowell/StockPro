@@ -203,3 +203,32 @@ def test_home_intelligence_persistence_skips_invalid_price_limit_sentinels() -> 
 
     assert counts["price_limit_count"] == 0
     assert cursor.executemany_calls == []
+
+
+def test_market_timeline_route_returns_persisted_phase_and_sentiment(monkeypatch) -> None:
+    class FakeService:
+        async def list_market_timeline(self, *, limit):
+            return {
+                "items": [{
+                    "trade_date": "2026-08-27",
+                    "phase": "高潮",
+                    "phase_status": "ok",
+                    "limit_up_count": 78,
+                    "limit_down_count": 4,
+                    "failed_limit_count": 21,
+                    "highest_streak": 6,
+                    "source_snapshot_id": 4,
+                }],
+                "data_status": "ok",
+                "limit": limit,
+            }
+
+    monkeypatch.setattr(market_endpoint, "market_domain_service", FakeService())
+    app = FastAPI()
+    app.include_router(market_endpoint.router, prefix="/api/v2/market")
+
+    response = TestClient(app).get("/api/v2/market/timeline", params={"limit": 20})
+
+    assert response.status_code == 200
+    assert response.json()["data"]["items"][0]["phase"] == "高潮"
+    assert response.json()["data"]["items"][0]["source_snapshot_id"] == 4
