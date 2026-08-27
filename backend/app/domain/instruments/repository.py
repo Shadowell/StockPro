@@ -193,6 +193,8 @@ class AshareInstrumentRepository:
         end_date: str,
         *,
         trade_date_count: int,
+        benchmark_rows: list[dict[str, Any]],
+        abnormal_metrics: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """Atomically upsert the full history after all provider calls succeed."""
         instrument_values = [
@@ -211,6 +213,15 @@ class AshareInstrumentRepository:
             )
             for row in daily_rows
         ]
+        content_digest = hashlib.sha256()
+        for rows in (daily_rows, benchmark_rows):
+            for row in rows:
+                content_digest.update(json.dumps(
+                    self._jsonable(row), ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                ).encode())
+                content_digest.update(b"\n")
+        content_hash = content_digest.hexdigest()
+        latest_trade_date = max(str(row["trade_date"]) for row in daily_rows)
 
         with self._connect() as connection:
             with connection.cursor() as cursor:
@@ -243,6 +254,130 @@ class AshareInstrumentRepository:
                 )
                 cursor.execute(
                     """
+                    INSERT INTO market_evidence_snapshots(
+                        trade_date,snapshot_type,market_scope,available_at,source_map,status,content_hash
+                    ) VALUES (%s,'post_close','all_a',NOW(),%s,'sealed',%s)
+                    ON CONFLICT(trade_date,snapshot_type,market_scope,content_hash) DO NOTHING
+                    RETURNING id
+                    """,
+                    (
+                        latest_trade_date,
+                        Jsonb({
+                            "history_sync_run_id": run_id,
+                            "stock_source": "tushare.daily",
+                            "benchmark_source": "tushare.index_daily",
+                            "daily_count": len(daily_rows),
+                            "benchmark_count": len(benchmark_rows),
+                        }),
+                        content_hash,
+                    ),
+                )
+                snapshot_row = cursor.fetchone()
+                if snapshot_row:
+                    source_snapshot_id = int(snapshot_row["id"])
+                else:
+                    cursor.execute(
+                        """SELECT id FROM market_evidence_snapshots
+                           WHERE trade_date=%s AND snapshot_type='post_close'
+                             AND market_scope='all_a' AND content_hash=%s""",
+                        (latest_trade_date, content_hash),
+                    )
+                    source_snapshot_id = int(cursor.fetchone()["id"])
+                abnormal_values = [
+                    (
+                        row["symbol"], row["trade_date"], row.get("return_3d"), row.get("return_10d"), row.get("return_30d"),
+                        row.get("benchmark_code") or "000300.SH", row.get("benchmark_deviation_3d"),
+                        row.get("benchmark_deviation_10d"), row.get("benchmark_deviation_30d"), row.get("sector_code"),
+                        row.get("sector_deviation_3d"), row.get("sector_deviation_10d"), row.get("sector_deviation_30d"),
+                        row.get("amount_ratio_5d"), row.get("distance_to_60d_high_pct"), row.get("distance_to_60d_low_pct"),
+                        Jsonb(row.get("tags") or []), row.get("status") or "partial", Jsonb(row.get("missing_inputs") or []),
+                        source_snapshot_id, row.get("definition_version") or "ashare-abnormality.v1",
+                        row.get("available_at"), row.get("knowledge_cutoff_at"), Jsonb(row.get("source_lineage") or {}),
+                    )
+                    for row in abnormal_metrics
+                ]
+                if abnormal_values:
+                    cursor.executemany(
+                        """
+                        INSERT INTO symbol_abnormal_metrics(
+                            symbol,trade_date,return_3d,return_10d,return_30d,
+                            benchmark_code,benchmark_deviation_3d,benchmark_deviation_10d,benchmark_deviation_30d,
+                            sector_code,sector_deviation_3d,sector_deviation_10d,sector_deviation_30d,
+                            amount_ratio_5d,distance_to_60d_high_pct,distance_to_60d_low_pct,
+                            tags,status,missing_inputs,source_snapshot_id,definition_version,
+                            available_at,knowledge_cutoff_at,source_lineage
+                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT(symbol,trade_date,definition_version) DO UPDATE SET
+                            return_3d=EXCLUDED.return_3d,return_10d=EXCLUDED.return_10d,return_30d=EXCLUDED.return_30d,
+                            benchmark_code=EXCLUDED.benchmark_code,
+                            benchmark_deviation_3d=EXCLUDED.benchmark_deviation_3d,
+                            benchmark_deviation_10d=EXCLUDED.benchmark_deviation_10d,
+                            benchmark_deviation_30d=EXCLUDED.benchmark_deviation_30d,
+                            sector_code=EXCLUDED.sector_code,
+                            sector_deviation_3d=EXCLUDED.sector_deviation_3d,
+                            sector_deviation_10d=EXCLUDED.sector_deviation_10d,
+                            sector_deviation_30d=EXCLUDED.sector_deviation_30d,
+                            amount_ratio_5d=EXCLUDED.amount_ratio_5d,
+                            distance_to_60d_high_pct=EXCLUDED.distance_to_60d_high_pct,
+                            distance_to_60d_low_pct=EXCLUDED.distance_to_60d_low_pct,
+                            tags=EXCLUDED.tags,status=EXCLUDED.status,missing_inputs=EXCLUDED.missing_inputs,
+                            source_snapshot_id=EXCLUDED.source_snapshot_id,
+                            available_at=EXCLUDED.available_at,knowledge_cutoff_at=EXCLUDED.knowledge_cutoff_at,
+                            source_lineage=EXCLUDED.source_lineage,computed_at=NOW()
+                        """,
+                        abnormal_values,
+                    )
+                latest_close = {
+                    row["symbol"]: row.get("close")
+                    for row in daily_rows
+                    if str(row.get("trade_date")) == latest_trade_date
+                }
+                instrument_names = {row["symbol"]: row.get("name") for row in instruments}
+                abnormal_event_values = []
+                for row in abnormal_metrics:
+                    if not row.get("eligible") or row.get("abnormal_status") not in {"edge", "triggered"}:
+                        continue
+                    windows = row.get("windows") if isinstance(row.get("windows"), dict) else {}
+                    dominant = max(
+                        windows,
+                        key=lambda key: float((windows.get(key) or {}).get("closeness") or 0),
+                        default=None,
+                    )
+                    status = row.get("abnormal_status")
+                    source_object_id = f"{row['symbol']}:{row['trade_date']}:{row.get('definition_version') or 'ashare-abnormality.v1'}"
+                    abnormal_event_values.append((
+                        "critical" if status == "triggered" else "warning",
+                        row["symbol"],
+                        instrument_names.get(row["symbol"]),
+                        latest_close.get(row["symbol"]),
+                        row.get("return_3d"),
+                        f"ashare-abnormal-{dominant or 'multi'}",
+                        f"{dominant or '多窗口'}异动{'触发' if status == 'triggered' else '边缘'}",
+                        f"{row['symbol']} {dominant or '3/10/30日'}异动{status}",
+                        source_object_id,
+                        Jsonb({
+                            "source_snapshot_id": source_snapshot_id,
+                            "windows": windows,
+                            "orders_created": 0,
+                            "paper_mutated": False,
+                        }),
+                        row.get("available_at"),
+                        f"abnormal:{source_object_id}:{status}:{dominant or 'multi'}",
+                    ))
+                if abnormal_event_values:
+                    cursor.executemany(
+                        """
+                        INSERT INTO market_alert_events(
+                            source,severity,symbol,name,price,change_percent,rule_id,rule_name,message,
+                            source_object_type,source_object_id,evidence,orders_created,paper_mutated,triggered_at,dedupe_key
+                        ) VALUES ('abnormal',%s,%s,%s,%s,%s,%s,%s,%s,
+                                  'symbol_abnormal_metric',%s,%s,0,FALSE,%s,%s)
+                        ON CONFLICT(dedupe_key) DO NOTHING
+                        """,
+                        abnormal_event_values,
+                    )
+                cursor.execute(
+                    """
                     UPDATE a_share_daily_sync_runs
                     SET status='success', sync_scope='history',
                         trade_date=%s, requested_start_date=%s, requested_end_date=%s,
@@ -273,6 +408,10 @@ class AshareInstrumentRepository:
             "start_date": start_date,
             "end_date": end_date,
             "trade_date_count": int(trade_date_count),
+            "benchmark_count": len(benchmark_rows),
+            "abnormal_metric_count": len(abnormal_metrics),
+            "eligible_abnormal_metric_count": sum(1 for item in abnormal_metrics if item.get("eligible")),
+            "abnormal_event_count": len(abnormal_event_values),
         }
 
     @staticmethod

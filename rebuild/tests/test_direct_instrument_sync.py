@@ -222,6 +222,7 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
     class HistoryProvider(FakeProvider):
         def __init__(self):
             self.daily_dates = []
+            self.benchmark_dates = []
 
         def fetch_trade_calendar(self, start_date: str, end_date: str, is_open=None):
             assert (start_date, end_date, is_open) == ("20260825", "20260826", "1")
@@ -257,6 +258,17 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
                 },
             ]
 
+        def fetch_benchmark_bars(self, trade_date: str, benchmarks=None):
+            assert benchmarks == ["000300.SH"]
+            self.benchmark_dates.append(trade_date)
+            day_offset = 0 if trade_date == "20260825" else 1
+            return [{
+                "ts_code": "000300.SH", "trade_date": trade_date,
+                "open": 3600 + day_offset, "high": 3610 + day_offset,
+                "low": 3590 + day_offset, "close": 3605 + day_offset,
+                "pct_chg": 0.1, "vol": 1000, "amount": 1_000_000,
+            }]
+
     class HistoryRepository(FakeRepository):
         def __init__(self):
             super().__init__()
@@ -266,7 +278,7 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
         def update_history_progress(self, run_id, **payload):
             self.progress.append((run_id, payload))
 
-        def complete_history_run(self, run_id, instruments, daily_rows, start_date, end_date, *, trade_date_count):
+        def complete_history_run(self, run_id, instruments, daily_rows, start_date, end_date, *, trade_date_count, benchmark_rows, abnormal_metrics):
             self.history_completed = {
                 "run_id": run_id,
                 "instruments": instruments,
@@ -274,6 +286,8 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
                 "start_date": start_date,
                 "end_date": end_date,
                 "trade_date_count": trade_date_count,
+                "benchmark_rows": benchmark_rows,
+                "abnormal_metrics": abnormal_metrics,
             }
             return {
                 "run_id": run_id,
@@ -294,6 +308,7 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
     )
 
     assert provider.daily_dates == ["20260825", "20260826"]
+    assert provider.benchmark_dates == ["20260825", "20260826"]
     assert result == {
         "run_id": 17,
         "status": "success",
@@ -303,8 +318,14 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
         "start_date": "2026-08-25",
         "end_date": "2026-08-26",
         "trade_date_count": 2,
+        "benchmark_count": 2,
+        "abnormal_metric_count": 2,
+        "eligible_abnormal_metric_count": 0,
     }
     assert repository.history_completed["daily_rows"][0]["trade_date"] == "2026-08-25"
+    assert len(repository.history_completed["benchmark_rows"]) == 2
+    assert len(repository.history_completed["abnormal_metrics"]) == 2
+    assert all(item["status"] == "partial" for item in repository.history_completed["abnormal_metrics"])
     assert repository.progress[-1][1]["processed_trade_dates"] == 2
     assert repository.failed is None
 

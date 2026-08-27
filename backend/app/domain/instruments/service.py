@@ -310,7 +310,12 @@ def _normalize_corporate_action_rows(rows: list[dict[str, Any]], trade_date: str
     return result
 
 
-def _normalize_benchmark_rows(rows: list[dict[str, Any]], trade_date: str) -> list[dict[str, Any]]:
+def _normalize_benchmark_rows(
+    rows: list[dict[str, Any]],
+    trade_date: str,
+    *,
+    required_codes: set[str] | None = None,
+) -> list[dict[str, Any]]:
     target = _date(trade_date)
     result = []
     for row in rows:
@@ -333,7 +338,7 @@ def _normalize_benchmark_rows(rows: list[dict[str, Any]], trade_date: str) -> li
             "amount": _number(row.get("amount")),
             "source": "tushare.index_daily",
         })
-    required = {"000001.SH", "399001.SZ", "399006.SZ", "000300.SH"}
+    required = required_codes or {"000001.SH", "399001.SZ", "399006.SZ", "000300.SH"}
     returned = {item["ts_code"] for item in result}
     missing = sorted(required - returned)
     if missing:
@@ -492,6 +497,7 @@ class AshareInstrumentSyncService:
                 )
 
             daily_rows: list[dict[str, Any]] = []
+            benchmark_rows: list[dict[str, Any]] = []
             skipped_trade_dates: list[dict[str, str]] = []
             for index, trade_date in enumerate(trade_dates):
                 raw_rows = provider.fetch_daily(trade_date.replace("-", ""))
@@ -503,6 +509,14 @@ class AshareInstrumentSyncService:
                         raise RuntimeError(f"TuShare daily returned no rows for open trade date {trade_date}")
                 else:
                     daily_rows.extend(normalized_rows)
+                    benchmark_rows.extend(_normalize_benchmark_rows(
+                        provider.fetch_benchmark_bars(
+                            trade_date.replace("-", ""),
+                            benchmarks=["000300.SH"],
+                        ),
+                        trade_date.replace("-", ""),
+                        required_codes={"000300.SH"},
+                    ))
                 if callable(update_progress):
                     update_progress(
                         run_id,
@@ -517,6 +531,15 @@ class AshareInstrumentSyncService:
 
             if not daily_rows:
                 raise RuntimeError(f"TuShare daily returned no rows for {requested_start} ~ {requested_end}")
+            latest_trade_date = max(str(row["trade_date"]) for row in daily_rows)
+            from app.domain.market.materialization import build_symbol_abnormal_metrics
+
+            abnormal_metrics = build_symbol_abnormal_metrics(
+                daily_rows=daily_rows,
+                benchmark_rows=benchmark_rows,
+                instruments=instruments,
+                trade_date=latest_trade_date,
+            )
             complete_history = getattr(self.repository, "complete_history_run", None)
             if not callable(complete_history):
                 raise RuntimeError("repository does not support atomic A-share history sync")
@@ -527,7 +550,12 @@ class AshareInstrumentSyncService:
                 requested_start,
                 requested_end,
                 trade_date_count=len(trade_dates),
+                benchmark_rows=benchmark_rows,
+                abnormal_metrics=abnormal_metrics,
             )
+            result.setdefault("benchmark_count", len(benchmark_rows))
+            result.setdefault("abnormal_metric_count", len(abnormal_metrics))
+            result.setdefault("eligible_abnormal_metric_count", sum(1 for item in abnormal_metrics if item.get("eligible")))
             if skipped_trade_dates:
                 result["skipped_trade_dates"] = skipped_trade_dates
             return result

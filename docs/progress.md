@@ -45,6 +45,13 @@
 - `/api/v2/market/movers` 继续只读已封存/落库的 `symbol_abnormal_metrics`，返回板块、ST、阈值、每窗口偏离/接近度、来源快照和资格状态，按最高接近度排序；不在 GET 中重算或写库。
 - 新增 PostgreSQL `market_alert_events` 追加事件合同与 `orders_created=0` / `paper_mutated=false` 数据库约束；`/api/v2/monitor/events` 按来源和严重度读取策略、信号、价格、异动、板块及既有 Paper/risk 事件，首页最多展示 10 条并提供行情/监控穿透。
 - 首页市场指标区新增“异动边缘明细”和“告警事件流”，保留紧凑深色操作台、桌面/窄屏横向可读和真实空态；新增 4 项 Mock Playwright 验收。
+- 修复 movers 生产查询在 join `instrument_definitions` 后未限定 `symbol/status/trade_date` 导致的
+  `AmbiguousColumn`；列表和单标的 SQL 现统一使用 `m.` 字段限定。
+- 半年历史同步现逐开放日同时获取真实沪深300日线，按证券 `industry` 用真实成员当日涨跌构造等权
+  行业对照；最新交易日 3/10/30 日 metrics 与股票历史在同一事务 upsert，并绑定新建 sealed
+  `market_evidence_snapshots`。缺 benchmark/行业/30 日窗口继续写 partial 且不进入正常榜单。
+- 隔离 PostgreSQL 真实事务探针以 2 只证券 × 40 日生成 2 条 eligible metrics，movers `ok`，两条
+  metrics 绑定同一 non-null snapshot ID；可变探针行已清理，sealed snapshot 按不可变合同保留。
 - 验证：后端全量 147 项、前端 `check`/零警告 `lint`/生产 `build`/bundle budget、`rebuild/assert_safety.py` 和首页 Mock Playwright 4 项通过。标准 4444/4445 当时被另一并行任务占用，已在独立 4454/4455 临时服务完成启动与健康/路由探测；隔离库迁移因本机 Colima Docker daemon 不可用未执行。
 
 ## GitHub #61 首页指数、宽度、趋势与市场活跃度基础层（2026-08-27）
@@ -68,6 +75,8 @@
   `instrument_definitions` 与 `stock_history` 的原子边界。
 - `a_share_daily_sync_runs` 新增同步范围、请求区间、交易日总数/进度和最后处理日期；数据中心
   新增“拉取近半年 A股”按钮，访客禁用，页面按 `CN` 口径显示真实标的/记录统计。
+- 同一同步任务现在同时获取沪深300历史并物化最新日 `symbol_abnormal_metrics`；股票日线、市场证据
+  snapshot 和异动 metrics 任一步失败则整个最终事务回滚，不留下部分榜单。
 - 隔离库 run 4 已完成 `2026-03-01`~`2026-08-27` 的 124 个开放交易日，写入 677,206
   条日线；校验后库内历史为 683,279 条、5,567 个历史标的、300 个历史交易日（保留先前数据）。
 - 随后的异步入口幂等校验 run 5 在最终 upsert 阶段遇到 `No space left on device`；远端根分区

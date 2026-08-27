@@ -934,12 +934,12 @@ class MarketRepository:
                         "definition_version": ABNORMALITY_DEFINITION_VERSION,
                     }
                 query = """
-                    SELECT symbol,trade_date,return_3d,return_10d,return_30d,
-                           benchmark_deviation_3d,benchmark_deviation_10d,benchmark_deviation_30d,
-                           sector_deviation_3d,sector_deviation_10d,sector_deviation_30d,
-                           amount_ratio_5d,distance_to_60d_high_pct,distance_to_60d_low_pct,
-                           tags,status,missing_inputs,definition_version,available_at,knowledge_cutoff_at,
-                           source_snapshot_id,benchmark_code,sector_code,
+                    SELECT m.symbol,m.trade_date,m.return_3d,m.return_10d,m.return_30d,
+                           m.benchmark_deviation_3d,m.benchmark_deviation_10d,m.benchmark_deviation_30d,
+                           m.sector_deviation_3d,m.sector_deviation_10d,m.sector_deviation_30d,
+                           m.amount_ratio_5d,m.distance_to_60d_high_pct,m.distance_to_60d_low_pct,
+                           m.tags,m.status,m.missing_inputs,m.definition_version,m.available_at,m.knowledge_cutoff_at,
+                           m.source_snapshot_id,m.benchmark_code,m.sector_code,
                            i.name,i.board
                     FROM symbol_abnormal_metrics m
                     LEFT JOIN instrument_definitions i
@@ -947,11 +947,11 @@ class MarketRepository:
                 """
                 params: list[object] = []
                 if trade_date:
-                    query += " WHERE trade_date=%s"
+                    query += " WHERE m.trade_date=%s"
                     params.append(trade_date)
                 else:
-                    query += " WHERE trade_date=(SELECT MAX(trade_date) FROM symbol_abnormal_metrics)"
-                query += " ORDER BY trade_date DESC,ABS(COALESCE(benchmark_deviation_3d,0)) DESC,symbol LIMIT %s"
+                    query += " WHERE m.trade_date=(SELECT MAX(latest.trade_date) FROM symbol_abnormal_metrics latest)"
+                query += " ORDER BY m.trade_date DESC,ABS(COALESCE(m.benchmark_deviation_3d,0)) DESC,m.symbol LIMIT %s"
                 params.append(min(2000, bounded * 10))
                 cursor.execute(query, tuple(params))
                 rows = cursor.fetchall()
@@ -997,12 +997,12 @@ class MarketRepository:
                         "definition_version": ABNORMALITY_DEFINITION_VERSION,
                     }
                 query = """
-                    SELECT symbol,trade_date,return_3d,return_10d,return_30d,
-                           benchmark_deviation_3d,benchmark_deviation_10d,benchmark_deviation_30d,
-                           sector_deviation_3d,sector_deviation_10d,sector_deviation_30d,
-                           amount_ratio_5d,distance_to_60d_high_pct,distance_to_60d_low_pct,
-                           tags,status,missing_inputs,definition_version,available_at,knowledge_cutoff_at,
-                           source_snapshot_id,benchmark_code,sector_code,
+                    SELECT m.symbol,m.trade_date,m.return_3d,m.return_10d,m.return_30d,
+                           m.benchmark_deviation_3d,m.benchmark_deviation_10d,m.benchmark_deviation_30d,
+                           m.sector_deviation_3d,m.sector_deviation_10d,m.sector_deviation_30d,
+                           m.amount_ratio_5d,m.distance_to_60d_high_pct,m.distance_to_60d_low_pct,
+                           m.tags,m.status,m.missing_inputs,m.definition_version,m.available_at,m.knowledge_cutoff_at,
+                           m.source_snapshot_id,m.benchmark_code,m.sector_code,
                            i.name,i.board
                     FROM symbol_abnormal_metrics m
                     LEFT JOIN instrument_definitions i
@@ -1011,9 +1011,9 @@ class MarketRepository:
                 """
                 params: list[object] = [canonical]
                 if trade_date:
-                    query += " AND trade_date=%s"
+                    query += " AND m.trade_date=%s"
                     params.append(trade_date)
-                query += " ORDER BY trade_date DESC LIMIT 1"
+                query += " ORDER BY m.trade_date DESC LIMIT 1"
                 cursor.execute(query, tuple(params))
                 row = cursor.fetchone()
         if not row:

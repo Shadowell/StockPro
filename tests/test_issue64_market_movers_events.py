@@ -16,6 +16,29 @@ from app.api.v2.endpoints import monitor  # noqa: E402
 from app.domain.market.repository import MarketRepository  # noqa: E402
 import app.domain.market.research_metrics as research_metrics  # noqa: E402
 
+try:  # pragma: no cover - keeps the red test as an assertion, not collection failure.
+    from app.domain.market.materialization import build_symbol_abnormal_metrics
+except ModuleNotFoundError:  # pragma: no cover
+    build_symbol_abnormal_metrics = None
+
+
+class _CaptureCursor:
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def execute(self, query, _params=()): self.queries.append(str(query))
+    def fetchall(self): return []
+
+
+class _CaptureConnection:
+    def __init__(self, cursor: _CaptureCursor) -> None: self._cursor = cursor
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def set_session(self, **_kwargs): return None
+    def cursor(self, **_kwargs): return self._cursor
+
 
 def _bars(count: int, *, close_start: float = 10.0, close_step: float = 0.2) -> list[dict]:
     rows = []
@@ -129,6 +152,54 @@ def test_repository_abnormality_projection_keeps_snapshot_and_board_evidence() -
     assert payload["board"] == "创业板"
     assert payload["eligible"] is True
     assert payload["windows"]["3d"]["threshold"] == 0.30
+
+
+def test_abnormality_list_query_qualifies_metrics_columns_after_instrument_join(monkeypatch) -> None:
+    cursor = _CaptureCursor()
+    repository = MarketRepository(
+        "postgresql://example.invalid/db",
+        connection_factory=lambda *_args, **_kwargs: _CaptureConnection(cursor),
+    )
+    monkeypatch.setattr(repository, "_table_exists", lambda *_args: True)
+
+    repository.list_symbol_abnormalities(limit=10)
+
+    query = cursor.queries[-1]
+    assert "SELECT m.symbol,m.trade_date,m.return_3d" in query
+    assert "m.tags,m.status,m.missing_inputs,m.definition_version" in query
+    assert "WHERE m.trade_date=(SELECT MAX(latest.trade_date) FROM symbol_abnormal_metrics latest)" in query
+    assert "ORDER BY m.trade_date DESC,ABS(COALESCE(m.benchmark_deviation_3d,0)) DESC,m.symbol" in query
+
+
+def test_history_materializer_builds_latest_eligible_metrics_from_real_stock_benchmark_and_industry_rows() -> None:
+    assert build_symbol_abnormal_metrics is not None
+    instruments = [
+        {"symbol": "600001.SH", "name": "示例甲", "industry": "示例行业", "board": "主板"},
+        {"symbol": "600002.SH", "name": "示例乙", "industry": "示例行业", "board": "主板"},
+    ]
+    daily_rows = []
+    benchmark_rows = []
+    for index in range(40):
+        day = f"2026-07-{index + 1:02d}" if index < 31 else f"2026-08-{index - 30:02d}"
+        benchmark_rows.append({"symbol": "000300.SH", "trade_date": day, "open": 100 + index, "high": 101 + index, "low": 99 + index, "close": 100 + index, "amount": 1_000_000})
+        for offset, instrument in enumerate(instruments):
+            close = 10 + index * (0.2 + offset * 0.05)
+            daily_rows.append({"symbol": instrument["symbol"], "trade_date": day, "open": close - 0.1, "high": close + 0.2, "low": close - 0.2, "close": close, "amount": 100_000 + index * 1_000, "change_percent": 1 + offset})
+
+    metrics = build_symbol_abnormal_metrics(
+        daily_rows=daily_rows,
+        benchmark_rows=benchmark_rows,
+        instruments=instruments,
+        trade_date="2026-08-09",
+    )
+
+    assert len(metrics) == 2
+    assert {item["symbol"] for item in metrics} == {"600001.SH", "600002.SH"}
+    assert all(item["eligible"] is True for item in metrics)
+    assert all(item["sector_code"] == "示例行业" for item in metrics)
+    assert all(item["benchmark_code"] == "000300.SH" for item in metrics)
+    assert all(set(item["windows"]) == {"3d", "10d", "30d"} for item in metrics)
+    assert all(item["available_at"] and item["knowledge_cutoff_at"] for item in metrics)
 
 
 def test_monitor_events_endpoint_is_read_only_and_filters_the_persisted_stream(monkeypatch) -> None:
