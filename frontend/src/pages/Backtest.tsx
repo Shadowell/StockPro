@@ -20,7 +20,7 @@ import type { Kline } from '../types';
 import { useAuth } from '../auth/AuthProvider';
 import { useSymbolNames } from '../hooks/useSymbolNames';
 import { formatSymbolLabel } from '../utils/symbolDisplay';
-import { BacktestResult, BacktestHistoryItem, BacktestHistoryDeleteTarget, HistoryAssetFilter, BacktestView, BacktestStatusFilter, BacktestSortMode, BACKTEST_PREFS_KEY, BACKTEST_INSTANCES_KEY, SELECTED_BACKTEST_INSTANCE_KEY, ACTIVE_BACKTEST_JOB_KEY, ISO_DATE, BACKTEST_HISTORY_PAGE_SIZE, BACKTEST_WIZARD_STEPS, HISTORY_ASSET_FILTERS, BACKTEST_STATUS_FILTERS, BACKTEST_TIMEFRAME_OPTIONS, BACKTEST_TIMEFRAME_MODES, BacktestPrefsV1, BacktestInstanceStatus, BacktestTimeframeMode, BacktestInstanceConfig, BacktestInstance, todayDateInputValue, clampIsoDateToToday, defaultBacktestDateRange, defaultBatchBacktestDateRange, loadBacktestPrefs, createBacktestInstance, createBacktestDraft, quickDateRange, backtestDateValidationMessage, loadBacktestInstances, persistableBacktestInstances, backtestInstanceStatusMeta, backtestDataQualityStatusMeta, backtestInstanceActionStatusLabel, backtestInstanceActionButtonClass, backtestInstanceActionStatusTone, backtestInstanceActionStatusIcon, backtestInstanceStatusBucket, backtestInstanceReturn, backtestInstanceDrawdown, backtestInstanceWinRate, backtestInstanceCanContinue, strategySymbols, strategyBenchmarkSymbol, strategyTradeSymbols, strategyTimeframe, backtestTimeframeLabel, backtestEffectiveTimeframe, backtestEffectiveTimeframes, backtestInstanceTimeframes, finiteNumber, backtestTradeNotional, backtestTradeMargin, formatBacktestTradeMoney, formatBacktestTradeLeverage, backtestRequestMatchesInstance, strategyAssetClass, strategyAssetClassById, inferStrategyAssetClassFromName, backtestResultAssetClass, backtestInstanceAssetClass, strategyNameColorClass, strategyAssetBadgeClass, strategyIsBacktestSelectable, strategyBacktestCostDefaults, symbolSummary, strategyMatchesBacktestSearch, backtestInstanceMatchesSearch, strategyNameById, backtestStrategyDisplayName, formatDateTime, timeframeMs, buildBacktestTradeMarkers, normalizeBacktestKline, historyDetailToBacktestResult, backtestHistorySignature, backtestHistoryIdentity, backtestInstanceHistoryIdentities, historyItemToBacktestInstance, backtestHistoryItemFromInstance, backtestInstanceLogs, backtestStatusDialogContent, dateToStartMs, dateToEndMs, buildCryptoBacktestPerformanceMetrics, backtestSortDirectionFor, nextBacktestSortMode, backtestApiSortBy, backtestApiSortDir, compareNullableBacktestMetric, BacktestSortArrow, BacktestWizardStep, Field, StatRow } from './backtest/backtestSupport';
+import { BacktestResult, BacktestHistoryItem, BacktestHistoryDeleteTarget, HistoryAssetFilter, BacktestView, BacktestStatusFilter, BacktestSortMode, BACKTEST_PREFS_KEY, BACKTEST_INSTANCES_KEY, SELECTED_BACKTEST_INSTANCE_KEY, ACTIVE_BACKTEST_JOB_KEY, ISO_DATE, BACKTEST_HISTORY_PAGE_SIZE, BACKTEST_WIZARD_STEPS, HISTORY_ASSET_FILTERS, BACKTEST_STATUS_FILTERS, BACKTEST_TIMEFRAME_OPTIONS, BACKTEST_TIMEFRAME_MODES, BacktestPrefsV1, BacktestInstanceStatus, BacktestTimeframeMode, BacktestInstanceConfig, BacktestInstance, todayDateInputValue, clampIsoDateToToday, defaultBacktestDateRange, defaultBatchBacktestDateRange, loadBacktestPrefs, createBacktestInstance, createBacktestDraft, quickDateRange, backtestDateValidationMessage, loadBacktestInstances, persistableBacktestInstances, backtestInstanceStatusMeta, backtestDataQualityStatusMeta, backtestInstanceActionStatusLabel, backtestInstanceActionButtonClass, backtestInstanceActionStatusTone, backtestInstanceActionStatusIcon, backtestInstanceStatusBucket, backtestInstanceReturn, backtestInstanceDrawdown, backtestInstanceWinRate, backtestInstanceCanContinue, strategySymbols, strategyBenchmarkSymbol, strategyTradeSymbols, strategyTimeframe, backtestTimeframeLabel, backtestEffectiveTimeframe, backtestEffectiveTimeframes, backtestInstanceTimeframes, finiteNumber, backtestTradeNotional, formatBacktestTradeMoney, backtestRequestMatchesInstance, strategyAssetClass, strategyAssetClassById, inferStrategyAssetClassFromName, backtestResultAssetClass, backtestInstanceAssetClass, strategyNameColorClass, strategyAssetBadgeClass, strategyIsBacktestSelectable, strategyBacktestCostDefaults, symbolSummary, strategyMatchesBacktestSearch, backtestInstanceMatchesSearch, strategyNameById, backtestStrategyDisplayName, formatDateTime, timeframeMs, buildBacktestTradeMarkers, normalizeBacktestKline, historyDetailToBacktestResult, backtestHistorySignature, backtestHistoryIdentity, backtestInstanceHistoryIdentities, historyItemToBacktestInstance, backtestHistoryItemFromInstance, backtestInstanceLogs, backtestStatusDialogContent, dateToStartMs, dateToEndMs, backtestDurationDays, buildCryptoBacktestPerformanceMetrics, backtestSortDirectionFor, nextBacktestSortMode, backtestApiSortBy, backtestApiSortDir, compareNullableBacktestMetric, BacktestSortArrow, BacktestWizardStep, Field, StatRow } from './backtest/backtestSupport';
 
 const WatchKlineChart = lazy(() => import('../components/WatchKlineChart'));
 const BacktestEquityCurve = lazy(() => import('../components/BacktestEquityCurve'));
@@ -1296,6 +1296,21 @@ export default function Backtest() {
 
   const hasResult = result && result.status === 'completed';
   const resultDataInvalidated = result?.dataQualityStatus === 'invalidated';
+  const resultFillCount = result?.fillCount ?? result?.totalTrades ?? result?.trades?.length ?? 0;
+  const resultClosedTradeCount = result?.closedTradeCount ?? 0;
+  const resultSampleDays = result?.sampleDays ?? (result ? backtestDurationDays(result) : null);
+  const resultSampleInsufficient = Boolean(
+    result && (
+      result.metricStatus === 'insufficient_sample' ||
+      (resultSampleDays != null && resultSampleDays < 2) ||
+      resultClosedTradeCount < 1
+    )
+  );
+  const resultSampleReason = result?.metricUnavailableReason || (
+    resultSampleDays != null && resultSampleDays < 2
+      ? '回测仅覆盖 1 天，无法形成收益、风险或基准判决。'
+      : '没有闭合交易，无法计算胜率、盈亏比或策略判决。'
+  );
   const resultAssetClass = backtestResultAssetClass(strategies, result, selectedStrategy);
   const renderBacktestKlineReview = ({
     height = 520,
@@ -1436,7 +1451,7 @@ export default function Backtest() {
   const monthlyReturnEntries = result?.monthlyReturns
     ? Object.entries(result.monthlyReturns).sort(([left], [right]) => left.localeCompare(right))
     : [];
-  const totalTradesCount = result?.totalTrades ?? result?.trades?.length ?? 0;
+  const totalTradesCount = resultFillCount;
   const avgFeePerTrade =
     result?.totalFees != null && totalTradesCount > 0
       ? result.totalFees / totalTradesCount
@@ -1444,28 +1459,32 @@ export default function Backtest() {
   const backtestVerdictMetrics = result ? [
     {
       label: '净收益',
-      numeric: result.totalReturn ?? null,
+      numeric: resultSampleInsufficient ? null : result.totalReturn ?? null,
+      display: resultSampleInsufficient ? '样本不足' : undefined,
       format: fmtPct,
       valueClassName: result.totalReturn == null ? 'text-gray-400' : (result.totalReturn >= 0 ? 'text-up' : 'text-down'),
       caption: '策略累计收益',
     },
     {
       label: '超额收益',
-      numeric: benchmarkStats.alpha,
+      numeric: resultSampleInsufficient ? null : benchmarkStats.alpha,
+      display: resultSampleInsufficient ? '样本不足' : benchmarkStats.alpha == null ? '基准不足' : undefined,
       format: fmtPct,
       valueClassName: benchmarkStats.alpha == null ? 'text-gray-400' : (benchmarkStats.alpha >= 0 ? 'text-up' : 'text-down'),
       caption: `相对 ${benchmarkSymbol}`,
     },
     {
       label: '最大回撤',
-      numeric: result.maxDrawdown ?? null,
+      numeric: resultSampleInsufficient ? null : result.maxDrawdown ?? null,
+      display: resultSampleInsufficient ? '样本不足' : undefined,
       format: (value: number) => `${value.toFixed(2)}%`,
       valueClassName: result.maxDrawdown == null ? 'text-gray-400' : 'text-down',
       caption: '权益最深回落',
     },
     {
       label: '夏普',
-      numeric: result.sharpeRatio ?? null,
+      numeric: resultSampleInsufficient ? null : result.sharpeRatio ?? null,
+      display: resultSampleInsufficient ? '样本不足' : undefined,
       format: (value: number) => value.toFixed(2),
       valueClassName: result.sharpeRatio == null ? 'text-gray-400' : (result.sharpeRatio >= 1 ? 'text-up' : 'text-down'),
       caption: '风险调整收益',
@@ -1481,25 +1500,25 @@ export default function Backtest() {
       metrics: [
         {
           label: '年化收益',
-          value: fmtPct(result.annualReturn),
+          value: resultSampleInsufficient ? '样本不足' : fmtPct(result.annualReturn),
           valueClassName: result.annualReturn == null ? 'text-gray-400' : (result.annualReturn >= 0 ? 'text-up' : 'text-down'),
           caption: '按样本天数折算',
         },
         {
           label: '期末权益',
-          value: result.finalCapital != null ? `$${fmt(result.finalCapital)}` : '-',
+          value: result.finalCapital != null ? `¥${fmt(result.finalCapital)}` : '-',
           valueClassName: result.finalCapital == null ? 'text-gray-400' : (result.finalCapital >= result.initialCapital ? 'text-up' : 'text-down'),
           caption: '回测结束资金',
         },
         {
           label: `${benchmarkSymbol} 同期`,
-          value: benchmarkStats.benchmarkReturn != null ? fmtPct(benchmarkStats.benchmarkReturn) : '-',
+          value: resultSampleInsufficient ? '样本不足' : benchmarkStats.benchmarkReturn != null ? fmtPct(benchmarkStats.benchmarkReturn) : '基准不足',
           valueClassName: benchmarkStats.benchmarkReturn == null ? 'text-gray-400' : (benchmarkStats.benchmarkReturn >= 0 ? 'text-up' : 'text-down'),
           caption: '市场基准',
         },
         {
           label: '手续费',
-          value: result.totalFees != null ? `$${fmt(result.totalFees)}` : '-',
+          value: result.totalFees != null ? `¥${fmt(result.totalFees)}` : '-',
           valueClassName: result.totalFees == null ? 'text-gray-400' : 'text-gray-200',
           caption: '总交易成本',
         },
@@ -1514,31 +1533,31 @@ export default function Backtest() {
       metrics: [
         {
           label: 'Calmar',
-          value: fmt(cryptoPerformanceMetrics?.calmarRatio),
+          value: resultSampleInsufficient ? '样本不足' : fmt(cryptoPerformanceMetrics?.calmarRatio),
           valueClassName: cryptoPerformanceMetrics?.calmarRatio == null ? 'text-gray-400' : (cryptoPerformanceMetrics.calmarRatio >= 1 ? 'text-up' : 'text-down'),
           caption: '年化 / 回撤',
         },
         {
           label: 'Sortino',
-          value: fmt(cryptoPerformanceMetrics?.sortinoRatio),
+          value: resultSampleInsufficient ? '样本不足' : fmt(cryptoPerformanceMetrics?.sortinoRatio),
           valueClassName: cryptoPerformanceMetrics?.sortinoRatio == null ? 'text-gray-400' : (cryptoPerformanceMetrics.sortinoRatio >= 1 ? 'text-up' : 'text-down'),
           caption: '下行风险调整',
         },
         {
           label: '年化波动',
-          value: cryptoPerformanceMetrics?.annualizedVolatility != null ? `${fmt(cryptoPerformanceMetrics.annualizedVolatility)}%` : '-',
+          value: resultSampleInsufficient ? '样本不足' : cryptoPerformanceMetrics?.annualizedVolatility != null ? `${fmt(cryptoPerformanceMetrics.annualizedVolatility)}%` : '-',
           valueClassName: 'text-amber-200',
           caption: '权益波动',
         },
         {
           label: 'Beta',
-          value: benchmarkStats.beta != null ? fmt(benchmarkStats.beta) : '-',
+          value: resultSampleInsufficient ? '样本不足' : benchmarkStats.beta != null ? fmt(benchmarkStats.beta) : '基准不足',
           valueClassName: 'text-blue-200',
           caption: '市场敏感度',
         },
         {
           label: '回撤持续',
-          value: `${result.maxDrawdownDurationDays || 0} 天`,
+          value: resultSampleInsufficient ? '样本不足' : `${result.maxDrawdownDurationDays || 0} 天`,
           valueClassName: 'text-amber-200',
           caption: '恢复压力',
         },
@@ -1553,50 +1572,58 @@ export default function Backtest() {
       metrics: [
         {
           label: '胜率',
-          value: result.winRate != null ? `${fmt(result.winRate)}%` : '-',
+          value: resultSampleInsufficient ? '样本不足' : result.winRate != null ? `${fmt(result.winRate)}%` : '-',
           valueClassName: result.winRate == null ? 'text-gray-400' : 'text-blue-200',
           caption: '闭合交易',
         },
         {
           label: '盈亏比',
-          value: fmt(result.profitFactor),
+          value: resultSampleInsufficient ? '样本不足' : fmt(result.profitFactor),
           valueClassName: result.profitFactor == null ? 'text-gray-400' : (result.profitFactor >= 1 ? 'text-up' : 'text-down'),
           caption: '利润因子',
         },
         {
           label: '赔率',
-          value: cryptoPerformanceMetrics?.payoffRatio != null ? fmt(cryptoPerformanceMetrics.payoffRatio) : '-',
+          value: resultSampleInsufficient ? '样本不足' : cryptoPerformanceMetrics?.payoffRatio != null ? fmt(cryptoPerformanceMetrics.payoffRatio) : '-',
           valueClassName: (cryptoPerformanceMetrics?.payoffRatio ?? 0) >= 1 ? 'text-up' : 'text-down',
           caption: '盈亏幅度',
         },
         {
           label: '期望/笔',
-          value: cryptoPerformanceMetrics?.expectancy != null ? `$${fmt(cryptoPerformanceMetrics.expectancy)}` : '-',
+          value: resultSampleInsufficient ? '样本不足' : cryptoPerformanceMetrics?.expectancy != null ? `¥${fmt(cryptoPerformanceMetrics.expectancy)}` : '-',
           valueClassName: cryptoPerformanceMetrics?.expectancy == null ? 'text-gray-400' : (cryptoPerformanceMetrics.expectancy >= 0 ? 'text-up' : 'text-down'),
           caption: '单笔期望',
         },
         {
-          label: '盈利/亏损',
-          value: `${result.winningTrades || 0} / ${result.losingTrades || 0}`,
+          label: '闭合交易',
+          value: `${resultClosedTradeCount} 笔`,
           valueClassName: 'text-white',
-          caption: '笔数结构',
+          caption: '已完成买卖闭环',
         },
         {
-          label: '交易数',
+          label: '成交数',
           value: `${totalTradesCount} 笔`,
           valueClassName: 'text-white',
-          caption: '成交样本',
+          caption: '成交流水条数',
+        },
+        {
+          label: '委托数',
+          value: result.orderCount != null ? `${result.orderCount} 笔` : '不可用',
+          valueClassName: result.orderCount == null ? 'text-gray-400' : 'text-white',
+          caption: result.orderCountUnavailableReason || '独立委托台账',
         },
       ],
     },
   ] : [];
-  const drawdownGateLabel = result?.maxDrawdown == null ? '样本不足' : result.maxDrawdown >= 20 ? '回撤偏深' : '回撤可接受';
-  const calmarGateLabel = cryptoPerformanceMetrics?.calmarRatio == null ? '样本不足' : cryptoPerformanceMetrics.calmarRatio >= 1 ? '收益回撤比通过' : '收益回撤比偏弱';
-  const sortinoGateLabel = cryptoPerformanceMetrics?.sortinoRatio == null ? '样本不足' : cryptoPerformanceMetrics.sortinoRatio >= 1 ? '下行风险通过' : '下行风险偏弱';
+  const drawdownGateLabel = resultSampleInsufficient || result?.maxDrawdown == null ? '样本不足' : result.maxDrawdown >= 20 ? '回撤偏深' : '回撤可接受';
+  const calmarGateLabel = resultSampleInsufficient || cryptoPerformanceMetrics?.calmarRatio == null ? '样本不足' : cryptoPerformanceMetrics.calmarRatio >= 1 ? '收益回撤比通过' : '收益回撤比偏弱';
+  const sortinoGateLabel = resultSampleInsufficient || cryptoPerformanceMetrics?.sortinoRatio == null ? '样本不足' : cryptoPerformanceMetrics.sortinoRatio >= 1 ? '下行风险通过' : '下行风险偏弱';
   const benchmarkGateLabel = resultDataInvalidated
     ? '不可采信'
+    : resultSampleInsufficient
+      ? `样本不足：${resultSampleReason}`
     : benchmarkStats.alpha == null
-      ? '基准不足'
+      ? `基准不足：同区间 ${benchmarkSymbol} 少于 2 根有效日线`
       : benchmarkStats.alpha >= 0
         ? `跑赢 ${benchmarkSymbol}`
         : `跑输 ${benchmarkSymbol}`;
@@ -1642,9 +1669,19 @@ export default function Backtest() {
       description: '也叫利润因子，大于 1 表示盈利交易总额覆盖了亏损交易总额。',
     },
     {
-      label: '交易数',
-      formula: '回测成交样本数',
-      description: '衡量样本量。交易数太少时，收益、胜率和盈亏比都更容易失真。',
+      label: '成交数',
+      formula: 'backtest_trades 成交流水行数',
+      description: '每一条撮合成交计一次；它不等于闭合交易，也不等于委托数。',
+    },
+    {
+      label: '闭合交易',
+      formula: '已完成买入与卖出闭环的交易数',
+      description: '胜率、盈亏比和策略判决只使用闭合交易；只有买入成交不能形成闭合样本。',
+    },
+    {
+      label: '委托数',
+      formula: 'backtest_orders 委托台账行数',
+      description: '委托可能未成交或拆成多次成交，因此与成交数分开显示。',
     },
     {
       label: '期末权益',
@@ -1772,7 +1809,7 @@ export default function Backtest() {
     );
   };
   const renderVerdictMetric = (
-    metric: { label: string; numeric: number | null; format: (value: number) => string; valueClassName: string; caption: string },
+    metric: { label: string; numeric: number | null; display?: string; format: (value: number) => string; valueClassName: string; caption: string },
   ) => (
     <div
       key={metric.label}
@@ -1782,11 +1819,15 @@ export default function Backtest() {
         <div className="min-w-0 text-xs font-medium leading-5 text-gray-500">{metric.label}</div>
         {renderMetricHelp(metric.label)}
       </div>
-      <AnimatedNumber
-        value={metric.numeric}
-        format={metric.format}
-        className={clsx('mt-2 block text-2xl font-bold leading-7 tabular-nums', metric.valueClassName)}
-      />
+      {metric.display ? (
+        <span className="mt-2 block text-lg font-bold leading-7 text-amber-200">{metric.display}</span>
+      ) : (
+        <AnimatedNumber
+          value={metric.numeric}
+          format={metric.format}
+          className={clsx('mt-2 block text-2xl font-bold leading-7 tabular-nums', metric.valueClassName)}
+        />
+      )}
       <div className="mt-1.5 text-[11px] text-gray-500">{metric.caption}</div>
     </div>
   );
@@ -1795,6 +1836,7 @@ export default function Backtest() {
   ) => (
     <div
       key={metric.label}
+      data-metric-label={metric.label}
       className="backtestDetailMetricRow flex items-start justify-between gap-3 border-b border-crypto-border/70 py-2 last:border-b-0"
     >
       <div className="min-w-0">
@@ -2081,7 +2123,7 @@ export default function Backtest() {
                             <th className="px-2 py-2.5 text-right font-medium">{renderSortHeader('收益', 'return')}</th>
                             <th className="px-2 py-2.5 text-right font-medium">{renderSortHeader('回撤', 'drawdown')}</th>
                             <th className="px-2 py-2.5 text-right font-medium">夏普</th>
-                            <th className="px-2 py-2.5 text-right font-medium">交易</th>
+                            <th className="px-2 py-2.5 text-right font-medium">成交数</th>
                             <th className="px-2 py-2.5 font-medium">状态</th>
                             <th className="px-2 py-2.5 font-medium">{renderSortHeader('创建时间', 'created')}</th>
                             <th className="px-2 py-2.5 text-right font-medium">操作</th>
@@ -2181,7 +2223,7 @@ export default function Backtest() {
                                   {fmt(instance.result?.sharpeRatio)}
                                 </td>
                                 <td className="whitespace-nowrap px-2 py-2.5 text-right align-middle text-sm font-semibold tabular-nums text-blue-300">
-                                  {instance.result?.totalTrades ?? 0}
+                                  {instance.result?.fillCount ?? instance.result?.totalTrades ?? 0}
                                 </td>
                                 <td className="px-2 py-2.5 align-middle">
                                   <span className={clsx('whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold', meta.className)}>
@@ -2423,6 +2465,18 @@ export default function Backtest() {
                 </div>
               )}
 
+              {resultSampleInsufficient && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-5 py-3 text-xs text-amber-100">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <div className="font-semibold">研究指标样本不足</div>
+                      <div className="mt-1 text-amber-100/75">{resultSampleReason} 成交、闭合交易和委托仍按事实分别展示。</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {matrixPeriodResults.length > 0 && (
                 <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
                   <div className="flex flex-col gap-3 border-b border-crypto-border px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
@@ -2469,7 +2523,7 @@ export default function Backtest() {
                           <th className="px-4 py-2 font-medium">最大回撤</th>
                           <th className="px-4 py-2 font-medium">胜率</th>
                           <th className="px-4 py-2 font-medium">盈亏比</th>
-                          <th className="px-4 py-2 font-medium">交易数</th>
+                          <th className="px-4 py-2 font-medium">成交数</th>
                           <th className="px-4 py-2 font-medium">执行时间</th>
                         </tr>
                       </thead>
@@ -2580,8 +2634,8 @@ export default function Backtest() {
                           研究结论
                         </div>
                         <div className="space-y-3">
-                          <StatRow label="结论状态" value={resultDataInvalidated ? '不可采信' : (result.totalReturn ?? 0) >= 0 ? '收益为正' : '收益为负'} color={resultDataInvalidated ? 'text-red-300' : (result.totalReturn ?? 0) >= 0 ? 'text-up' : 'text-down'} />
-                          <StatRow label={`相对 ${benchmarkSymbol}`} value={benchmarkGateLabel} color={resultDataInvalidated ? 'text-red-300' : (benchmarkStats.alpha ?? 0) >= 0 ? 'text-up' : 'text-down'} />
+                          <StatRow label="结论状态" value={resultDataInvalidated ? '不可采信' : resultSampleInsufficient ? '样本不足' : (result.totalReturn ?? 0) >= 0 ? '收益为正' : '收益为负'} color={resultDataInvalidated ? 'text-red-300' : resultSampleInsufficient ? 'text-amber-200' : (result.totalReturn ?? 0) >= 0 ? 'text-up' : 'text-down'} />
+                          <StatRow label={`相对 ${benchmarkSymbol}`} value={benchmarkGateLabel} color={resultDataInvalidated ? 'text-red-300' : resultSampleInsufficient || benchmarkStats.alpha == null ? 'text-amber-200' : benchmarkStats.alpha >= 0 ? 'text-up' : 'text-down'} />
                           <StatRow label="样本长度" value={cryptoPerformanceMetrics?.durationDays != null ? `${fmt(cryptoPerformanceMetrics.durationDays, 1)} 天` : '-'} />
                           <StatRow label="数据可信度" value={detailDataQualityMeta.label} color={resultDataInvalidated ? 'text-red-300' : 'text-blue-300'} />
                         </div>
@@ -2595,7 +2649,7 @@ export default function Backtest() {
                           <StatRow label="回撤闸门" value={drawdownGateLabel} color={result?.maxDrawdown != null && result.maxDrawdown >= 20 ? 'text-down' : 'text-gray-200'} />
                           <StatRow label="收益回撤比" value={calmarGateLabel} />
                           <StatRow label="下行风险" value={sortinoGateLabel} />
-                          <StatRow label="样本健康" value={totalTradesCount >= 20 ? '成交样本充足' : totalTradesCount > 0 ? '成交样本偏少' : '尚无成交'} />
+                          <StatRow label="样本健康" value={resultSampleInsufficient ? `样本不足：${resultClosedTradeCount} 笔闭合交易` : resultClosedTradeCount >= 20 ? '闭合样本充足' : '闭合样本偏少'} />
                         </div>
                       </div>
                       <div className="backtestReviewAuditPanel min-w-0 border-l border-emerald-500/40 pl-4">
@@ -2605,7 +2659,7 @@ export default function Backtest() {
                         </div>
                         <div className="space-y-3">
                           <StatRow label="手续费占本金" value={cryptoPerformanceMetrics?.feeDragPct != null ? `${fmt(cryptoPerformanceMetrics.feeDragPct)}%` : '-'} />
-                          <StatRow label="单笔平均费用" value={avgFeePerTrade != null ? `$${fmt(avgFeePerTrade)}` : '-'} />
+                          <StatRow label="单次成交平均费用" value={avgFeePerTrade != null ? `¥${fmt(avgFeePerTrade)}` : '-'} />
                           <StatRow label="交易频率" value={cryptoPerformanceMetrics?.tradeFrequencyPerDay != null ? `${fmt(cryptoPerformanceMetrics.tradeFrequencyPerDay)} 笔/日` : '-'} />
                           <StatRow label="平均持仓" value={result.avgHoldingBars != null ? `${fmt(result.avgHoldingBars)} bars` : '-'} />
                         </div>
@@ -2658,12 +2712,12 @@ export default function Backtest() {
                 </section>
               )}
 
-              {/* ====== 交易流水 ====== */}
+              {/* ====== 成交流水 ====== */}
               <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
                 <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
                   <List className="h-4 w-4 text-blue-400" />
-                  交易流水
-                  <span className="ml-auto text-xs font-normal text-gray-500">{result.trades?.length || 0} 笔</span>
+                  成交流水
+                  <span className="ml-auto text-xs font-normal text-gray-500">{result.trades?.length || 0} 笔成交</span>
                 </h3>
                 <p className="mb-3 text-xs text-gray-500">
                   默认按时间倒序显示最近 100 笔；价格为历史撮合价（含滑点），不是当前行情价。
@@ -2671,16 +2725,14 @@ export default function Backtest() {
                 {result.trades && result.trades.length > 0 ? (
                   <div className="backtestTradeLedgerFrame flex h-[520px] flex-col overflow-hidden rounded-xl border border-crypto-border bg-crypto-bg/45 md:h-[560px]">
                     <div className="min-h-0 flex-1 overflow-auto">
-                      <table className="w-full min-w-[1080px] text-sm">
+                      <table className="w-full min-w-[860px] text-sm">
                         <thead className="sticky top-0 z-10 bg-crypto-bg/95 backdrop-blur">
                           <tr className="border-b border-crypto-border text-[11px] text-gray-500">
                             <th className="px-4 py-3 text-left font-medium">时间</th>
-                            <th className="px-4 py-3 text-left font-medium">交易对</th>
+                            <th className="px-4 py-3 text-left font-medium">标的</th>
                             <th className="px-4 py-3 text-left font-medium">方向</th>
                             <th className="px-4 py-3 text-right font-medium">历史成交价</th>
                             <th className="px-4 py-3 text-right font-medium">数量</th>
-                            <th className="px-4 py-3 text-right font-medium">杠杆</th>
-                            <th className="px-4 py-3 text-right font-medium">保证金</th>
                             <th className="px-4 py-3 text-right font-medium">成交名义</th>
                             <th className="px-4 py-3 text-right font-medium">盈亏</th>
                             <th className="px-4 py-3 text-right font-medium">手续费</th>
@@ -2690,24 +2742,21 @@ export default function Backtest() {
                         <tbody className="divide-y divide-crypto-border/50">
                           {displayedTrades.map((trade, i) => {
                             const sideDisplay = getTradeSideDisplay(trade.side);
-                            const margin = backtestTradeMargin(trade);
                             const notional = backtestTradeNotional(trade);
                             return (
                               <tr key={i} className="transition-colors hover:bg-white/[0.02]">
                                 <td className="px-4 py-3 text-xs text-gray-400">{new Date(trade.timestamp).toLocaleString('zh-CN')}</td>
-                                <td className="px-4 py-3 text-xs text-gray-300">{trade.symbol || '-'}</td>
+                                <td className="px-4 py-3 text-xs text-gray-300">{formatSymbolLabel(trade.symbol)}</td>
                                 <td className={clsx('px-4 py-3 text-xs font-semibold', sideDisplay.className)}>
                                   {sideDisplay.label}
                                 </td>
-                                <td className="px-4 py-3 text-right text-xs text-white" title="历史撮合价，已计入滑点假设">{trade.price.toFixed(2)}</td>
-                                <td className="px-4 py-3 text-right text-xs text-white">{trade.quantity.toFixed(4)}</td>
-                                <td className="px-4 py-3 text-right text-xs text-gray-300">{formatBacktestTradeLeverage(trade.leverage)}</td>
-                                <td className="px-4 py-3 text-right text-xs text-gray-300">{formatBacktestTradeMoney(margin)}</td>
+                                <td className="px-4 py-3 text-right text-xs text-white" title="历史撮合价，已计入滑点假设">¥{trade.price.toFixed(2)}</td>
+                                <td className="px-4 py-3 text-right text-xs text-white">{trade.quantity.toFixed(0)} 股</td>
                                 <td className="px-4 py-3 text-right text-xs text-gray-300">{formatBacktestTradeMoney(notional)}</td>
                                 <td className={clsx('px-4 py-3 text-right text-xs font-medium', trade.pnl >= 0 ? 'text-up' : 'text-down')}>
-                                  {trade.pnl ? `${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}` : '-'}
+                                  {trade.pnl ? `${trade.pnl >= 0 ? '+' : ''}¥${trade.pnl.toFixed(2)}` : '-'}
                                 </td>
-                                <td className="px-4 py-3 text-right text-xs text-gray-500">{trade.fee ? trade.fee.toFixed(2) : '-'}</td>
+                                <td className="px-4 py-3 text-right text-xs text-gray-500">{trade.fee ? formatBacktestTradeMoney(trade.fee) : '-'}</td>
                                 <td className="px-4 py-3 text-xs text-gray-500">{trade.reason || '-'}</td>
                               </tr>
                             );
@@ -2717,12 +2766,12 @@ export default function Backtest() {
                     </div>
                     {result.trades.length > displayedTrades.length && (
                       <p className="shrink-0 border-t border-crypto-border px-4 py-3 text-center text-xs text-gray-500">
-                        共 {result.trades.length} 笔交易（按时间倒序显示最近100笔）
+                        共 {result.trades.length} 笔成交（按时间倒序显示最近100笔）
                       </p>
                     )}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-crypto-border bg-crypto-bg/35 py-12 text-center text-sm text-gray-500">暂无交易记录</div>
+                  <div className="rounded-xl border border-dashed border-crypto-border bg-crypto-bg/35 py-12 text-center text-sm text-gray-500">暂无成交记录</div>
                 )}
               </section>
               </div>

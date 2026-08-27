@@ -343,6 +343,8 @@ equity/cash、mark/notional、trade timestamp/fee/IDs 在三个页面保持可�
 策略隔离 worker、sealed 输入解析、结果原子写入与 BitPro 回测 UI 单任务入口已经接通。
 当前写合同为 `/api/v2/backtest/run_job`、`/job/{id}`、`/jobs`、`/job/{id}/cancel|resume`
 和 `/configuration`；历史结果在全部子证据写完后才切换为 success+sealed，不提供物理删除。
+回测读合同分开返回 `fill_count`、`closed_trade_count` 和 `order_count`；列表与详情使用同一事实口径，
+单日或零闭合样本 fail-closed 为 `metric_status=insufficient_sample`，不得输出正向研究判决。
 管理员批量回测、运行中 Paper 去重、sealed 配置绑定、原子批量持久化，以及访客单任务
 PostgreSQL 区间/并发/每日配额压力，以及 18 个唯一策略的批量真实任务、失败修复、跨重启恢复
 验收现已完成；该步骤仅剩生产部署证据，因此在最终部署观察前仍不能视为关闭。
