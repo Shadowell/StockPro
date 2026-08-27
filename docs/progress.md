@@ -1,5 +1,16 @@
 # Progress Log
 
+## 文档事实同步（2026-08-28）
+
+- 以 `backend/app/main.py` 的当前路由注册表为准，统一文档中的 API 事实：健康与 Web 鉴权主入口为
+  `/api/health`、`/api/health/storage`、`/api/auth/*`，当前业务域为 `/api/v2/*`；旧
+  `/api/paper/*`、`/api/backtest/*`、`/api/data/*`、`/api/pools/*` 和 `/api/factors*`
+  不再作为当前业务合同。
+- 同步更新 README、文档中心、API 指南、产品规格、技术/数据架构、运行部署手册、active
+  BitPro-first 合同和页面合同，补齐首页异动边缘/告警事件流、全量 A 股证券主数据、中文名称展示、
+  每日同步、近半年历史同步、market evidence snapshot 与 Paper 同源证据边界。
+- 本轮为纯文档修改，不重启 4444/4445，也不执行生产部署或生产数据写入。
+
 ## GitHub #50 Paper / 盯盘 / 监控同源对账（2026-08-28）
 
 - 生产实例 `1452658566` 的 PostgreSQL 事实为权益 `999970.2379`、现金 `900763.2379`、

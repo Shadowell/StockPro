@@ -1,7 +1,7 @@
 # StockPro 产品规格
 
 > 文档角色：当前产品级事实入口
-> 更新日期：2026-08-23
+> 更新日期：2026-08-28
 > 当前交付边界：B/S、PostgreSQL、研究优先、仅 Paper 模拟交易（实盘仅预检与留痕）
 
 ## 1. 产品定义
@@ -291,7 +291,7 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 
 具体实现与历史验收见 [开发进度](progress.md) 和 [Sprint 合同](contracts/)。
 
-## 16. 已批准的 BitPro-first 重建方向
+## 16. 已批准的 BitPro-first 重建方向与当前 API 事实
 
 2026-08-22 已批准在隔离分支中以 BitPro 完整应用为底座重建 StockPro；
 2026-08-26 重开时的固定基线为 `2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`。
@@ -299,6 +299,12 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 不得被描述为已上线。
 
 目标系统直接继承 BitPro 的完整页面与交互标准，使用 PostgreSQL 和 A股领域服务替换
-SQLite 与数字资产运行时。公共及新开发 API 只保留当前 `/api/*`，不保留带版本号路径或
-旧入口。历史版本字段只作为只读审计证据。完整设计、数据连续性、期货预留和切换门禁见
+SQLite 与数字资产运行时。当前运行路由由 `backend/app/main.py` 装配：健康检查与 Web 鉴权主入口
+保留 `/api/health`、`/api/health/storage`、`/api/auth/*`；鉴权兼容入口同时注册
+`/api/v2/auth/*`；行情、策略、回测、Paper、监控、数据同步、因子、设置、复盘和 AI 研究等业务域
+统一在 `/api/v2/*`。历史文档中的 `/api/paper/*`、`/api/backtest/*`、`/api/data/*`
+等旧业务路径不再作为当前合同。未来若要迁移掉 `/api/v2`，必须另立合同并在同一切片更新前端、
+后端、测试和文档。
+
+历史版本字段只作为只读审计证据。完整设计、数据连续性、期货预留和切换门禁见
 [BitPro-first A股整仓重建设计合同](contracts/active-bitpro-first-a-share-rebuild.md)。
