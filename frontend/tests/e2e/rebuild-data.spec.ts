@@ -13,3 +13,39 @@ test('data center renders Chinese name before public A-share code', async ({ pag
   expect(text.indexOf('贵州茅台')).toBeLessThan(text.indexOf('600519.SH'))
   await expect(page.getByText('后续同步名单 2 个', { exact: false })).toBeVisible()
 })
+
+test('data center safely expands a sync job with missing optional fields', async ({ page }) => {
+  await installFinalFixtures(page)
+  await page.route('**/api/v2/sync/jobs**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ jobs: [{ status: 'completed', exchange: 'SSE' }, {}] }),
+    })
+  })
+
+  const pageErrors: string[] = []
+  const consoleErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text())
+  })
+
+  await page.goto('/data')
+  await page.getByRole('button', { name: /同步任务明细/ }).click()
+
+  await expect(page.getByText('任务 —', { exact: true })).toHaveCount(2)
+  await expect(page.getByText('页面加载失败')).toHaveCount(0)
+  expect(pageErrors).toEqual([])
+  expect(consoleErrors).toEqual([])
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  await page.getByRole('button', { name: /同步任务明细/ }).click()
+
+  await expect(page.getByText('任务 —', { exact: true })).toHaveCount(2)
+  await expect(page.getByText('页面加载失败')).toHaveCount(0)
+  expect(pageErrors).toEqual([])
+  expect(consoleErrors).toEqual([])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+})
