@@ -59,6 +59,19 @@ class FeishuNotifier:
     def _configured_webhook_url(self) -> str:
         from app.core.config import settings
 
+        explicit = str(getattr(settings, "FEISHU_WEBHOOK_URL", "") or self.webhook_url or "").strip()
+        if explicit:
+            return explicit
+
+        try:
+            from app.domain.settings.service import postgres_settings_service
+
+            saved = str(postgres_settings_service.resolve_feishu_webhook() or "").strip()
+            if saved:
+                return saved
+        except Exception as exc:
+            logger.debug("读取 PostgreSQL 飞书 Webhook 设置失败: %s", exc)
+
         try:
             from app.db.local_db import db_instance
 
@@ -66,11 +79,7 @@ class FeishuNotifier:
             if saved:
                 return saved
         except Exception as exc:
-            logger.debug("读取统一飞书 Webhook 设置失败: %s", exc)
-
-        explicit = str(getattr(settings, "FEISHU_WEBHOOK_URL", "") or self.webhook_url or "").strip()
-        if explicit:
-            return explicit
+            logger.debug("读取旧 SQLite 飞书 Webhook 设置失败: %s", exc)
 
         try:
             from app.db.local_db import db_instance

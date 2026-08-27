@@ -115,6 +115,8 @@ def test_settings_panel_exposes_mcp_token_generator() -> None:
     assert "settingsTabs" in layout
     assert "SettingsConfigBlock" in layout
     assert "MCP Agent Token" in layout
+    assert "STOCKPRO_MCP_API_TOKEN" in layout
+    assert "X-StockPro-MCP-Token" in layout
     assert "BITPRO_MCP_API_TOKEN" in layout
     assert "新 Token 仅显示一次" in layout
     assert "generateMcpToken" in layout

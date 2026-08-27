@@ -165,10 +165,12 @@ curl -fsS -H "Authorization: Bearer ${TOKEN}" \
 `stockpro-mcp-v1` 使用独立的 Agent Token，请求头默认：
 
 ```http
-X-BitPro-MCP-Token: <agent-token>
+X-StockPro-MCP-Token: <agent-token>
 ```
 
-头名可经服务端 `BITPRO_MCP_AUTH_HEADER` 配置，客户端应以部署配置为准。
+主头名可经服务端 `STOCKPRO_MCP_AUTH_HEADER` 配置，静态 Token 主环境变量为
+`STOCKPRO_MCP_API_TOKEN`。迁移期仍兼容 `X-BitPro-MCP-Token` 与
+`BITPRO_MCP_API_TOKEN`；主 Header 存在时不会回退读取旧 Header。
 
 规则：
 
@@ -179,6 +181,14 @@ X-BitPro-MCP-Token: <agent-token>
 - 所有调用记录方法、路径、作用域、结果和审计信息；
 - 当前仅支持本地 stdio MCP，不提供公网传输；
 - Agent 无法访问真实券商操作。
+
+设置中心管理端点均要求管理员会话：
+
+- `GET/POST /api/v2/settings/feishu-webhook`：只返回配置状态/掩码，保存值加密落 PostgreSQL；
+- `GET /api/v2/settings/mcp-token`：返回主/兼容 Header 与环境变量状态，不返回明文；
+- `GET/POST /api/v2/settings/mcp-agent-tokens`、`DELETE .../{id}`：明文仅在创建响应出现一次；
+- `GET/PUT /api/v2/settings/llm-model` 与 `POST /llm-model/test`：读取/保存模型并执行受限连接测试；
+- `GET/POST /api/v2/settings/llm-providers/{key}/capabilities|test`：返回服务端权威能力或测试结果。
 
 本地 MCP 的工具清单和资源以运行时 capability discovery 为准。
 

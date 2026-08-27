@@ -5,10 +5,12 @@ import base64
 import hashlib
 import re
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
+import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.core.config import settings
@@ -16,8 +18,10 @@ from app.domain.settings.repository import PostgresSettingsRepository
 
 
 FEISHU_SETTING_KEY = "feishu_webhook"
+LLM_SETTING_KEY = "llm_runtime"
 FEISHU_HOSTS = {"open.feishu.cn", "open.larksuite.com"}
 FEISHU_PATH_RE = re.compile(r"^/open-apis/bot/v2/hook/[A-Za-z0-9_-]{8,}$")
+LLM_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
 TOOL_GROUP_SCOPES = {
     "read": "R",
     "research_backtest_paper_mutation": "W",
@@ -25,6 +29,10 @@ TOOL_GROUP_SCOPES = {
     "live_mutation": "T",
 }
 DEFAULT_TOOL_GROUPS = ["read", "research_backtest_paper_mutation", "live_diagnostic"]
+
+
+class SettingsNotConfiguredError(RuntimeError):
+    """Required server-side configuration is absent."""
 
 
 def _iso(value: Any) -> str | None:
@@ -106,6 +114,145 @@ class PostgresSettingsService:
             "webhook_configured": True,
             "masked_webhook_url": self._mask_webhook(value),
             "source": "database",
+        }
+
+    @staticmethod
+    def _validate_model(model: str) -> str:
+        value = str(model or "").strip()
+        if not LLM_MODEL_RE.fullmatch(value):
+            raise ValueError("模型名称格式无效")
+        return value
+
+    def get_llm_config(self) -> dict[str, Any]:
+        stored = self.repository.get_setting(LLM_SETTING_KEY) or {}
+        default_model = str(settings.AI_AGENT_MODEL or settings.QWEN_MODEL or "qwen3.6-plus").strip()
+        model = str(stored.get("model") or default_model).strip()
+        stored_models = stored.get("models") if isinstance(stored.get("models"), list) else []
+        models = list(dict.fromkeys([
+            model,
+            default_model,
+            *[str(item).strip() for item in stored_models if LLM_MODEL_RE.fullmatch(str(item).strip())],
+        ]))
+        configured = bool(settings.DASHSCOPE_API_KEY or settings.QWEN_API_KEY)
+        credential_source = "DASHSCOPE_API_KEY" if settings.DASHSCOPE_API_KEY else "QWEN_API_KEY" if settings.QWEN_API_KEY else None
+        provider = {
+            "provider_key": "dashscope",
+            "name": "DashScope",
+            "api_key_env": credential_source or "DASHSCOPE_API_KEY",
+            "base_url": settings.QWEN_BASE_URL,
+            "default_model": default_model,
+            "models": models,
+            "api_key_configured": configured,
+            "builtin": True,
+            "active": True,
+            "enabled": True,
+            "transport_type": "openai_chat",
+            "credential_mode": "env",
+            "credential_source": credential_source,
+        }
+        capability = {
+            "provider_key": "dashscope",
+            "display_name": "DashScope",
+            "transport_type": "openai_chat",
+            "models": models,
+            "reasoning_efforts": [],
+            "speed_modes": [],
+            "supports_tools": True,
+            "supports_structured_output": True,
+            "supports_resume": False,
+            "configured": configured,
+            "healthy": False,
+            "status_detail": "服务端环境变量已配置，等待连接测试" if configured else "未配置服务端 API Key",
+            "credential_mode": "env",
+            "credential_source": credential_source,
+            "default_model": default_model,
+            "enabled": True,
+            "active": True,
+        }
+        return {
+            "provider_key": "dashscope",
+            "provider_name": "DashScope",
+            "model": model,
+            "default_model": default_model,
+            "models": models,
+            "free_tier_models": [],
+            "model_fallback_enabled": False,
+            "base_url": settings.QWEN_BASE_URL,
+            "enable_thinking": bool(settings.AI_AGENT_ENABLE_THINKING),
+            "request_timeout": int(settings.AI_AGENT_REQUEST_TIMEOUT),
+            "api_key_configured": configured,
+            "api_key_source": credential_source,
+            "providers": [provider],
+            "provider_capabilities": [capability],
+            "model_management_enabled": True,
+            "provider_management_enabled": False,
+            "connection_test_enabled": configured,
+        }
+
+    def set_llm_model(self, model: str, *, updated_by: str) -> dict[str, Any]:
+        value = self._validate_model(model)
+        current = self.get_llm_config()
+        models = list(dict.fromkeys([value, *current["models"]]))
+        self.repository.set_setting(
+            LLM_SETTING_KEY,
+            {"version": 1, "model": value, "models": models},
+            updated_by=updated_by,
+        )
+        return self.get_llm_config()
+
+    def add_llm_model(self, model: str, *, updated_by: str) -> dict[str, Any]:
+        return self.set_llm_model(model, updated_by=updated_by)
+
+    def delete_llm_model(self, model: str, *, updated_by: str) -> dict[str, Any]:
+        value = self._validate_model(model)
+        current = self.get_llm_config()
+        if value == current["model"] or value == current["default_model"]:
+            raise ValueError("当前模型或默认模型不可删除")
+        models = [item for item in current["models"] if item != value]
+        self.repository.set_setting(
+            LLM_SETTING_KEY,
+            {"version": 1, "model": current["model"], "models": models},
+            updated_by=updated_by,
+        )
+        return self.get_llm_config()
+
+    async def test_llm_connection(self, model: str | None = None) -> dict[str, Any]:
+        config = self.get_llm_config()
+        target_model = self._validate_model(model or config["model"])
+        api_key = str(settings.DASHSCOPE_API_KEY or settings.QWEN_API_KEY or "").strip()
+        if not api_key:
+            raise SettingsNotConfiguredError("服务端未配置 DashScope API Key")
+        endpoint = f"{str(settings.QWEN_BASE_URL).rstrip('/')}/chat/completions"
+        started = time.perf_counter()
+        try:
+            async with httpx.AsyncClient(timeout=min(30, int(settings.AI_AGENT_REQUEST_TIMEOUT)), trust_env=False) as client:
+                response = await client.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": target_model,
+                        "messages": [{"role": "user", "content": "Reply with OK."}],
+                        "max_tokens": 8,
+                        "temperature": 0,
+                    },
+                )
+            response.raise_for_status()
+            payload = response.json()
+            choices = payload.get("choices") if isinstance(payload, dict) else None
+            if not isinstance(choices, list) or not choices:
+                raise RuntimeError("模型服务未返回有效响应")
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(f"模型服务返回 HTTP {exc.response.status_code}") from exc
+        except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+            raise RuntimeError("模型连接测试失败") from exc
+        return {
+            "ok": True,
+            "provider_key": "dashscope",
+            "model": target_model,
+            "status": "ok",
+            "duration_ms": round((time.perf_counter() - started) * 1000),
+            "base_url": settings.QWEN_BASE_URL,
+            "reply": "OK",
         }
 
     @staticmethod

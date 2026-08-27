@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 from app.core.contracts import ok
-from app.domain.settings.service import postgres_settings_service
+from app.domain.settings.service import SettingsNotConfiguredError, postgres_settings_service
 
 
 router = APIRouter()
@@ -26,6 +26,18 @@ class McpAgentTokenRequest(BaseModel):
     expires_in_days: int = Field(default=90, ge=1, le=3650)
     rate_limit_per_min: int = Field(default=120, ge=1, le=10_000)
     tool_groups: list[str] | None = Field(default=None, max_length=4)
+
+
+class LlmModelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model: str = Field(min_length=1, max_length=120)
+
+
+class LlmProviderTestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model: str = Field(min_length=1, max_length=120)
+    reasoning_effort: str = Field(default="auto", max_length=32)
+    speed_mode: str = Field(default="standard", max_length=32)
 
 
 def _require_admin(request: Request) -> dict:
@@ -104,10 +116,65 @@ async def revoke_mcp_agent_token(token_id: int, request: Request):
 
 
 @router.get("/llm-model")
-async def llm_model():
-    model = settings.AI_AGENT_MODEL or settings.QWEN_MODEL
-    configured = bool(settings.DASHSCOPE_API_KEY or settings.QWEN_API_KEY)
-    return {"provider_key": "dashscope" if configured else "", "provider_name": "DashScope" if configured else "Not configured", "model": model if configured else "", "default_model": model if configured else "", "models": [model] if configured else [], "free_tier_models": [], "model_fallback_enabled": False, "base_url": settings.QWEN_BASE_URL, "enable_thinking": False, "request_timeout": settings.AI_AGENT_REQUEST_TIMEOUT, "api_key_configured": configured, "api_key_source": "env" if configured else None, "providers": [], "provider_capabilities": []}
+async def llm_model(request: Request):
+    _require_admin(request)
+    return postgres_settings_service.get_llm_config()
+
+
+@router.put("/llm-model")
+async def set_llm_model(payload: LlmModelRequest, request: Request):
+    try:
+        return postgres_settings_service.set_llm_model(payload.model, updated_by=_actor(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/llm-models")
+async def add_llm_model(payload: LlmModelRequest, request: Request):
+    try:
+        return postgres_settings_service.add_llm_model(payload.model, updated_by=_actor(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/llm-models")
+async def delete_llm_model(payload: LlmModelRequest, request: Request):
+    try:
+        return postgres_settings_service.delete_llm_model(payload.model, updated_by=_actor(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/llm-providers/{provider_key}/capabilities")
+async def get_llm_provider_capabilities(provider_key: str, request: Request):
+    _require_admin(request)
+    if provider_key != "dashscope":
+        raise HTTPException(status_code=404, detail="Provider 不存在")
+    return postgres_settings_service.get_llm_config()["provider_capabilities"][0]
+
+
+async def _run_llm_connection_test(model: str | None, request: Request):
+    _require_admin(request)
+    try:
+        return await postgres_settings_service.test_llm_connection(model)
+    except SettingsNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/llm-model/test")
+async def test_llm_model(request: Request):
+    return await _run_llm_connection_test(None, request)
+
+
+@router.post("/llm-providers/{provider_key}/test")
+async def test_llm_provider(provider_key: str, payload: LlmProviderTestRequest, request: Request):
+    if provider_key != "dashscope":
+        raise HTTPException(status_code=404, detail="Provider 不存在")
+    return await _run_llm_connection_test(payload.model, request)
 
 
 @router.get("/strategy-profit-push")

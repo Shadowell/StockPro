@@ -114,6 +114,9 @@ export function parseApiError(error: unknown, fallback = '请求失败'): string
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    if (axios.isCancel(error) || (axios.isAxiosError(error) && error.code === 'ERR_CANCELED')) {
+      return Promise.reject(error);
+    }
     if (axios.isAxiosError(error) && error.response?.data) {
       const detail = extractApiErrorDetail(error.response.data);
       if (
@@ -2431,6 +2434,9 @@ export interface LLMModelSettings {
   providers?: LLMProviderSettings[];
   providerCapabilities?: LLMProviderCapabilities[];
   providerMigrations?: Record<string, { errorCode?: string; statusDetail?: string }>;
+  modelManagementEnabled?: boolean;
+  providerManagementEnabled?: boolean;
+  connectionTestEnabled?: boolean;
 }
 
 export type ProviderTransportType = 'openai_chat' | 'xai_api' | 'codex_cli' | 'cursor_cli';
@@ -2514,6 +2520,8 @@ export interface McpTokenSettings {
   note?: string | null;
   authHeader: string;
   tokenEnv: string;
+  legacyAuthHeader?: string;
+  legacyTokenEnv?: string;
   remoteEnabled: boolean;
   remotePath: string;
   requireToken: boolean;

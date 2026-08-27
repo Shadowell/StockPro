@@ -639,10 +639,13 @@ function McpAgentTokenManager({ onStatusChanged }: { onStatusChanged?: () => voi
 
       <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-gray-500 sm:grid-cols-2">
         <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 px-3 py-2">
-          Header: <span className="font-mono text-gray-300">X-BitPro-MCP-Token</span>
+          Header: <span className="font-mono text-gray-300">X-StockPro-MCP-Token</span>
         </div>
         <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 px-3 py-2">
-          兼容环境变量: <span className="font-mono text-gray-300">BITPRO_MCP_API_TOKEN</span>
+          环境变量: <span className="font-mono text-gray-300">STOCKPRO_MCP_API_TOKEN</span>
+        </div>
+        <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 px-3 py-2 sm:col-span-2">
+          兼容旧名：<span className="font-mono text-gray-300">X-BitPro-MCP-Token</span> / <span className="font-mono text-gray-300">BITPRO_MCP_API_TOKEN</span>
         </div>
       </div>
 
@@ -739,6 +742,9 @@ export default function MainLayout() {
     : activeProvider?.baseUrl || '未配置';
   const activeProviderCredential = activeProvider?.credentialSource || activeProvider?.apiKeyEnv || '未提供凭据来源';
   const activeProviderConfigured = activeProvider?.apiKeyConfigured ?? llmConfig?.apiKeyConfigured ?? false;
+  const modelManagementEnabled = llmConfig?.modelManagementEnabled !== false;
+  const providerManagementEnabled = llmConfig?.providerManagementEnabled === true;
+  const connectionTestEnabled = llmConfig?.connectionTestEnabled ?? activeProviderConfigured;
 
   const loadMcpTokenStatus = useCallback(async () => {
     const res = await settingsApi.getMcpToken();
@@ -1327,7 +1333,9 @@ export default function MainLayout() {
                               setLlmAdding((value) => !value);
                               setLlmStatus('');
                             }}
-                            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-crypto-border px-4 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500 hover:text-blue-300"
+                            disabled={!modelManagementEnabled}
+                            title={modelManagementEnabled ? undefined : '当前服务端不允许从浏览器新增模型'}
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-crypto-border px-4 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500 hover:text-blue-300 disabled:cursor-not-allowed disabled:text-gray-600"
                           >
                             <Plus className="h-4 w-4" />
                             新增模型
@@ -1335,7 +1343,7 @@ export default function MainLayout() {
                           <button
                             type="button"
                             onClick={() => void saveLLMModel()}
-                            disabled={llmSaving || !llmModel.trim()}
+                            disabled={llmSaving || !llmModel.trim() || !modelManagementEnabled}
                             className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-blue-500/40 bg-blue-600/15 px-4 text-sm font-medium text-blue-300 transition-colors hover:bg-blue-600/25 disabled:cursor-not-allowed disabled:border-crypto-border disabled:bg-crypto-bg disabled:text-gray-600"
                           >
                             <Cpu className="h-4 w-4" />
@@ -1344,7 +1352,7 @@ export default function MainLayout() {
                           <button
                             type="button"
                             onClick={() => void testLLMModel()}
-                            disabled={llmTesting || !llmConfig?.apiKeyConfigured}
+                            disabled={llmTesting || !activeProviderConfigured || !connectionTestEnabled}
                             className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-crypto-border px-4 text-sm font-medium text-gray-200 transition-colors hover:border-blue-500 hover:text-blue-300 disabled:cursor-not-allowed disabled:text-gray-600"
                           >
                             <PlugZap className="h-4 w-4" />
@@ -1389,7 +1397,7 @@ export default function MainLayout() {
                             {llmModelChoices.map((model) => {
                               const isCurrent = model === activeLlmModel;
                               const isDefault = model === llmConfig?.defaultModel;
-                              const disabled = isCurrent || isDefault || llmDeletingModel === model;
+                              const disabled = !modelManagementEnabled || isCurrent || isDefault || llmDeletingModel === model;
                               return (
                                 <div key={model} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2">
                                   <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1456,7 +1464,9 @@ export default function MainLayout() {
                               setLlmProviderAdding((value) => !value);
                               setLlmStatus('');
                             }}
-                            className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/15"
+                            disabled={!providerManagementEnabled}
+                            title={providerManagementEnabled ? undefined : 'Provider 由服务端环境变量管理'}
+                            className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:border-crypto-border disabled:bg-crypto-bg disabled:text-gray-600"
                           >
                             <Plus className="h-3.5 w-3.5" />
                             新增厂商
@@ -1469,6 +1479,7 @@ export default function MainLayout() {
                               key={provider.providerKey}
                               provider={provider}
                               activating={llmProviderActivating === provider.providerKey}
+                              managementEnabled={providerManagementEnabled}
                               onActivate={(providerKey) => void setLLMProvider(providerKey)}
                               onProviderUpdated={() => reloadLLMConfig()}
                             />
@@ -1478,7 +1489,7 @@ export default function MainLayout() {
                             </div>
                           )}
                         </div>
-                        {llmProviderAdding && (
+                        {providerManagementEnabled && llmProviderAdding && (
                           <div
                             ref={providerFormRef}
                             className="mt-4 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3"

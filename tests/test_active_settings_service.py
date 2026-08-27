@@ -210,3 +210,87 @@ def test_mcp_auth_prefers_stockpro_header_and_keeps_legacy_fallback(monkeypatch)
     })
     assert mcp_token_auth(legacy) == {"authenticated": True}
     assert captured[-1] == "legacy-secret"
+
+
+def test_llm_config_exposes_env_provider_without_leaking_key_and_persists_model(service, monkeypatch) -> None:
+    settings_service, repository = service
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", "dashscope-secret-value")
+    monkeypatch.setattr(settings, "QWEN_API_KEY", None)
+    monkeypatch.setattr(settings, "QWEN_MODEL", "qwen3.6-plus")
+    monkeypatch.setattr(settings, "AI_AGENT_MODEL", "qwen3.6-plus")
+
+    initial = settings_service.get_llm_config()
+
+    assert initial["provider_key"] == "dashscope"
+    assert initial["provider_name"] == "DashScope"
+    assert initial["api_key_configured"] is True
+    assert initial["providers"][0]["provider_key"] == "dashscope"
+    assert initial["providers"][0]["active"] is True
+    assert initial["providers"][0]["credential_source"] == "DASHSCOPE_API_KEY"
+    assert initial["provider_capabilities"][0]["configured"] is True
+    assert "dashscope-secret-value" not in str(initial)
+
+    updated = settings_service.set_llm_model("qwen-plus", updated_by="admin-session")
+    assert updated["model"] == "qwen-plus"
+    assert repository.settings["llm_runtime"]["model"] == "qwen-plus"
+    assert settings_service.get_llm_config()["model"] == "qwen-plus"
+
+
+def test_llm_settings_routes_are_admin_guarded_and_return_complete_provider(service, monkeypatch) -> None:
+    settings_service, _ = service
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", "configured-secret")
+    admin = build_settings_client(settings_service)
+
+    current = admin.get("/api/v2/settings/llm-model")
+    assert current.status_code == 200
+    assert current.json()["providers"][0]["provider_key"] == "dashscope"
+    assert "configured-secret" not in str(current.json())
+
+    updated = admin.put("/api/v2/settings/llm-model", json={"model": "qwen-plus"})
+    assert updated.status_code == 200
+    assert updated.json()["model"] == "qwen-plus"
+
+    guest = build_settings_client(settings_service, role="guest")
+    assert guest.get("/api/v2/settings/llm-model").status_code == 403
+    assert guest.put("/api/v2/settings/llm-model", json={"model": "qwen-plus"}).status_code == 403
+
+
+def test_llm_capabilities_and_connection_test_routes_never_fall_through_to_404(service, monkeypatch) -> None:
+    settings_service, _ = service
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", None)
+    monkeypatch.setattr(settings, "QWEN_API_KEY", None)
+    admin = build_settings_client(settings_service)
+
+    capabilities = admin.get("/api/v2/settings/llm-providers/dashscope/capabilities")
+    assert capabilities.status_code == 200
+    assert capabilities.json()["provider_key"] == "dashscope"
+    assert capabilities.json()["configured"] is False
+
+    provider_test = admin.post(
+        "/api/v2/settings/llm-providers/dashscope/test",
+        json={"model": "qwen3.6-plus", "reasoning_effort": "auto", "speed_mode": "standard"},
+    )
+    model_test = admin.post("/api/v2/settings/llm-model/test")
+    assert provider_test.status_code == 503
+    assert model_test.status_code == 503
+    assert "API Key" in provider_test.json()["detail"]
+    assert "API Key" in model_test.json()["detail"]
+
+
+def test_feishu_notifier_reads_active_postgres_setting_before_legacy_sqlite(service, monkeypatch) -> None:
+    settings_service, _ = service
+    webhook = "https://open.feishu.cn/open-apis/bot/v2/hook/abcdef1234567890"
+    settings_service.set_feishu_webhook(webhook, updated_by="admin-session")
+    monkeypatch.setattr(settings, "FEISHU_WEBHOOK_URL", None)
+    monkeypatch.setattr(
+        "app.domain.settings.service.postgres_settings_service.resolve_feishu_webhook",
+        settings_service.resolve_feishu_webhook,
+    )
+    monkeypatch.setattr("app.db.local_db.db_instance.get_feishu_webhook_url", lambda: "")
+    monkeypatch.setattr("app.db.local_db.db_instance.get_latest_feishu_webhook_url", lambda: "")
+
+    from app.services.feishu_notifier import FeishuNotifier
+
+    notifier = FeishuNotifier()
+    assert notifier.get_webhook_url() == webhook
+    assert notifier.has_webhook() is True

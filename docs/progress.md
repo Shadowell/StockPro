@@ -14,7 +14,13 @@
 - MCP Token 与飞书 Webhook 的 GET/POST/DELETE 路由已接 active PostgreSQL service，所有路径显式要求
   admin；请求模型禁止额外字段并限制名称、天数、限流和 URL 长度，非法 Webhook 返回 400，安全密钥
   未就绪返回不泄露内部信息的 503。认证中间件优先读取 `X-StockPro-MCP-Token`，仅在主 Header 缺失
-  时兼容旧 Header；AI 状态与前端设置闭环仍在后续切片接通。
+  时兼容旧 Header。
+- AI GET 现返回真实 DashScope provider/capability 与服务端 Key 来源，不再同时显示“已配置”和
+  “Provider 未加载/未配置”；模型名与候选写入 PostgreSQL，Provider 新增/编辑在服务端环境管理
+  模式下明确禁用，能力刷新与连接测试拥有真实 200/503/502 合同。
+- 前端主文案改为 `X-StockPro-MCP-Token` / `STOCKPRO_MCP_API_TOKEN` 并单独说明旧名兼容；设置
+  四域 Mock E2E 无失败响应或 console error。隔离库应用 migration 后真实创建/列表/撤销 Token，
+  列表计数 +1 且无明文；通知发送器已按 env → PostgreSQL → 旧 SQLite 顺序读取保存的 Webhook。
 
 ## 最近半年全市场 A 股日线同步（2026-08-27）
 

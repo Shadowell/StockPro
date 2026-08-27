@@ -218,9 +218,21 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 
 - 稳定协议为 `stockpro-mcp-v1`，当前仅提供本地 stdio。
 - Token 仅保存 SHA-256 哈希，明文只在创建时返回一次。
+- 设置中心与 API 以 `X-StockPro-MCP-Token` / `STOCKPRO_MCP_API_TOKEN` 为主名称；迁移期仍接受
+  `X-BitPro-MCP-Token` / `BITPRO_MCP_API_TOKEN`，但不得在新 UI 中把旧名标成主配置。
 - `R` 为读取作用域；`W` 仅开放合同列出的研究/回测写操作。
 - 写请求需要唯一 `Idempotency-Key`，并写入审计记录。
 - MCP 不绕过数据来源、新鲜度、快照、权限或真实交易边界。
+
+### 设置中心
+
+- AI、Agent Token、访客邀请码和通知配置读取/写入均要求管理员会话；访客返回 403，不返回空成功。
+- AI Provider 身份、Base URL 与 API Key 来源由服务端环境管理，浏览器不接收 Key 明文；模型名称/
+  候选可写 PostgreSQL，未开放的 Provider 新增/编辑操作必须禁用而不是请求不存在的接口。
+- 飞书 Webhook 只接受 HTTPS 飞书机器人固定域名和路径，以认证密钥派生的密文存入 PostgreSQL；
+  GET 只返回配置状态和掩码，通知发送器按 env → PostgreSQL → 旧 SQLite 的兼容顺序解析。
+- 模型连接测试使用固定 Provider 端点和服务端凭据，未配置返回 503、外部失败返回 502；响应和日志
+  不得包含 API Key、完整 Webhook 或 Provider 原始错误正文。
 
 ## 12. UI 合同
 
