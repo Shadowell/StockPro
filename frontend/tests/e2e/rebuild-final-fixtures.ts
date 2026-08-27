@@ -20,6 +20,9 @@ export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' =
     else if (path === '/api/v2/market/indicators') data = { source: 'backend_derived_from_ohlcv', data_source: 'market_klines', timestamps: [], series: {} }
     else if (path === '/api/v2/market/orderbook') data = { bids: [], asks: [], source: 'unavailable' }
     else if (path === '/api/v2/market/ticker') data = { symbol: '', last: 0, change_percent: 0 }
+    else if (path === '/api/v2/market/phase') data = { trade_date: '2026-08-27', phase: '主升', status: 'ok', confidence: 0.82, reasons: ['上涨占比 72.0%'], missing_inputs: [], definition_version: 'ashare-market-phase.v1' }
+    else if (path === '/api/v2/market/sector-rps') data = [{ trade_date: '2026-08-27', classification_system: 'industry', sector_code: 'I001', sector_name: '半导体', rps_percentile: 96, rank: 1, rank_change: 2, leader_symbol: '688001.SH', status: 'ok', missing_inputs: [] }]
+    else if (path === '/api/v2/market/movers') data = [{ symbol: '600519.SH', name: '贵州茅台', board: '主板', st: false, trade_date: '2026-08-27', windows: { '3d': { value: 0.16, value_pct: 16, threshold: 0.2, threshold_pct: 20, closeness: 0.8, direction: 'up', status: 'edge' }, '10d': { value: 0.35, value_pct: 35, threshold: 1, threshold_pct: 100, closeness: 0.35, direction: 'up', status: 'watch' }, '30d': { value: 0.8, value_pct: 80, threshold: 2, threshold_pct: 200, closeness: 0.4, direction: 'up', status: 'watch' } }, abnormal_status: 'edge', eligible: true, tags: ['接近前高'], status: 'ok', data_status: 'ok', missing_inputs: [] }]
     else if (path === '/api/v2/strategies') data = { items: [], total: 0, page: 1, per_page: 60, pages: 1, status_counts: { all: 0 }, asset_counts: { all: 0 }, type_counts: { all: 0 }, timeframe_counts: { all: 0 }, capital_counts: { all: 0 } }
     else if (path === '/api/v2/backtest/configuration') data = { items: [] }
     else if (path === '/api/v2/backtest/results' || path === '/api/v2/backtest/jobs') data = []
@@ -28,6 +31,7 @@ export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' =
     else if (path === '/api/v2/live/dashboard') data = { system: { state: 'idle', exchange: 'CN', symbol: '', symbols: [], timeframe: '1d', strategy: '', strategy_id: null, dry_run: true, mode: 'paper' }, equity: {}, performance: {}, risk: {}, positions: [], account: {}, recent_events: [], feishu: { enabled: false } }
     else if (path === '/api/v2/live/accounts' || path.startsWith('/api/v2/live/')) data = []
     else if (path === '/api/v2/monitor/summary') data = { overall_status: 'unavailable', services: [], data: {}, strategy_health: [], active_alerts: [], notifications: [], source_label: 'PostgreSQL', source_updated_at: null }
+    else if (path === '/api/v2/monitor/events') data = { events: [{ event_id: 'evt-1', source: 'abnormal', severity: 'warning', symbol: '600519.SH', name: '贵州茅台', message: '3日异动边缘', rule_id: 'ashare-abnormal-3d', source_object_type: 'market_alert_event', source_object_id: 'evt-1', triggered_at: '2026-08-27T09:30:00+08:00', orders_created: 0, paper_mutated: false }], data_status: 'ok', unavailable_reason: null, orders_created: 0, paper_mutated: false, limit: 10 }
     else if (path === '/api/v2/monitor/active_strategies' || path === '/api/v2/monitor/alerts') data = []
     else if (path === '/api/v2/monitor/long-short-ratio') data = { ratio: null, source: 'unavailable' }
     else if (path === '/api/v2/monitor/open-interest') data = { open_interest: null, source: 'unavailable' }

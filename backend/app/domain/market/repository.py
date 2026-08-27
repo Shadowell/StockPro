@@ -5,12 +5,16 @@ from datetime import date, datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 import psycopg2
+import psycopg2.extras
 
 from app.core.config import settings
 from app.domain.market.research_metrics import (
     ABNORMALITY_DEFINITION_VERSION,
     MARKET_PHASE_DEFINITION_VERSION,
     SECTOR_RPS_DEFINITION_VERSION,
+    ABNORMAL_WINDOW_KEYS,
+    abnormal_rule_for,
+    build_abnormal_windows,
 )
 
 
@@ -685,8 +689,12 @@ class MarketRepository:
                            benchmark_deviation_3d,benchmark_deviation_10d,benchmark_deviation_30d,
                            sector_deviation_3d,sector_deviation_10d,sector_deviation_30d,
                            amount_ratio_5d,distance_to_60d_high_pct,distance_to_60d_low_pct,
-                           tags,status,missing_inputs,definition_version,available_at,knowledge_cutoff_at
-                    FROM symbol_abnormal_metrics
+                           tags,status,missing_inputs,definition_version,available_at,knowledge_cutoff_at,
+                           source_snapshot_id,benchmark_code,sector_code,
+                           i.name,i.board
+                    FROM symbol_abnormal_metrics m
+                    LEFT JOIN instrument_definitions i
+                      ON i.market='CN' AND i.symbol=m.symbol
                 """
                 params: list[object] = []
                 if trade_date:
@@ -694,14 +702,37 @@ class MarketRepository:
                     params.append(trade_date)
                 else:
                     query += " WHERE trade_date=(SELECT MAX(trade_date) FROM symbol_abnormal_metrics)"
-                query += " ORDER BY ABS(COALESCE(return_3d,0)) DESC,amount_ratio_5d DESC NULLS LAST,symbol LIMIT %s"
-                params.append(bounded)
+                query += " ORDER BY trade_date DESC,ABS(COALESCE(benchmark_deviation_3d,0)) DESC,symbol LIMIT %s"
+                params.append(min(2000, bounded * 10))
                 cursor.execute(query, tuple(params))
                 rows = cursor.fetchall()
-        items = [self._abnormality_row(row) for row in rows]
+        observed_items = [self._abnormality_row(row) for row in rows]
+        items = sorted(
+            (item for item in observed_items if item.get("eligible")),
+            key=lambda item: (-float(item.get("max_closeness") or 0), str(item.get("symbol") or "")),
+        )[:bounded]
+        missing_inputs = sorted({
+            str(missing)
+            for item in observed_items
+            for missing in item.get("missing_inputs") or []
+            if str(missing).strip()
+        })
+        if items:
+            data_status = "ok"
+            unavailable_reason = None
+        elif observed_items:
+            data_status = "partial"
+            unavailable_reason = "异动指标缺少完整的 3/10/30 日基准、行业或价格窗口"
+        else:
+            data_status = "empty"
+            unavailable_reason = "no abnormality metrics for this query"
         return {
             "items": items,
-            **self._status_for_rows(items, empty_reason="no abnormality metrics for this query"),
+            "data_status": data_status,
+            "unavailable_reason": unavailable_reason,
+            "observed_count": len(observed_items),
+            "eligible_count": len(items),
+            "missing_inputs": missing_inputs,
             "definition_version": ABNORMALITY_DEFINITION_VERSION,
         }
 
@@ -721,8 +752,13 @@ class MarketRepository:
                            benchmark_deviation_3d,benchmark_deviation_10d,benchmark_deviation_30d,
                            sector_deviation_3d,sector_deviation_10d,sector_deviation_30d,
                            amount_ratio_5d,distance_to_60d_high_pct,distance_to_60d_low_pct,
-                           tags,status,missing_inputs,definition_version,available_at,knowledge_cutoff_at
-                    FROM symbol_abnormal_metrics WHERE symbol=%s
+                           tags,status,missing_inputs,definition_version,available_at,knowledge_cutoff_at,
+                           source_snapshot_id,benchmark_code,sector_code,
+                           i.name,i.board
+                    FROM symbol_abnormal_metrics m
+                    LEFT JOIN instrument_definitions i
+                      ON i.market='CN' AND i.symbol=m.symbol
+                    WHERE m.symbol=%s
                 """
                 params: list[object] = [canonical]
                 if trade_date:
@@ -739,12 +775,33 @@ class MarketRepository:
                 "definition_version": ABNORMALITY_DEFINITION_VERSION,
             }
         payload = self._abnormality_row(row)
-        payload["data_status"] = "ok"
         return payload
 
     def _abnormality_row(self, row: Any) -> Dict:
+        missing_inputs = list(self._json_value(row[16], []) or [])
+        name = row[23] if len(row) > 23 else None
+        board = row[24] if len(row) > 24 else None
+        rule = abnormal_rule_for(str(row[0]), name, board)
+        windows = build_abnormal_windows(
+            {
+                f"benchmark_deviation_{window}d": row[5 + index]
+                for index, window in enumerate((3, 10, 30))
+            },
+            rule,
+            values_are_percent=True,
+        )
+        if row[15] != "ok" or len(windows) != len(ABNORMAL_WINDOW_KEYS):
+            if len(windows) != len(ABNORMAL_WINDOW_KEYS) and "基准偏离值窗口缺失" not in missing_inputs:
+                missing_inputs.append("基准偏离值窗口缺失")
+            windows = {}
+        max_closeness = max((float(item["closeness"]) for item in windows.values()), default=None)
+        dominant_window = max(windows, key=lambda key: windows[key]["closeness"]) if windows else None
+        data_status = "ok" if row[15] == "ok" and windows else "partial"
         return {
             "symbol": row[0],
+            "name": name,
+            "board": rule.board,
+            "st": rule.st,
             "trade_date": str(row[1]),
             "return_3d": float(row[2]) if row[2] is not None else None,
             "return_10d": float(row[3]) if row[3] is not None else None,
@@ -760,8 +817,308 @@ class MarketRepository:
             "distance_to_60d_low_pct": float(row[13]) if row[13] is not None else None,
             "tags": self._json_value(row[14], []),
             "status": row[15],
-            "missing_inputs": self._json_value(row[16], []),
+            "data_status": data_status,
+            "missing_inputs": missing_inputs,
             "definition_version": row[17],
             "available_at": self._iso(row[18]),
             "knowledge_cutoff_at": self._iso(row[19]),
+            "source_snapshot_id": row[20] if len(row) > 20 else None,
+            "benchmark_code": row[21] if len(row) > 21 else None,
+            "sector_code": row[22] if len(row) > 22 else None,
+            "thresholds": {
+                f"{window}d": {"up": rule.thresholds[window][0], "down": rule.thresholds[window][1]}
+                for window in (3, 10, 30)
+            },
+            "windows": windows,
+            "max_closeness": max_closeness,
+            "abnormal_status": windows[dominant_window]["status"] if dominant_window else None,
+            "eligible": data_status == "ok" and len(windows) == len(ABNORMAL_WINDOW_KEYS),
         }
+
+    @staticmethod
+    def _event_source(raw: Any) -> str:
+        value = str(raw or "").strip().lower()
+        return {
+            "pool": "abnormal",
+            "data": "price",
+            "risk": "strategy",
+            "system": "price",
+        }.get(value, value if value in {"strategy", "signal", "price", "abnormal", "sector"} else "strategy")
+
+    @staticmethod
+    def _event_severity(raw: Any) -> str:
+        value = str(raw or "").strip().lower()
+        return {"warn": "warning", "error": "critical", "block": "critical"}.get(
+            value,
+            value if value in {"info", "warning", "critical"} else "info",
+        )
+
+    @staticmethod
+    def _event_number(value: Any) -> float | None:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if number == number and abs(number) != float("inf") else None
+
+    @classmethod
+    def _event_row(
+        cls,
+        *,
+        event_id: Any,
+        source: Any,
+        severity: Any,
+        symbol: Any = None,
+        name: Any = None,
+        price: Any = None,
+        change_percent: Any = None,
+        rule_id: Any = None,
+        rule_name: Any = None,
+        message: Any = None,
+        source_object_type: Any = None,
+        source_object_id: Any = None,
+        evidence: Any = None,
+        triggered_at: Any = None,
+    ) -> Dict[str, Any]:
+        payload = dict(evidence) if isinstance(evidence, dict) else {}
+        resolved_symbol = symbol or payload.get("symbol") or payload.get("instrument")
+        resolved_name = name or payload.get("name") or payload.get("symbol_name")
+        resolved_price = price if price is not None else payload.get("price")
+        resolved_change = change_percent
+        if resolved_change is None:
+            resolved_change = payload.get("change_percent", payload.get("change_pct"))
+        resolved_rule_id = rule_id or payload.get("rule_id")
+        resolved_rule_name = rule_name or payload.get("rule_name")
+        return {
+            "event_id": str(event_id),
+            "source": cls._event_source(source),
+            "severity": cls._event_severity(severity),
+            "symbol": str(resolved_symbol).strip() if resolved_symbol else None,
+            "name": str(resolved_name).strip() if resolved_name else None,
+            "price": cls._event_number(resolved_price),
+            "change_percent": cls._event_number(resolved_change),
+            "rule_id": str(resolved_rule_id) if resolved_rule_id else None,
+            "rule_name": str(resolved_rule_name) if resolved_rule_name else None,
+            "message": str(message or payload.get("message") or "市场告警事件"),
+            "source_object_type": str(source_object_type or payload.get("source_object_type") or "market_event"),
+            "source_object_id": str(source_object_id or event_id),
+            "evidence": payload,
+            # This stream is alert-only by contract.  Do not trust source
+            # payloads to report an order count back to the operator.
+            "orders_created": 0,
+            "paper_mutated": False,
+            "triggered_at": cls._iso(triggered_at),
+        }
+
+    def list_market_events(
+        self,
+        *,
+        limit: int = 10,
+        source: str | None = None,
+        severity: str | None = None,
+    ) -> Dict[str, Any]:
+        """Read the persisted alert/event stream without evaluating or writing anything."""
+        bounded = max(1, min(int(limit), 100))
+        normalized_source = self._event_source(source) if source else None
+        normalized_severity = self._event_severity(severity) if severity else None
+        events: list[Dict[str, Any]] = []
+        available = False
+        query_errors: list[str] = []
+
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                table_flags = {
+                    table: self._table_exists(cursor, table)
+                    for table in (
+                        "market_alert_events",
+                        "alerts",
+                        "strategy_signals",
+                        "paper_instance_events",
+                        "risk_events",
+                    )
+                }
+                available = any(table_flags.values())
+
+                if table_flags["market_alert_events"]:
+                    cursor.execute(
+                        """
+                        SELECT id::text,source,severity,symbol,name,price,change_percent,
+                               rule_id,rule_name,message,source_object_type,source_object_id,
+                               evidence,triggered_at
+                        FROM market_alert_events
+                        ORDER BY triggered_at DESC,id DESC
+                        LIMIT %s
+                        """,
+                        (bounded * 4,),
+                    )
+                    for row in cursor.fetchall():
+                        events.append(self._event_row(
+                            event_id=row[0], source=row[1], severity=row[2], symbol=row[3], name=row[4],
+                            price=row[5], change_percent=row[6], rule_id=row[7], rule_name=row[8],
+                            message=row[9], source_object_type=row[10], source_object_id=row[11],
+                            evidence=row[12], triggered_at=row[13],
+                        ))
+
+                if table_flags["alerts"]:
+                    cursor.execute(
+                        """
+                        SELECT id::text,category,severity,title,message,source_object_type,
+                               source_object_id,evidence,triggered_at
+                        FROM alerts
+                        ORDER BY triggered_at DESC,id DESC
+                        LIMIT %s
+                        """,
+                        (bounded * 4,),
+                    )
+                    for row in cursor.fetchall():
+                        events.append(self._event_row(
+                            event_id=row[0], source=row[1], severity=row[2], rule_name=row[3],
+                            message=row[4], source_object_type=row[5], source_object_id=row[6],
+                            evidence=row[7], triggered_at=row[8],
+                        ))
+
+                if table_flags["strategy_signals"]:
+                    cursor.execute(
+                        """
+                        SELECT id::text,symbol,name,signal_type,status,signal_time,price,reason,payload
+                        FROM strategy_signals
+                        ORDER BY signal_time DESC,id DESC
+                        LIMIT %s
+                        """,
+                        (bounded * 4,),
+                    )
+                    for row in cursor.fetchall():
+                        payload = dict(row[8]) if isinstance(row[8], dict) else {}
+                        events.append(self._event_row(
+                            event_id=row[0], source="signal", severity="warning" if row[4] == "invalidated" else "info",
+                            symbol=row[1], name=row[2], price=row[6], rule_id=payload.get("rule_id"),
+                            rule_name=payload.get("rule_name"), message=row[7] or f"{row[3] or 'signal'} 信号",
+                            source_object_type="strategy_signal", source_object_id=row[0], evidence=payload,
+                            triggered_at=row[5],
+                        ))
+
+                if table_flags["paper_instance_events"]:
+                    cursor.execute(
+                        """
+                        SELECT id::text,event_type,level,message,payload,occurred_at
+                        FROM paper_instance_events
+                        ORDER BY occurred_at DESC,id DESC
+                        LIMIT %s
+                        """,
+                        (bounded * 4,),
+                    )
+                    for row in cursor.fetchall():
+                        events.append(self._event_row(
+                            event_id=row[0], source="strategy", severity=row[2], message=row[3],
+                            source_object_type="paper_instance_event", source_object_id=row[0], evidence=row[4],
+                            rule_name=row[1], triggered_at=row[5],
+                        ))
+
+                if table_flags["risk_events"]:
+                    cursor.execute(
+                        """
+                        SELECT id::text,severity,message,payload,created_at
+                        FROM risk_events
+                        ORDER BY created_at DESC,id DESC
+                        LIMIT %s
+                        """,
+                        (bounded * 4,),
+                    )
+                    for row in cursor.fetchall():
+                        events.append(self._event_row(
+                            event_id=row[0], source="strategy", severity=row[1], message=row[2],
+                            source_object_type="risk_event", source_object_id=row[0], evidence=row[3],
+                            triggered_at=row[4],
+                        ))
+
+        events = [
+            event for event in events
+            if (normalized_source is None or event["source"] == normalized_source)
+            and (normalized_severity is None or event["severity"] == normalized_severity)
+        ]
+        events.sort(key=lambda event: (event.get("triggered_at") or "", event.get("event_id") or ""), reverse=True)
+        events = events[:bounded]
+        if events:
+            data_status = "ok"
+            unavailable_reason = None
+        elif available:
+            data_status = "empty"
+            unavailable_reason = "暂无可追溯的市场告警事件"
+        else:
+            data_status = "unavailable"
+            unavailable_reason = "市场告警事件表尚未迁移"
+        return {
+            "events": events,
+            "data_status": data_status,
+            "unavailable_reason": unavailable_reason,
+            "orders_created": 0,
+            "paper_mutated": False,
+            "limit": bounded,
+            "query_errors": query_errors,
+        }
+
+    def append_market_alert_events(self, events: list[Dict[str, Any]]) -> int:
+        """Persist explicit alert evaluation results without touching Paper ledgers.
+
+        This write method is intentionally separate from every homepage/monitor
+        GET path. Callers must provide a stable source object and dedupe key;
+        the database constraints provide the final ``orders_created=0`` and
+        ``paper_mutated=false`` guard.
+        """
+        if not events:
+            return 0
+        values: list[tuple[Any, ...]] = []
+        for event in events:
+            source = str(event.get("source") or "").strip().lower()
+            severity = str(event.get("severity") or "").strip().lower()
+            if source not in {"strategy", "signal", "price", "abnormal", "sector"}:
+                raise ValueError("market alert event source is invalid")
+            if severity not in {"info", "warning", "critical"}:
+                raise ValueError("market alert event severity is invalid")
+            if int(event.get("orders_created") or 0) != 0 or bool(event.get("paper_mutated")):
+                raise ValueError("market alert events cannot create orders or mutate Paper")
+            source_object_type = str(event.get("source_object_type") or "").strip()
+            source_object_id = str(event.get("source_object_id") or "").strip()
+            dedupe_key = str(event.get("dedupe_key") or f"{source}:{source_object_type}:{source_object_id}").strip()
+            if not source_object_type or not source_object_id or not dedupe_key:
+                raise ValueError("market alert event requires source object and dedupe key")
+            evidence = event.get("evidence") if isinstance(event.get("evidence"), dict) else {}
+            values.append((
+                source,
+                severity,
+                event.get("symbol"),
+                event.get("name"),
+                event.get("price"),
+                event.get("change_percent"),
+                event.get("rule_id"),
+                event.get("rule_name"),
+                str(event.get("message") or "市场告警事件"),
+                source_object_type,
+                source_object_id,
+                psycopg2.extras.Json(evidence),
+                dedupe_key,
+                event.get("triggered_at"),
+            ))
+        connection = self.connection_factory(self.database_url)
+        connection.set_session(readonly=False, autocommit=False)
+        try:
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO market_alert_events(
+                        source,severity,symbol,name,price,change_percent,rule_id,rule_name,
+                        message,source_object_type,source_object_id,evidence,
+                        orders_created,paper_mutated,dedupe_key,triggered_at
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,FALSE,%s,COALESCE(%s::timestamptz,NOW()))
+                    ON CONFLICT(dedupe_key) DO NOTHING
+                    """,
+                    values,
+                )
+                inserted = cursor.rowcount
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return max(0, int(inserted or 0))

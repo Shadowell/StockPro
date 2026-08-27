@@ -1,5 +1,13 @@
 # Progress Log
 
+## GitHub Issue #64 异动边缘与告警事件流（2026-08-27）
+
+- 异动研究规则补齐主板、创业板、科创板、北交所及 ST 展示语义；3/10/30 日偏离分别按对应正/负阈值计算接近度，窗口同时保留比率和百分比单位，并在缺少至少 30 个确认交易日、基准、行业或关键价格证据时标记 partial，不进入正常榜单。
+- `/api/v2/market/movers` 继续只读已封存/落库的 `symbol_abnormal_metrics`，返回板块、ST、阈值、每窗口偏离/接近度、来源快照和资格状态，按最高接近度排序；不在 GET 中重算或写库。
+- 新增 PostgreSQL `market_alert_events` 追加事件合同与 `orders_created=0` / `paper_mutated=false` 数据库约束；`/api/v2/monitor/events` 按来源和严重度读取策略、信号、价格、异动、板块及既有 Paper/risk 事件，首页最多展示 10 条并提供行情/监控穿透。
+- 首页市场指标区新增“异动边缘明细”和“告警事件流”，保留紧凑深色操作台、桌面/窄屏横向可读和真实空态；新增 4 项 Mock Playwright 验收。
+- 验证：后端全量 147 项、前端 `check`/零警告 `lint`/生产 `build`/bundle budget、`rebuild/assert_safety.py` 和首页 Mock Playwright 4 项通过。标准 4444/4445 当时被另一并行任务占用，已在独立 4454/4455 临时服务完成启动与健康/路由探测；隔离库迁移因本机 Colima Docker daemon 不可用未执行。
+
 ## 最近半年全市场 A 股日线同步（2026-08-27）
 
 - 新增 `POST /api/v2/sync/history/sync-all`，管理员默认拉取最近 180 个自然日；按 TuShare
