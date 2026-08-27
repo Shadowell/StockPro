@@ -144,7 +144,7 @@ A 股适配合同，但仍不启动数字资产交易所、SQLite、真实下单
 | 监控 | `/monitor` | 组合 KPI、策略健康、任务、告警与通知 |
 | 复盘 | `/review` | A股交易日级市场、策略、Paper 和风险复盘 |
 | 数据 | `/data` | TuShare/AKShare、快照、质量、同步和扩展交换 |
-| 因子库 | `/factors` | 因子定义、计算、诊断、快照和策略输入 |
+| 因子库 | `/factorlab` | 注册定义、不可变版本、物化值、封存快照和研究 Trial ledger |
 | AI研发 | `/ai-lab` | 策略研发、优化和门控后的候选保存 |
 | 套利中心 | `/strategy`（旧 `/arbitrage` 跳转） | A 股策略家族与价差研究，不保留跨所/资金费率语义 |
 | 链上研究 | `/data`（旧 `/onchain` 跳转） | 资金流、股东、机构与基本面数据 |
@@ -152,6 +152,10 @@ A 股适配合同，但仍不启动数字资产交易所、SQLite、真实下单
 | ARC Console | `/ai-lab`（旧 `/arc` 跳转） | A 股 AI 研究任务、证据与失败状态 |
 | 交易/Paper | `/paper`（旧 `/trading`、`/live` 跳转） | A 股模拟盘现金账本；不注册真实下单 |
 | 数字资产实盘 | 不注册 | 无真实交易入口 |
+
+FactorLab 统计必须实时来自 PostgreSQL，不维护“默认 26/100 个”等第二口径。研究任务只接受
+有效 `factor_versions` 和包含这些版本的 sealed `factor_snapshots`；coverage、fold、20bps/40bps
+失败写入 rejected Trial，`orders_created=0`、`paper_mutated=false`。
 
 ### 5.3 页面继承标准
 

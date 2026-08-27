@@ -1493,7 +1493,7 @@ export interface FactorResearchCombinationInput {
 
 export interface FactorResearchTaskInput {
   exchange: string;
-  marketType: 'spot' | 'swap';
+  marketType: 'stock' | 'etf';
   symbols: string[];
   timeframe: string;
   startMs: number;
@@ -1523,7 +1523,7 @@ export interface FactorResearchTask {
   status: FactorResearchStatus;
   mode: FactorResearchMode;
   exchange: string;
-  marketType: 'spot' | 'swap';
+  marketType: 'stock' | 'etf';
   symbols: string[];
   timeframe: string;
   startMs: number;

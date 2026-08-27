@@ -4099,3 +4099,14 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
   改用已验证的 AKShare 分时 Provider，服务端缓存 60 秒、前端每分钟刷新。Provider 异常/backoff
   保留最后成功 bars 并标记 stale，显示 last_success/cache_age/next_retry；TuShare 类保留但不自动调用，
   tick/L2 大单与 CVD 继续保持不可用，不从分钟 OHLCV 推导方向。
+
+## 2026-08-28 FactorLab 真实口径与 Trial ledger
+
+- FactorLab summary 改为实时读取 `factor_definitions/factor_versions/factor_daily_values/factor_snapshots`：
+  分开显示注册、可计算和已物化状态，以及输入数据集、行数、最新交易日、版本和缺失原因；删除
+  “默认 26 个”、Parquet/SQLite 等与当前 PostgreSQL 事实冲突的文案。
+- 新增第 49 个迁移 `factor_lab_research_tasks/trials`。管理员可从已物化 `fv:*` 实例创建研究任务；
+  服务只读取包含所选版本的 sealed factor snapshot/value，coverage、fold、20bps/40bps 硬门槛失败
+  以 rejected Trial 持久化，`orders_created=0`、`paper_mutated=false`。
+- 生产基线为 20 个注册定义、1 个有效不可变版本、1 个 sealed snapshot、3 条最新值；其余 19 个
+  定义明确显示“缺少有效版本”。隔离完整库按同一合同成功读取 132 注册、101 实例和 496,641 最新值。

@@ -210,15 +210,16 @@ def test_factorlab_route_sidebar_client_and_workbench_are_registered() -> None:
         "最新值",
         "物化分区",
         "因子定义",
-        "默认参数",
+        "输入证据",
         "数据与运行边界",
-        "尚未接入策略运行时",
+        "策略运行时隔离",
         "刷新",
     ]:
         assert label in page
 
     assert "factorLabApi.getSummary()" in page
-    assert "启动研究待接通" in page
+    assert "启动研究待接通" not in page
+    assert "factorLabApi.createResearchTask" in page
     assert "factorLabApi.listResearchTasks" in page
     assert "factorLabApi.listResearchTrials" in page
     assert "factorLabApi.pauseResearchTask" in page
@@ -245,12 +246,12 @@ def test_factorlab_route_sidebar_client_and_workbench_are_registered() -> None:
         "混合组合",
         "思考深度",
         "速度",
-        "启动研究待接通",
+        "启动研究",
         "暂停",
         "恢复",
         "20bps",
         "40bps",
-        "不创建任务或 Paper",
+        "不创建策略、回测、Paper 或订单",
         "拒绝原因",
     ]:
         assert label in page
@@ -262,7 +263,8 @@ def test_factorlab_copy_distinguishes_registered_instances_and_default_status() 
 
     for text in (page, docs):
         assert "已注册参数实例" in text
-        assert "默认内置二十六个；目录读取全部已注册" in text
+        assert "注册 / 可计算 / 已物化" in text
+        assert "26 个连续因子可用" not in text
     assert "instance.isDefault ? '默认实例' : '已注册实例'" in page
 
 
