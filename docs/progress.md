@@ -4095,5 +4095,7 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - 数据中心 `/sync/assets` 改为 5,550 个活动证券逐标的水位。生产只读探针 3.94 秒返回
   5,550/5,550 有数据、681,938 行，逐标的求和与顶部完全一致，范围 2026-03-02 至 2026-08-27。
   页面每页 200 只并提供翻页；统一维护模式隐藏危险移除，逐标的补数按钮禁用并说明原因。
-- TuShare `rt_min` 仍按 10 次/小时边界集中缓存；前端自动刷新从 30 秒改为 6 分钟，限流或异常时
-  保留最后成功 bars 并标记 stale，显示 last_success/cache_age/next_retry；tick/L2 大单与 CVD 不伪造。
+- 生产复核发现 TuShare `rt_min` 当前实际限额为 10 次/天，无法承担实时页面主源；资金流分钟线
+  改用已验证的 AKShare 分时 Provider，服务端缓存 60 秒、前端每分钟刷新。Provider 异常/backoff
+  保留最后成功 bars 并标记 stale，显示 last_success/cache_age/next_retry；TuShare 类保留但不自动调用，
+  tick/L2 大单与 CVD 继续保持不可用，不从分钟 OHLCV 推导方向。

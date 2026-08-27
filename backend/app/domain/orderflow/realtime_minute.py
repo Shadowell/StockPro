@@ -54,6 +54,12 @@ def _parse_bar_time(value: Any, now: datetime) -> datetime | None:
     if value in (None, ""):
         return None
     text = str(value).strip()
+    try:
+        parsed_iso = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed_iso.tzinfo is not None:
+            return parsed_iso.astimezone(CN_TZ)
+    except ValueError:
+        pass
     candidates = [
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M",
@@ -74,6 +80,9 @@ def _parse_bar_time(value: Any, now: datetime) -> datetime | None:
 
 
 class TushareRealtimeMinuteProvider:
+    provider_source = "tushare.rt_min"
+    cache_ttl_seconds = 24 * 60 * 60 // 10
+
     def __init__(self, token: str | None = None, client: Any | None = None) -> None:
         self.token = token if token is not None else settings.TUSHARE_TOKEN
         self._client = client
@@ -96,18 +105,64 @@ class TushareRealtimeMinuteProvider:
         return _records(self.client.rt_min(ts_code=ts_code, freq=freq))
 
 
+class AkshareRealtimeMinuteProvider:
+    configured = True
+    provider_source = "akshare.intraday"
+    cache_ttl_seconds = 60
+
+    def __init__(self, intraday_provider=None) -> None:
+        if intraday_provider is None:
+            from app.domain.market.akshare_intraday import AkshareIntradayProvider
+
+            intraday_provider = AkshareIntradayProvider()
+        self.intraday_provider = intraday_provider
+
+    def rt_min(self, ts_code: str, freq: str) -> list[dict[str, Any]]:
+        timeframe = {
+            "1MIN": "1m",
+            "5MIN": "5m",
+            "15MIN": "15m",
+            "30MIN": "30m",
+            "60MIN": "60m",
+        }.get(freq)
+        if timeframe is None:
+            raise RuntimeError(f"Unsupported AKShare minute frequency: {freq}")
+        suffix = str(ts_code).rsplit(".", 1)[-1]
+        exchange = {"SH": "SSE", "SZ": "SZSE", "BJ": "BSE"}.get(suffix, "CN")
+        payload = self.intraday_provider.fetch(exchange, ts_code, timeframe, 2000)
+        self.provider_source = str(payload.get("provider_source") or self.provider_source)
+        items = payload.get("items") or []
+        if not items and payload.get("data_status") not in {"ok", "empty"}:
+            raise RuntimeError(str(payload.get("unavailable_reason") or "AKShare minute request failed"))
+        return [
+            {
+                "ts_code": ts_code,
+                "time": item.get("datetime") or item.get("source_updated_at"),
+                "open": item.get("open"),
+                "close": item.get("close"),
+                "high": item.get("high"),
+                "low": item.get("low"),
+                "vol": item.get("volume"),
+                "amount": item.get("quote_volume") if item.get("quote_volume") is not None else item.get("amount"),
+            }
+            for item in items
+        ]
+
+
 class RealtimeMinuteOrderflowService:
     def __init__(
         self,
-        provider_factory: Callable[[], TushareRealtimeMinuteProvider] | None = None,
+        provider_factory: Callable[[], Any] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        self._provider_factory = provider_factory or TushareRealtimeMinuteProvider
+        self._provider_factory = provider_factory or AkshareRealtimeMinuteProvider
+        self._provider = self._provider_factory()
         self._clock = clock or (lambda: datetime.now(CN_TZ))
         self._cache: dict[tuple[str, str], tuple[datetime, list[dict[str, Any]]]] = {}
         self._next_provider_call_at: datetime | None = None
         self._last_success_at: datetime | None = None
         self._last_error: str | None = None
+        self._last_provider_source = "akshare.intraday" if provider_factory is None else "tushare.rt_min"
 
     def _freshness_meta(self, now: datetime, cached_at: datetime | None = None) -> dict[str, Any]:
         return {
@@ -117,7 +172,8 @@ class RealtimeMinuteOrderflowService:
         }
 
     def stream_status(self) -> dict[str, Any]:
-        provider = self._provider_factory()
+        provider = self._provider
+        self._last_provider_source = str(getattr(provider, "provider_source", self._last_provider_source))
         now = self._clock()
         latest_cached_at = max((entry[0] for entry in self._cache.values()), default=None)
         if not provider.configured:
@@ -126,7 +182,7 @@ class RealtimeMinuteOrderflowService:
                 **self._freshness_meta(now, latest_cached_at),
                 "enabled": False,
                 "connected": False,
-                "last_error": "Tushare token not configured",
+                "last_error": "Realtime minute Provider not configured",
             }
 
         if self._last_error:
@@ -186,7 +242,8 @@ class RealtimeMinuteOrderflowService:
                 "last_error": "Unsupported realtime minute frequency",
             }
 
-        provider = self._provider_factory()
+        provider = self._provider
+        self._last_provider_source = str(getattr(provider, "provider_source", self._last_provider_source))
         if not provider.configured:
             return {
                 **self._base_status("unavailable", "requires_configuration"),
@@ -194,15 +251,16 @@ class RealtimeMinuteOrderflowService:
                 "count": 0,
                 "symbol": normalized_symbol,
                 "bar_minutes": bar_minutes,
-                "unavailable_reason": "Tushare token not configured",
-                "last_error": "Tushare token not configured",
+                "unavailable_reason": "Realtime minute Provider not configured",
+                "last_error": "Realtime minute Provider not configured",
             }
 
         now = self._clock()
+        cache_ttl_seconds = max(30, int(getattr(provider, "cache_ttl_seconds", CACHE_TTL_SECONDS)))
         cached_at, cached_rows = self._cache.get((normalized_symbol, freq), (None, []))
         if cached_at is not None:
             cache_age = (now - cached_at).total_seconds()
-            if cache_age < CACHE_TTL_SECONDS:
+            if cache_age < cache_ttl_seconds:
                 items = self._bars_from_rows(cached_rows, normalized_symbol, now, hours)
                 return {
                     **self._base_status(
@@ -232,16 +290,17 @@ class RealtimeMinuteOrderflowService:
                 "symbol": normalized_symbol,
                 "bar_minutes": bar_minutes,
                 "as_of": int(now.timestamp() * 1000),
-                "unavailable_reason": "Using the last successful minute snapshot during Tushare rate-limit backoff" if stale_items else "Tushare realtime minute request is in rate-limit backoff",
+                "unavailable_reason": "Using the last successful minute snapshot during Provider backoff" if stale_items else "Realtime minute Provider is in backoff",
                 "last_error": self._last_error
-                or f"Waiting {wait_seconds}s before the next Tushare rt_min request",
+                or f"Waiting {wait_seconds}s before the next minute Provider request",
             }
 
         try:
             rows = provider.rt_min(ts_code=normalized_symbol, freq=freq)
+            self._last_provider_source = str(getattr(provider, "provider_source", self._last_provider_source))
         except Exception as exc:
             self._last_error = str(exc)
-            self._next_provider_call_at = now + timedelta(seconds=CACHE_TTL_SECONDS)
+            self._next_provider_call_at = now + timedelta(seconds=cache_ttl_seconds)
             stale_items = self._bars_from_rows(cached_rows, normalized_symbol, now, hours) if cached_at else []
             return {
                 **self._base_status("stale" if stale_items else "unavailable", "provider_error"),
@@ -250,12 +309,12 @@ class RealtimeMinuteOrderflowService:
                 "count": len(stale_items),
                 "symbol": normalized_symbol,
                 "bar_minutes": bar_minutes,
-                "unavailable_reason": "Using the last successful minute snapshot after a Tushare request failure" if stale_items else "Tushare realtime minute request failed",
+                "unavailable_reason": "Using the last successful minute snapshot after a Provider failure" if stale_items else "Realtime minute Provider request failed",
                 "last_error": str(exc),
             }
 
         self._cache[(normalized_symbol, freq)] = (now, rows)
-        self._next_provider_call_at = now + timedelta(seconds=CACHE_TTL_SECONDS)
+        self._next_provider_call_at = now + timedelta(seconds=cache_ttl_seconds)
         self._last_success_at = now
         self._last_error = None
         items = self._bars_from_rows(rows, normalized_symbol, now, hours)
@@ -269,7 +328,7 @@ class RealtimeMinuteOrderflowService:
             "as_of": int(now.timestamp() * 1000),
             **self._freshness_meta(now, now),
             "last_error": None,
-            "unavailable_reason": None if items else "No realtime minute bars returned by Tushare",
+            "unavailable_reason": None if items else "No realtime minute bars returned by Provider",
         }
 
     def _bars_from_rows(
@@ -314,7 +373,7 @@ class RealtimeMinuteOrderflowService:
     def _base_status(self, data_status: str, permission_state: str) -> dict[str, Any]:
         return {
             "data_status": data_status,
-            "provider_source": "tushare.rt_min",
+            "provider_source": self._last_provider_source,
             "permission_state": permission_state,
             "frequency": "1MIN/5MIN/15MIN/30MIN/60MIN minute bars, not tick/Level-2",
             "tables": ["minute_bars", "orderflow_bars"],

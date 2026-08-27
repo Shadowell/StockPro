@@ -16,6 +16,7 @@ if str(BACKEND) not in sys.path:
 
 from app.api.v2.endpoints import orderflow  # noqa: E402
 from app.domain.orderflow.realtime_minute import (  # noqa: E402
+    AkshareRealtimeMinuteProvider,
     RealtimeMinuteOrderflowService,
 )
 
@@ -136,6 +137,43 @@ def test_orderflow_rate_limit_keeps_last_successful_snapshot_stale() -> None:
     assert FlakyProvider.calls == 2
 
 
+def test_orderflow_akshare_primary_maps_real_minute_contract() -> None:
+    class Intraday:
+        calls = 0
+
+        def fetch(self, exchange, symbol, timeframe, limit):
+            type(self).calls += 1
+            assert (exchange, symbol, timeframe, limit) == ("SSE", "600519.SH", "5m", 2000)
+            return {
+                "data_status": "ok",
+                "provider_source": "akshare.stock_zh_a_minute",
+                "items": [{
+                    "datetime": "2026-08-27T15:00:00+08:00",
+                    "open": 1291.66,
+                    "close": 1292.3,
+                    "high": 1292.8,
+                    "low": 1291.6,
+                    "volume": 81955,
+                    "quote_volume": 105902557.6855,
+                }],
+            }
+
+    provider = AkshareRealtimeMinuteProvider(Intraday())
+    service = RealtimeMinuteOrderflowService(
+        provider_factory=lambda: provider,
+        clock=lambda: datetime(2026, 8, 27, 15, 1, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    payload = service.bars("600519.SH", 5, 24)
+
+    assert payload["count"] == 1
+    assert payload["provider_source"] == "akshare.stock_zh_a_minute"
+    assert payload["items"][0]["close_px"] == 1292.3
+    assert payload["items"][0]["amount"] == 105902557.6855
+    assert payload["last_success_at"] == "2026-08-27T15:01:00+08:00"
+    assert payload["next_retry_at"] == "2026-08-27T15:02:00+08:00"
+
+
 def test_orderflow_large_trades_keeps_tick_provider_boundary(monkeypatch) -> None:
     response = _client(monkeypatch).get("/api/v2/orderflow/large-trades?inst_id=600519.SH")
 
@@ -157,13 +195,13 @@ def test_orderflow_frontend_collapses_provider_missing_state() -> None:
     assert "providerSource?: string" in client
     assert "const providerMissing = Boolean(" in page
     assert "const minuteFallback = Boolean(" in page
-    assert "TuShare 实时分钟线" in page
+    assert "当前接入 {minuteKpi.source} 实时分钟线" in page
     assert "不是 tick/L2" in page
     assert "streamStatus.permissionState === 'requires_configuration'" in page
     assert "A 股 tick Provider 未配置" in page
     assert "{!providerMissing && (" in page
     assert "PROVIDER_REFRESH_MS" in page
-    assert "6 分钟自动刷新" in page
+    assert "1 分钟自动刷新" in page
     assert "lastSuccessAt" in page
     assert "nextRetryAt" in page
     assert "30s 自动刷新" not in page
