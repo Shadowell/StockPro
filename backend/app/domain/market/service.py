@@ -453,5 +453,36 @@ class MarketDomainService:
                 "definition_version": ABNORMALITY_DEFINITION_VERSION,
             }
 
+    async def list_market_events(
+        self,
+        *,
+        limit: int = 10,
+        source: str | None = None,
+        severity: str | None = None,
+    ) -> Dict[str, Any]:
+        try:
+            if not hasattr(self.repo, "list_market_events"):
+                return {
+                    "events": [],
+                    "data_status": "unavailable",
+                    "unavailable_reason": "A-share market event repository is not available",
+                    "orders_created": 0,
+                    "paper_mutated": False,
+                }
+            return await asyncio.to_thread(
+                self.repo.list_market_events,
+                limit=limit,
+                source=source,
+                severity=severity,
+            )
+        except Exception as exc:
+            return {
+                "events": [],
+                "data_status": "unavailable",
+                "unavailable_reason": f"A-share market event cache unavailable: {type(exc).__name__}",
+                "orders_created": 0,
+                "paper_mutated": False,
+            }
+
 
 market_domain_service = MarketDomainService()
