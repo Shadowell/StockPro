@@ -16,9 +16,12 @@ import type {
   LiveExecutionOrder,
   LiveExecutionPosition,
   LiveExecutionStrategy,
+  MarketEvent,
+  MarketEventsPayload,
 } from '../api/client';
 import { useSymbolNames } from '../hooks/useSymbolNames';
 import { formatSymbolLabel } from '../utils/symbolDisplay';
+import { useStore } from '../stores/useStore';
 
 interface Alert {
   id: number;
@@ -143,6 +146,23 @@ function formatPercent(value: unknown, digits = 1): string {
 function formatRatio(value: unknown, digits = 2): string {
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n.toFixed(digits) : '--';
+}
+
+function marketEventSourceLabel(source?: string | null): string {
+  return {
+    strategy: '策略',
+    signal: '个股信号',
+    price: '价格',
+    abnormal: '异动',
+    sector: '板块',
+  }[String(source || '')] || '事件';
+}
+
+function marketEventTime(value?: string | null): string {
+  if (!value) return '时间未知';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function activeAlertCount(alerts: Alert[]): number {
@@ -633,6 +653,68 @@ const ALERT_TEMPLATES: AlertTemplate[] = [
   },
 ];
 
+function MarketEventHistory({
+  events,
+  status,
+  onSelectSymbol,
+}: {
+  events: MarketEvent[];
+  status?: string | null;
+  onSelectSymbol: (symbol: string) => void;
+}) {
+  return (
+    <section className="mb-6 rounded-xl border border-crypto-border bg-crypto-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Bell className="h-4 w-4 text-blue-300" />
+          <div>
+            <h2 className="text-sm font-semibold text-white">告警事件历史</h2>
+            <p className="mt-0.5 text-[11px] text-gray-500">策略、信号、价格、异动和板块事件的只读追溯</p>
+          </div>
+        </div>
+        <span className={clsx(
+          'rounded-md border px-2 py-1 text-[10px]',
+          status === 'ok' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' : 'border-slate-600/45 bg-slate-900/70 text-slate-400',
+        )}>
+          {status === 'ok' ? '可用' : status || 'empty'}
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="min-w-[760px] divide-y divide-crypto-border/45">
+          <div className="grid grid-cols-[118px_80px_82px_minmax(150px,1fr)_92px_110px] gap-2 border-b border-crypto-border/50 bg-slate-950/35 px-4 py-2 text-[10px] font-semibold text-gray-500">
+            <span>发生时间</span><span>来源</span><span>严重度</span><span>标的 / 事件</span><span>价格 / 涨跌</span><span>规则 / 订单</span>
+          </div>
+          {events.length ? events.slice(0, 100).map((event) => (
+            <div key={event.eventId} className="grid grid-cols-[118px_80px_82px_minmax(150px,1fr)_92px_110px] items-center gap-2 px-4 py-2.5 text-[11px]">
+              <span className="tabular-nums text-gray-500">{marketEventTime(event.triggeredAt)}</span>
+              <span className="text-blue-200">{marketEventSourceLabel(event.source)}</span>
+              <span className={clsx(
+                'w-fit rounded border px-1.5 py-0.5 text-[10px]',
+                event.severity === 'critical' ? 'border-red-500/25 bg-red-500/10 text-red-300' : event.severity === 'warning' ? 'border-amber-500/25 bg-amber-500/10 text-amber-300' : 'border-slate-600/45 bg-slate-900/70 text-slate-400',
+              )}>{event.severity === 'critical' ? '严重' : event.severity === 'warning' ? '警告' : '提示'}</span>
+              <span className="min-w-0">
+                {event.symbol ? <button type="button" onClick={() => onSelectSymbol(event.symbol || '')} className="max-w-full truncate font-medium text-gray-200 hover:text-white">{event.name || event.symbol}（{event.symbol}）</button> : null}
+                <span className="block truncate text-gray-400" title={event.message}>{event.message}</span>
+              </span>
+              <span className="tabular-nums text-gray-300">
+                {event.price == null ? '—' : `¥${event.price.toFixed(2)}`}
+                <span className={clsx('ml-1', (event.changePercent || 0) >= 0 ? 'text-up' : 'text-down')}>
+                  {event.changePercent == null ? '' : `${event.changePercent >= 0 ? '+' : ''}${event.changePercent.toFixed(1)}%`}
+                </span>
+              </span>
+              <span className="min-w-0 truncate text-[10px] text-gray-500" title={event.ruleId || undefined}>规则 {event.ruleId || '—'} · orders_created=0</span>
+            </div>
+          )) : (
+            <div className="flex h-28 items-center justify-center px-4 text-center text-xs text-gray-500">
+              暂无已持久化事件；首页读取不会触发评估、重算、下单或修改 Paper。
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Monitor() {
   const navigate = useNavigate();
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -663,6 +745,7 @@ export default function Monitor() {
   });
   const [sentimentLoading, setSentimentLoading] = useState(false);
   const [alertToDelete, setAlertToDelete] = useState<{ id: number; name: string } | null>(null);
+  const [marketEvents, setMarketEvents] = useState<MarketEventsPayload | null>(null);
 
   const [profitPush, setProfitPush] = useState<StrategyProfitPushSettings | null>(null);
   const [profitPushInterval, setProfitPushInterval] = useState('60');
@@ -1038,6 +1121,7 @@ export default function Monitor() {
 
   useEffect(() => {
     fetchAlerts();
+    fetchMarketEvents();
     fetchRunningStrategies();
     fetchLiveMonitor();
     fetchMarketSentiment();
@@ -1051,6 +1135,7 @@ export default function Monitor() {
     }, 15000);
     const slowInterval = setInterval(() => {
       fetchAlerts();
+      fetchMarketEvents();
       fetchMarketSentiment();
       fetchProfitPushSettings();
       fetchLiveProfitPushSettings();
@@ -1187,6 +1272,19 @@ export default function Monitor() {
       const data = await monitorApi.getAlerts();
       setAlerts(data);
     } catch {}
+  };
+
+  const fetchMarketEvents = async () => {
+    try {
+      setMarketEvents(await monitorApi.getEvents(100));
+    } catch {
+      setMarketEvents({
+        events: [],
+        dataStatus: 'unavailable',
+        unavailableReason: '读取告警事件失败',
+        ordersCreated: 0,
+      });
+    }
   };
 
   const fetchRunningStrategies = async () => {
@@ -1775,6 +1873,15 @@ export default function Monitor() {
           </div>
         )}
       </div>
+
+      <MarketEventHistory
+        events={marketEvents?.events || []}
+        status={marketEvents?.dataStatus}
+        onSelectSymbol={(symbol) => {
+          useStore.getState().setSelectedSymbol(symbol);
+          navigate('/market');
+        }}
+      />
 
       <div className="monitorRuntimeGrid grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* ====== 运行中的策略 ====== */}

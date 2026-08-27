@@ -13,6 +13,116 @@ SECTOR_RPS_DEFINITION_VERSION = "ashare-sector-rps.v1"
 ABNORMALITY_DEFINITION_VERSION = "ashare-abnormality.v1"
 FUNDAMENTAL_PIT_DEFINITION_VERSION = "ashare-fundamental-pit.v1"
 CN_TZ = timezone(timedelta(hours=8))
+ABNORMAL_WINDOW_KEYS = ("3d", "10d", "30d")
+
+
+@dataclass(frozen=True)
+class AbnormalRule:
+    """A-share abnormal-move thresholds expressed as ratios."""
+
+    board: str
+    st: bool
+    thresholds: dict[int, tuple[float, float]]
+
+
+_MAIN_ABNORMAL_THRESHOLDS = {3: (0.20, 0.20), 10: (1.00, 0.50), 30: (2.00, 0.70)}
+_GEM_STAR_ABNORMAL_THRESHOLDS = {3: (0.30, 0.30), 10: (1.00, 0.50), 30: (2.00, 0.70)}
+_BSE_ABNORMAL_THRESHOLDS = {3: (0.40, 0.40), 10: (1.00, 0.50), 30: (2.00, 0.70)}
+
+
+def board_of(symbol: str, board: str | None = None) -> str:
+    """Return the explicit instrument board or the conservative code-prefix fallback."""
+    explicit = str(board or "").strip()
+    if explicit:
+        if "北交" in explicit or explicit.upper() in {"BSE", "BJ"}:
+            return "北交所"
+        if "创业" in explicit or explicit.upper() in {"GEM", "CYB"}:
+            return "创业板"
+        if "科创" in explicit or explicit.upper() in {"STAR", "KCB"}:
+            return "科创板"
+        if "主板" in explicit:
+            return "主板"
+    raw = str(symbol or "").strip().upper()
+    code = raw.split(".", 1)[0].split("_", 1)[-1]
+    exchange = raw.rsplit(".", 1)[-1] if "." in raw else ""
+    if exchange == "BJ" or code[:2] in {"43", "83", "87", "92"}:
+        return "北交所"
+    if code.startswith("68"):
+        return "科创板"
+    if code.startswith("30"):
+        return "创业板"
+    return "主板"
+
+
+def is_st_name(name: str | None) -> bool:
+    return bool(name) and "ST" in str(name).upper()
+
+
+def abnormal_rule_for(symbol: str, name: str | None = None, board: str | None = None) -> AbnormalRule:
+    """Resolve the exchange disclosure rule for one A-share instrument.
+
+    Since 2026-07-06, main-board ST/*ST instruments use the ordinary main-board
+    abnormal-volatility thresholds; the ST flag remains visible as context.
+    """
+    normalized_board = board_of(symbol, board)
+    st = is_st_name(name)
+    if normalized_board == "北交所":
+        thresholds = _BSE_ABNORMAL_THRESHOLDS
+    elif normalized_board in {"创业板", "科创板"}:
+        thresholds = _GEM_STAR_ABNORMAL_THRESHOLDS
+    else:
+        thresholds = _MAIN_ABNORMAL_THRESHOLDS
+    return AbnormalRule(normalized_board, st, dict(thresholds))
+
+
+def _abnormal_status(closeness: float) -> str:
+    if closeness >= 1.0:
+        return "triggered"
+    if closeness >= 0.7:
+        return "edge"
+    return "watch"
+
+
+def build_abnormal_windows(
+    deviations: Mapping[str, Any],
+    rule: AbnormalRule,
+    *,
+    values_are_percent: bool = False,
+) -> dict[str, dict[str, Any]]:
+    """Build directional threshold/closeness facts for 3/10/30-day deviations.
+
+    The canonical ``value`` and ``threshold`` fields are ratios (0.20 = 20%).
+    ``value_pct`` and ``threshold_pct`` are included for operator-facing UIs.
+    ``values_are_percent`` preserves the existing research function's percentage
+    return fields while keeping this contract unit-safe.
+    """
+    windows: dict[str, dict[str, Any]] = {}
+    for key in ABNORMAL_WINDOW_KEYS:
+        try:
+            window = int(key[:-1])
+        except ValueError:
+            continue
+        raw = _as_float(deviations.get(key))
+        if raw is None:
+            raw = _as_float(deviations.get(f"deviate_{key}"))
+        if raw is None:
+            raw = _as_float(deviations.get(f"benchmark_deviation_{key}"))
+        if raw is None:
+            continue
+        value = raw / 100.0 if values_are_percent else raw
+        up_threshold, down_threshold = rule.thresholds[window]
+        threshold = up_threshold if value >= 0 else down_threshold
+        closeness = abs(value) / threshold if threshold > 0 else 0.0
+        windows[key] = {
+            "value": round(value, 6),
+            "value_pct": round(value * 100.0, 4),
+            "threshold": threshold,
+            "threshold_pct": round(threshold * 100.0, 4),
+            "closeness": round(closeness, 4),
+            "direction": "up" if value > 0 else "down" if value < 0 else "flat",
+            "status": _abnormal_status(closeness),
+        }
+    return windows
 
 
 def _as_float(value: Any) -> float | None:
@@ -227,6 +337,8 @@ def compute_symbol_abnormality(
     bars: list[Mapping[str, Any]],
     *,
     symbol: str,
+    name: str | None = None,
+    board: str | None = None,
     trade_date: date | str,
     benchmark_bars: list[Mapping[str, Any]] | None = None,
     sector_bars: list[Mapping[str, Any]] | None = None,
@@ -295,6 +407,20 @@ def compute_symbol_abnormality(
     else:
         missing.append("行业/概念对照缺失")
 
+    rule = abnormal_rule_for(symbol, name, board)
+    windows = build_abnormal_windows(
+        {
+            f"benchmark_deviation_{window}d": benchmark_deviation[f"benchmark_deviation_{window}d"]
+            for window in (3, 10, 30)
+        },
+        rule,
+        values_are_percent=True,
+    )
+    # A row with any missing relative evidence is useful for diagnostics, but
+    # must not enter the normal abnormality ranking or alert evaluation.
+    if missing or len(windows) != len(ABNORMAL_WINDOW_KEYS):
+        windows = {}
+    max_closeness = max((float(item["closeness"]) for item in windows.values()), default=None)
     tags: list[str] = []
     if returns["return_3d"] is not None and abs(float(returns["return_3d"])) >= 9.0:
         tags.append("价格异动")
@@ -311,6 +437,9 @@ def compute_symbol_abnormality(
 
     return {
         "symbol": symbol,
+        "name": name,
+        "board": rule.board,
+        "st": rule.st,
         "trade_date": target_day,
         **returns,
         **benchmark_deviation,
@@ -318,7 +447,12 @@ def compute_symbol_abnormality(
         "amount_ratio_5d": None if amount_ratio_5d is None else round(amount_ratio_5d, 6),
         "distance_to_60d_high_pct": None if distance_high is None else round(distance_high, 6),
         "distance_to_60d_low_pct": None if distance_low is None else round(distance_low, 6),
+        "windows": windows,
+        "max_closeness": max_closeness,
+        "abnormal_status": _abnormal_status(max_closeness) if max_closeness is not None else None,
+        "eligible": bool(windows) and not missing,
         "tags": tags,
+        "data_status": "partial" if missing else "ok",
         "status": "partial" if missing else "ok",
         "missing_inputs": missing,
         "definition_version": ABNORMALITY_DEFINITION_VERSION,

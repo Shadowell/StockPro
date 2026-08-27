@@ -1111,6 +1111,9 @@ export interface SectorRpsRow {
 
 export interface SymbolAbnormality {
   symbol: string;
+  name?: string | null;
+  board?: string | null;
+  st?: boolean;
   tradeDate?: string | null;
   return3d?: number | null;
   return10d?: number | null;
@@ -1122,9 +1125,53 @@ export interface SymbolAbnormality {
   distanceTo60dLowPct?: number | null;
   tags?: string[];
   status?: string;
-  missingInputs?: string[];
   dataStatus?: string;
+  abnormalStatus?: 'triggered' | 'edge' | 'watch' | null;
+  maxCloseness?: number | null;
+  eligible?: boolean;
+  thresholds?: Record<string, { up: number; down: number }>;
+  windows?: Record<string, {
+    value?: number | null;
+    valuePct?: number | null;
+    threshold?: number | null;
+    thresholdPct?: number | null;
+    closeness?: number | null;
+    direction?: 'up' | 'down' | 'flat' | string;
+    status?: 'triggered' | 'edge' | 'watch' | string;
+  }>;
+  sourceSnapshotId?: number | null;
+  benchmarkCode?: string | null;
+  sectorCode?: string | null;
+  missingInputs?: string[];
   unavailableReason?: string;
+}
+
+export interface MarketEvent {
+  eventId: string;
+  source: 'strategy' | 'signal' | 'price' | 'abnormal' | 'sector' | string;
+  severity: 'info' | 'warning' | 'critical' | string;
+  symbol?: string | null;
+  name?: string | null;
+  price?: number | null;
+  changePercent?: number | null;
+  ruleId?: string | null;
+  ruleName?: string | null;
+  message: string;
+  sourceObjectType: string;
+  sourceObjectId: string;
+  evidence?: Record<string, unknown>;
+  ordersCreated: number;
+  paperMutated?: boolean;
+  triggeredAt?: string | null;
+}
+
+export interface MarketEventsPayload {
+  events: MarketEvent[];
+  dataStatus: string;
+  unavailableReason?: string | null;
+  ordersCreated: number;
+  paperMutated?: boolean;
+  limit?: number;
 }
 
 export type FactorResearchMode = 'manual' | 'auto' | 'hybrid';
@@ -1761,6 +1808,14 @@ export const strategyApi = {
 
 export const monitorApi = {
   getAlerts: (): Promise<any[]> => getReq('/monitor/alerts'),
+
+  getEvents: (
+    limit = 10,
+    source?: 'strategy' | 'signal' | 'price' | 'abnormal' | 'sector',
+    severity?: 'info' | 'warning' | 'critical',
+  ): Promise<MarketEventsPayload> => getReq('/monitor/events', {
+    params: { limit, source, severity },
+  }),
 
   createAlert: (data: {
     name: string;

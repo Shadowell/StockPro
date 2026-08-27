@@ -1,7 +1,8 @@
 """A-share Paper status adapter for BitPro monitoring consumers."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.core.contracts import ok
+from app.domain.market import market_domain_service
 from app.domain.paper import paper_domain_service
 
 
@@ -25,6 +26,16 @@ async def running_strategies():
 
 @router.get("/alerts")
 async def alerts(): return ok([])
+
+
+@router.get("/events")
+async def events(
+    limit: int = Query(10, ge=1, le=100),
+    source: str | None = Query(None, pattern="^(strategy|signal|price|abnormal|sector)$"),
+    severity: str | None = Query(None, pattern="^(info|warning|critical)$"),
+):
+    """Return persisted alert-only events; this read path never evaluates or writes."""
+    return ok(await market_domain_service.list_market_events(limit=limit, source=source, severity=severity))
 
 
 @router.get("/long-short-ratio")
