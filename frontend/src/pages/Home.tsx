@@ -17,14 +17,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   marketApi,
   monitorApi,
+  parseApiError,
   type MarketInstrument,
   type MarketEvent,
   type MarketPhase,
   type SectorRpsRow,
   type SymbolAbnormality,
 } from '../api/client';
-import MarketUniversePanel from '../components/MarketUniversePanel';
-import NativeDataPanel from '../components/NativeDataPanel';
+import HomeMarketOverview from '../components/HomeMarketOverview';
 import { useStore } from '../stores/useStore';
 
 const HOME_INTEL_LIMIT = 8;
@@ -427,6 +427,29 @@ function MarketIntelligencePanel({
 export default function Home() {
   const { selectedExchange } = useStore();
   const navigate = useNavigate();
+  const [marketOverview, setMarketOverview] = useState<Awaited<ReturnType<typeof marketApi.getOverview>> | null>(null);
+  const [marketOverviewLoading, setMarketOverviewLoading] = useState(true);
+  const [marketOverviewError, setMarketOverviewError] = useState<string | null>(null);
+  const [marketOverviewRefreshing, setMarketOverviewRefreshing] = useState(false);
+
+  const loadMarketOverview = useCallback(async (refresh = false) => {
+    if (refresh) setMarketOverviewRefreshing(true);
+    else setMarketOverviewLoading(true);
+    setMarketOverviewError(null);
+    try {
+      const overview = await marketApi.getOverview();
+      setMarketOverview(overview);
+    } catch (error) {
+      setMarketOverviewError(parseApiError(error, '市场基础指标暂时不可用'));
+    } finally {
+      if (refresh) setMarketOverviewRefreshing(false);
+      else setMarketOverviewLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMarketOverview();
+  }, [loadMarketOverview]);
 
   const handleSelectSymbol = (symbol: string) => {
     useStore.getState().setSelectedSymbol(symbol);
@@ -469,17 +492,19 @@ export default function Home() {
       </header>
 
       <div className="space-y-5 px-6 py-5 pb-7">
+        <HomeMarketOverview
+          data={marketOverview}
+          loading={marketOverviewLoading}
+          error={marketOverviewError}
+          refreshing={marketOverviewRefreshing}
+          onRefresh={() => void loadMarketOverview(true)}
+          onSelectSymbol={handleSelectSymbol}
+        />
         <MarketIntelligencePanel
           selectedExchange={selectedExchange}
           onSelectSymbol={handleSelectSymbol}
           onOpenMonitor={() => navigate('/monitor')}
         />
-        <MarketUniversePanel
-          variant="summary"
-          selectedExchange={selectedExchange}
-          onSelectSymbol={handleSelectSymbol}
-        />
-        <NativeDataPanel />
       </div>
     </div>
   );

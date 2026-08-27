@@ -10,13 +10,13 @@ SECTOR_HEATMAP = ROOT / "frontend" / "src" / "components" / "MarketSectorHeatmap
 FRONTEND_PACKAGE = ROOT / "frontend" / "package.json"
 
 
-def test_home_uses_market_universe_summary_without_trade_pair_tabs():
+def test_home_uses_one_market_overview_foundation_without_trade_pair_tabs():
     text = HOME.read_text(encoding="utf-8")
 
     assert "市场大盘" in text
-    assert "variant=\"summary\"" in text
-    assert "MarketUniversePanel" in text
-    assert "点击榜单标的后进入行情页查看日线详情" in text
+    assert "HomeMarketOverview" in text
+    assert "marketApi.getOverview()" in text
+    assert "A 股市场基础层" in (ROOT / "frontend/src/components/HomeMarketOverview.tsx").read_text(encoding="utf-8")
     assert "MARKET_TABS" not in text
     assert "market-universe-panel" not in text
     assert "24h 区间" not in text

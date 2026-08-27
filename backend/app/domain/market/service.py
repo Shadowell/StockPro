@@ -15,6 +15,7 @@ from app.domain.market.research_metrics import (
     MARKET_PHASE_DEFINITION_VERSION,
     SECTOR_RPS_DEFINITION_VERSION,
 )
+from app.domain.market.overview import unavailable_market_overview
 from app.services.indicators import EMA, MACD, RSI
 
 
@@ -370,6 +371,12 @@ class MarketDomainService:
 
     async def market_pulse(self) -> Dict:
         return await asyncio.to_thread(self.repo.market_pulse)
+
+    async def get_market_overview(self, trade_date: str | None = None) -> Dict[str, Any]:
+        try:
+            return await asyncio.to_thread(self.repo.get_market_overview, trade_date)
+        except Exception as exc:
+            return unavailable_market_overview(f"A股首页基础指标读取失败：{type(exc).__name__}")
 
     async def get_market_phase(self, trade_date: str | None = None) -> Dict:
         try:

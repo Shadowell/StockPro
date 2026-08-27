@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import json
 from typing import Any, Callable, Dict, List, Optional
 
 import psycopg2
@@ -16,6 +17,7 @@ from app.domain.market.research_metrics import (
     abnormal_rule_for,
     build_abnormal_windows,
 )
+from app.domain.market.overview import build_market_overview, unavailable_market_overview
 
 
 class MarketRepository:
@@ -517,6 +519,253 @@ class MarketRepository:
                 cursor.execute("SELECT COUNT(*),MIN(date),MAX(date) FROM stock_history")
                 daily_count, first_date, last_date = cursor.fetchone()
         return {"instrument_count": instruments, "rise_count": rise, "fall_count": fall, "turnover": turnover, "average_change_pct": average_change, "updated_at": updated_at.isoformat() if updated_at else None, "daily_bar_count": daily_count, "first_trade_date": str(first_date or ""), "trade_date": str(last_date or "")}
+
+    @staticmethod
+    def _payload_dict(raw: Any) -> Dict[str, Any]:
+        if isinstance(raw, dict):
+            return raw
+        if isinstance(raw, str):
+            try:
+                value = json.loads(raw)
+            except (TypeError, ValueError):
+                return {}
+            return value if isinstance(value, dict) else {}
+        return {}
+
+    def _latest_dataset_snapshot(self, cursor, dataset_code: str, trade_date: str | None = None) -> Dict[str, Any] | None:
+        required_tables = {"dataset_snapshots", "dataset_snapshot_items", "dataset_partitions"}
+        if any(not self._table_exists(cursor, table) for table in required_tables):
+            return None
+        query = """
+            SELECT s.id,s.knowledge_cutoff_at,p.available_at,s.sealed_at,p.start_date,p.end_date
+            FROM dataset_snapshots s
+            JOIN dataset_snapshot_items i ON i.snapshot_id=s.id
+            JOIN dataset_partitions p ON p.id=i.partition_id
+            WHERE s.status='sealed' AND i.dataset_code=%s
+        """
+        params: list[object] = [dataset_code]
+        if trade_date:
+            query += " AND p.end_date=%s"
+            params.append(trade_date)
+        query += " ORDER BY p.end_date DESC NULLS LAST,s.sealed_at DESC NULLS LAST,s.id DESC LIMIT 1"
+        cursor.execute(query, tuple(params))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": int(row[0]),
+            "knowledge_cutoff_at": self._iso(row[1]),
+            "available_at": self._iso(row[2]),
+            "sealed_at": self._iso(row[3]),
+            "start_date": self._iso(row[4]),
+            "end_date": self._iso(row[5]),
+        }
+
+    def _dataset_snapshot_payloads(self, cursor, snapshot_id: int, dataset_code: str) -> list[Dict[str, Any]]:
+        if not self._table_exists(cursor, "dataset_snapshot_items") or not self._table_exists(cursor, "dataset_partition_records"):
+            return []
+        cursor.execute(
+            """
+            SELECT r.payload
+            FROM dataset_snapshot_items i
+            JOIN dataset_partition_records r ON r.partition_id=i.partition_id
+            WHERE i.snapshot_id=%s AND i.dataset_code=%s
+            ORDER BY r.record_ordinal
+            """,
+            (snapshot_id, dataset_code),
+        )
+        return [self._payload_dict(row[0]) for row in cursor.fetchall()]
+
+    def _overview_realtime_rows(self, cursor, trade_date: str | None) -> list[Dict[str, Any]]:
+        if not self._table_exists(cursor, "realtime_quotes"):
+            return []
+        query = """
+            SELECT r.symbol,COALESCE(NULLIF(d.name,''),r.symbol),r.exchange,
+                   r.last_price,r.change_percent,r.amount,r.turnover_rate,r.volume_ratio,
+                   r.trade_date,r.source,r.source_updated_at,r.collected_at
+            FROM realtime_quotes r
+            LEFT JOIN instrument_definitions d
+              ON d.market='CN' AND d.symbol=r.symbol
+             AND d.asset_class='stock' AND d.list_status IN ('L','P')
+            WHERE d.symbol IS NOT NULL
+        """
+        params: list[object] = []
+        if trade_date:
+            query += " AND r.trade_date=%s"
+            params.append(trade_date)
+        query += " ORDER BY r.symbol"
+        cursor.execute(query, tuple(params))
+        return [
+            {
+                "symbol": row[0],
+                "name": row[1],
+                "exchange": row[2],
+                "price": row[3],
+                "change_percent": row[4],
+                "amount": row[5],
+                "turnover_rate": row[6],
+                "volume_ratio": row[7],
+                "trade_date": self._iso(row[8]),
+                "source": row[9],
+                "source_updated_at": self._iso(row[10]),
+                "collected_at": self._iso(row[11]),
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def _overview_daily_rows(self, cursor) -> list[Dict[str, Any]]:
+        query = """
+            SELECT r.code,COALESCE(NULLIF(d.name,''),r.name),COALESCE(d.exchange,'CN'),
+                   r.price,r.change_percent,r.amount,r.turnover,r.volume_ratio,r.updated_at
+            FROM all_stocks_realtime r
+            LEFT JOIN instrument_definitions d
+              ON d.market='CN'
+             AND d.symbol=(split_part(r.code,'_',2)||'.'||split_part(r.code,'_',1))
+            WHERE r.code ~ '^(SH|SZ|BJ)_[0-9]{6}$'
+              AND (d.symbol IS NULL OR (d.asset_class='stock' AND d.list_status IN ('L','P')))
+            ORDER BY r.code
+        """
+        cursor.execute(query)
+        return [
+            {
+                "symbol": row[0],
+                "name": row[1],
+                "exchange": row[2],
+                "price": row[3],
+                "change_percent": row[4],
+                "amount": row[5],
+                "turnover_rate": row[6],
+                "volume_ratio": row[7],
+                "source": "tushare.daily → PostgreSQL",
+                "source_updated_at": self._iso(row[8]),
+                "updated_at": self._iso(row[8]),
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def _overview_index_rows(self, cursor) -> list[Dict[str, Any]]:
+        rows: list[Dict[str, Any]] = []
+        if self._table_exists(cursor, "market_indices_realtime"):
+            cursor.execute(
+                """
+                SELECT name,code,price,change_amount,change_percent,updated_at
+                FROM market_indices_realtime ORDER BY id
+                """
+            )
+            rows.extend(
+                {
+                    "name": row[0],
+                    "code": row[1],
+                    "price": row[2],
+                    "change_amount": row[3],
+                    "change_percent": row[4],
+                    "updated_at": self._iso(row[5]),
+                    "source": "PostgreSQL market_indices_realtime",
+                }
+                for row in cursor.fetchall()
+            )
+        snapshot = self._latest_dataset_snapshot(cursor, "benchmark_bars")
+        if snapshot:
+            for payload in self._dataset_snapshot_payloads(cursor, snapshot["id"], "benchmark_bars"):
+                rows.append({
+                    **payload,
+                    "source_snapshot_id": snapshot["id"],
+                    "available_at": snapshot["available_at"],
+                    "source": payload.get("source") or "tushare.index_daily → PostgreSQL sealed snapshot",
+                })
+        return rows
+
+    def _overview_trend_rows(self, cursor, trade_date: str | None) -> list[Dict[str, Any]]:
+        if not self._table_exists(cursor, "stock_history"):
+            return []
+        query = """
+            WITH valid AS (
+                SELECT h.symbol,h.date,h.close,
+                       ROW_NUMBER() OVER (PARTITION BY h.symbol ORDER BY h.date DESC) AS rn,
+                       COUNT(*) OVER (PARTITION BY h.symbol) AS history_days
+                FROM stock_history h
+                LEFT JOIN instrument_definitions d
+                  ON d.market='CN'
+                 AND (d.symbol=h.symbol OR d.symbol=(split_part(h.symbol,'_',2)||'.'||split_part(h.symbol,'_',1)))
+                 AND d.asset_class='stock' AND d.list_status IN ('L','P')
+                WHERE h.close IS NOT NULL AND h.close > 0 AND d.symbol IS NOT NULL
+        """
+        params: list[object] = []
+        if trade_date:
+            query += " AND h.date<=%s"
+            params.append(trade_date)
+        query += """
+            ), recent AS (
+                SELECT * FROM valid WHERE rn<=60
+            )
+            SELECT symbol,MAX(history_days),MAX(close) FILTER (WHERE rn=1),
+                   AVG(close) FILTER (WHERE rn<=5),AVG(close) FILTER (WHERE rn<=20),
+                   AVG(close) FILTER (WHERE rn<=60),MAX(close),MIN(close)
+            FROM recent GROUP BY symbol ORDER BY symbol
+        """
+        cursor.execute(query, tuple(params))
+        return [
+            {
+                "symbol": row[0],
+                "history_days": row[1],
+                "latest_close": row[2],
+                "ma5": row[3],
+                "ma20": row[4],
+                "ma60": row[5],
+                "period_high_60d": row[6],
+                "period_low_60d": row[7],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def get_market_overview(self, trade_date: str | None = None) -> Dict[str, Any]:
+        """Read all home foundation facts in one read-only database session."""
+        try:
+            with self._connect() as connection:
+                with connection.cursor() as cursor:
+                    requested_date = trade_date
+                    if not requested_date:
+                        cursor.execute("SELECT MAX(date) FROM stock_history")
+                        requested_date = self._iso(cursor.fetchone()[0])
+                    realtime_rows = self._overview_realtime_rows(cursor, requested_date)
+                    ticker_rows = realtime_rows or self._overview_daily_rows(cursor)
+                    latest_updated = max(
+                        (row.get("source_updated_at") or row.get("updated_at") or "" for row in ticker_rows),
+                        default=None,
+                    )
+                    daily_snapshot = self._latest_dataset_snapshot(cursor, "daily_bars", requested_date)
+                    benchmark_snapshot = self._latest_dataset_snapshot(cursor, "benchmark_bars", requested_date)
+                    snapshot = daily_snapshot or benchmark_snapshot
+                    suspended_symbols: set[str] = set()
+                    if snapshot:
+                        for payload in self._dataset_snapshot_payloads(cursor, snapshot["id"], "suspensions"):
+                            symbol = self._canonical_symbol(payload.get("symbol") or payload.get("ts_code"))
+                            if symbol:
+                                suspended_symbols.add(symbol)
+                    for row in ticker_rows:
+                        if self._canonical_symbol(row.get("symbol")) in suspended_symbols:
+                            row["suspended"] = True
+                    index_rows = self._overview_index_rows(cursor)
+                    trend_rows = self._overview_trend_rows(cursor, requested_date)
+            evidence = {
+                "trade_date": requested_date,
+                "data_mode": "盘中实时" if realtime_rows else "盘后快照",
+                "provider": "PostgreSQL · realtime_quotes" if realtime_rows else "TuShare → PostgreSQL",
+                "source_snapshot_id": snapshot["id"] if snapshot else None,
+                "available_at": snapshot["available_at"] if snapshot else latest_updated,
+                "knowledge_cutoff_at": snapshot["knowledge_cutoff_at"] if snapshot else requested_date,
+                "last_success_at": snapshot["sealed_at"] if snapshot else latest_updated,
+                "status": "ready" if ticker_rows else "empty",
+                "missing_inputs": [] if ticker_rows else ["没有已持久化的 A 股日线/行情事实"],
+            }
+            return build_market_overview(
+                ticker_rows=ticker_rows,
+                index_rows=index_rows,
+                trend_rows=trend_rows,
+                evidence=evidence,
+            )
+        except Exception as exc:
+            return unavailable_market_overview(f"A股首页基础指标读取失败：{type(exc).__name__}")
 
     def get_market_phase(self, trade_date: str | None = None) -> Dict:
         with self._connect() as connection:
