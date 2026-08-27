@@ -155,6 +155,126 @@ class AshareInstrumentRepository:
             result["dataset_snapshot"] = dataset_snapshot
         return result
 
+    def update_history_progress(self, run_id: int, **payload: Any) -> None:
+        """Persist bounded progress for a long-running full-market history run."""
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE a_share_daily_sync_runs
+                    SET sync_scope='history',
+                        requested_start_date=%s,
+                        requested_end_date=%s,
+                        trade_date_count=%s,
+                        processed_trade_dates=%s,
+                        last_processed_trade_date=%s,
+                        daily_count=%s,
+                        updated_at=NOW()
+                    WHERE id=%s AND status='running'
+                    """,
+                    (
+                        payload.get("start_date"),
+                        payload.get("end_date"),
+                        int(payload.get("total_trade_dates") or 0),
+                        int(payload.get("processed_trade_dates") or 0),
+                        payload.get("last_processed_trade_date"),
+                        int(payload.get("daily_count") or 0),
+                        run_id,
+                    ),
+                )
+            connection.commit()
+
+    def complete_history_run(
+        self,
+        run_id: int,
+        instruments: list[dict[str, Any]],
+        daily_rows: list[dict[str, Any]],
+        start_date: str,
+        end_date: str,
+        *,
+        trade_date_count: int,
+    ) -> dict[str, Any]:
+        """Atomically upsert the full history after all provider calls succeed."""
+        instrument_values = [
+            (
+                "CN", row["exchange"], row["symbol"], row["name"], "stock", "CNY",
+                0.01, 100, "CN_A_SHARE", False, "tushare.stock_basic",
+                row.get("industry"), row.get("board"), row.get("list_status") or "L",
+                row.get("list_date"), row.get("delist_date"), row.get("is_hs"),
+            )
+            for row in instruments
+        ]
+        history_values = [
+            (
+                row["storage_symbol"], row["name"], row["trade_date"], row.get("open"),
+                row.get("high"), row.get("low"), row.get("close"), row.get("volume"), row.get("amount"),
+            )
+            for row in daily_rows
+        ]
+
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO instrument_definitions(
+                        market,exchange,symbol,name,asset_class,currency,tick_size,lot_size,
+                        session_calendar,shortable,source_label,industry,board,list_status,
+                        list_date,delist_date,is_hs,updated_at
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                    ON CONFLICT(market,exchange,symbol) DO UPDATE SET
+                        name=EXCLUDED.name, asset_class='stock', currency='CNY', tick_size=0.01,
+                        lot_size=100, session_calendar='CN_A_SHARE', shortable=FALSE,
+                        source_label=EXCLUDED.source_label, industry=EXCLUDED.industry,
+                        board=EXCLUDED.board, list_status=EXCLUDED.list_status,
+                        list_date=EXCLUDED.list_date, delist_date=EXCLUDED.delist_date,
+                        is_hs=EXCLUDED.is_hs, updated_at=NOW()
+                    """,
+                    instrument_values,
+                )
+                cursor.executemany(
+                    """
+                    INSERT INTO stock_history(symbol,name,date,open,high,low,close,volume,turnover)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT(symbol,date) DO UPDATE SET
+                        name=EXCLUDED.name,open=EXCLUDED.open,high=EXCLUDED.high,low=EXCLUDED.low,
+                        close=EXCLUDED.close,volume=EXCLUDED.volume,turnover=EXCLUDED.turnover
+                    """,
+                    history_values,
+                )
+                cursor.execute(
+                    """
+                    UPDATE a_share_daily_sync_runs
+                    SET status='success', sync_scope='history',
+                        trade_date=%s, requested_start_date=%s, requested_end_date=%s,
+                        trade_date_count=%s, processed_trade_dates=%s,
+                        last_processed_trade_date=%s, instrument_count=%s, daily_count=%s,
+                        error_message=NULL, finished_at=NOW(), updated_at=NOW()
+                    WHERE id=%s
+                    """,
+                    (
+                        end_date,
+                        start_date,
+                        end_date,
+                        int(trade_date_count),
+                        int(trade_date_count),
+                        end_date,
+                        len(instruments),
+                        len(daily_rows),
+                        run_id,
+                    ),
+                )
+            connection.commit()
+        return {
+            "run_id": run_id,
+            "status": "success",
+            "sync_scope": "history",
+            "instrument_count": len(instruments),
+            "daily_count": len(daily_rows),
+            "start_date": start_date,
+            "end_date": end_date,
+            "trade_date_count": int(trade_date_count),
+        }
+
     @staticmethod
     def _jsonable(value: Any) -> Any:
         if hasattr(value, "isoformat"):
@@ -477,8 +597,10 @@ class AshareInstrumentRepository:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id,trigger,status,provider,trade_date,instrument_count,daily_count,
-                           error_message,started_at,finished_at
+                    SELECT id,trigger,status,provider,sync_scope,trade_date,
+                           requested_start_date,requested_end_date,trade_date_count,
+                           processed_trade_dates,last_processed_trade_date,
+                           instrument_count,daily_count,error_message,started_at,finished_at
                     FROM a_share_daily_sync_runs ORDER BY id DESC LIMIT 1
                     """
                 )
@@ -488,6 +610,12 @@ class AshareInstrumentRepository:
         return {
             "run_id": int(row["id"]), "trigger": row["trigger"], "status": row["status"],
             "provider": row["provider"], "trade_date": row["trade_date"].isoformat() if row["trade_date"] else None,
+            "sync_scope": row["sync_scope"],
+            "start_date": row["requested_start_date"].isoformat() if row["requested_start_date"] else None,
+            "end_date": row["requested_end_date"].isoformat() if row["requested_end_date"] else None,
+            "trade_date_count": int(row["trade_date_count"] or 0),
+            "processed_trade_dates": int(row["processed_trade_dates"] or 0),
+            "last_processed_trade_date": row["last_processed_trade_date"].isoformat() if row["last_processed_trade_date"] else None,
             "instrument_count": int(row["instrument_count"]), "daily_count": int(row["daily_count"]),
             "error_message": row["error_message"],
             "started_at": row["started_at"].isoformat() if row["started_at"] else None,

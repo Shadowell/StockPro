@@ -1965,8 +1965,19 @@ export interface DataSyncStatusResponse {
   isRunning: boolean;
   currentJob: {
     jobId?: string | null;
+    runId?: number | null;
     exchange: string | null;
     status: string | null;
+    symbols?: string[];
+    timeframes?: string[];
+    historyDays?: number;
+    syncScope?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    tradeDateCount?: number;
+    processedTradeDates?: number;
+    instrumentCount?: number;
+    dailyCount?: number;
     totalFetched: number;
     totalInserted: number;
     errors: number;
@@ -2159,6 +2170,24 @@ export interface DataSyncStartResponse {
   endDate?: string;
 }
 
+export interface AshareHistorySyncRequest {
+  historyDays?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface AshareHistorySyncResponse {
+  runId?: number;
+  status: string;
+  syncScope?: string;
+  instrumentCount?: number;
+  dailyCount?: number;
+  startDate?: string;
+  endDate?: string;
+  tradeDateCount?: number;
+  skippedTradeDates?: Array<{ tradeDate: string; reason: string }>;
+}
+
 export interface DataSyncSyncOneRequest {
   exchange?: string;
   symbol: string;
@@ -2297,6 +2326,9 @@ export const dataSyncApi = {
 
   startSync: (data: DataSyncStartRequest): Promise<DataSyncStartResponse> =>
     postReq('/sync/start', data, { timeout: DATA_SYNC_LONG_TIMEOUT_MS }),
+
+  syncAllAshareHistory: (data: AshareHistorySyncRequest = {}): Promise<AshareHistorySyncResponse> =>
+    postReq('/sync/history/sync-all', data, { timeout: DATA_SYNC_LONG_TIMEOUT_MS }),
 
   syncOne: (data: DataSyncSyncOneRequest): Promise<DataSyncSyncOneResponse> =>
     postReq('/sync/sync-one', data, { timeout: DATA_SYNC_LONG_TIMEOUT_MS }),

@@ -218,6 +218,162 @@ def test_full_a_share_sync_fails_without_trade_date_rows():
     assert repository.failed and repository.failed[0] == 17
 
 
+def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
+    class HistoryProvider(FakeProvider):
+        def __init__(self):
+            self.daily_dates = []
+
+        def fetch_trade_calendar(self, start_date: str, end_date: str, is_open=None):
+            assert (start_date, end_date, is_open) == ("20260825", "20260826", "1")
+            return [
+                {"cal_date": "20260825", "is_open": 1},
+                {"cal_date": "20260826", "is_open": 1},
+            ]
+
+        def fetch_daily(self, trade_date: str):
+            self.daily_dates.append(trade_date)
+            return [
+                {
+                    "ts_code": "600519.SH",
+                    "trade_date": trade_date,
+                    "open": 1500.0,
+                    "high": 1520.0,
+                    "low": 1490.0,
+                    "close": 1510.0,
+                    "pct_chg": 1.25,
+                    "vol": 123.0,
+                    "amount": 18600.0,
+                },
+                {
+                    "ts_code": "000001.SZ",
+                    "trade_date": trade_date,
+                    "open": 10.0,
+                    "high": 10.2,
+                    "low": 9.8,
+                    "close": 10.1,
+                    "pct_chg": 1.0,
+                    "vol": 456.0,
+                    "amount": 4600.0,
+                },
+            ]
+
+    class HistoryRepository(FakeRepository):
+        def __init__(self):
+            super().__init__()
+            self.progress = []
+            self.history_completed = None
+
+        def update_history_progress(self, run_id, **payload):
+            self.progress.append((run_id, payload))
+
+        def complete_history_run(self, run_id, instruments, daily_rows, start_date, end_date, *, trade_date_count):
+            self.history_completed = {
+                "run_id": run_id,
+                "instruments": instruments,
+                "daily_rows": daily_rows,
+                "start_date": start_date,
+                "end_date": end_date,
+                "trade_date_count": trade_date_count,
+            }
+            return {
+                "run_id": run_id,
+                "status": "success",
+                "sync_scope": "history",
+                "instrument_count": len(instruments),
+                "daily_count": len(daily_rows),
+                "start_date": start_date,
+                "end_date": end_date,
+                "trade_date_count": trade_date_count,
+            }
+
+    provider = HistoryProvider()
+    repository = HistoryRepository()
+    result = AshareInstrumentSyncService(repository=repository, provider=provider).sync_history(
+        history_days=2,
+        end_date="2026-08-26",
+    )
+
+    assert provider.daily_dates == ["20260825", "20260826"]
+    assert result == {
+        "run_id": 17,
+        "status": "success",
+        "sync_scope": "history",
+        "instrument_count": 3,
+        "daily_count": 4,
+        "start_date": "2026-08-25",
+        "end_date": "2026-08-26",
+        "trade_date_count": 2,
+    }
+    assert repository.history_completed["daily_rows"][0]["trade_date"] == "2026-08-25"
+    assert repository.progress[-1][1]["processed_trade_dates"] == 2
+    assert repository.failed is None
+
+
+def test_recent_history_sync_fails_before_commit_when_an_open_day_is_empty():
+    class EmptyHistoryProvider(FakeProvider):
+        def fetch_trade_calendar(self, start_date: str, end_date: str, is_open=None):
+            return [{"cal_date": "20260825", "is_open": 1}, {"cal_date": "20260826", "is_open": 1}]
+
+        def fetch_daily(self, trade_date: str):
+            if trade_date == "20260825":
+                return []
+            return super().fetch_daily(trade_date)
+
+    repository = FakeRepository()
+    try:
+        AshareInstrumentSyncService(repository=repository, provider=EmptyHistoryProvider()).sync_history(
+            history_days=2,
+            end_date="2026-08-26",
+        )
+    except RuntimeError as error:
+        assert "2026-08-25" in str(error)
+    else:
+        raise AssertionError("an empty interior open day must abort the whole history commit")
+    assert repository.completed is None
+    assert repository.failed and repository.failed[0] == 17
+
+
+def test_recent_history_sync_reuses_running_database_gate_without_provider_calls():
+    class NoCallProvider(FakeProvider):
+        def fetch_instruments(self):
+            raise AssertionError("locked history sync must not call the provider")
+
+    repository = FakeRepository(run_id=None)
+    result = AshareInstrumentSyncService(repository=repository, provider=NoCallProvider()).sync_history(
+        history_days=180,
+        end_date="2026-08-26",
+    )
+
+    assert result == {"status": "locked", "trigger": "manual", "sync_scope": "history"}
+    assert repository.completed is None
+
+
+def test_history_sync_endpoint_requires_admin_and_uses_half_year_default(monkeypatch):
+    calls = []
+
+    class Service:
+        def reserve_history(self, **payload):
+            calls.append(payload)
+            return {
+                "run_id": 18,
+                "status": "accepted",
+                "sync_scope": "history",
+                "start_date": "2026-03-01",
+                "end_date": "2026-08-27",
+            }
+
+        def sync_history(self, **_payload):
+            return {"status": "success"}
+
+    monkeypatch.setattr(sync_endpoint, "instrument_sync_service", Service())
+    request = SimpleNamespace(state=SimpleNamespace(auth={"role": "admin"}))
+    payload = sync_endpoint.AshareHistorySyncRequest()
+    result = asyncio.run(sync_endpoint.sync_ashare_history(payload, request))
+
+    assert result["data"]["status"] == "accepted"
+    assert calls == [{"history_days": 180, "start_date": None, "end_date": None, "trigger": "manual"}]
+
+
 def test_tushare_provider_fetches_all_listing_states_and_latest_open_day():
     class Frame:
         def __init__(self, rows):
@@ -349,3 +505,63 @@ def test_application_lifespan_starts_and_stops_daily_a_share_scheduler(monkeypat
     asyncio.run(exercise())
 
     assert events == ["start", "running", "stop"]
+
+
+def test_data_manager_exposes_admin_only_half_year_a_share_history_sync():
+    root = Path(__file__).resolve().parents[2]
+    source = (root / "frontend/src/pages/DataManager.tsx").read_text(encoding="utf-8")
+    client = (root / "frontend/src/api/client.ts").read_text(encoding="utf-8")
+
+    assert "syncAllAshareHistory" in client
+    assert "postReq('/sync/history/sync-all'" in client
+    assert "const dataExchange = 'CN'" in source
+    assert 'data-testid="ashare-history-sync-button"' in source
+    assert "historyDays: SYNC_HISTORY_DAYS" in source
+    assert "SYNC_HISTORY_DAYS = 180" in source
+    assert "disabled={!isAdmin || isBusy || ashareHistorySyncing}" in source
+    assert "拉取近半年 A股" in source
+
+
+def test_sync_status_exposes_durable_history_job_id_and_trade_date_progress(monkeypatch):
+    monkeypatch.setattr(
+        sync_endpoint,
+        "_snapshot",
+        lambda: {
+            "rows": 10,
+            "symbols": 2,
+            "instrument_count": 2,
+            "first_date": "2026-03-01",
+            "last_date": "2026-03-02",
+            "first_ms": 1,
+            "last_ms": 2,
+        },
+    )
+    monkeypatch.setattr(
+        sync_endpoint.instrument_repository,
+        "latest_run",
+        lambda: {
+            "run_id": 19,
+            "trigger": "manual",
+            "status": "running",
+            "provider": "tushare",
+            "sync_scope": "history",
+            "start_date": "2026-03-01",
+            "end_date": "2026-08-27",
+            "trade_date_count": 124,
+            "processed_trade_dates": 42,
+            "last_processed_trade_date": "2026-04-30",
+            "instrument_count": 5889,
+            "daily_count": 230000,
+            "error_message": None,
+            "started_at": "2026-08-27T15:00:00+08:00",
+            "finished_at": None,
+        },
+    )
+
+    payload = asyncio.run(sync_endpoint.status())
+    current = payload["data"]["current_job"]
+
+    assert current["job_id"] == "19"
+    assert current["sync_scope"] == "history"
+    assert current["trade_date_count"] == 124
+    assert current["processed_trade_dates"] == 42

@@ -1,11 +1,12 @@
-"""Read-only A-share data-watermark adapter for BitPro's data center."""
+"""A-share data center reads and explicit operator-triggered sync actions."""
 import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
 import psycopg2
 import psycopg2.extras
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, Request, status as http_status
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 from app.core.contracts import ok
@@ -18,6 +19,22 @@ from app.domain.sync.ashare_dataset_foundation import ashare_dataset_foundation_
 
 router = APIRouter()
 instrument_repository = AshareInstrumentRepository()
+_history_tasks: set[asyncio.Task] = set()
+
+
+def _history_task_done(task: asyncio.Task) -> None:
+    _history_tasks.discard(task)
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        # The service records normal Provider/DB failures when possible. This
+        # callback consumes the task exception as a final safety net so a
+        # long-running sync cannot become an unobserved asyncio exception.
+        import logging
+
+        logging.getLogger(__name__).exception("后台 A 股历史同步任务异常结束")
 
 
 def _split_csv(raw: str | None) -> list[str] | None:
@@ -39,6 +56,23 @@ def _table_exists(cursor, table_name: str) -> bool:
     if isinstance(row, dict):
         return next(iter(row.values())) is not None
     return row[0] is not None
+
+
+def _require_admin(request: Request) -> None:
+    if not settings.BITPRO_AUTH_ENABLED:
+        return
+    auth = getattr(request.state, "auth", None) or {}
+    if auth.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员登录")
+    if auth.get("auth_method") == "mcp_token" and "W" not in set(auth.get("scopes") or []):
+        raise HTTPException(status_code=403, detail="MCP Token 缺少数据同步写入权限")
+
+
+class AshareHistorySyncRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    history_days: int = Field(default=180, ge=1, le=366)
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 def _snapshot():
@@ -86,6 +120,27 @@ class AshareSyncDomainService:
     def status(self, *, include_items: bool = False) -> dict[str, Any]:
         data = _snapshot()
         latest = instrument_repository.latest_run()
+        current_job = {
+            **latest,
+            "job_id": str(latest["run_id"]),
+            "exchange": "CN",
+            "symbols": ["ALL_A_SHARES"],
+            "timeframes": ["1d"],
+            "total_items": int(latest.get("trade_date_count") or 1),
+            "completed_items": int(latest.get("processed_trade_dates") or 0),
+            "running_items": 1 if latest.get("status") == "running" else 0,
+            "pending_items": max(
+                0,
+                int(latest.get("trade_date_count") or 1) - int(latest.get("processed_trade_dates") or 0),
+            ),
+            "error_items": 1 if latest.get("status") == "failed" else 0,
+            "processed_items": int(latest.get("processed_trade_dates") or 0),
+            "progress_percent": (
+                int(latest.get("processed_trade_dates") or 0)
+                / max(1, int(latest.get("trade_date_count") or 1))
+                * 100
+            ),
+        } if latest else None
         details = [
             {
                 "exchange": "CN",
@@ -102,8 +157,8 @@ class AshareSyncDomainService:
             }
         ]
         return {
-            "is_running": bool(latest and latest.get("status") == "running"),
-            "current_job": latest,
+            "is_running": bool(current_job and current_job.get("status") == "running"),
+            "current_job": current_job,
             "summary": {
                 "total_records": data["rows"],
                 "exchanges": ["CN"],
@@ -384,6 +439,36 @@ async def sync_instruments():
         return ok(await asyncio.to_thread(instrument_sync_service.sync_all, trigger="manual"))
     except Exception as error:
         raise DependencyError("全量 A 股同步失败；请查看最近同步运行记录") from error
+
+
+@router.post("/history/sync-all", status_code=http_status.HTTP_202_ACCEPTED)
+async def sync_ashare_history(payload: AshareHistorySyncRequest, request: Request):
+    _require_admin(request)
+    try:
+        result = await asyncio.to_thread(
+            instrument_sync_service.reserve_history,
+            history_days=payload.history_days,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            trigger="manual",
+        )
+    except Exception as error:
+        raise DependencyError("最近半年全市场 A 股日线同步失败；请查看同步运行记录") from error
+
+    if result.get("status") == "accepted":
+        task = asyncio.create_task(
+            asyncio.to_thread(
+                instrument_sync_service.sync_history,
+                history_days=payload.history_days,
+                start_date=result.get("start_date"),
+                end_date=result.get("end_date"),
+                trigger="manual",
+                run_id=result.get("run_id"),
+            )
+        )
+        _history_tasks.add(task)
+        task.add_done_callback(_history_task_done)
+    return ok(result)
 
 
 @router.get("/jobs")

@@ -51,6 +51,10 @@ class TushareAshareProvider:
         dates = sorted(str(row.get("cal_date") or "") for row in rows if str(row.get("cal_date") or ""))
         return dates
 
+    def fetch_open_trade_dates(self, start_date: str, end_date: str) -> list[str]:
+        rows = self.fetch_trade_calendar(start_date, end_date, is_open="1")
+        return sorted(str(row.get("cal_date") or "") for row in rows if str(row.get("cal_date") or ""))
+
     def fetch_trade_calendar(self, start_date: str, end_date: str, *, is_open: str | None = None) -> list[dict]:
         params = {
             "exchange": "",
