@@ -1174,6 +1174,180 @@ export interface MarketEventsPayload {
   limit?: number;
 }
 
+export type MarketOverviewStatus = 'ready' | 'partial' | 'blocked' | 'stale' | 'empty' | 'error';
+
+export interface MarketOverviewEvidence {
+  tradeDate?: string | null;
+  dataMode?: string | null;
+  provider?: string | null;
+  sourceSnapshotId?: number | null;
+  availableAt?: string | null;
+  knowledgeCutoffAt?: string | null;
+  lastSuccessAt?: string | null;
+  status: MarketOverviewStatus | string;
+  dataStatus?: MarketOverviewStatus | string;
+  missingInputs: string[];
+}
+
+export interface MarketOverviewIndex {
+  symbol: string;
+  code: string;
+  name: string;
+  assetClass: 'index' | string;
+  exchange: string;
+  price?: number | null;
+  changePercent?: number | null;
+  changeAmount?: number | null;
+  tradeDate?: string | null;
+  source?: string | null;
+  sourceSnapshotId?: number | null;
+  availableAt?: string | null;
+  status: MarketOverviewStatus | string;
+}
+
+export interface MarketOverviewModule extends MarketOverviewEvidence {
+  definitionVersion?: string;
+}
+
+export interface MarketOverviewIndices extends MarketOverviewModule {
+  items: MarketOverviewIndex[];
+  requiredCount: number;
+  availableCount: number;
+  denominator: string;
+}
+
+export interface MarketOverviewBreadth extends MarketOverviewModule {
+  universeCount: number;
+  eligibleCount: number;
+  excludedCount: number;
+  excludedReasons: Record<string, number>;
+  gainers: number;
+  losers: number;
+  flat: number;
+  advanceRatioPct?: number | null;
+  strongCount: number;
+  weakCount: number;
+  meanChangePct?: number | null;
+  medianChangePct?: number | null;
+  strongMoveThresholdPct: number;
+  denominator: string;
+}
+
+export interface MarketOverviewDistributionBucket {
+  key: string;
+  label: string;
+  count?: number | null;
+  percentage?: number | null;
+}
+
+export interface MarketOverviewDistribution extends MarketOverviewModule {
+  buckets: MarketOverviewDistributionBucket[];
+  totalCount?: number | null;
+  boundaryDefinition: string;
+  denominator: string;
+}
+
+export interface MarketOverviewTrendMetric {
+  count?: number | null;
+  percentage?: number | null;
+}
+
+export interface MarketOverviewTrend extends MarketOverviewModule {
+  requiredHistoryDays: number;
+  availableHistoryDays: number;
+  totalSymbols: number;
+  coveredSymbols: number;
+  denominator: string;
+  aboveMa5: MarketOverviewTrendMetric;
+  aboveMa20: MarketOverviewTrendMetric;
+  aboveMa60: MarketOverviewTrendMetric;
+  newHigh60d?: MarketOverviewTrendMetric;
+  newLow60d?: MarketOverviewTrendMetric;
+  newHigh_60d?: MarketOverviewTrendMetric;
+  newLow_60d?: MarketOverviewTrendMetric;
+  newHighLowRatio?: number | null;
+}
+
+export interface MarketOverviewActivity extends MarketOverviewModule {
+  totalAmountCny?: number | null;
+  averageAmountCny?: number | null;
+  amountUnit: string;
+  amountDenominator: string;
+  averageTurnoverRatePct?: number | null;
+  turnoverUnit: string;
+  turnoverDenominator: string;
+  highTurnoverCount?: number | null;
+  highTurnoverThresholdPct: number;
+  averageVolumeRatio?: number | null;
+  volumeRatioUnit: string;
+  volumeRatioDenominator: string;
+  volumeExpansionCount?: number | null;
+  volumeRatioThreshold: number;
+  amount: {
+    totalCny?: number | null;
+    averageCny?: number | null;
+    unit: string;
+    denominator: string;
+  };
+  turnover: {
+    averageRatePct?: number | null;
+    highCount?: number | null;
+    unit: string;
+    thresholdPct: number;
+  };
+  volumeRatio: {
+    average?: number | null;
+    expansionCount?: number | null;
+    unit: string;
+    threshold: number;
+    denominator: string;
+  };
+}
+
+export interface MarketOverviewRankingItem {
+  symbol: string;
+  name: string;
+  exchange: string;
+  price?: number | null;
+  changePercent?: number | null;
+  amountCny?: number | null;
+  turnoverRatePct?: number | null;
+  volumeRatio?: number | null;
+  tradeDate?: string | null;
+  source?: string | null;
+  sourceUpdatedAt?: string | null;
+}
+
+export interface MarketOverviewRankings extends MarketOverviewModule {
+  limit: number;
+  topGainers: MarketOverviewRankingItem[];
+  topLosers: MarketOverviewRankingItem[];
+  turnoverLeaders: MarketOverviewRankingItem[];
+  activeLeaders: MarketOverviewRankingItem[];
+}
+
+export interface MarketOverview extends MarketOverviewEvidence {
+  definitionVersion: string;
+  evidence: MarketOverviewEvidence;
+  indices: MarketOverviewIndices;
+  breadth: MarketOverviewBreadth;
+  distribution: MarketOverviewDistribution;
+  trend: MarketOverviewTrend;
+  activity: MarketOverviewActivity;
+  amount: {
+    status: MarketOverviewStatus | string;
+    totalCny?: number | null;
+    averageCny?: number | null;
+    unit: string;
+    denominator: string;
+  };
+  rankings: MarketOverviewRankings;
+  topGainers: MarketOverviewRankingItem[];
+  topLosers: MarketOverviewRankingItem[];
+  turnoverLeaders: MarketOverviewRankingItem[];
+  activeLeaders: MarketOverviewRankingItem[];
+}
+
 export type FactorResearchMode = 'manual' | 'auto' | 'hybrid';
 export type FactorResearchStatus = 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
@@ -1536,6 +1710,9 @@ async function getMarketKlinesPayload(
 export const marketApi = {
   getTicker: (exchange: string, symbol: string): Promise<Ticker> =>
     getReq('/market/ticker', { params: { exchange, symbol } }),
+
+  getOverview: (tradeDate?: string): Promise<MarketOverview> =>
+    getReq('/market/overview', { params: { tradeDate } }),
 
   getTickers: (exchange: string, symbols?: string[]): Promise<Ticker[]> =>
     getReq('/market/tickers', {

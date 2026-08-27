@@ -7,6 +7,31 @@ export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' =
 
     if (path === '/api/v2/auth/me') data = { auth_enabled: false, authenticated: true, role, permissions: role === 'admin' ? ['admin'] : ['read', 'backtest'] }
     else if (path === '/api/v2/system/health') data = { status: 'healthy', project: 'StockPro', database: 'postgresql', private_exchange: false }
+    else if (path === '/api/v2/market/overview') data = {
+      status: 'empty',
+      data_status: 'empty',
+      definition_version: 'ashare-market-overview.v1',
+      trade_date: null,
+      data_mode: '盘后快照',
+      provider: 'PostgreSQL',
+      source_snapshot_id: null,
+      available_at: null,
+      knowledge_cutoff_at: null,
+      last_success_at: null,
+      missing_inputs: ['测试夹具未提供 A 股行情事实'],
+      evidence: { status: 'empty', data_mode: '盘后快照', provider: 'PostgreSQL', source_snapshot_id: null, missing_inputs: ['测试夹具未提供 A 股行情事实'] },
+      indices: { status: 'empty', items: [], required_count: 4, available_count: 0, denominator: '真实指数点位与当日涨跌', missing_inputs: ['测试夹具未提供真实指数'] },
+      breadth: { status: 'empty', universe_count: 0, eligible_count: 0, excluded_count: 0, excluded_reasons: {}, gainers: 0, losers: 0, flat: 0, advance_ratio_pct: null, strong_count: 0, weak_count: 0, mean_change_pct: null, median_change_pct: null, strong_move_threshold_pct: 3, denominator: '有效价格与当日涨跌均存在的 A 股', missing_inputs: ['测试夹具未提供 A 股行情事实'] },
+      distribution: { status: 'empty', buckets: [], total_count: null, boundary_definition: '左闭右开', denominator: '同市场宽度 eligible_count', missing_inputs: ['测试夹具未提供 A 股行情事实'] },
+      trend: { status: 'blocked', required_history_days: 60, available_history_days: 0, total_symbols: 0, covered_symbols: 0, denominator: '至少 60 个确认交易日且收盘价有效的 A 股', above_ma5: { count: null, percentage: null }, above_ma20: { count: null, percentage: null }, above_ma60: { count: null, percentage: null }, new_high_60d: { count: null, percentage: null }, new_low_60d: { count: null, percentage: null }, new_high_low_ratio: null, missing_inputs: ['没有可用的历史日线'] },
+      activity: { status: 'empty', total_amount_cny: null, average_amount_cny: null, amount_unit: 'CNY', amount_denominator: '有有效成交额的 eligible 股票', average_turnover_rate_pct: null, turnover_unit: '%', turnover_denominator: '有有效换手率的 eligible 股票', high_turnover_count: null, high_turnover_threshold_pct: 8, average_volume_ratio: null, volume_ratio_unit: '倍', volume_ratio_denominator: '20日平均成交量', volume_expansion_count: null, volume_ratio_threshold: 1.5, amount: { total_cny: null, average_cny: null, unit: 'CNY', denominator: '有有效成交额的 eligible 股票' }, turnover: { average_rate_pct: null, high_count: null, unit: '%', threshold_pct: 8 }, volume_ratio: { average: null, expansion_count: null, unit: '倍', threshold: 1.5, denominator: '20日平均成交量' }, missing_inputs: ['成交额缺失', '换手率缺失', '量比缺失'] },
+      amount: { status: 'empty', total_cny: null, average_cny: null, unit: 'CNY', denominator: '有有效成交额的 eligible 股票' },
+      rankings: { status: 'empty', limit: 10, top_gainers: [], top_losers: [], turnover_leaders: [], active_leaders: [], missing_inputs: ['没有可用于排行的有效价格与涨跌数据'] },
+      top_gainers: [],
+      top_losers: [],
+      turnover_leaders: [],
+      active_leaders: [],
+    }
     else if (path === '/api/v2/market/tickers') data = []
     else if (path === '/api/v2/market/native-sentiment') data = { core: [], pipeline: { security_master: { rows: 0, from: '', to: '' }, daily_bars: { rows: 0, from: '', to: '' } } }
     else if (path === '/api/v2/market/symbols') data = {

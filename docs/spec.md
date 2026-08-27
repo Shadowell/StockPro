@@ -58,6 +58,11 @@ BitPro 遗留的 `/pools`、`/factors`、`/paper` 分别跳转到 `/arbitrage`�
 
 首页首次就绪检查只读汇总管理员安全配置、PostgreSQL 迁移、TuShare 主源、封存研究快照以及后续策略/Paper/复盘状态；每项只提供 Owner 页面链接，不自动修复。首页和模拟页均提供统一盘后复盘入口。
 
+首页市场基础层通过单一 `GET /api/v2/market/overview` 读取真实 A 股事实，统一返回指数、宽度与涨跌分布、
+60 日趋势强度、成交/换手/量比和四类排行榜。各模块携带 `trade_date`、`source_snapshot_id`、
+`available_at`、`knowledge_cutoff_at`、状态和缺失输入；历史或指标不足时保持 `null`/`blocked`，不得用
+股票代替指数、用客户端合成走势或把缺失值改成 0。榜单必须沿用同一有效股票池并过滤停牌、无价和明显坏数据。
+
 完整路由：
 
 ```text
