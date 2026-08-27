@@ -32,6 +32,16 @@ Use this delivery loop for non-trivial tasks:
 5. Record QA findings if needed.
 6. Update progress and next step.
 
+## Session Branch Rule
+
+At the start of every new Codex session, recreate the working branch from the
+latest `main`:
+
+1. Fetch or pull the latest `main` from `origin`.
+2. Create a fresh `codex/*` branch from `main` before making changes.
+3. Do not continue work on an old session branch unless the user explicitly
+   requests it.
+
 ## GitHub Delivery Rule
 
 After each completed user-requested change set that modifies code, configuration,
