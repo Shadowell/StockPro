@@ -147,7 +147,7 @@ A 股适配合同，但仍不启动数字资产交易所、SQLite、真实下单
 | 因子库 | `/factorlab` | 注册定义、不可变版本、物化值、封存快照和研究 Trial ledger |
 | AI研发 | `/ai-lab` | 策略研发、优化和门控后的候选保存 |
 | 套利中心 | `/strategy`（旧 `/arbitrage` 跳转） | A 股策略家族与价差研究，不保留跨所/资金费率语义 |
-| 链上研究 | `/data`（旧 `/onchain` 跳转） | 资金流、股东、机构与基本面数据 |
+| 基本面 | `/onchain` | sealed 估值、公告时点财务、股东与分红证据 |
 | 订单流 | `/market`（旧 `/orderflow` 跳转） | A 股盘口、成交额、交易日与来源证据 |
 | ARC Console | `/ai-lab`（旧 `/arc` 跳转） | A 股 AI 研究任务、证据与失败状态 |
 | 交易/Paper | `/paper`（旧 `/trading`、`/live` 跳转） | A 股模拟盘现金账本；不注册真实下单 |
