@@ -1,5 +1,19 @@
 # Progress Log
 
+## GitHub #50 Paper / 盯盘 / 监控同源对账（2026-08-28）
+
+- 生产实例 `1452658566` 的 PostgreSQL 事实为权益 `999970.2379`、现金 `900763.2379`、
+  `920000.BJ` 持仓 7,300 股/市值 99,207、最新价 13.59、1 笔成交/佣金 29.7621；旧页面因
+  dashboard 使用 `amount` 而详情只认 `size`、monitor 丢弃账户/持仓字段、watch 空日线返回 0，
+  形成互相矛盾的展示。
+- Paper 实例列表现从同一 PostgreSQL 查询携带 equity/cash/positions；dashboard 持仓同时提供
+  size/amount/quantity、价格来源和更新时间；成交 API 统一提供 timestamp/datetime、fee、trade/order
+  ID。所有路径只读既有 Paper 证据，不推进、不重置、不覆盖历史。
+- Watch sealed 日线为空时回退到 Paper 持仓 mark，显式标记 `paper_position_mark/fallback` 与时间；
+  Monitor 使用同一实例快照展示人民币账户、现金、持仓市值和浮盈，A 股数量按整数股显示。
+- 新增跨页面 Mock E2E：`/live`、`/watch`、`/monitor` 对同一快照显示 7,300 股、¥99,207、
+  ¥999,970.24、¥900,763.24、13.59 和成交证据，写请求/失败响应/console error 均为 0。
+
 ## GitHub #46 设置中心 PostgreSQL 安全配置底座（2026-08-27）
 
 - 生产复现确认设置中心不再是 Nginx 502，而是 active A 股后端未注册 MCP Token 与飞书 Webhook

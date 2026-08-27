@@ -49,7 +49,22 @@ class PaperRepository:
                            (SELECT e.equity FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id ORDER BY e.trade_date DESC,e.id DESC LIMIT 1) AS current_equity,
                            (SELECT MAX(e.drawdown) FROM paper_equity_snapshots e WHERE e.paper_instance_id=i.id) AS max_drawdown,
                            (SELECT COUNT(*) FROM trades t WHERE t.paper_instance_id=i.id) AS trade_count,
-                           ARRAY(SELECT DISTINCT pos.symbol FROM positions pos WHERE pos.portfolio_id=i.portfolio_id ORDER BY pos.symbol) AS symbols
+                           ARRAY(SELECT DISTINCT pos.symbol FROM positions pos WHERE pos.portfolio_id=i.portfolio_id ORDER BY pos.symbol) AS symbols,
+                           COALESCE((
+                               SELECT jsonb_object_agg(
+                                   pos.symbol,
+                                   jsonb_build_object(
+                                       'quantity',pos.quantity,
+                                       'available_quantity',pos.available_quantity,
+                                       'avg_cost',pos.avg_cost,
+                                       'last_price',pos.last_price,
+                                       'market_value',pos.market_value,
+                                       'updated_at',pos.updated_at
+                                   )
+                               )
+                               FROM positions pos
+                               WHERE pos.portfolio_id=i.portfolio_id AND pos.quantity>0
+                           ),'{{}}'::jsonb) AS positions
                     FROM paper_instances i JOIN portfolios p ON p.id=i.portfolio_id
                     LEFT JOIN strategy_versions s ON s.id=i.strategy_version_id
                     ORDER BY i.created_at DESC,i.id
@@ -324,6 +339,8 @@ class PaperRepository:
                     "notional_usdt": float(row.get("market_value") or quantity * mark),
                     "entry_price": entry,
                     "mark_price": mark,
+                    "mark_price_source": "paper_position_last_price" if float(row.get("last_price") or 0) > 0 else "paper_position_avg_cost",
+                    "mark_price_at": row.get("updated_at"),
                     "unrealized_pnl": (mark - entry) * quantity,
                     "paper_instance_id": instance["id"],
                 }

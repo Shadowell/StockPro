@@ -73,8 +73,8 @@ def test_instance_monitor_labels_contract_notional_and_trade_margin_separately()
     assert "`${tradeMargin.toFixed(2)} USDT`" not in monitor
     assert "const hasContractPositions = positions.some(isContractPosition);" in monitor
     assert "const hasContractTrades = trades.some((trade) => (" in monitor
-    assert "hasContractPositions ? '持仓名义' : '持仓金额'" in monitor
-    assert "hasContractTrades ? '成交名义' : '交易金额'" in monitor
+    assert "hasContractPositions ? '持仓名义' : runningDryRun ? '持仓市值（CNY）' : '持仓金额'" in monitor
+    assert "hasContractTrades ? '成交名义' : runningDryRun ? '成交金额（CNY）' : '交易金额'" in monitor
     assert "hasContractPositions &&" in monitor
     assert "hasContractTrades &&" in monitor
     header_rows = re.findall(r"<thead.*?>.*?</thead>", monitor, re.S)
@@ -119,12 +119,12 @@ def test_instance_monitor_aligns_position_and_trade_table_headers_with_cells():
     assert table_headers
     assert 'font-medium">交易对</th>' not in table_headers
     assert 'font-medium">时间</th>' not in table_headers
-    assert '<th className="py-2 pr-2 font-medium text-left">交易对</th>' in table_headers
+    assert "{runningDryRun ? 'A 股标的' : '交易对'}" in table_headers
     assert '<th className="py-2 pr-2 font-medium text-left">时间</th>' in table_headers
     assert '<th className="py-2 pr-2 font-medium text-center">杠杆</th>' in table_headers
     assert '<th className="py-2 pr-2 font-medium text-center">方向</th>' in table_headers
-    assert "const positionQuantityLabel = '张数/数量';" in monitor
-    assert "const tradeQuantityLabel = '张数/数量';" in monitor
+    assert "const positionQuantityLabel = runningDryRun ? '持仓数量（股）' : '张数/数量';" in monitor
+    assert "const tradeQuantityLabel = runningDryRun ? '成交数量（股）' : '张数/数量';" in monitor
     assert '<th className="py-2 pr-2 font-medium text-right">每张数量</th>' in table_headers
     assert '<th className="py-2 pr-2 font-medium text-right">持仓均价</th>' in table_headers
     assert '<th className="py-2 pr-2 font-medium text-right">手续费</th>' in table_headers

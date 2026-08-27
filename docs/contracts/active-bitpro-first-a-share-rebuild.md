@@ -259,6 +259,10 @@ BitPro 页面使用其成熟 ViewModel；适配层从现有 PostgreSQL 对象生
 当前权益、累计盈亏、订单、成交、持仓、可用数量、权益曲线首尾时间、事件数量、
 运行起点和生命周期状态。
 
+模拟盘、盯盘与监控对同一实例必须消费同一 PostgreSQL snapshot ViewModel；`size/amount`、
+equity/cash、mark/notional、trade timestamp/fee/IDs 在三个页面保持可对账。sealed 日线空时只允许
+回退持仓 mark，并必须显示来源和时间；该只读适配不得修改 Paper 表。
+
 禁止清空、重置、归档后只显示新实例、用初始资金覆盖缺失权益、
 或为截图创建演示 Paper。无法证明连续性时不得进入下一阶段。
 

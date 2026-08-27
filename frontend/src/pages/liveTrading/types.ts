@@ -35,6 +35,8 @@ export interface LivePositionRow {
   size: number;
   entryPrice?: number;
   markPrice?: number;
+  markPriceSource?: string;
+  markPriceAt?: string | null;
   unrealizedPnl?: number;
   unrealizedPnlPct?: number | null;
 }
@@ -140,7 +142,11 @@ export interface DashboardData {
   };
   positions?: LivePositionRow[];
   account?: {
+    totalEquity?: number;
+    cash?: number;
+    marketValue?: number;
     unrealizedPnl?: number;
+    positionCount?: number;
   };
   recentEvents: Array<{
     time: string;

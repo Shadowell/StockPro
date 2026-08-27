@@ -11,7 +11,7 @@ router = APIRouter()
 
 async def _statuses():
     items = await paper_domain_service.list_instances()
-    return [{"strategy_id": item["id"], "name": item["name"], "status": item["status"], "symbols": item.get("symbols", []), "pnl": item.get("total_pnl", 0), "return_pct": item.get("return_pct", 0), "win_rate": 0, "profit_factor": 0, "sharpe_ratio": 0, "max_drawdown": item.get("max_drawdown", 0), "total_trades": item.get("total_trades", 0)} for item in items]
+    return [{"strategy_id": item["id"], "name": item["name"], "status": item["status"], "exchange": "CN", "symbols": item.get("symbols", []), "pnl": item.get("total_pnl", 0), "return_pct": item.get("return_pct", 0), "equity": item.get("equity"), "initial_capital": item.get("initial_capital"), "balance": item.get("balance"), "unrealized_pnl": item.get("unrealized_pnl", 0), "positions": item.get("positions", {}), "win_rate": 0, "profit_factor": 0, "sharpe_ratio": 0, "max_drawdown": item.get("max_drawdown", 0), "total_trades": item.get("total_trades", 0)} for item in items]
 
 
 @router.get("/active_strategies")

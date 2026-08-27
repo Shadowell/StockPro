@@ -120,7 +120,7 @@ interface MarketSentiment {
 
 function formatUsd(value: unknown, digits = 2): string {
   const n = Number(value ?? 0);
-  return `¥${Number.isFinite(n) ? n.toFixed(digits) : '0.00'}`;
+  return `¥${Number.isFinite(n) ? n.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : (0).toFixed(digits)}`;
 }
 
 function finiteNumber(value: unknown, fallback = 0): number {
@@ -1012,7 +1012,7 @@ export default function Monitor() {
     const hasOi = oi != null && oi > 0;
 
     if (hasStrat) {
-      const main = `$${strategyNotionalUsdt.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+      const main = `¥${strategyNotionalUsdt.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
       let sub: string;
       if (hasOi) {
         sub = `全市场 OI ${Number(oi).toLocaleString()} 张`;
@@ -1997,7 +1997,7 @@ export default function Monitor() {
                           <div key={sym} className="flex items-center justify-between text-[11px] py-0.5">
                             <span className="text-gray-400">{sym}</span>
                             <span className="text-gray-300">
-                              {finiteNumber(pos.size).toFixed(6)} @ {finiteNumber(pos.entryPrice).toFixed(2)}
+                              {s.exchange === 'CN' ? finiteNumber(pos.size).toFixed(0) : finiteNumber(pos.size).toFixed(6)} @ {finiteNumber(pos.entryPrice).toFixed(2)}
                             </span>
                             <span className={clsx('font-medium', finiteNumber(pos.unrealizedPnl) >= 0 ? 'text-up' : 'text-down')}>
                               {formatSignedUsd(pos.unrealizedPnl)}

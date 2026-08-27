@@ -155,6 +155,8 @@ def test_monitor_position_kpi_uses_total_position_amount_label():
 
     assert 'label="持仓总金额"' in text
     assert "策略持仓金额 / OI" not in text
+    assert "`¥${strategyNotionalUsdt.toLocaleString" in text
+    assert "`$${strategyNotionalUsdt.toLocaleString" not in text
 
 
 def test_monitor_position_kpi_uses_backend_notional_before_size_price_fallback():
