@@ -679,24 +679,46 @@ class MarketRepository:
         if not self._table_exists(cursor, "stock_history"):
             return []
         query = """
-            WITH valid AS (
-                SELECT h.symbol,h.date,h.close,
-                       ROW_NUMBER() OVER (PARTITION BY h.symbol ORDER BY h.date DESC) AS rn,
-                       COUNT(*) OVER (PARTITION BY h.symbol) AS history_days
-                FROM stock_history h
-                LEFT JOIN instrument_definitions d
-                  ON d.market='CN'
-                 AND (d.symbol=h.symbol OR d.symbol=(split_part(h.symbol,'_',2)||'.'||split_part(h.symbol,'_',1)))
-                 AND d.asset_class='stock' AND d.list_status IN ('L','P')
-                WHERE h.close IS NOT NULL AND h.close > 0 AND d.symbol IS NOT NULL
+            WITH recent AS (
+                SELECT d.symbol,h.date,h.close,
+                       ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY h.date DESC) AS rn,
+                       COUNT(*) OVER (PARTITION BY d.symbol) AS history_days
+                FROM instrument_definitions d
+                CROSS JOIN LATERAL (
+                    SELECT deduped.date,deduped.close
+                    FROM (
+                        SELECT DISTINCT ON (candidates.date)
+                               candidates.date,candidates.close
+                        FROM (
+                            SELECT current.date,current.close,0 AS source_priority
+                            FROM stock_history current
+                            WHERE current.symbol=d.symbol
+                              AND current.close IS NOT NULL AND current.close > 0
         """
         params: list[object] = []
         if trade_date:
-            query += " AND h.date<=%s"
+            query += " AND current.date<=%s"
             params.append(trade_date)
         query += """
-            ), recent AS (
-                SELECT * FROM valid WHERE rn<=60
+                            UNION ALL
+                            SELECT legacy.date,legacy.close,1 AS source_priority
+                            FROM stock_history legacy
+                            WHERE legacy.symbol=(split_part(d.symbol,'.',2)||'_'||split_part(d.symbol,'.',1))
+                              AND legacy.close IS NOT NULL AND legacy.close > 0
+        """
+        if trade_date:
+            query += " AND legacy.date<=%s"
+            params.append(trade_date)
+        query += """
+                        ) candidates
+                        ORDER BY candidates.date,candidates.source_priority
+                    ) deduped
+                    ORDER BY deduped.date DESC
+                    LIMIT 60
+                ) h
+                WHERE d.market='CN'
+                  AND d.asset_class='stock'
+                  AND d.list_status IN ('L','P')
             )
             SELECT symbol,MAX(history_days),MAX(close) FILTER (WHERE rn=1),
                    AVG(close) FILTER (WHERE rn<=5),AVG(close) FILTER (WHERE rn<=20),
