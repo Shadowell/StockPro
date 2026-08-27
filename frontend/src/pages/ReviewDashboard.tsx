@@ -46,6 +46,16 @@ function formatSignedPercent(value: unknown, digits = 2): string {
   return `${n > 0 ? '+' : ''}${n.toFixed(digits)}%`;
 }
 
+function formatOptionalSignedPercent(value: unknown, digits = 2): string {
+  if (value == null || !Number.isFinite(Number(value))) return '不可判定';
+  return formatSignedPercent(value, digits);
+}
+
+function formatOptionalPercent(value: unknown, digits = 1): string {
+  if (value == null || !Number.isFinite(Number(value))) return '不可判定';
+  return formatPercent(value, digits);
+}
+
 function formatPercent(value: unknown, digits = 1): string {
   return `${finiteNumber(value).toFixed(digits)}%`;
 }
@@ -62,7 +72,8 @@ function metricTone(value: unknown): 'up' | 'down' | 'blue' {
   return 'blue';
 }
 
-function scoreTone(score: number): string {
+function scoreTone(score: number | null): string {
+  if (score == null) return 'bg-amber-400';
   if (score >= 75) return 'bg-emerald-400';
   if (score >= 55) return 'bg-yellow-400';
   return 'bg-rose-400';
@@ -242,20 +253,20 @@ function GroupMatrix({ groups }: { groups: ReviewGroupRow[] }) {
                       </td>
                       <td className="px-3 py-3 tabular-nums text-gray-400">{group.strategyCount}</td>
                       <td className={clsx('px-3 py-3 font-semibold tabular-nums', metricTone(group.returnPct) === 'up' ? 'text-up' : metricTone(group.returnPct) === 'down' ? 'text-down' : 'text-blue-400')}>
-                        {formatSignedPercent(group.returnPct)}
+                        {formatOptionalSignedPercent(group.returnPct)}
                       </td>
-                      <td className="px-3 py-3 tabular-nums text-gray-400">-{Math.abs(finiteNumber(group.maxDrawdownPct)).toFixed(1)}%</td>
-                      <td className="px-3 py-3 tabular-nums text-gray-400">{formatPercent(group.winRate, 0)}</td>
+                      <td className="px-3 py-3 tabular-nums text-gray-400">{group.maxDrawdownPct == null ? '不可判定' : `${Math.abs(group.maxDrawdownPct).toFixed(1)}%`}</td>
+                      <td className="px-3 py-3 tabular-nums text-gray-400">{formatOptionalPercent(group.winRate, 0)}</td>
                       <td className="px-3 py-3 tabular-nums text-gray-400">{formatRatio(group.profitFactor)}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
                           <div className="h-2 w-16 rounded-full bg-crypto-bg">
-                            <div className={clsx('h-2 rounded-full', scoreTone(group.score))} style={{ width: `${Math.max(4, Math.min(100, group.score))}%` }} />
+                            <div className={clsx('h-2 rounded-full', scoreTone(group.score))} style={{ width: `${group.score == null ? 4 : Math.max(4, Math.min(100, group.score))}%` }} />
                           </div>
-                          <span className="w-7 text-right tabular-nums text-gray-400">{group.score}</span>
+                          <span className="min-w-7 text-right tabular-nums text-gray-400">{group.score ?? '--'}</span>
                         </div>
                       </td>
-                      <td className={clsx('whitespace-nowrap px-3 py-3 font-semibold', group.score >= 75 ? 'text-emerald-400' : group.score >= 55 ? 'text-yellow-300' : 'text-rose-400')}>
+                      <td className={clsx('whitespace-nowrap px-3 py-3 font-semibold', group.score == null ? 'text-amber-200' : group.score >= 75 ? 'text-emerald-400' : group.score >= 55 ? 'text-yellow-300' : 'text-rose-400')}>
                         {group.verdict}
                       </td>
                     </tr>
@@ -269,7 +280,7 @@ function GroupMatrix({ groups }: { groups: ReviewGroupRow[] }) {
                               <div>回撤</div>
                               <div>胜率</div>
                               <div>盈亏比</div>
-                              <div>交易</div>
+                              <div>成交/闭合</div>
                               <div>评分</div>
                               <div>判断</div>
                             </div>
@@ -283,6 +294,7 @@ function GroupMatrix({ groups }: { groups: ReviewGroupRow[] }) {
                                 >
                                   <div className="min-w-0">
                                     <div className="truncate font-medium text-gray-100" title={strategy.name}>{strategy.name}</div>
+                                    <div className="mt-1 text-[10px] text-gray-600">覆盖 {strategy.coverageStart || '--'} 至 {strategy.coverageEnd || '--'} · 权益点 {strategy.sampleCount}</div>
                                     <div className="mt-1 flex flex-wrap gap-1">
                                       {strategy.tags.slice(0, 3).map((tag) => (
                                         <span key={`${strategy.strategyId}-${tag}`} className="rounded border border-crypto-border bg-crypto-bg px-1.5 py-0.5 text-[10px] text-gray-500">{tag}</span>
@@ -290,14 +302,14 @@ function GroupMatrix({ groups }: { groups: ReviewGroupRow[] }) {
                                     </div>
                                   </div>
                                   <div className={clsx('font-semibold tabular-nums', metricTone(strategy.returnPct) === 'up' ? 'text-up' : metricTone(strategy.returnPct) === 'down' ? 'text-down' : 'text-blue-400')}>
-                                    {formatSignedPercent(strategy.returnPct)}
+                                    {formatOptionalSignedPercent(strategy.returnPct)}
                                   </div>
-                                  <div className="tabular-nums text-gray-400">-{Math.abs(finiteNumber(strategy.maxDrawdownPct)).toFixed(1)}%</div>
-                                  <div className="tabular-nums text-gray-400">{formatPercent(strategy.winRate, 0)}</div>
+                                  <div className="tabular-nums text-gray-400">{strategy.maxDrawdownPct == null ? '--' : `${Math.abs(strategy.maxDrawdownPct).toFixed(1)}%`}</div>
+                                  <div className="tabular-nums text-gray-400">{strategy.winRate == null ? '--' : formatPercent(strategy.winRate, 0)}</div>
                                   <div className="tabular-nums text-gray-400">{formatRatio(strategy.profitFactor)}</div>
-                                  <div className="tabular-nums text-gray-400">{strategy.tradeCount}</div>
-                                  <div className="tabular-nums text-gray-300">{strategy.score}</div>
-                                  <div className={clsx('font-semibold', strategy.score >= 75 ? 'text-emerald-400' : strategy.score >= 55 ? 'text-yellow-300' : 'text-rose-400')}>
+                                  <div className="tabular-nums text-gray-400">{strategy.tradeCount}/{strategy.closedTradeCount}</div>
+                                  <div className="tabular-nums text-gray-300">{strategy.score ?? '--'}</div>
+                                  <div className={clsx('font-semibold', strategy.score == null ? 'text-amber-200' : strategy.score >= 75 ? 'text-emerald-400' : strategy.score >= 55 ? 'text-yellow-300' : 'text-rose-400')}>
                                     {strategy.verdict}
                                   </div>
                                 </div>
@@ -325,13 +337,14 @@ function LeaderColumn({
 }: {
   title: string;
   items: ReviewLeaderboardItem[];
-  tone: 'green' | 'red';
+  tone: 'green' | 'red' | 'amber';
 }) {
   const isPositiveList = tone === 'green';
+  const isInsufficientList = tone === 'amber';
   return (
     <div className="rounded-xl border border-crypto-border bg-crypto-bg/40 p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className={clsx('inline-flex items-center gap-1.5 text-xs font-semibold', isPositiveList ? 'text-emerald-400' : 'text-rose-400')}>
+        <h3 className={clsx('inline-flex items-center gap-1.5 text-xs font-semibold', isPositiveList ? 'text-emerald-400' : isInsufficientList ? 'text-amber-200' : 'text-rose-400')}>
           {isPositiveList ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
           {title}
         </h3>
@@ -348,7 +361,9 @@ function LeaderColumn({
                 'min-w-0 rounded-lg border p-3 transition-colors',
                 isPositiveList
                   ? 'border-emerald-500/15 bg-emerald-500/[0.035] hover:border-emerald-500/25'
-                  : 'border-rose-500/15 bg-rose-500/[0.035] hover:border-rose-500/25',
+                  : isInsufficientList
+                    ? 'border-amber-500/20 bg-amber-500/[0.04] hover:border-amber-500/30'
+                    : 'border-rose-500/15 bg-rose-500/[0.035] hover:border-rose-500/25',
               )}
             >
               <div className="flex items-start justify-between gap-3">
@@ -356,20 +371,20 @@ function LeaderColumn({
                   <div className="line-clamp-2 text-xs font-semibold leading-5 text-gray-100">{item.name}</div>
                   <div className="mt-1 truncate text-[10px] text-gray-500">{item.groupKey}</div>
                 </div>
-                <div className={clsx('inline-flex h-7 min-w-8 shrink-0 items-center justify-center rounded-md border px-1.5 text-xs font-bold tabular-nums', isPositiveList ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/25 bg-rose-500/10 text-rose-300')}>{item.score}</div>
+                <div className={clsx('inline-flex h-7 min-w-8 shrink-0 items-center justify-center rounded-md border px-1.5 text-xs font-bold tabular-nums', isPositiveList ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' : isInsufficientList ? 'border-amber-500/25 bg-amber-500/10 text-amber-200' : 'border-rose-500/25 bg-rose-500/10 text-rose-300')}>{item.score ?? '--'}</div>
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">
                 <div>
                   <span className="block text-gray-500">权益变化</span>
-                  <strong className={clsx('tabular-nums', item.returnPct >= 0 ? 'text-up' : 'text-down')}>{formatSignedPercent(item.returnPct)}</strong>
+                  <strong className={clsx('tabular-nums', item.returnPct == null ? 'text-amber-200' : item.returnPct >= 0 ? 'text-up' : 'text-down')}>{formatOptionalSignedPercent(item.returnPct)}</strong>
                 </div>
                 <div>
                   <span className="block text-gray-500">回撤</span>
-                  <strong className="tabular-nums text-gray-300">{Math.abs(finiteNumber(item.maxDrawdownPct)).toFixed(1)}%</strong>
+                  <strong className="tabular-nums text-gray-300">{item.maxDrawdownPct == null ? '--' : `${Math.abs(item.maxDrawdownPct).toFixed(1)}%`}</strong>
                 </div>
                 <div>
-                  <span className="block text-gray-500">交易</span>
-                  <strong className="tabular-nums text-gray-300">{item.tradeCount}</strong>
+                  <span className="block text-gray-500">成交/闭合</span>
+                  <strong className="tabular-nums text-gray-300">{item.tradeCount}/{item.closedTradeCount}</strong>
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-1">
@@ -390,10 +405,11 @@ function LeaderColumn({
 function Leaderboard({ summary }: { summary: ReviewSummary }) {
   return (
     <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
-      <SectionTitle icon={<Flame className="h-4 w-4" />} title="策略好坏榜" meta="Top 5 / Bottom 5" />
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <SectionTitle icon={<Flame className="h-4 w-4" />} title="策略质量分组" meta="仅充足样本参与评分" />
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <LeaderColumn title="值得继续观察" items={summary.leaderboard.observe} tone="green" />
         <LeaderColumn title="需要复查/等待" items={summary.leaderboard.review} tone="red" />
+        <LeaderColumn title="样本不足/不可判定" items={summary.leaderboard.insufficient ?? []} tone="amber" />
       </div>
     </section>
   );
@@ -521,23 +537,27 @@ export default function ReviewDashboard() {
   }, [fetchSummary]);
 
   const overview = summary?.overview;
+  const denominator = overview?.healthDenominator;
+  const coverageLabel = overview?.coverageStart && overview?.coverageEnd
+    ? `${overview.coverageStart} 至 ${overview.coverageEnd}`
+    : '暂无覆盖';
   const kpis = useMemo(() => [
     {
       label: '组合权益变化',
-      value: formatSignedPercent(overview?.overallReturnPct ?? 0),
-      sub: `${overview?.strategyCount ?? 0} 策略 · ${overview?.sampleStrategyCount ?? 0} 有效样本`,
+      value: formatOptionalSignedPercent(overview?.overallReturnPct),
+      sub: `${overview?.strategyCount ?? 0} 策略 · ${overview?.sampleStrategyCount ?? 0} 可判定`,
       tone: metricTone(overview?.overallReturnPct ?? 0),
     },
     {
       label: '中位权益变化',
-      value: formatSignedPercent(overview?.medianReturnPct ?? 0),
-      sub: `${windowKey.toUpperCase()} · ${REVIEW_BUCKET.toUpperCase()} 小时桶`,
+      value: formatOptionalSignedPercent(overview?.medianReturnPct),
+      sub: `${windowKey.toUpperCase()} · 覆盖 ${coverageLabel}`,
       tone: metricTone(overview?.medianReturnPct ?? 0),
     },
     {
       label: '最大回撤',
-      value: `-${Math.abs(finiteNumber(overview?.maxDrawdownPct)).toFixed(1)}%`,
-      sub: '按策略权益曲线峰谷计算',
+      value: overview?.maxDrawdownPct == null ? '不可判定' : `${Math.abs(overview.maxDrawdownPct).toFixed(1)}%`,
+      sub: `权益采样点 ${overview?.equitySampleCount ?? 0}`,
       tone: 'down' as const,
     },
     {
@@ -547,18 +567,18 @@ export default function ReviewDashboard() {
       tone: 'blue' as const,
     },
     {
-      label: '需要复查',
-      value: String(overview?.reviewCount ?? 0),
-      sub: '亏损、回撤或交易异常',
+      label: '样本不足',
+      value: String(overview?.insufficientStrategyCount ?? 0),
+      sub: `成交 ${overview?.fillCount ?? 0} · 闭合 ${overview?.closedTradeCount ?? 0}`,
       tone: 'yellow' as const,
     },
     {
       label: '样本健康度',
-      value: formatPercent(overview?.sampleHealthPct ?? 0, 0),
-      sub: '低样本策略自动降权',
+      value: overview?.sampleHealthStatus === 'insufficient_sample' ? '样本不足' : formatPercent(overview?.sampleHealthPct ?? 0, 0),
+      sub: `健康度 ${formatPercent(overview?.sampleHealthPct ?? 0, 0)} · 每策略门槛：日 ≥ ${denominator?.minTradingDays ?? 0} · 权益 ≥ ${denominator?.minEquityPoints ?? 0} · 闭合 ≥ ${denominator?.minClosedTrades ?? 0} · 水位完整`,
       tone: 'cyan' as const,
     },
-  ], [overview, windowKey]);
+  ], [coverageLabel, denominator, overview, windowKey]);
 
   return (
     <div className="p-6 h-full min-h-0 overflow-y-auto">
@@ -637,6 +657,19 @@ export default function ReviewDashboard() {
         </div>
       ) : (
         <div className="space-y-6">
+          {(summary?.diagnostics?.length ?? 0) > 0 && (
+            <section className="rounded-xl border border-amber-500/30 bg-amber-500/[0.07] p-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" />
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-amber-100">样本诊断</h2>
+                  <ul className="mt-2 space-y-1 text-xs leading-relaxed text-amber-100/75">
+                    {summary?.diagnostics.map((item) => <li key={item}>· {item}</li>)}
+                  </ul>
+                </div>
+              </div>
+            </section>
+          )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
             {kpis.map((item) => (
               <KpiCard key={item.label} {...item} />
@@ -659,7 +692,7 @@ export default function ReviewDashboard() {
               <div>
                 <div className="text-sm font-semibold text-white">复盘口径</div>
                 <div className="mt-1 text-xs leading-relaxed text-gray-500">
-                  本页只读取运行中的模拟盘策略、权益采样和成交记录；暂停、停止和未启动策略不参与评分，真实账户、实盘订阅和外部交易所私有账户状态不参与评分。
+                  本页只读取已完成 A 股回测的权益采样、委托与成交证据。只有满足当前窗口最低交易日、权益点、闭合交易和数据水位四项门槛的策略才参与评分与好坏分组；样本不足时不以业务零替代缺失指标。
                 </div>
               </div>
             </div>
