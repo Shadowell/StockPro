@@ -50,7 +50,7 @@ test('data center safely expands a sync job with missing optional fields', async
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ jobs: [{ status: 'completed', exchange: 'SSE' }, {}] }),
+      body: JSON.stringify({ jobs: [{ status: 'completed', exchange: 'CN' }, {}] }),
     })
   })
 
