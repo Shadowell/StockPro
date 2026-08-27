@@ -1152,6 +1152,42 @@ export interface MarketSentiment {
   paperMutated: boolean;
 }
 
+export interface MarketTimelineRow {
+  tradeDate: string;
+  phase: string;
+  phaseStatus: string;
+  confidence?: number | null;
+  reasons: string[];
+  phaseMissingInputs: string[];
+  sentimentStatus: string;
+  limitUpCount?: number | null;
+  limitDownCount?: number | null;
+  failedLimitCount?: number | null;
+  oneWordLimitCount?: number | null;
+  sealRatePct?: number | null;
+  highestStreak?: number | null;
+  ladderWidth?: number | null;
+  promotionRatePct?: number | null;
+  ladderCompletenessPct?: number | null;
+  weakMarketVeto?: boolean | null;
+  priceLimitCoverage?: number | null;
+  sourceSnapshotId?: number | null;
+  phaseSnapshotId?: number | null;
+  sentimentSnapshotId?: number | null;
+  snapshotConsistent: boolean;
+  availableAt?: string | null;
+  knowledgeCutoffAt?: string | null;
+}
+
+export interface MarketTimelinePayload {
+  items: MarketTimelineRow[];
+  dataStatus: string;
+  unavailableReason?: string | null;
+  limit: number;
+  writesPerformed: boolean;
+  paperMutated: boolean;
+}
+
 export interface SectorRpsPayload {
   items: SectorRpsRow[];
   dataStatus: string;
@@ -1899,6 +1935,9 @@ export const marketApi = {
 
   getSentiment: (tradeDate?: string): Promise<MarketSentiment> =>
     getReq('/market/sentiment', { params: { tradeDate } }),
+
+  getTimeline: (limit = 60): Promise<MarketTimelinePayload> =>
+    getReq('/market/timeline', { params: { limit } }),
 
   getSectorRps: (
     classificationSystem: 'industry' | 'concept' = 'industry',

@@ -44,6 +44,9 @@ def test_home_has_visible_a_share_market_command_shell_and_research_metrics():
     assert "getSectorRpsHistory" in MARKET.read_text(encoding="utf-8")
     assert "getSectorMembers" in MARKET.read_text(encoding="utf-8")
     assert "membershipBias" in MARKET.read_text(encoding="utf-8")
+    assert "阶段时间轴" in home
+    assert "getTimeline" in MARKET.read_text(encoding="utf-8")
+    assert "市场情绪时间轴" in MARKET.read_text(encoding="utf-8")
     assert "板块动量" in heatmap
     assert "强弱板块" in heatmap
     assert "topMovingSectors" in heatmap

@@ -898,6 +898,87 @@ class MarketRepository:
             "paper_mutated": False,
         }
 
+    def list_market_timeline(self, *, limit: int = 60) -> Dict[str, Any]:
+        bounded = max(1, min(int(limit), 250))
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "market_phase_results") or not self._table_exists(cursor, "market_sentiment_results"):
+                    return {
+                        "items": [],
+                        "data_status": "unavailable",
+                        "unavailable_reason": "market phase or sentiment table is not migrated",
+                        "limit": bounded,
+                    }
+                cursor.execute(
+                    """
+                    WITH phase AS (
+                        SELECT DISTINCT ON (trade_date)
+                               trade_date,phase,status,confidence,reasons,missing_inputs,
+                               source_snapshot_id,available_at,knowledge_cutoff_at,computed_at
+                        FROM market_phase_results
+                        ORDER BY trade_date DESC,computed_at DESC
+                    ), sentiment AS (
+                        SELECT DISTINCT ON (trade_date)
+                               trade_date,status,limit_up_count,limit_down_count,failed_limit_count,
+                               one_word_limit_count,seal_rate_pct,highest_streak,ladder_width,
+                               promotion_rate_pct,ladder_completeness_pct,weak_market_veto,
+                               ladder,price_limit_coverage,missing_inputs,source_snapshot_id,
+                               available_at,knowledge_cutoff_at,computed_at
+                        FROM market_sentiment_results
+                        ORDER BY trade_date DESC,computed_at DESC
+                    )
+                    SELECT COALESCE(p.trade_date,s.trade_date),p.phase,p.status,p.confidence,p.reasons,p.missing_inputs,
+                           s.status,s.limit_up_count,s.limit_down_count,s.failed_limit_count,s.one_word_limit_count,
+                           s.seal_rate_pct,s.highest_streak,s.ladder_width,s.promotion_rate_pct,
+                           s.ladder_completeness_pct,s.weak_market_veto,s.ladder,s.price_limit_coverage,s.missing_inputs,
+                           p.source_snapshot_id,s.source_snapshot_id,
+                           COALESCE(p.available_at,s.available_at),COALESCE(p.knowledge_cutoff_at,s.knowledge_cutoff_at)
+                    FROM phase p FULL OUTER JOIN sentiment s ON s.trade_date=p.trade_date
+                    ORDER BY COALESCE(p.trade_date,s.trade_date) DESC LIMIT %s
+                    """,
+                    (bounded,),
+                )
+                rows = cursor.fetchall()
+        items = []
+        for row in rows:
+            phase_snapshot_id = row[20]
+            sentiment_snapshot_id = row[21]
+            items.append({
+                "trade_date": str(row[0]),
+                "phase": row[1] or "unknown",
+                "phase_status": row[2] or "empty",
+                "confidence": float(row[3]) if row[3] is not None else None,
+                "reasons": self._json_value(row[4], []),
+                "phase_missing_inputs": self._json_value(row[5], []),
+                "sentiment_status": row[6] or "empty",
+                "limit_up_count": row[7],
+                "limit_down_count": row[8],
+                "failed_limit_count": row[9],
+                "one_word_limit_count": row[10],
+                "seal_rate_pct": float(row[11]) if row[11] is not None else None,
+                "highest_streak": row[12],
+                "ladder_width": row[13],
+                "promotion_rate_pct": float(row[14]) if row[14] is not None else None,
+                "ladder_completeness_pct": float(row[15]) if row[15] is not None else None,
+                "weak_market_veto": bool(row[16]) if row[16] is not None else None,
+                "ladder": self._json_value(row[17], []),
+                "price_limit_coverage": float(row[18]) if row[18] is not None else None,
+                "sentiment_missing_inputs": self._json_value(row[19], []),
+                "phase_snapshot_id": phase_snapshot_id,
+                "sentiment_snapshot_id": sentiment_snapshot_id,
+                "source_snapshot_id": phase_snapshot_id if phase_snapshot_id == sentiment_snapshot_id else None,
+                "snapshot_consistent": phase_snapshot_id is not None and phase_snapshot_id == sentiment_snapshot_id,
+                "available_at": self._iso(row[22]),
+                "knowledge_cutoff_at": self._iso(row[23]),
+            })
+        return {
+            "items": items,
+            **self._status_for_rows(items, empty_reason="no persisted market phase timeline"),
+            "limit": bounded,
+            "writes_performed": False,
+            "paper_mutated": False,
+        }
+
     def list_sector_rps(
         self,
         *,
