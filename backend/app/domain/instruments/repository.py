@@ -184,6 +184,139 @@ class AshareInstrumentRepository:
                 )
             connection.commit()
 
+    @staticmethod
+    def _persist_home_intelligence(
+        cursor,
+        *,
+        source_snapshot_id: int,
+        price_limit_rows: list[dict[str, Any]],
+        market_sentiment: dict[str, Any] | None,
+        market_phase: dict[str, Any] | None,
+        sector_rps: list[dict[str, Any]],
+        sector_memberships: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        price_limit_values = [
+            (
+                row["trade_date"], row["symbol"], row.get("pre_close"), row["up_limit"], row["down_limit"],
+                source_snapshot_id, row["trade_date"], Jsonb({"source": row.get("source") or "tushare.stk_limit"}),
+            )
+            for row in price_limit_rows
+            if row.get("up_limit") is not None and row.get("down_limit") is not None
+        ]
+        if price_limit_values:
+            cursor.executemany(
+                """
+                INSERT INTO a_share_price_limit_history(
+                    trade_date,symbol,pre_close,up_limit,down_limit,source_snapshot_id,
+                    available_at,source_lineage
+                ) VALUES (%s,%s,%s,%s,%s,%s,(%s::date + time '17:30') AT TIME ZONE 'Asia/Shanghai',%s)
+                ON CONFLICT DO NOTHING
+                """,
+                price_limit_values,
+            )
+        if market_sentiment:
+            cursor.execute(
+                """
+                INSERT INTO market_sentiment_results(
+                    trade_date,status,limit_up_count,limit_down_count,failed_limit_count,
+                    one_word_limit_count,seal_rate_pct,highest_streak,ladder_width,promotion_rate_pct,
+                    ladder_completeness_pct,weak_market_veto,ladder,price_limit_coverage,
+                    missing_inputs,source_snapshot_id,definition_version,available_at,
+                    knowledge_cutoff_at,source_lineage,orders_created,paper_mutated
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,FALSE)
+                ON CONFLICT DO NOTHING
+                """,
+                (
+                    market_sentiment["trade_date"], market_sentiment.get("status") or "partial",
+                    market_sentiment.get("limit_up_count"), market_sentiment.get("limit_down_count"),
+                    market_sentiment.get("failed_limit_count"), market_sentiment.get("one_word_limit_count"),
+                    market_sentiment.get("seal_rate_pct"), market_sentiment.get("highest_streak"),
+                    market_sentiment.get("ladder_width"), market_sentiment.get("promotion_rate_pct"),
+                    market_sentiment.get("ladder_completeness_pct"), bool(market_sentiment.get("weak_market_veto")),
+                    Jsonb(market_sentiment.get("ladder") or []), market_sentiment.get("price_limit_coverage"),
+                    Jsonb(market_sentiment.get("missing_inputs") or []), source_snapshot_id,
+                    market_sentiment.get("definition_version") or "ashare-market-sentiment.v1",
+                    market_sentiment.get("available_at"), market_sentiment.get("knowledge_cutoff_at"),
+                    Jsonb(market_sentiment.get("source_lineage") or {}),
+                ),
+            )
+        if market_phase:
+            cursor.execute(
+                """
+                INSERT INTO market_phase_results(
+                    trade_date,phase,status,confidence,reasons,missing_inputs,source_snapshot_id,
+                    input_trade_date,definition_version,available_at,knowledge_cutoff_at,source_lineage
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT DO NOTHING
+                """,
+                (
+                    market_phase["trade_date"], market_phase.get("phase") or "unknown",
+                    market_phase.get("status") or "partial", market_phase.get("confidence") or 0,
+                    Jsonb(market_phase.get("reasons") or []), Jsonb(market_phase.get("missing_inputs") or []),
+                    source_snapshot_id, market_phase.get("input_trade_date") or market_phase["trade_date"],
+                    market_phase.get("definition_version") or "ashare-market-phase.v1",
+                    market_phase.get("available_at"), market_phase.get("knowledge_cutoff_at"),
+                    Jsonb(market_phase.get("source_lineage") or {}),
+                ),
+            )
+        sector_values = [
+            (
+                row["trade_date"], row["classification_system"], row["sector_code"], row["sector_name"],
+                row.get("strength_score"), row.get("rps_percentile"), row.get("rank"), row.get("rank_change"),
+                row.get("strong_days") or 0, row.get("member_coverage"), row.get("member_count") or 0,
+                row.get("leader_symbol"), row.get("leader_contribution_pct"), row.get("status") or "partial",
+                Jsonb(row.get("missing_inputs") or []), source_snapshot_id,
+                row.get("definition_version") or "ashare-sector-rps.v1", row.get("available_at"),
+                row.get("knowledge_cutoff_at"), Jsonb({
+                    "daily": "tushare.daily",
+                    "price_limits": "tushare.stk_limit",
+                    "membership": "tushare.stock_basic.industry" if row["classification_system"] == "industry" else row.get("membership_source") or "tushare.ths_member",
+                }),
+                row.get("return_5d"), row.get("return_10d"), row.get("return_20d"), row.get("return_60d"),
+                row.get("amount_change_pct"), row.get("up_ratio"), row.get("limit_up_count"),
+            )
+            for row in sector_rps
+        ]
+        if sector_values:
+            cursor.executemany(
+                """
+                INSERT INTO sector_rps_results(
+                    trade_date,classification_system,sector_code,sector_name,strength_score,
+                    rps_percentile,rank,rank_change,strong_days,member_coverage,member_count,
+                    leader_symbol,leader_contribution_pct,status,missing_inputs,source_snapshot_id,
+                    definition_version,available_at,knowledge_cutoff_at,source_lineage,
+                    return_5d,return_10d,return_20d,return_60d,amount_change_pct,up_ratio,limit_up_count
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                          %s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT DO NOTHING
+                """,
+                sector_values,
+            )
+        membership_values = [
+            (
+                row["trade_date"], row["classification_system"], row["sector_code"], row["sector_name"],
+                row["symbol"], source_snapshot_id, row["source"], row["membership_bias"], row["trade_date"],
+            )
+            for row in sector_memberships
+            if row.get("trade_date")
+        ]
+        if membership_values:
+            cursor.executemany(
+                """
+                INSERT INTO sector_membership_snapshots(
+                    trade_date,classification_system,sector_code,sector_name,symbol,
+                    source_snapshot_id,source,membership_bias,available_at
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,(%s::date + time '17:30') AT TIME ZONE 'Asia/Shanghai')
+                ON CONFLICT DO NOTHING
+                """,
+                membership_values,
+            )
+        return {
+            "price_limit_count": len(price_limit_values),
+            "sector_rps_count": len(sector_values),
+            "sector_membership_count": len(membership_values),
+        }
+
     def complete_history_run(
         self,
         run_id: int,
@@ -195,8 +328,16 @@ class AshareInstrumentRepository:
         trade_date_count: int,
         benchmark_rows: list[dict[str, Any]],
         abnormal_metrics: list[dict[str, Any]],
+        price_limit_rows: list[dict[str, Any]] | None = None,
+        market_sentiment: dict[str, Any] | None = None,
+        market_phase: dict[str, Any] | None = None,
+        sector_rps: list[dict[str, Any]] | None = None,
+        sector_memberships: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Atomically upsert the full history after all provider calls succeed."""
+        price_limit_rows = list(price_limit_rows or [])
+        sector_rps = list(sector_rps or [])
+        sector_memberships = list(sector_memberships or [])
         instrument_values = [
             (
                 "CN", row["exchange"], row["symbol"], row["name"], "stock", "CNY",
@@ -214,7 +355,7 @@ class AshareInstrumentRepository:
             for row in daily_rows
         ]
         content_digest = hashlib.sha256()
-        for rows in (daily_rows, benchmark_rows):
+        for rows in (daily_rows, benchmark_rows, price_limit_rows):
             for row in rows:
                 content_digest.update(json.dumps(
                     self._jsonable(row), ensure_ascii=False, sort_keys=True, separators=(",", ":"),
@@ -266,8 +407,10 @@ class AshareInstrumentRepository:
                             "history_sync_run_id": run_id,
                             "stock_source": "tushare.daily",
                             "benchmark_source": "tushare.index_daily",
+                            "price_limit_source": "tushare.stk_limit",
                             "daily_count": len(daily_rows),
                             "benchmark_count": len(benchmark_rows),
+                            "price_limit_count": len(price_limit_rows),
                         }),
                         content_hash,
                     ),
@@ -283,6 +426,15 @@ class AshareInstrumentRepository:
                         (latest_trade_date, content_hash),
                     )
                     source_snapshot_id = int(cursor.fetchone()["id"])
+                intelligence_counts = self._persist_home_intelligence(
+                    cursor,
+                    source_snapshot_id=source_snapshot_id,
+                    price_limit_rows=price_limit_rows,
+                    market_sentiment=market_sentiment,
+                    market_phase=market_phase,
+                    sector_rps=sector_rps,
+                    sector_memberships=sector_memberships,
+                )
                 abnormal_values = [
                     (
                         row["symbol"], row["trade_date"], row.get("return_3d"), row.get("return_10d"), row.get("return_30d"),
@@ -412,6 +564,7 @@ class AshareInstrumentRepository:
             "abnormal_metric_count": len(abnormal_metrics),
             "eligible_abnormal_metric_count": sum(1 for item in abnormal_metrics if item.get("eligible")),
             "abnormal_event_count": len(abnormal_event_values),
+            **intelligence_counts,
         }
 
     @staticmethod

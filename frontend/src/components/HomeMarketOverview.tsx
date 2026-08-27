@@ -78,6 +78,13 @@ function formatTimestamp(value?: string | null): string {
   });
 }
 
+function formatAge(seconds?: number | null): string {
+  if (seconds == null || !Number.isFinite(seconds)) return '—';
+  if (seconds < 60) return `${Math.round(seconds)} 秒`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} 分钟`;
+  return `${(seconds / 3600).toFixed(1)} 小时`;
+}
+
 function StatusBadge({ status }: { status?: string | null }) {
   const tone = status === 'ready'
     ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
@@ -101,6 +108,7 @@ function EvidenceStrip({ evidence }: { evidence: MarketOverviewEvidence }) {
       <span>来源 <strong className="font-medium text-gray-300">{evidence.provider || '—'}</strong></span>
       <span>快照 <strong className="font-mono font-medium text-gray-300">{evidence.sourceSnapshotId ?? '—'}</strong></span>
       <span>最近成功 <strong className="font-mono font-medium text-gray-300">{formatTimestamp(evidence.lastSuccessAt)}</strong></span>
+      <span>数据年龄 <strong className="font-mono font-medium text-gray-300">{formatAge(evidence.dataAgeSeconds)}</strong></span>
       <StatusBadge status={evidence.status} />
       {evidence.missingInputs.length > 0 ? (
         <span className="min-w-0 flex-1 truncate text-amber-300/80" title={evidence.missingInputs.join(' · ')}>

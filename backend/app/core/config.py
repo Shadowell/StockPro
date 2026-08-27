@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     A_SHARE_DAILY_SYNC_MINUTE: int = 10
     A_SHARE_DAILY_SYNC_TIMEZONE: str = "Asia/Shanghai"
     AKSHARE_TIMEOUT: int = 30
+    CONCEPT_MEMBERSHIP_SYNC_ENABLED: bool = True
 
     # 交易所配置 - OKX
     OKX_API_KEY: Optional[str] = None

@@ -205,15 +205,15 @@ def compute_market_phase(
     score = max(0.0, min(100.0, score))
     divergence = fail_ratio >= 0.42 and limit_up >= 20
     if score < 30:
-        phase = "冰点/退潮"
+        phase = "冰点"
     elif score < 45:
-        phase = "修复"
+        phase = "退潮" if index_change < 0 or advance_ratio < 40 else "修复"
     elif score < 60:
-        phase = "启动"
+        phase = "修复" if index_change < 0 and turnover_change < 0 else "启动"
     elif score < 76:
         phase = "主升"
     elif divergence:
-        phase = "分歧/退潮预警"
+        phase = "退潮"
     else:
         phase = "高潮"
     reasons = [
@@ -224,6 +224,8 @@ def compute_market_phase(
         f"扩散 {sector_diffusion:.1f}%",
         f"赚钱效应 {profit_effect:.1f}%",
     ]
+    if divergence:
+        reasons.append(f"高位分歧：炸板率 {fail_ratio * 100:.1f}%")
     return {
         "trade_date": str(trade_date)[:10],
         "phase": phase,
@@ -296,8 +298,17 @@ def compute_sector_rps(
             "sector_code": code,
             "sector_name": str(row.get("sector_name") or row.get("name") or code),
             "strength_score": None if score is None else round(float(score), 6),
+            "return_5d": returns[0],
+            "return_10d": returns[1],
+            "return_20d": returns[2],
+            "return_60d": returns[3],
+            "amount_change_pct": amount_change,
+            "up_ratio": breadth,
+            "limit_up_count": int(limit_up_count) if limit_up_count is not None else None,
+            "member_count": int(row.get("member_count") or 0),
             "source_snapshot_id": source_snapshot_id,
             "leader_symbol": row.get("leader_symbol"),
+            "leader_contribution_pct": leader_contribution,
             "member_coverage": coverage,
             "missing_inputs": missing,
         })

@@ -74,8 +74,9 @@ def test_market_phase_boundary_marks_divergence_warning() -> None:
         },
     )
 
-    assert payload["phase"] == "分歧/退潮预警"
+    assert payload["phase"] == "退潮"
     assert payload["status"] == "ok"
+    assert any("高位分歧" in reason for reason in payload["reasons"])
 
 
 def test_sector_rps_ranks_systems_and_preserves_partial_coverage() -> None:

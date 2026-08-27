@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+from datetime import datetime, timezone
 import math
+import time
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -31,6 +34,8 @@ class MarketDomainService:
         self.repo = repo or MarketRepository()
         self.intraday_provider = intraday_provider or AkshareIntradayProvider()
         self.symbol_provider = symbol_provider or AkshareSymbolProvider()
+        self._home_dashboard_cache: dict[str, tuple[float, Dict[str, Any]]] = {}
+        self._home_dashboard_lock = asyncio.Lock()
 
     async def get_ticker(self, exchange_name: str, symbol: str) -> Dict:
         items = await asyncio.to_thread(self.repo.list_tickers, [symbol])
@@ -392,6 +397,116 @@ class MarketDomainService:
                 "definition_version": MARKET_PHASE_DEFINITION_VERSION,
             }
 
+    async def get_market_sentiment(self, trade_date: str | None = None) -> Dict:
+        try:
+            return await asyncio.to_thread(self.repo.get_market_sentiment, trade_date)
+        except Exception as exc:
+            return {
+                "trade_date": trade_date,
+                "status": "unavailable",
+                "missing_inputs": [f"A-share market sentiment cache unavailable: {type(exc).__name__}"],
+                "definition_version": "ashare-market-sentiment.v1",
+            }
+
+    async def get_home_dashboard(self, trade_date: str | None = None) -> Dict[str, Any]:
+        """Read one coherent persisted home snapshot with a short single-flight cache."""
+        cache_key = str(trade_date or "latest")
+        cached = self._home_dashboard_cache.get(cache_key)
+        now = time.monotonic()
+        if cached and now - cached[0] < 5.0:
+            return copy.deepcopy(cached[1])
+        async with self._home_dashboard_lock:
+            cached = self._home_dashboard_cache.get(cache_key)
+            now = time.monotonic()
+            if cached and now - cached[0] < 5.0:
+                return copy.deepcopy(cached[1])
+            overview, phase, sentiment, industry, concept, movers, events = await asyncio.gather(
+                self.get_market_overview(trade_date),
+                self.get_market_phase(trade_date),
+                self.get_market_sentiment(trade_date),
+                self.list_sector_rps(trade_date=trade_date, classification_system="industry", limit=1000),
+                self.list_sector_rps(trade_date=trade_date, classification_system="concept", limit=1000),
+                self.list_symbol_abnormalities(trade_date=trade_date, limit=10),
+                self.list_market_events(limit=10),
+            )
+            modules = {
+                "overview": overview,
+                "phase": phase,
+                "sentiment": sentiment,
+                "industry_rps": industry,
+                "concept_rps": concept,
+                "movers": movers,
+                "events": events,
+            }
+            observed_dates: dict[str, str] = {}
+            observed_snapshots: dict[str, int] = {}
+            for name, payload in modules.items():
+                if not isinstance(payload, dict):
+                    continue
+                module_date = payload.get("trade_date") or (payload.get("evidence") or {}).get("trade_date")
+                snapshot_id = payload.get("source_snapshot_id") or (payload.get("evidence") or {}).get("source_snapshot_id")
+                items = payload.get("items") or payload.get("events") or []
+                if isinstance(items, list) and items:
+                    module_date = module_date or items[0].get("trade_date")
+                    snapshot_id = snapshot_id or items[0].get("source_snapshot_id")
+                if module_date:
+                    observed_dates[name] = str(module_date)[:10]
+                if snapshot_id is not None:
+                    observed_snapshots[name] = int(snapshot_id)
+            warnings: list[str] = []
+            if len(set(observed_dates.values())) > 1:
+                warnings.append("首页模块交易日不一致")
+            if len(set(observed_snapshots.values())) > 1:
+                warnings.append("首页模块封存快照不一致")
+            required_statuses = [
+                str((overview.get("evidence") or {}).get("status") or overview.get("status") or "empty"),
+                str(phase.get("status") or "empty"),
+                str(sentiment.get("status") or "empty"),
+                str(industry.get("data_status") or "empty"),
+                str(movers.get("data_status") or "empty"),
+            ]
+            data_status = "ready" if not warnings and all(item in {"ready", "ok"} for item in required_statuses) else "partial"
+            evidence = dict(overview.get("evidence") or {})
+            available_at = evidence.get("available_at") or evidence.get("last_success_at")
+            data_age_seconds: int | None = None
+            if available_at:
+                try:
+                    observed_at = datetime.fromisoformat(str(available_at).replace("Z", "+00:00"))
+                    if observed_at.tzinfo is None:
+                        observed_at = observed_at.replace(tzinfo=timezone.utc)
+                    data_age_seconds = max(0, int((datetime.now(timezone.utc) - observed_at).total_seconds()))
+                except ValueError:
+                    data_age_seconds = None
+            if trade_date:
+                evidence["data_mode"] = "历史回看"
+            elif data_age_seconds is not None and data_age_seconds > 36 * 60 * 60 and data_status != "error":
+                data_status = "stale"
+                warnings.append("首页封存数据超过 36 小时")
+            evidence.update({
+                "status": data_status,
+                "data_status": data_status,
+                "data_age_seconds": data_age_seconds,
+                "consistency_warnings": warnings,
+                "observed_trade_dates": observed_dates,
+                "observed_snapshot_ids": observed_snapshots,
+                "provider_calls": 0,
+                "writes_performed": False,
+                "paper_mutated": False,
+            })
+            result = {
+                "evidence": evidence,
+                **modules,
+                "data_status": data_status,
+                "provider_calls": 0,
+                "writes_performed": False,
+                "paper_mutated": False,
+            }
+            if cache_key not in self._home_dashboard_cache and len(self._home_dashboard_cache) >= 32:
+                oldest_key = min(self._home_dashboard_cache, key=lambda key: self._home_dashboard_cache[key][0])
+                self._home_dashboard_cache.pop(oldest_key, None)
+            self._home_dashboard_cache[cache_key] = (time.monotonic(), result)
+            return copy.deepcopy(result)
+
     async def list_sector_rps(
         self,
         *,
@@ -434,6 +549,29 @@ class MarketDomainService:
                 "data_status": "unavailable",
                 "unavailable_reason": f"A-share sector RPS history cache unavailable: {type(exc).__name__}",
                 "definition_version": SECTOR_RPS_DEFINITION_VERSION,
+            }
+
+    async def list_sector_members(
+        self,
+        sector_code: str,
+        *,
+        classification_system: str = "industry",
+        trade_date: str | None = None,
+        limit: int = 500,
+    ) -> Dict:
+        try:
+            return await asyncio.to_thread(
+                self.repo.list_sector_members,
+                sector_code,
+                classification_system=classification_system,
+                trade_date=trade_date,
+                limit=limit,
+            )
+        except Exception as exc:
+            return {
+                "items": [],
+                "data_status": "unavailable",
+                "unavailable_reason": f"A-share sector membership cache unavailable: {type(exc).__name__}",
             }
 
     async def list_symbol_abnormalities(self, *, trade_date: str | None = None, limit: int = 20) -> Dict:

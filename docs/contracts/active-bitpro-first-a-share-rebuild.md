@@ -157,16 +157,21 @@ A 股适配合同，但仍不启动数字资产交易所、SQLite、真实下单
 - 固定 BitPro 前端树的每个源文件必须由 `frontend-parity.json` 证明为字节级一致或带固定
   源哈希的 A 股适配；未分类、源漂移、目标缺失或空适配契约均阻断完成审计。
 
-### 5.4 首页基础层（GitHub #61）
+### 5.4 首页市场驾驶舱（GitHub #60/#61/#62/#63/#64/#65）
 
-首页基础层使用唯一只读 `GET /api/v2/market/overview` 合同，禁止在页面内为同一市场事实维护第二套
+首页使用唯一只读 `GET /api/v2/market/dashboard` 合同，`overview` 保持原基础层子合同，禁止在页面内为同一市场事实维护第二套
 榜单或聚合逻辑。服务端优先从 PostgreSQL 的实时/盘后股票事实读取同一有效股票池；指数优先使用真实
 指数缓存，缓存为空时读取封存 `benchmark_bars`，不能复用任意股票点位。响应必须同时表达指数、宽度、
 八档涨跌分布、MA5/20/60 与 60 日新高低、CNY 成交额、百分比换手率、倍数口径量比以及涨幅/跌幅/
 成交额/活跃换手四榜，并为每个模块携带交易日、快照、可用时间、知识截止时间、状态和缺失输入。
 
-半年历史同步必须把真实沪深300历史、行业成员等权对照和最新日 3/10/30 日异动 metrics 与股票历史
-原子提交，并绑定 sealed market evidence snapshot；页面 GET 只读已物化结果，不临时重算或写库。
+半年历史同步必须把真实沪深300历史、`stk_limit` 涨跌停价格、涨跌停/炸板/连板梯队、六阶段、
+行业与概念成员快照、5/10/20/60 日 RPS 和最新日 3/10/30 日异动 metrics 与股票历史原子提交，并绑定
+sealed market evidence snapshot。行业主源为 `stock_basic.industry`；概念主源为 TuShare `ths_index/ths_member`，
+AKShare 东方财富接口只作为明确回退。当前成员用于历史回看时必须显示 membership bias。
+
+Dashboard 返回各模块交易日/快照一致性警告和固定的 `provider_calls=0`、`writes_performed=false`、
+`paper_mutated=false`；5 秒单航班只缓存只读 PostgreSQL 结果。页面 GET 不临时重算、调用 Provider 或写库。
 
 趋势模块在确认历史不足 60 个交易日时保持 `blocked`/`null`；停牌、无价、负数或明显坏数据不进入宽度
 分母和排行榜。页面读取不得触发 Provider、同步、重算、Paper 或任何业务写入；桌面和 390px 验收必须

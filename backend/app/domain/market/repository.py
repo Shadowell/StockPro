@@ -840,6 +840,64 @@ class MarketRepository:
             "computed_at": self._iso(row[11]),
         }
 
+    def get_market_sentiment(self, trade_date: str | None = None) -> Dict:
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "market_sentiment_results"):
+                    return {
+                        "trade_date": trade_date,
+                        "status": "unavailable",
+                        "missing_inputs": ["market_sentiment_results table is not migrated"],
+                        "definition_version": "ashare-market-sentiment.v1",
+                    }
+                query = """
+                    SELECT trade_date,status,limit_up_count,limit_down_count,failed_limit_count,
+                           one_word_limit_count,seal_rate_pct,highest_streak,ladder_width,
+                           promotion_rate_pct,ladder_completeness_pct,weak_market_veto,ladder,
+                           price_limit_coverage,missing_inputs,source_snapshot_id,definition_version,
+                           available_at,knowledge_cutoff_at,source_lineage,computed_at
+                    FROM market_sentiment_results
+                """
+                params: list[object] = []
+                if trade_date:
+                    query += " WHERE trade_date=%s"
+                    params.append(trade_date)
+                query += " ORDER BY trade_date DESC,computed_at DESC LIMIT 1"
+                cursor.execute(query, tuple(params))
+                row = cursor.fetchone()
+        if not row:
+            return {
+                "trade_date": trade_date,
+                "status": "empty",
+                "missing_inputs": ["market sentiment has not been computed for this trade_date"],
+                "definition_version": "ashare-market-sentiment.v1",
+            }
+        return {
+            "trade_date": str(row[0]),
+            "status": row[1],
+            "limit_up_count": row[2],
+            "limit_down_count": row[3],
+            "failed_limit_count": row[4],
+            "one_word_limit_count": row[5],
+            "seal_rate_pct": float(row[6]) if row[6] is not None else None,
+            "highest_streak": row[7],
+            "ladder_width": row[8],
+            "promotion_rate_pct": float(row[9]) if row[9] is not None else None,
+            "ladder_completeness_pct": float(row[10]) if row[10] is not None else None,
+            "weak_market_veto": bool(row[11]),
+            "ladder": self._json_value(row[12], []),
+            "price_limit_coverage": float(row[13]) if row[13] is not None else None,
+            "missing_inputs": self._json_value(row[14], []),
+            "source_snapshot_id": row[15],
+            "definition_version": row[16],
+            "available_at": self._iso(row[17]),
+            "knowledge_cutoff_at": self._iso(row[18]),
+            "source_lineage": self._json_value(row[19], {}),
+            "computed_at": self._iso(row[20]),
+            "orders_created": 0,
+            "paper_mutated": False,
+        }
+
     def list_sector_rps(
         self,
         *,
@@ -847,7 +905,7 @@ class MarketRepository:
         classification_system: str = "industry",
         limit: int = 20,
     ) -> Dict:
-        bounded = max(1, min(int(limit), 200))
+        bounded = max(1, min(int(limit), 1000))
         with self._connect() as connection:
             with connection.cursor() as cursor:
                 if not self._table_exists(cursor, "sector_rps_results"):
@@ -861,7 +919,9 @@ class MarketRepository:
                     SELECT trade_date,classification_system,sector_code,sector_name,
                            strength_score,rps_percentile,rank,rank_change,strong_days,
                            member_coverage,leader_symbol,status,missing_inputs,source_snapshot_id,
-                           definition_version,available_at,knowledge_cutoff_at
+                           definition_version,available_at,knowledge_cutoff_at,
+                           return_5d,return_10d,return_20d,return_60d,amount_change_pct,
+                           up_ratio,limit_up_count,member_count,leader_contribution_pct,source_lineage
                     FROM sector_rps_results
                     WHERE classification_system=%s
                 """
@@ -895,12 +955,29 @@ class MarketRepository:
                 "definition_version": row[14],
                 "available_at": self._iso(row[15]),
                 "knowledge_cutoff_at": self._iso(row[16]),
+                "return_5d": float(row[17]) if row[17] is not None else None,
+                "return_10d": float(row[18]) if row[18] is not None else None,
+                "return_20d": float(row[19]) if row[19] is not None else None,
+                "return_60d": float(row[20]) if row[20] is not None else None,
+                "amount_change_pct": float(row[21]) if row[21] is not None else None,
+                "up_ratio": float(row[22]) if row[22] is not None else None,
+                "limit_up_count": row[23],
+                "member_count": row[24],
+                "leader_contribution_pct": float(row[25]) if row[25] is not None else None,
+                "source_lineage": self._json_value(row[26], {}),
             }
             for row in rows
         ]
+        unavailable_markers = [item for item in items if str(item.get("sector_code") or "").startswith("__")]
+        items = [item for item in items if item not in unavailable_markers]
+        if unavailable_markers and not items:
+            unavailable_reason = " · ".join(unavailable_markers[0].get("missing_inputs") or []) or "sector classification unavailable"
+            status = {"data_status": "partial", "unavailable_reason": unavailable_reason}
+        else:
+            status = self._status_for_rows(items, empty_reason="no sector/concept RPS result for this query")
         return {
             "items": items,
-            **self._status_for_rows(items, empty_reason="no sector/concept RPS result for this query"),
+            **status,
             "definition_version": SECTOR_RPS_DEFINITION_VERSION,
         }
 
@@ -917,7 +994,10 @@ class MarketRepository:
                     }
                 cursor.execute(
                     """
-                    SELECT trade_date,sector_code,sector_name,strength_score,rps_percentile,rank,rank_change,status
+                    SELECT trade_date,sector_code,sector_name,strength_score,rps_percentile,rank,rank_change,
+                           status,strong_days,member_coverage,member_count,leader_symbol,
+                           leader_contribution_pct,source_snapshot_id,available_at,knowledge_cutoff_at,
+                           return_5d,return_10d,return_20d,return_60d,amount_change_pct,up_ratio,limit_up_count
                     FROM sector_rps_results
                     WHERE classification_system=%s AND sector_code=%s
                     ORDER BY trade_date DESC LIMIT %s
@@ -935,6 +1015,21 @@ class MarketRepository:
                 "rank": row[5],
                 "rank_change": row[6],
                 "status": row[7],
+                "strong_days": row[8],
+                "member_coverage": float(row[9]) if row[9] is not None else None,
+                "member_count": row[10],
+                "leader_symbol": row[11],
+                "leader_contribution_pct": float(row[12]) if row[12] is not None else None,
+                "source_snapshot_id": row[13],
+                "available_at": self._iso(row[14]),
+                "knowledge_cutoff_at": self._iso(row[15]),
+                "return_5d": float(row[16]) if row[16] is not None else None,
+                "return_10d": float(row[17]) if row[17] is not None else None,
+                "return_20d": float(row[18]) if row[18] is not None else None,
+                "return_60d": float(row[19]) if row[19] is not None else None,
+                "amount_change_pct": float(row[20]) if row[20] is not None else None,
+                "up_ratio": float(row[21]) if row[21] is not None else None,
+                "limit_up_count": row[22],
             }
             for row in rows
         ]
@@ -942,6 +1037,76 @@ class MarketRepository:
             "items": items,
             **self._status_for_rows(items, empty_reason=f"no RPS history for {sector_code}"),
             "definition_version": SECTOR_RPS_DEFINITION_VERSION,
+        }
+
+    def list_sector_members(
+        self,
+        sector_code: str,
+        *,
+        classification_system: str = "industry",
+        trade_date: str | None = None,
+        limit: int = 500,
+    ) -> Dict[str, Any]:
+        bounded = max(1, min(int(limit), 2000))
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "sector_membership_snapshots"):
+                    return {
+                        "items": [],
+                        "data_status": "unavailable",
+                        "unavailable_reason": "sector_membership_snapshots table is not migrated",
+                    }
+                requested_date = trade_date
+                if not requested_date:
+                    cursor.execute(
+                        """SELECT MAX(trade_date) FROM sector_membership_snapshots
+                           WHERE classification_system=%s AND sector_code=%s""",
+                        (classification_system, sector_code),
+                    )
+                    row = cursor.fetchone()
+                    requested_date = str(row[0]) if row and row[0] else None
+                if not requested_date:
+                    return {
+                        "items": [],
+                        "data_status": "empty",
+                        "unavailable_reason": "no sector membership snapshot for this query",
+                    }
+                cursor.execute(
+                    """
+                    SELECT m.trade_date,m.classification_system,m.sector_code,m.sector_name,
+                           m.symbol,i.name,i.board,m.source_snapshot_id,m.source,m.membership_bias,m.available_at
+                    FROM sector_membership_snapshots m
+                    LEFT JOIN instrument_definitions i ON i.market='CN' AND i.symbol=m.symbol
+                    WHERE m.trade_date=%s AND m.classification_system=%s AND m.sector_code=%s
+                    ORDER BY i.name NULLS LAST,m.symbol LIMIT %s
+                    """,
+                    (requested_date, classification_system, sector_code, bounded),
+                )
+                rows = cursor.fetchall()
+        items = [
+            {
+                "trade_date": str(row[0]),
+                "classification_system": row[1],
+                "sector_code": row[2],
+                "sector_name": row[3],
+                "symbol": row[4],
+                "name": row[5],
+                "board": row[6],
+                "source_snapshot_id": row[7],
+                "source": row[8],
+                "membership_bias": row[9],
+                "available_at": self._iso(row[10]),
+            }
+            for row in rows
+        ]
+        return {
+            "items": items,
+            **self._status_for_rows(items, empty_reason="no sector members for this query"),
+            "trade_date": requested_date,
+            "classification_system": classification_system,
+            "sector_code": sector_code,
+            "source_snapshot_id": items[0]["source_snapshot_id"] if items else None,
+            "membership_bias": items[0]["membership_bias"] if items else None,
         }
 
     def list_symbol_abnormalities(self, *, trade_date: str | None = None, limit: int = 20) -> Dict:
