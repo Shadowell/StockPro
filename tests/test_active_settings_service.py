@@ -128,12 +128,24 @@ def test_mcp_token_plaintext_is_returned_once_and_repository_keeps_hash_only(ser
     assert settings_service.list_mcp_tokens()["status"]["active_token_count"] == 0
 
 
-def build_settings_client(settings_service, *, role: str = "admin") -> TestClient:
+def build_settings_client(
+    settings_service,
+    *,
+    role: str = "admin",
+    auth_method: str | None = None,
+    scopes: list[str] | None = None,
+) -> TestClient:
     app = FastAPI()
 
     @app.middleware("http")
     async def inject_auth(request: Request, call_next):
-        request.state.auth = {"authenticated": True, "role": role, "session_id": f"{role}-session"}
+        request.state.auth = {
+            "authenticated": True,
+            "role": role,
+            "session_id": f"{role}-session",
+            "auth_method": auth_method,
+            "scopes": scopes or [],
+        }
         return await call_next(request)
 
     app.include_router(settings_endpoint.router, prefix="/api/v2/settings")
@@ -210,6 +222,36 @@ def test_mcp_auth_prefers_stockpro_header_and_keeps_legacy_fallback(monkeypatch)
     })
     assert mcp_token_auth(legacy) == {"authenticated": True}
     assert captured[-1] == "legacy-secret"
+
+
+def test_read_scoped_mcp_token_can_read_settings_but_cannot_mutate_or_spend(service, monkeypatch) -> None:
+    settings_service, _ = service
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", None)
+    monkeypatch.setattr(settings, "QWEN_API_KEY", None)
+    read_only = build_settings_client(
+        settings_service,
+        auth_method="mcp_token",
+        scopes=["R"],
+    )
+
+    assert read_only.get("/api/v2/settings/mcp-agent-tokens").status_code == 200
+    assert read_only.get("/api/v2/settings/llm-model").status_code == 200
+    assert read_only.post("/api/v2/settings/mcp-agent-tokens", json={"name": "forbidden"}).status_code == 403
+    assert read_only.post(
+        "/api/v2/settings/feishu-webhook",
+        json={"webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/abcdef1234567890"},
+    ).status_code == 403
+    assert read_only.put("/api/v2/settings/llm-model", json={"model": "qwen-plus"}).status_code == 403
+    assert read_only.post("/api/v2/settings/llm-model/test").status_code == 403
+
+    writer = build_settings_client(
+        settings_service,
+        auth_method="mcp_token",
+        scopes=["R", "W"],
+    )
+    assert writer.post("/api/v2/settings/mcp-agent-tokens", json={"name": "allowed"}).status_code == 200
+    assert writer.put("/api/v2/settings/llm-model", json={"model": "qwen-plus"}).status_code == 200
+    assert writer.post("/api/v2/settings/llm-model/test").status_code == 503
 
 
 def test_llm_config_exposes_env_provider_without_leaking_key_and_persists_model(service, monkeypatch) -> None:

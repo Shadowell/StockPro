@@ -40,15 +40,17 @@ class LlmProviderTestRequest(BaseModel):
     speed_mode: str = Field(default="standard", max_length=32)
 
 
-def _require_admin(request: Request) -> dict:
+def _require_admin(request: Request, *, require_write: bool = False) -> dict:
     auth = getattr(request.state, "auth", None) or {}
     if auth.get("role") != "admin":
         raise HTTPException(status_code=403, detail="需要管理员登录")
+    if require_write and auth.get("auth_method") == "mcp_token" and "W" not in set(auth.get("scopes") or []):
+        raise HTTPException(status_code=403, detail="MCP Token 缺少设置写入权限")
     return auth
 
 
 def _actor(request: Request) -> str:
-    auth = _require_admin(request)
+    auth = _require_admin(request, require_write=True)
     return str(auth.get("session_id") or auth.get("token_id") or "admin")
 
 
@@ -108,7 +110,7 @@ async def create_mcp_agent_token(payload: McpAgentTokenRequest, request: Request
 
 @router.delete("/mcp-agent-tokens/{token_id}")
 async def revoke_mcp_agent_token(token_id: int, request: Request):
-    _require_admin(request)
+    _require_admin(request, require_write=True)
     result = postgres_settings_service.revoke_mcp_token(token_id)
     if result.get("revoked_at") is None:
         raise HTTPException(status_code=404, detail="MCP Agent Token 不存在或已撤销")
@@ -154,7 +156,7 @@ async def get_llm_provider_capabilities(provider_key: str, request: Request):
 
 
 async def _run_llm_connection_test(model: str | None, request: Request):
-    _require_admin(request)
+    _require_admin(request, require_write=True)
     try:
         return await postgres_settings_service.test_llm_connection(model)
     except SettingsNotConfiguredError as exc:

@@ -21,6 +21,9 @@
 - 前端主文案改为 `X-StockPro-MCP-Token` / `STOCKPRO_MCP_API_TOKEN` 并单独说明旧名兼容；设置
   四域 Mock E2E 无失败响应或 console error。隔离库应用 migration 后真实创建/列表/撤销 Token，
   列表计数 +1 且无明文；通知发送器已按 env → PostgreSQL → 旧 SQLite 顺序读取保存的 Webhook。
+- 分支安全审查发现 MCP scope 与 admin role 混用：R-only Token 可进入设置写路由。共享门禁现要求
+  MCP 身份执行 Token/Webhook/模型写入或连接测试时必须包含 `W`；浏览器管理员不受影响，R-only
+  MCP 仍可读取设置状态。新增回归覆盖 R 读取 200、R 写入 403、R+W 正常进入业务分支。
 
 ## 最近半年全市场 A 股日线同步（2026-08-27）
 
