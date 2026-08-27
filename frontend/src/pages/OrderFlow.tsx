@@ -51,6 +51,16 @@ const PANEL_PADDED_CLASS = `${PANEL_CLASS} p-3`;
 const CONTROL_CLASS =
   'h-10 rounded-xl border border-crypto-border bg-crypto-card px-3 text-sm text-gray-200 outline-none transition-colors hover:border-gray-600 focus:border-blue-500/60';
 
+type OrderflowBarsMeta = {
+  dataStatus?: string;
+  providerSource?: string;
+  permissionState?: string;
+  frequency?: string;
+  unavailableReason?: string | null;
+  lastError?: string | null;
+  asOf?: number;
+};
+
 function fmtUsdt(v: number | null | undefined): string {
   if (v == null) return '—';
   if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
@@ -80,6 +90,7 @@ export default function OrderFlow() {
 
   const [trades, setTrades] = useState<OrderflowLargeTrade[]>([]);
   const [bars, setBars] = useState<OrderflowBar[]>([]);
+  const [barsMeta, setBarsMeta] = useState<OrderflowBarsMeta | null>(null);
   const [streamStatus, setStreamStatus] = useState<OrderflowStreamStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +118,15 @@ export default function OrderFlow() {
       ]);
       setTrades(tradeRes.items ?? []);
       setBars(barRes.items ?? []);
+      setBarsMeta({
+        dataStatus: barRes.dataStatus,
+        providerSource: barRes.providerSource,
+        permissionState: barRes.permissionState,
+        frequency: barRes.frequency,
+        unavailableReason: barRes.unavailableReason,
+        lastError: barRes.lastError,
+        asOf: barRes.asOf,
+      });
       setStreamStatus(status);
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : '加载失败');
@@ -125,6 +145,12 @@ export default function OrderFlow() {
     return () => clearInterval(timer);
   }, [autoRefresh, load]);
 
+  const minuteFallback = Boolean(
+    streamStatus?.dataStatus === 'realtime_minute_fallback' ||
+      barsMeta?.dataStatus === 'realtime_minute_fallback' ||
+      bars.some((bar) => bar.dataStatus === 'realtime_minute_fallback'),
+  );
+
   const kpi = useMemo(() => {
     let buy = 0;
     let sell = 0;
@@ -136,6 +162,24 @@ export default function OrderFlow() {
     }
     return { buy, sell, delta: buy - sell, maxTrade, count: trades.length };
   }, [trades]);
+
+  const minuteKpi = useMemo(() => {
+    const totalAmount = bars.reduce((sum, bar) => sum + (bar.amount ?? 0), 0);
+    const latest = bars.length > 0 ? bars[bars.length - 1] : undefined;
+    const prices = bars
+      .flatMap((bar) => [bar.lowPx, bar.highPx])
+      .filter((value) => Number.isFinite(value));
+    const low = prices.length ? Math.min(...prices) : null;
+    const high = prices.length ? Math.max(...prices) : null;
+    return {
+      barCount: bars.length,
+      totalAmount,
+      latestClose: latest?.closePx ?? latest?.vwap ?? null,
+      low,
+      high,
+      source: barsMeta?.providerSource || streamStatus?.providerSource || 'tushare.rt_min',
+    };
+  }, [bars, barsMeta?.providerSource, streamStatus?.providerSource]);
 
   // 气泡图：x=时间 y=价格 size=名义 红买绿卖
   useEffect(() => {
@@ -195,13 +239,16 @@ export default function OrderFlow() {
     );
   }, [trades, upColor, downColor, threshold]);
 
-  // 副图：bar 级 delta 柱 + 累积 CVD 线
+  // 副图：tick provider 模式展示 CVD；分钟线代理模式展示成交额和收盘价。
   useEffect(() => {
     if (!deltaRef.current) return;
     if (!deltaChart.current) {
       deltaChart.current = echarts.init(deltaRef.current);
     }
     const chart = deltaChart.current;
+    const legend = minuteFallback ? ['分钟成交额', '收盘价'] : ['bar 净流', '累积 CVD'];
+    const primaryName = minuteFallback ? '成交额' : '净流';
+    const secondaryName = minuteFallback ? '价格' : 'CVD';
     chart.setOption(
       {
         backgroundColor: 'transparent',
@@ -209,7 +256,7 @@ export default function OrderFlow() {
         grid: { left: 70, right: 70, top: 16, bottom: 40 },
         tooltip: { trigger: 'axis' },
         legend: {
-          data: ['bar 净流', '累积 CVD'],
+          data: legend,
           textStyle: { color: '#9ca3af', fontSize: 10 },
           top: 0,
         },
@@ -221,7 +268,7 @@ export default function OrderFlow() {
         yAxis: [
           {
             type: 'value',
-            name: '净流',
+            name: primaryName,
             nameTextStyle: { color: '#9ca3af', fontSize: 10 },
             axisLabel: {
               color: '#9ca3af',
@@ -232,32 +279,32 @@ export default function OrderFlow() {
           },
           {
             type: 'value',
-            name: 'CVD',
+            name: secondaryName,
             nameTextStyle: { color: '#9ca3af', fontSize: 10 },
             axisLabel: {
               color: '#9ca3af',
               fontSize: 10,
-              formatter: (v: number) => fmtUsdt(v),
+              formatter: (v: number) => (minuteFallback ? v.toFixed(2) : fmtUsdt(v)),
             },
             splitLine: { show: false },
           },
         ],
         series: [
           {
-            name: 'bar 净流',
+            name: minuteFallback ? '分钟成交额' : 'bar 净流',
             type: 'bar',
-            data: bars.map((b) => [b.barTs, b.delta]),
+            data: bars.map((b) => [b.barTs, minuteFallback ? (b.amount ?? 0) : b.delta]),
             itemStyle: {
               color: (p: { value: [number, number] }) =>
-                p.value[1] >= 0 ? upColor : downColor,
+                minuteFallback || p.value[1] >= 0 ? upColor : downColor,
             },
             barMaxWidth: 12,
           },
           {
-            name: '累积 CVD',
+            name: minuteFallback ? '收盘价' : '累积 CVD',
             type: 'line',
             yAxisIndex: 1,
-            data: bars.map((b) => [b.barTs, b.cumDelta]),
+            data: bars.map((b) => [b.barTs, minuteFallback ? (b.closePx ?? b.vwap) : b.cumDelta]),
             lineStyle: { color: '#3b82f6', width: 1.5 },
             itemStyle: { color: '#3b82f6' },
             symbol: 'none',
@@ -266,7 +313,7 @@ export default function OrderFlow() {
       },
       true,
     );
-  }, [bars, upColor, downColor]);
+  }, [bars, upColor, downColor, minuteFallback]);
 
   useEffect(() => {
     const onResize = () => {
@@ -295,6 +342,32 @@ export default function OrderFlow() {
       trades.length === 0 &&
       bars.length === 0,
   );
+  const kpiItems = minuteFallback
+    ? [
+        { label: '分钟根数', value: minuteKpi.barCount.toLocaleString(), cls: 'text-gray-200' },
+        { label: '成交额', value: `¥${fmtUsdt(minuteKpi.totalAmount)}`, cls: 'text-up' },
+        { label: '最新价', value: minuteKpi.latestClose == null ? '—' : minuteKpi.latestClose.toFixed(2), cls: 'text-blue-300' },
+        {
+          label: '区间高低',
+          value:
+            minuteKpi.low == null || minuteKpi.high == null
+              ? '—'
+              : `${minuteKpi.low.toFixed(2)} / ${minuteKpi.high.toFixed(2)}`,
+          cls: 'text-gray-200',
+        },
+        { label: '数据源', value: minuteKpi.source, cls: 'text-gray-300' },
+      ]
+    : [
+        { label: '大单笔数', value: kpi.count.toLocaleString(), cls: 'text-gray-200' },
+        { label: '主买金额', value: `¥${fmtUsdt(kpi.buy)}`, cls: 'text-up' },
+        { label: '主卖金额', value: `¥${fmtUsdt(kpi.sell)}`, cls: 'text-down' },
+        {
+          label: '净流 Delta',
+          value: `${kpi.delta >= 0 ? '+' : ''}¥${fmtUsdt(kpi.delta)}`,
+          cls: kpi.delta >= 0 ? 'text-up' : 'text-down',
+        },
+        { label: '最大单笔', value: `¥${fmtUsdt(kpi.maxTrade)}`, cls: 'text-blue-300' },
+      ];
 
   return (
     <div className="space-y-4 p-4 text-gray-200">
@@ -302,14 +375,15 @@ export default function OrderFlow() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Activity className="h-5 w-5 text-blue-400" />
-          <h1 className="text-lg font-semibold">A 股资金流 · 大单微观结构</h1>
+          <h1 className="text-lg font-semibold">
+            A 股资金流 · {minuteFallback ? '实时分钟线' : '大单微观结构'}
+          </h1>
           <span className={`rounded-xl border px-2 py-0.5 text-xs ${statusBadge.cls}`}>
             {statusBadge.text}
           </span>
           {streamStatus && (
             <span className="text-xs text-gray-500">
-              采集 {streamStatus.totalIngested.toLocaleString()} 笔 · 阈值 ≥{' '}
-              ¥{fmtUsdt(streamStatus.minNotionalUsdt)} · 重连 {streamStatus.reconnects}
+              数据源 {streamStatus.providerSource || '—'} · 频率 {streamStatus.frequency || '—'}
               {streamStatus.lastError ? ` · ${streamStatus.lastError}` : ''}
             </span>
           )}
@@ -363,6 +437,7 @@ export default function OrderFlow() {
           value={threshold}
           onChange={(e) => setThreshold(Number(e.target.value))}
           className={CONTROL_CLASS}
+          disabled={minuteFallback}
         >
           {THRESHOLD_OPTIONS.map((t) => (
             <option key={t.value} value={t.value}>
@@ -386,6 +461,7 @@ export default function OrderFlow() {
             <button
               key={s}
               onClick={() => setSideFilter(s)}
+              disabled={minuteFallback}
               className={`rounded-lg px-3 text-sm transition-colors ${
                 sideFilter === s ? 'bg-blue-500/20 text-blue-300' : 'text-gray-400 hover:text-gray-200'
               }`}
@@ -403,6 +479,16 @@ export default function OrderFlow() {
         </div>
       )}
 
+      {minuteFallback && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
+          <Database className="h-4 w-4" />
+          <span>当前接入 TuShare 实时分钟线</span>
+          <span className="text-blue-100/70">
+            该数据不是 tick/L2，不提供主动买卖、大单明细或 CVD；相关区域保持真实空态。
+          </span>
+        </div>
+      )}
+
       {providerMissing && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-yellow-500/25 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
           <AlertTriangle className="h-4 w-4" />
@@ -415,17 +501,7 @@ export default function OrderFlow() {
 
       {/* KPI 行 */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-        {[
-          { label: '大单笔数', value: kpi.count.toLocaleString(), cls: 'text-gray-200' },
-          { label: '主买金额', value: `¥${fmtUsdt(kpi.buy)}`, cls: 'text-up' },
-          { label: '主卖金额', value: `¥${fmtUsdt(kpi.sell)}`, cls: 'text-down' },
-          {
-            label: '净流 Delta',
-            value: `${kpi.delta >= 0 ? '+' : ''}¥${fmtUsdt(kpi.delta)}`,
-            cls: kpi.delta >= 0 ? 'text-up' : 'text-down',
-          },
-          { label: '最大单笔', value: `¥${fmtUsdt(kpi.maxTrade)}`, cls: 'text-blue-300' },
-        ].map((item) => (
+        {kpiItems.map((item) => (
           <div
             key={item.label}
             className={`${PANEL_CLASS} px-3 py-2`}
@@ -441,13 +517,17 @@ export default function OrderFlow() {
           {/* 气泡图 */}
           <div className={PANEL_PADDED_CLASS}>
             <div className="mb-1 text-xs text-gray-500">
-              大单时间轴 · 气泡大小 = 单笔成交额（{formatSymbolLabel(symbol, symbolNames[symbol])}）
+              {minuteFallback
+                ? `逐笔大单空态（${formatSymbolLabel(symbol, symbolNames[symbol])}）`
+                : `大单时间轴 · 气泡大小 = 单笔成交额（${formatSymbolLabel(symbol, symbolNames[symbol])}）`}
             </div>
             <div ref={bubbleRef} className="h-72 w-full" />
             {trades.length === 0 && !loading && (
               <div className="flex items-center justify-center gap-2 py-6 text-xs text-gray-500">
                 <Database className="h-4 w-4" />
-                当前窗口无大单数据——采集服务自部署起实时写入，数据随运行时间累积
+                {minuteFallback
+                  ? 'TuShare 实时分钟线不包含逐笔方向和大单成交，等待真实 tick Provider 接入'
+                  : '当前窗口无大单数据——采集服务自部署起实时写入，数据随运行时间累积'}
               </div>
             )}
           </div>
@@ -455,58 +535,103 @@ export default function OrderFlow() {
           {/* Delta 副图 */}
           <div className={PANEL_PADDED_CLASS}>
             <div className="mb-1 text-xs text-gray-500">
-              Bar 级主买/主卖净流与累积 CVD（{BAR_OPTIONS.find((b) => b.minutes === barMinutes)?.label}）
+              {minuteFallback
+                ? `实时分钟成交额与收盘价（${BAR_OPTIONS.find((b) => b.minutes === barMinutes)?.label}）`
+                : `Bar 级主买/主卖净流与累积 CVD（${BAR_OPTIONS.find((b) => b.minutes === barMinutes)?.label}）`}
             </div>
             <div ref={deltaRef} className="h-56 w-full" />
+            {bars.length === 0 && !loading && (
+              <div className="flex items-center justify-center gap-2 py-6 text-xs text-gray-500">
+                <Database className="h-4 w-4" />
+                {barsMeta?.unavailableReason || '当前窗口无分钟线数据'}
+              </div>
+            )}
           </div>
 
           {/* 明细表 */}
           <div className={PANEL_CLASS}>
             <div className="border-b border-crypto-border px-3 py-2 text-xs text-gray-500">
-              大单明细（最近 {Math.min(trades.length, 200)} / {trades.length} 笔）
+              {minuteFallback
+                ? `分钟线明细（最近 ${Math.min(bars.length, 200)} / ${bars.length} 根）`
+                : `大单明细（最近 ${Math.min(trades.length, 200)} / ${trades.length} 笔）`}
             </div>
             <div className="max-h-80 overflow-auto">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-crypto-card text-gray-500">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-normal">时间</th>
-                    <th className="px-3 py-2 text-left font-normal">方向</th>
-                    <th className="px-3 py-2 text-right font-normal">价格</th>
-                    <th className="px-3 py-2 text-right font-normal">数量(股)</th>
-                    <th className="px-3 py-2 text-right font-normal">名义(U)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trades.slice(0, 200).map((t) => (
-                    <tr key={t.tradeId} className="border-t border-crypto-border/50">
-                      <td className="px-3 py-1.5 text-gray-400">{fmtTime(t.tradeTs)}</td>
-                      <td className="px-3 py-1.5">
-                        <span
-                          className={`inline-flex items-center gap-0.5 ${
-                            t.side === 'buy' ? 'text-up' : 'text-down'
-                          }`}
-                        >
-                          {t.side === 'buy' ? (
-                            <ArrowUpRight className="h-3 w-3" />
-                          ) : (
-                            <ArrowDownRight className="h-3 w-3" />
-                          )}
-                          {t.side === 'buy' ? '主买' : '主卖'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{t.px}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">
-                        {t.szBase < 1 ? t.szBase.toFixed(4) : t.szBase.toFixed(2)}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">
-                        {fmtUsdt(t.notionalUsdt)}
-                      </td>
+              {minuteFallback ? (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-crypto-card text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-normal">时间</th>
+                      <th className="px-3 py-2 text-right font-normal">开</th>
+                      <th className="px-3 py-2 text-right font-normal">高</th>
+                      <th className="px-3 py-2 text-right font-normal">低</th>
+                      <th className="px-3 py-2 text-right font-normal">收</th>
+                      <th className="px-3 py-2 text-right font-normal">成交量</th>
+                      <th className="px-3 py-2 text-right font-normal">成交额</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {trades.length === 0 && !loading && (
-                <div className="px-3 py-8 text-center text-xs text-gray-500">暂无明细</div>
+                  </thead>
+                  <tbody>
+                    {bars.slice(-200).reverse().map((bar) => (
+                      <tr key={`${bar.symbol || symbol}-${bar.barTs}`} className="border-t border-crypto-border/50">
+                        <td className="px-3 py-1.5 text-gray-400">{fmtTime(bar.barTs)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {bar.openPx == null ? '—' : bar.openPx.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{bar.highPx.toFixed(2)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{bar.lowPx.toFixed(2)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {bar.closePx == null ? '—' : bar.closePx.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{fmtUsdt(bar.volume)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">¥{fmtUsdt(bar.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-crypto-card text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-normal">时间</th>
+                      <th className="px-3 py-2 text-left font-normal">方向</th>
+                      <th className="px-3 py-2 text-right font-normal">价格</th>
+                      <th className="px-3 py-2 text-right font-normal">数量(股)</th>
+                      <th className="px-3 py-2 text-right font-normal">成交额</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trades.slice(0, 200).map((t) => (
+                      <tr key={t.tradeId} className="border-t border-crypto-border/50">
+                        <td className="px-3 py-1.5 text-gray-400">{fmtTime(t.tradeTs)}</td>
+                        <td className="px-3 py-1.5">
+                          <span
+                            className={`inline-flex items-center gap-0.5 ${
+                              t.side === 'buy' ? 'text-up' : 'text-down'
+                            }`}
+                          >
+                            {t.side === 'buy' ? (
+                              <ArrowUpRight className="h-3 w-3" />
+                            ) : (
+                              <ArrowDownRight className="h-3 w-3" />
+                            )}
+                            {t.side === 'buy' ? '主买' : '主卖'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{t.px}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {t.szBase < 1 ? t.szBase.toFixed(4) : t.szBase.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          ¥{fmtUsdt(t.notionalUsdt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {((minuteFallback && bars.length === 0) || (!minuteFallback && trades.length === 0)) && !loading && (
+                <div className="px-3 py-8 text-center text-xs text-gray-500">
+                  {minuteFallback ? barsMeta?.unavailableReason || '暂无分钟线明细' : '暂无明细'}
+                </div>
               )}
             </div>
           </div>

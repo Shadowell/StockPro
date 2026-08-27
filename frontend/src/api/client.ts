@@ -2883,6 +2883,13 @@ export interface OrderflowLargeTrade {
 
 export interface OrderflowBar {
   barTs: number;
+  symbol?: string;
+  openPx?: number | null;
+  closePx?: number | null;
+  volume?: number | null;
+  amount?: number | null;
+  source?: string;
+  dataStatus?: string;
   buyNotional: number;
   sellNotional: number;
   delta: number;
@@ -2935,7 +2942,18 @@ export const orderflowApi = {
     instId: string;
     barMinutes?: number;
     hours?: number;
-  }): Promise<{ items: OrderflowBar[]; barMinutes: number; count: number }> =>
+  }): Promise<{
+    items: OrderflowBar[];
+    barMinutes: number;
+    count: number;
+    dataStatus?: string;
+    providerSource?: string;
+    permissionState?: string;
+    frequency?: string;
+    unavailableReason?: string | null;
+    lastError?: string | null;
+    asOf?: number;
+  }> =>
     getReq('/orderflow/bars', { params }),
 
   getSymbols: (params: { hours?: number }): Promise<{ items: OrderflowSymbolStat[]; count: number }> =>

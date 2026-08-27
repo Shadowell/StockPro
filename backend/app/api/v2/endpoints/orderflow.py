@@ -1,59 +1,38 @@
 """A-share order-flow evidence boundary in the original BitPro page contract."""
 from fastapi import APIRouter, Query
 from app.core.contracts import ok
+from app.domain.orderflow.realtime_minute import RealtimeMinuteOrderflowService
 
 router=APIRouter()
 
-ORDERFLOW_PROVIDER_STATUS = {
-    "data_status": "unavailable",
-    "provider_source": "A-share Level-2/tick vendor",
-    "permission_state": "requires_configuration",
-    "frequency": "realtime_ticks_or_1m_microstructure",
-    "tables": ["trade_ticks", "orderflow_large_trades", "orderflow_bars"],
-    "setup_path": "/settings",
-    "last_error": "A-share tick Provider not configured",
-}
+realtime_minute_service = RealtimeMinuteOrderflowService()
 
 
 @router.get("/large-trades")
 async def large_trades(inst_id: str = Query(""), limit: int = Query(200)):
     _ = limit
-    return ok(
-        {
-            "items": [],
-            "count": 0,
-            "symbol": inst_id,
-            "unavailable_reason": "A-share tick Provider not configured",
-            **ORDERFLOW_PROVIDER_STATUS,
-        }
-    )
+    return ok(realtime_minute_service.large_trades(inst_id))
 
 
 @router.get("/bars")
-async def bars(inst_id: str = Query(""), bar_minutes: int = Query(5)):
-    return ok(
-        {
-            "items": [],
-            "bar_minutes": bar_minutes,
-            "count": 0,
-            "symbol": inst_id,
-            "unavailable_reason": "A-share tick Provider not configured",
-            **ORDERFLOW_PROVIDER_STATUS,
-        }
-    )
+async def bars(
+    inst_id: str = Query(""),
+    bar_minutes: int = Query(5),
+    hours: int = Query(6),
+):
+    return ok(realtime_minute_service.bars(inst_id, bar_minutes, hours))
 
 
 @router.get("/symbols")
 async def symbols():
-    return ok({"items": [], "count": 0, **ORDERFLOW_PROVIDER_STATUS})
+    return ok(realtime_minute_service.symbols())
 
 
 @router.get("/stream-status")
 async def stream_status():
+    status = realtime_minute_service.stream_status()
     return ok(
         {
-            "enabled": False,
-            "connected": False,
             "subscribed_count": 0,
             "total_ingested": 0,
             "total_filtered": 0,
@@ -63,6 +42,6 @@ async def stream_status():
             "last_flush_at": None,
             "min_notional_usdt": 0,
             "inst_ids": [],
-            **ORDERFLOW_PROVIDER_STATUS,
+            **status,
         }
     )

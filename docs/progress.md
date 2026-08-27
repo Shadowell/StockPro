@@ -1,5 +1,15 @@
 # Progress Log
 
+## 资金流实时分钟线代理（2026-08-27）
+
+- `/api/v2/orderflow/bars` 已接入 TuShare `rt_min` 实时分钟线，支持 1/5/15/30/60 分钟频率，
+  返回真实分钟 OHLCV、成交额、数据源和可用性状态。
+- `/api/v2/orderflow/large-trades` 继续保持逐笔 tick Provider 边界，不用分钟线伪造主动买卖、
+  大单明细或 CVD；前端在分钟线模式下明确提示“不是 tick/L2”。
+- `/orderflow` 页面在分钟线可用时切换为成交额柱 + 收盘价线和分钟线明细表；阈值与主买/
+  主卖筛选在该模式下禁用，避免把分钟线误解为逐笔成交方向数据。
+- 新增回归测试覆盖 stream status、bars 转换、large-trades tick 边界和前端分钟线提示。
+
 ## 生产 A 股同步盘中空日线回退（2026-08-27）
 
 - 生产手动触发 A 股同步时，`latest_open_trade_date()` 在交易日盘中返回 `2026-08-27`，
