@@ -25,7 +25,7 @@ const SYMBOL_OPTIONS = [
   '510300.SH',
 ];
 
-const PROVIDER_REFRESH_MS = 6 * 60 * 1000;
+const PROVIDER_REFRESH_MS = 60 * 1000;
 
 const RANGE_OPTIONS = [
   { label: '近 1 小时', hours: 1 },
@@ -162,6 +162,8 @@ export default function OrderFlow() {
   const minuteFallback = Boolean(
     streamStatus?.providerSource === 'tushare.rt_min' ||
       barsMeta?.providerSource === 'tushare.rt_min' ||
+      streamStatus?.providerSource?.startsWith('akshare.') ||
+      barsMeta?.providerSource?.startsWith('akshare.') ||
     streamStatus?.dataStatus === 'realtime_minute_fallback' ||
       barsMeta?.dataStatus === 'realtime_minute_fallback' ||
       bars.some((bar) => bar.dataStatus === 'realtime_minute_fallback'),
@@ -421,7 +423,7 @@ export default function OrderFlow() {
               onChange={(e) => setAutoRefresh(e.target.checked)}
               className="accent-blue-500"
             />
-            6 分钟自动刷新
+            1 分钟自动刷新
           </label>
           <button
             onClick={load}
@@ -507,7 +509,7 @@ export default function OrderFlow() {
       {minuteFallback && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
           <Database className="h-4 w-4" />
-          <span>当前接入 TuShare 实时分钟线</span>
+          <span>当前接入 {minuteKpi.source} 实时分钟线</span>
           <span className="text-blue-100/70">
             该数据不是 tick/L2，不提供主动买卖、大单明细或 CVD；相关区域保持真实空态。
           </span>
