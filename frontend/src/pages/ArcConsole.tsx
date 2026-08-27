@@ -237,16 +237,16 @@ function SectionTitle({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3">
+    <div className="mb-4 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
       <div className="flex min-w-0 items-center gap-2">
         <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-300">
           {icon}
         </span>
-        <h2 className="truncate text-sm font-semibold text-white">{title}</h2>
+        <h2 className="text-sm font-semibold text-white">{title}</h2>
       </div>
       {children ??
         (meta && (
-          <span className="shrink-0 rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-[10px] font-medium text-gray-500">
+          <span className="max-w-full rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-[10px] font-medium leading-relaxed text-gray-500">
             {meta}
           </span>
         ))}
@@ -495,13 +495,14 @@ export default function ArcConsole() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [objective, setObjective] = useState('在真实历史上寻找可过样本外门禁的趋势策略');
-  const [symbol, setSymbol] = useState('ETH-USDT-SWAP');
-  const [timeframe, setTimeframe] = useState('1H');
+  const [symbol, setSymbol] = useState('600519.SH');
+  const [timeframe, setTimeframe] = useState('1D');
   const [maxCandidates, setMaxCandidates] = useState(12);
   const [reason, setReason] = useState('');
   const eventCountRef = useRef<number>(-1);
 
   const configured = Boolean(config?.configured);
+  const missingConfig = config?.missingConfig ?? [];
   const unknowns = evidence?.approval.unknowns ?? [];
   const approveBlocked = unknowns.length > 0;
   const selected = missions.find((item) => item.missionId === selectedId) || null;
@@ -677,7 +678,7 @@ export default function ArcConsole() {
   );
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto p-6">
+    <div className="h-full min-h-0 overflow-y-auto p-3 sm:p-6">
       <div className="mb-5 rounded-xl border border-crypto-border bg-crypto-card px-4 py-3 shadow-inner shadow-black/10">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
@@ -710,6 +711,11 @@ export default function ArcConsole() {
                 value="Paper 晋级需人工审批"
                 tone="blue"
               />
+              <MetaChip
+                icon={<Bot className="h-3 w-3 text-blue-300" />}
+                label="连接"
+                value={configured ? '已接通' : '未配置'}
+              />
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
@@ -729,8 +735,12 @@ export default function ArcConsole() {
       {!configured && config && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-yellow-500/25 bg-yellow-500/[0.07] px-4 py-3 text-sm text-yellow-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            A 股 ARC 自主研究写入链路尚未配置。当前不会创建任务、回测或 Paper。
+          <div className="min-w-0">
+            <div>A 股 ARC 自主研究写入链路尚未配置。当前不会创建任务、回测或 Paper。</div>
+            <div className="mt-1 break-words text-xs text-yellow-100/70">
+              缺失：{missingConfig.length ? missingConfig.join('、') : '上游连接'} · 恢复路径：{config.recoveryPath || '服务器环境 / HyperTrade ARC'}
+              {config.error ? ` · ${config.error}` : ''}
+            </div>
           </div>
         </div>
       )}
@@ -765,12 +775,14 @@ export default function ArcConsole() {
           </label>
           <label className="min-w-0">
             <span className="mb-1.5 block text-[11px] font-medium text-gray-500">周期</span>
-            <input
+            <select
               className="h-9 w-full rounded-md border border-crypto-border bg-crypto-bg px-2.5 text-sm text-gray-200 transition-colors focus:border-blue-500/40 focus:outline-none disabled:opacity-50"
               value={timeframe}
               onChange={(event) => setTimeframe(event.target.value)}
               disabled={!configured}
-            />
+            >
+              <option value="1D">日线 1D</option>
+            </select>
           </label>
           <label className="min-w-0">
             <span className="mb-1.5 block text-[11px] font-medium text-gray-500">候选预算</span>
@@ -801,33 +813,33 @@ export default function ArcConsole() {
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="当前阶段"
-          value={progress ? (progress.finished ? '已上线' : stateLabel(progress.state)) : '--'}
+          value={progress ? (progress.finished ? '已完成' : stateLabel(progress.state)) : configured ? '--' : '未接通'}
           sub={
             progress
               ? progress.finished
                 ? '七个阶段全部完成'
                 : `第 ${(activeIndex ?? 0) + 1} / ${progress.stages.length} 阶段`
-              : '未选择任务'
+              : configured ? '未选择任务' : '等待 ARC 上游配置'
           }
           tone={progress?.blocked ? 'yellow' : progress?.finished ? 'emerald' : 'blue'}
         />
         <KpiCard
           label="总进度"
-          value={progress ? `${progress.percent.toFixed(1)}%` : '--'}
-          sub={progress ? `${progress.eventCount} 个事件 · 更新于 ${elapsedLabel(freshSeconds)}` : '未选择任务'}
+          value={progress ? `${progress.percent.toFixed(1)}%` : configured ? '--' : '0%'}
+          sub={progress ? `${progress.eventCount} 个事件 · 更新于 ${elapsedLabel(freshSeconds)}` : configured ? '未选择任务' : '没有研究事件'}
           tone="blue"
         />
         <KpiCard
           label="候选 / 存活"
-          value={selected ? `${candidateProgress} · ${survivors}` : '--'}
-          sub={selected ? '已用候选预算与红队存活数' : '未选择任务'}
+          value={selected ? `${candidateProgress} · ${survivors}` : configured ? '--' : '0 / 0'}
+          sub={selected ? '已用候选预算与红队存活数' : configured ? '未选择任务' : '未生成候选'}
           tone={survivors > 0 ? 'emerald' : 'slate'}
         />
         <KpiCard
           label="模拟盘观察"
           value={
             !progress
-              ? '--'
+              ? configured ? '--' : '未启动'
               : paperRunning
                 ? `${(paper.elapsedHours ?? 0).toFixed(1)} / ${paper.minHours ?? 0} 小时`
                 : '未启动'
@@ -835,7 +847,7 @@ export default function ArcConsole() {
           sub={
             paperRunning
               ? `${paper.trades ?? 0} / ${paper.minTrades ?? 0} 笔成交`
-              : '观察窗尚未开始'
+              : configured ? '观察窗尚未开始' : '未创建或修改 Paper'
           }
           tone={selected?.awaitingApproval ? 'yellow' : paperRunning ? 'blue' : 'slate'}
         />
@@ -849,7 +861,7 @@ export default function ArcConsole() {
             meta={`${missions.length} 个`}
           />
           {missions.length === 0 ? (
-            <EmptyState text={configured ? '还没有任务，先启动一次研究。' : '未配置上游，无法读取任务。'} />
+            <EmptyState text={configured ? '还没有任务，先启动一次研究。' : 'ARC 上游未配置，任务数为 0；当前不会生成回测、候选或 Paper。'} />
           ) : (
             <div className="max-h-[560px] space-y-2 overflow-y-auto pr-0.5">
               {missions.map((mission) => (
@@ -867,7 +879,7 @@ export default function ArcConsole() {
         <div className="min-w-0 space-y-4">
           {!selectedId ? (
             <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
-              <EmptyState text="选择左侧任务查看流水线进度。" />
+              <EmptyState text={configured ? '选择左侧任务查看流水线进度。' : '接通 ARC 后，这里将展示候选、存活、锁定样本外门禁和人工 Paper 审批证据。'} />
             </section>
           ) : !progress ? (
             <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
