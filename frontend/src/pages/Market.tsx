@@ -5,6 +5,7 @@ import { useStore } from '../stores/useStore';
 import {
   marketApi,
   type MarketInstrument,
+  type MarketKlinesMeta,
   type MarketPhase,
   type SectorRpsRow,
   type SymbolAbnormality,
@@ -16,7 +17,7 @@ import { formatTimeframeLabel } from '../utils/timeframe';
 
 const KlineChart = lazy(() => import('../components/KlineChart'));
 
-const TIMEFRAMES = ['1d'];
+const TIMEFRAMES = ['1m', '5m', '15m', '30m', '60m', '1d'];
 
 const REFRESH_INTERVALS: Record<string, number> = {
   '1m': 10_000,
@@ -45,6 +46,7 @@ type MarketTradeRow = {
 
 type MarketDataCacheEntry = {
   klines?: Kline[];
+  klineMeta?: MarketKlinesMeta | null;
   marketIndicators?: Record<string, Array<number | null>>;
   marketIndicatorTimestamps?: number[];
   orderbook?: OrderBook | null;
@@ -84,9 +86,32 @@ function formatRatioLabel(value?: number | null): string {
   return value.toFixed(1);
 }
 
+function klineDataSourceLabel(meta?: MarketKlinesMeta | null, timeframe?: string): string {
+  if (meta?.providerSource?.startsWith('akshare.')) {
+    return meta.cacheHit ? 'AKShare 分时 · 缓存' : 'AKShare 分时';
+  }
+  if (timeframe === '1d') return 'PostgreSQL 日线';
+  return 'PostgreSQL 分时缓存';
+}
+
+function klineStatusLabel(meta?: MarketKlinesMeta | null, hasRows = false): string {
+  const status = meta?.dataStatus;
+  if (!status) return hasRows ? 'ok' : '暂无数据';
+  const labels: Record<string, string> = {
+    ok: 'ok',
+    stale: 'stale',
+    empty: 'empty',
+    unavailable: 'unavailable',
+    unsupported: 'unsupported',
+    provider_error: 'provider error',
+  };
+  return labels[status] || status;
+}
+
 export default function Market() {
   const { selectedExchange, selectedSymbol, setSelectedSymbol } = useStore();
   const [klines, setKlines] = useState<Kline[]>([]);
+  const [klineMeta, setKlineMeta] = useState<MarketKlinesMeta | null>(null);
   const [marketIndicators, setMarketIndicators] = useState<Record<string, Array<number | null>>>({});
   const [marketIndicatorTimestamps, setMarketIndicatorTimestamps] = useState<number[]>([]);
   const [orderbook, setOrderbook] = useState<OrderBook | null>(null);
@@ -95,7 +120,7 @@ export default function Market() {
   const [allSymbols, setAllSymbols] = useState<string[]>([]);
   const [allInstruments, setAllInstruments] = useState<MarketInstrument[]>([]);
   const [marketType, setMarketType] = useState<MarketType>('stock');
-  const [timeframe, setTimeframe] = useState('1d');
+  const [timeframe, setTimeframe] = useState('1m');
   const [marketPhase, setMarketPhase] = useState<MarketPhase | null>(null);
   const [sectorRps, setSectorRps] = useState<SectorRpsRow[]>([]);
   const [marketMovers, setMarketMovers] = useState<SymbolAbnormality[]>([]);
@@ -153,6 +178,7 @@ export default function Market() {
   const applyMarketDataCacheEntry = useCallback(function applyMarketDataCacheEntry(entry?: MarketDataCacheEntry | null): boolean {
     if (!entry?.klines?.length) return false;
     setKlines(entry.klines);
+    setKlineMeta(entry.klineMeta || null);
     setMarketIndicators(entry.marketIndicators || {});
     setMarketIndicatorTimestamps(entry.marketIndicatorTimestamps || []);
     setOrderbook(entry.orderbook || null);
@@ -181,7 +207,7 @@ export default function Market() {
     }
 
     const klineLimit = 500;
-    const klineRequest = marketApi.getKlines(selectedExchange, selectedSymbol, timeframe, klineLimit);
+    const klineRequest = marketApi.getKlinesPayload(selectedExchange, selectedSymbol, timeframe, klineLimit);
     const indicatorsRequest = marketApi.getTechnicalIndicators(
       selectedExchange,
       selectedSymbol,
@@ -194,13 +220,16 @@ export default function Market() {
     const orderbookRequest = marketApi.getOrderbook(selectedExchange, selectedSymbol, 20);
     const tradesRequest = marketApi.getTrades(selectedExchange, selectedSymbol, RECENT_TRADES_LIMIT);
 
-    klineRequest.then((klinesData) => {
+    klineRequest.then((payload) => {
       if (isStaleMarketDataRequest()) return;
+      const klinesData = payload.items || [];
       const lastUpdateMs = Date.now();
       setKlines(klinesData);
+      setKlineMeta(payload);
       setLastUpdate(new Date(lastUpdateMs));
       updateMarketDataCache(cacheKey, {
         klines: klinesData,
+        klineMeta: payload,
         lastUpdateMs,
       });
     })
@@ -256,6 +285,7 @@ export default function Market() {
     const cachedEntry = marketDataCacheRef.current.get(cacheKey);
     if (!applyMarketDataCacheEntry(cachedEntry)) {
       setKlines([]);
+      setKlineMeta(null);
       setMarketIndicators({});
       setMarketIndicatorTimestamps([]);
       setOrderbook(null);
@@ -286,8 +316,10 @@ export default function Market() {
   const high24h = lastKline?.high;
   const low24h = lastKline?.low;
   const volume24h = lastKline?.volume;
-  const quoteVolume24h = lastKline?.quote_volume;
+  const quoteVolume24h = lastKline?.quoteVolume ?? lastKline?.quote_volume;
   const hasMarketData = klines.length > 0;
+  const klineSourceLabel = klineDataSourceLabel(klineMeta, timeframe);
+  const klineStateLabel = klineStatusLabel(klineMeta, hasMarketData);
 
   // 价格变化时触发闪烁
   useEffect(() => {
@@ -354,7 +386,7 @@ export default function Market() {
                 )}
               />
             </span>
-            <span>{hasMarketData ? 'PostgreSQL 日线' : '暂无数据'}</span>
+            <span>{hasMarketData ? klineSourceLabel : klineStateLabel}</span>
           </div>
 
         </div>
@@ -506,6 +538,22 @@ export default function Market() {
                 <span className="tabular-nums">成交额 <span className="text-gray-200">{formatMarketCompact(quoteVolume24h)}</span></span>
                 <span className="tabular-nums">制度 <span className="text-gray-200">T+1 · 100股整手</span></span>
                 <span className="ml-auto tabular-nums">共 {klines.length} 根K线</span>
+              </div>
+              <div className="flex basis-full flex-wrap items-center gap-x-3 gap-y-1 border-t border-crypto-border/50 pt-2 text-[11px] text-gray-500">
+                <span>来源 <span className="text-gray-300">{klineSourceLabel}</span></span>
+                <span>状态 <span className="text-gray-300">{klineStateLabel}</span></span>
+                {klineMeta?.fallbackFrom?.dataStatus && (
+                  <span>缓存 <span className="text-gray-300">{klineMeta.fallbackFrom.dataStatus}</span></span>
+                )}
+                {klineMeta?.externalFetch && (
+                  <span>模式 <span className="text-gray-300">实时拉取</span></span>
+                )}
+                {klineMeta?.unavailableReason && !hasMarketData && (
+                  <span className="text-amber-300">{klineMeta.unavailableReason}</span>
+                )}
+                {klineMeta?.fallbackError && (
+                  <span className="text-amber-300">{klineMeta.fallbackError}</span>
+                )}
               </div>
             </div>
             <div className="flex-1 min-h-0 flex flex-col gap-2">

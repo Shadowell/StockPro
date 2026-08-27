@@ -83,7 +83,7 @@ function formatTooltipQuoteVol(v: number): string {
 
 function quoteVolFromBar(bar: Kline | undefined): number | null {
   if (!bar) return null;
-  const q = bar.quote_volume;
+  const q = bar.quoteVolume ?? bar.quote_volume;
   if (q != null && Number.isFinite(Number(q))) return Number(q);
   if (Number.isFinite(bar.close) && Number.isFinite(bar.volume)) return bar.close * bar.volume;
   return null;

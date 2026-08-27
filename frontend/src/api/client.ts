@@ -1444,6 +1444,45 @@ export const liveWatchApi = {
 // 行情 API
 // ============================================
 
+export interface MarketKlinesMeta {
+  exchange?: string;
+  symbol?: string;
+  timeframe?: string;
+  dataStatus?: string;
+  unavailableReason?: string | null;
+  providerSource?: string;
+  externalFetch?: boolean;
+  cacheHit?: boolean;
+  fallbackSource?: string;
+  fallbackError?: string;
+  fallbackFrom?: {
+    dataStatus?: string;
+    unavailableReason?: string | null;
+  } | null;
+}
+
+export interface MarketKlinesPayload extends MarketKlinesMeta {
+  items: Kline[];
+}
+
+async function getMarketKlinesPayload(
+  exchange: string,
+  symbol: string,
+  timeframe = '1h',
+  limit = 100,
+  start?: number,
+  end?: number
+): Promise<MarketKlinesPayload> {
+  const raw = await api.get('/market/klines', {
+    params: snakifyDeep({ exchange, symbol, timeframe, limit, start, end }),
+  });
+  const response = raw as unknown;
+  const envelope = response && typeof response === 'object' ? response as Record<string, unknown> : {};
+  const items = camelizeDeep<Kline[]>(unwrapEnvelope(raw));
+  const meta = camelizeDeep<MarketKlinesMeta>(envelope.meta || {});
+  return { ...meta, items: Array.isArray(items) ? items : [] };
+}
+
 export const marketApi = {
   getTicker: (exchange: string, symbol: string): Promise<Ticker> =>
     getReq('/market/ticker', { params: { exchange, symbol } }),
@@ -1481,9 +1520,9 @@ export const marketApi = {
     start?: number,
     end?: number
   ): Promise<Kline[]> =>
-    getReq('/market/klines', {
-      params: { exchange, symbol, timeframe, limit, start, end },
-    }),
+    getMarketKlinesPayload(exchange, symbol, timeframe, limit, start, end).then((payload) => payload.items),
+
+  getKlinesPayload: getMarketKlinesPayload,
 
   getTechnicalIndicators: (
     exchange: string,

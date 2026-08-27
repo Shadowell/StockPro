@@ -1,5 +1,16 @@
 # Progress Log
 
+## 行情页 AKShare 实时分时接入（2026-08-27）
+
+- `/api/v2/market/klines` 的分钟周期改为 `minute_bars` 缓存优先；缓存空、不可用或 stale 时，
+  只读拉取 AKShare `stock_zh_a_hist_min_em` 最近 1/5/15/30/60 分钟 K 线作为显式 fallback，
+  东财接口不可用时退到 AKShare `stock_zh_a_minute` 新浪分时。
+- AKShare 分时响应会转换中文列、将东财成交量“手”转换为股，并在 `meta.provider_source`、
+  `meta.external_fetch`、`meta.data_status`、`meta.unavailable_reason` 中保留来源和状态；该路径不写库、
+  不触发同步任务、不用分钟线伪造盘口或逐笔成交。
+- 行情页默认切到 `1m`，开放分钟周期按钮，并在连接状态与 K 线证据条展示 AKShare/缓存/错误状态，
+  避免把“没有缓存”显示成不明原因的空白。
+
 ## 资金流实时分钟线代理（2026-08-27）
 
 - `/api/v2/orderflow/bars` 已接入 TuShare `rt_min` 实时分钟线，支持 1/5/15/30/60 分钟频率，

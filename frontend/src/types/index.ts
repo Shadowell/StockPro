@@ -40,6 +40,9 @@ export interface Kline {
   volume: number;
   /** 成交额（计价货币），缺省时前端可用 close * volume 估算 */
   quote_volume?: number;
+  quoteVolume?: number;
+  source?: string;
+  dataStatus?: string;
 }
 
 export interface TechnicalIndicators {

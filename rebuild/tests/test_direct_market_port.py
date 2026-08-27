@@ -152,6 +152,34 @@ class FakeAshareMarketRepository:
         }
 
 
+class FakeAkshareIntradayProvider:
+    def fetch(self, exchange, symbol, timeframe, limit, start=None, end=None):
+        return {
+            "exchange": exchange,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "items": [
+                {
+                    "timestamp": 1_700_000_300_000,
+                    "datetime": "2023-11-14T09:35:00+08:00",
+                    "trade_date": "2023-11-14",
+                    "open": 1500.0,
+                    "high": 1502.0,
+                    "low": 1498.0,
+                    "close": 1501.0,
+                    "volume": 800.0,
+                    "quote_volume": 1_200_800.0,
+                    "source": "akshare.stock_zh_a_minute",
+                    "data_status": "ok",
+                }
+            ][:limit],
+            "data_status": "ok",
+            "unavailable_reason": None,
+            "provider_source": "akshare.stock_zh_a_minute",
+            "external_fetch": True,
+        }
+
+
 def test_bitpro_market_service_reads_a_share_repository_without_exchange_manager():
     service = MarketDomainService(FakeAshareMarketRepository())
 
@@ -179,13 +207,15 @@ def test_market_service_exposes_intraday_cache_with_freshness_metadata():
 
 
 def test_market_service_non_daily_empty_cache_is_explicit_not_silent_empty():
-    service = MarketDomainService(FakeAshareMarketRepository())
+    service = MarketDomainService(FakeAshareMarketRepository(), intraday_provider=FakeAkshareIntradayProvider())
 
     payload = asyncio.run(service.get_klines_payload("SSE", "600519.SH", "5m", 100))
 
-    assert payload["items"] == []
-    assert payload["data_status"] == "empty"
-    assert "no A-share 5m minute bar cache" in payload["unavailable_reason"]
+    assert payload["data_status"] == "ok"
+    assert payload["provider_source"] == "akshare.stock_zh_a_minute"
+    assert payload["external_fetch"] is True
+    assert payload["fallback_from"]["data_status"] == "empty"
+    assert "no A-share 5m minute bar cache" in payload["fallback_from"]["unavailable_reason"]
 
 
 def test_market_service_reads_cached_orderbook_depth():

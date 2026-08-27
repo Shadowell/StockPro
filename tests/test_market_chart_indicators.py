@@ -1,4 +1,5 @@
 import sys
+import asyncio
 from datetime import date
 from pathlib import Path
 
@@ -8,6 +9,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app.domain.market.service import MarketDomainService
 from app.domain.market.repository import MarketRepository
+from app.domain.market.akshare_intraday import AkshareIntradayProvider
 
 
 class _FakeCursor:
@@ -101,6 +103,79 @@ def test_market_domain_builds_rsi_and_macd_series_from_ohlcv() -> None:
         assert 0.0 <= value <= 100.0
 
 
+def test_akshare_intraday_provider_maps_eastmoney_minute_rows() -> None:
+    provider = AkshareIntradayProvider(
+        fetcher=lambda **_kwargs: [
+            {
+                "时间": "2026-08-27 09:31:00",
+                "开盘": 12.3,
+                "收盘": 12.4,
+                "最高": 12.5,
+                "最低": 12.2,
+                "成交量": 321,
+                "成交额": 398040,
+            }
+        ]
+    )
+
+    payload = provider.fetch("SSE", "600519.SH", "1m", 10)
+
+    assert payload["data_status"] == "ok"
+    assert payload["provider_source"] == "akshare.stock_zh_a_hist_min_em"
+    assert payload["external_fetch"] is True
+    assert payload["items"][0]["source"] == "akshare.stock_zh_a_hist_min_em"
+    assert payload["items"][0]["volume"] == 32100.0
+    assert payload["items"][0]["quote_volume"] == 398040.0
+    assert payload["items"][0]["trade_date"] == "2026-08-27"
+
+
+def test_market_domain_fetches_akshare_intraday_when_minute_cache_empty() -> None:
+    class EmptyMinuteRepo:
+        def get_klines_with_status(self, exchange, symbol, timeframe, limit, start=None, end=None):
+            return {
+                "exchange": exchange,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "items": [],
+                "data_status": "empty",
+                "unavailable_reason": "no A-share 1m minute bar cache for 600519.SH",
+            }
+
+    class FakeIntradayProvider:
+        def fetch(self, exchange, symbol, timeframe, limit, start=None, end=None):
+            return {
+                "exchange": exchange,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "items": [
+                    {
+                        "timestamp": 1_000,
+                        "open": 10,
+                        "high": 11,
+                        "low": 9,
+                        "close": 10.5,
+                        "volume": 100,
+                        "quote_volume": 1050,
+                        "source": "akshare.stock_zh_a_hist_min_em",
+                    }
+                ],
+                "data_status": "ok",
+                "provider_source": "akshare.stock_zh_a_hist_min_em",
+                "external_fetch": True,
+            }
+
+    service = MarketDomainService(repo=EmptyMinuteRepo(), intraday_provider=FakeIntradayProvider())
+
+    payload = asyncio.run(service.get_klines_payload("SSE", "600519.SH", "1m", 50))
+    indicators = asyncio.run(service.get_technical_indicators("SSE", "600519.SH", "1m", 50, ema_periods=[1]))
+
+    assert payload["items"][0]["close"] == 10.5
+    assert payload["provider_source"] == "akshare.stock_zh_a_hist_min_em"
+    assert payload["fallback_from"]["data_status"] == "empty"
+    assert indicators["kline_source"] == "akshare.stock_zh_a_hist_min_em"
+    assert indicators["timestamps"] == [1_000]
+
+
 def test_market_chart_uses_backend_ema_indicator_api_not_local_ma_calculation() -> None:
     market_source = open("frontend/src/pages/Market.tsx", encoding="utf-8").read()
     chart_source = open("frontend/src/components/KlineChart.tsx", encoding="utf-8").read()
@@ -179,6 +254,18 @@ def test_market_no_longer_fetches_kairos_prediction_comparison() -> None:
     assert "getPredictionsCompare" not in client_source
     assert '"/predictions/compare"' not in backend_source
     assert "marketApi.getKlines" in market_source
+
+
+def test_market_page_defaults_to_akshare_intraday_payload_with_source_status() -> None:
+    market_source = open("frontend/src/pages/Market.tsx", encoding="utf-8").read()
+    client_source = open("frontend/src/api/client.ts", encoding="utf-8").read()
+
+    assert "const TIMEFRAMES = ['1m', '5m', '15m', '30m', '60m', '1d']" in market_source
+    assert "useState('1m')" in market_source
+    assert "marketApi.getKlinesPayload" in market_source
+    assert "AKShare 分时" in market_source
+    assert "实时拉取" in market_source
+    assert "getKlinesPayload: getMarketKlinesPayload" in client_source
 
 
 def test_market_kline_chart_shows_visible_ema_value_labels_above_chart() -> None:

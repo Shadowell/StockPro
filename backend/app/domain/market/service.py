@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from app.domain.market.akshare_intraday import AkshareIntradayProvider
 from app.domain.market.repository import MarketRepository
 from app.services.indicators import EMA, MACD, RSI
 
@@ -14,8 +15,13 @@ from app.services.indicators import EMA, MACD, RSI
 class MarketDomainService:
     """BitPro market contract backed only by A-share PostgreSQL evidence."""
 
-    def __init__(self, repo: Optional[MarketRepository] = None):
+    def __init__(
+        self,
+        repo: Optional[MarketRepository] = None,
+        intraday_provider: Optional[AkshareIntradayProvider] = None,
+    ):
         self.repo = repo or MarketRepository()
+        self.intraday_provider = intraday_provider or AkshareIntradayProvider()
 
     async def get_ticker(self, exchange_name: str, symbol: str) -> Dict:
         items = await asyncio.to_thread(self.repo.list_tickers, [symbol])
@@ -55,7 +61,7 @@ class MarketDomainService:
         end: Optional[int] = None,
     ) -> Dict[str, Any]:
         if hasattr(self.repo, "get_klines_with_status"):
-            return await asyncio.to_thread(
+            payload = await asyncio.to_thread(
                 self.repo.get_klines_with_status,
                 exchange_name,
                 symbol,
@@ -64,6 +70,29 @@ class MarketDomainService:
                 start,
                 end,
             )
+            if self._should_fetch_intraday(payload, timeframe):
+                fallback = await asyncio.to_thread(
+                    self.intraday_provider.fetch,
+                    exchange_name,
+                    symbol,
+                    timeframe,
+                    limit,
+                    start,
+                    end,
+                )
+                if fallback.get("items"):
+                    fallback["fallback_from"] = {
+                        "data_status": payload.get("data_status"),
+                        "unavailable_reason": payload.get("unavailable_reason"),
+                    }
+                    return fallback
+                if payload.get("items"):
+                    payload = dict(payload)
+                    payload["fallback_error"] = fallback.get("unavailable_reason")
+                    payload["fallback_source"] = fallback.get("provider_source")
+                    return payload
+                return fallback
+            return payload
         items = await self.get_klines(exchange_name, symbol, timeframe, limit, start, end)
         return {
             "exchange": exchange_name,
@@ -84,14 +113,27 @@ class MarketDomainService:
         end: Optional[int] = None,
         ema_periods: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
-        klines = await self.get_klines(exchange_name, symbol, timeframe, limit, start, end)
+        kline_payload = await self.get_klines_payload(exchange_name, symbol, timeframe, limit, start, end)
+        klines = kline_payload.get("items", [])
         payload = self.build_technical_indicators(klines, ema_periods or [5, 10, 20, 30])
         payload.update({
             "exchange": exchange_name,
             "symbol": symbol,
             "timeframe": timeframe,
+            "kline_data_status": kline_payload.get("data_status"),
+            "kline_source": kline_payload.get("provider_source") or kline_payload.get("source"),
         })
         return payload
+
+    @staticmethod
+    def _should_fetch_intraday(payload: Dict[str, Any], timeframe: str) -> bool:
+        normalized_timeframe = str(timeframe or "").strip().lower()
+        if normalized_timeframe not in MarketRepository.SUPPORTED_INTRADAY_TIMEFRAMES:
+            return False
+        status = str(payload.get("data_status") or "").strip().lower()
+        if status in {"empty", "unavailable", "provider_error"}:
+            return True
+        return status == "stale"
 
     @staticmethod
     def build_technical_indicators(
