@@ -258,6 +258,17 @@ export type ArcConsoleConfig = {
   baseUrlSet: boolean;
   tokenSet: boolean;
   signingSecretSet: boolean;
+  status?: 'connected' | 'unavailable';
+  mode?: string;
+  writeEnabled?: boolean;
+  paperMutation?: boolean;
+  missingConfig?: string[];
+  recoveryPath?: string;
+  lastSyncedAt?: string | null;
+  error?: string | null;
+  supportedAssetTypes?: string[];
+  supportedTimeframes?: string[];
+  marketRules?: string[];
 };
 
 export type ArcPipelineBadge = {
