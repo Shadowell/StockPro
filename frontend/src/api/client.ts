@@ -1678,12 +1678,25 @@ export interface ReviewOverview {
   updatedAt?: string | null;
   strategyCount: number;
   sampleStrategyCount: number;
-  overallReturnPct: number;
-  medianReturnPct: number;
-  maxDrawdownPct: number;
+  insufficientStrategyCount: number;
+  overallReturnPct: number | null;
+  medianReturnPct: number | null;
+  maxDrawdownPct: number | null;
   observeCount: number;
   reviewCount: number;
   sampleHealthPct: number;
+  sampleHealthStatus: 'healthy' | 'mixed' | 'insufficient_sample';
+  healthDenominator: {
+    minTradingDays: number;
+    minEquityPoints: number;
+    minClosedTrades: number;
+    componentCount: number;
+  };
+  coverageStart?: string | null;
+  coverageEnd?: string | null;
+  equitySampleCount: number;
+  closedTradeCount: number;
+  fillCount: number;
 }
 
 export interface ReviewGroupRow {
@@ -1694,12 +1707,13 @@ export interface ReviewGroupRow {
   capitalVersion: string;
   strategyCount: number;
   sampleStrategyCount: number;
-  returnPct: number;
-  maxDrawdownPct: number;
-  winRate: number;
-  profitFactor: number;
+  returnPct: number | null;
+  maxDrawdownPct: number | null;
+  winRate: number | null;
+  profitFactor: number | null;
   tradeCount: number;
-  score: number;
+  closedTradeCount: number;
+  score: number | null;
   verdict: string;
   strategies: ReviewGroupStrategy[];
 }
@@ -1707,13 +1721,22 @@ export interface ReviewGroupRow {
 export interface ReviewGroupStrategy {
   strategyId: number;
   name: string;
-  score: number;
-  returnPct: number;
-  maxDrawdownPct: number;
-  winRate: number;
-  profitFactor: number;
+  score: number | null;
+  returnPct: number | null;
+  maxDrawdownPct: number | null;
+  winRate: number | null;
+  profitFactor: number | null;
   tradeCount: number;
+  closedTradeCount: number;
+  orderCount?: number | null;
   sampleCount: number;
+  coverageStart?: string | null;
+  coverageEnd?: string | null;
+  sampleHealthStatus: 'eligible' | 'insufficient_sample';
+  sampleHealthPct: number;
+  missingRatioPct: number;
+  healthComponents: Record<string, { actual: number; minimum: number }>;
+  diagnostics: string[];
   tags: string[];
   verdict: string;
 }
@@ -1722,12 +1745,18 @@ export interface ReviewLeaderboardItem {
   strategyId: number;
   name: string;
   groupKey: string;
-  score: number;
-  returnPct: number;
-  maxDrawdownPct: number;
-  winRate: number;
-  profitFactor: number;
+  score: number | null;
+  returnPct: number | null;
+  maxDrawdownPct: number | null;
+  winRate: number | null;
+  profitFactor: number | null;
   tradeCount: number;
+  closedTradeCount: number;
+  sampleCount: number;
+  coverageStart?: string | null;
+  coverageEnd?: string | null;
+  sampleHealthStatus: 'eligible' | 'insufficient_sample';
+  sampleHealthPct: number;
   tags: string[];
   verdict: string;
 }
@@ -1755,9 +1784,11 @@ export interface ReviewSummary {
   leaderboard: {
     observe: ReviewLeaderboardItem[];
     review: ReviewLeaderboardItem[];
+    insufficient: ReviewLeaderboardItem[];
   };
   heatmap: ReviewHeatmapRow[];
   tags: ReviewTag[];
+  diagnostics: string[];
   nextActions: string[];
 }
 
