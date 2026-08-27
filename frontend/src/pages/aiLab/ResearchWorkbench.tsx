@@ -18,8 +18,7 @@ import clsx from 'clsx';
 import CryptoSelect from '../../components/CryptoSelect';
 import ThemeDialog from '../../components/ThemeDialog';
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS } from '../../utils/selectionStyles';
-import { marketApi, researchWorkbenchApi } from '../../api/client';
-import { useSymbolNames } from '../../hooks/useSymbolNames';
+import { marketApi, researchWorkbenchApi, type MarketInstrument } from '../../api/client';
 import { formatSymbolLabel } from '../../utils/symbolDisplay';
 
 type StageId = 'proposal' | 'research' | 'results' | 'paper';
@@ -41,6 +40,7 @@ const STAGES: Array<{ id: StageId; label: string; empty: string; icon: LucideIco
 ];
 
 const DEFAULT_MANDATE_SYMBOLS = ['600519.SH', '000001.SZ'];
+const ASSET_LABELS: Record<string, string> = { stock: '股票', etf: 'ETF', index: '指数' };
 const REVIEW_ACTIONS = ['request_paper_review', 'request_pause_review', 'retire_candidate_review'] as const;
 
 function rows(value: unknown): Row[] {
@@ -264,12 +264,13 @@ export default function ResearchWorkbench() {
   const [proposalOpen, setProposalOpen] = useState(false);
   const [mandateSymbols, setMandateSymbols] = useState<string[]>(DEFAULT_MANDATE_SYMBOLS);
   const [mandateSymbolOptions, setMandateSymbolOptions] = useState<string[]>(DEFAULT_MANDATE_SYMBOLS);
+  const [mandateInstruments, setMandateInstruments] = useState<Record<string, MarketInstrument>>({});
   const [mandateSymbolSearch, setMandateSymbolSearch] = useState('');
   const [customMandateSymbol, setCustomMandateSymbol] = useState('');
   const [mandateSymbolsLoading, setMandateSymbolsLoading] = useState(false);
   const [mandateSymbolsError, setMandateSymbolsError] = useState('');
-  const [mandateTimeframe, setMandateTimeframe] = useState('4h');
-  const [mandateCategory, setMandateCategory] = useState('cta');
+  const [mandateTimeframe, setMandateTimeframe] = useState('1d');
+  const [mandateCategory, setMandateCategory] = useState('trend');
   const [proposalDirection, setProposalDirection] = useState('');
   const [proposalFormError, setProposalFormError] = useState('');
 
@@ -301,6 +302,8 @@ export default function ResearchWorkbench() {
   const reviews = rows(field(summary, 'paperReviewRequests', 'paper_review_requests'));
   const metrics = field(summary, 'metrics') || {};
   const connection = field(summary, 'connection') || {};
+  const writePath = field(summary, 'writePath', 'write_path') || {};
+  const writeReady = field(writePath, 'status') === 'ready';
   const activeJobs = jobs.filter((job) => ['queued', 'planning', 'running', 'validating'].includes(String(field(job, 'status'))));
   const failedJobs = jobs.filter((job) => ['rejected', 'failed', 'canceled'].includes(String(field(job, 'status'))));
   const passingCandidates = candidates.filter((candidate) => {
@@ -311,7 +314,10 @@ export default function ResearchWorkbench() {
   const pendingApprovals = promotions.filter((promotion) => field(promotion, 'status') === 'pending_paper_approval');
   const observingPromotions = promotions.filter((promotion) => ['paper_observing', 'paper_degraded', 'paper_review_required'].includes(String(field(promotion, 'status'))));
   const mandateNameSymbols = useMemo(() => Array.from(new Set([...mandateSymbolOptions, ...mandateSymbols])), [mandateSymbolOptions, mandateSymbols]);
-  const mandateSymbolNames = useSymbolNames(mandateNameSymbols);
+  const mandateSymbolNames = useMemo(
+    () => Object.fromEntries(Object.values(mandateInstruments).map((instrument) => [instrument.symbol, instrument.name])),
+    [mandateInstruments],
+  );
   const visibleMandateSymbols = useMemo(() => {
     const query = mandateSymbolSearch.trim().toUpperCase();
     return mandateNameSymbols
@@ -322,14 +328,15 @@ export default function ResearchWorkbench() {
 
   const stageStates = useMemo<Record<StageId, { tone: StageTone; count: number }>>(() => {
     const connectionFailed = field(connection, 'status') === 'unavailable';
+    const writeBlocked = field(writePath, 'status') !== 'ready';
     const failedCandidates = candidates.filter((candidate) => ['rejected', 'failed'].includes(String(field(candidate, 'status')))).length;
     return {
-      proposal: { count: jobs.length, tone: connectionFailed ? 'failed' : jobs.length > 0 ? 'passed' : 'active' },
+      proposal: { count: jobs.length, tone: connectionFailed ? 'failed' : writeBlocked ? 'blocked' : jobs.length > 0 ? 'passed' : 'active' },
       research: { count: activeJobs.length, tone: connectionFailed ? 'failed' : activeJobs.length > 0 ? 'active' : failedJobs.length > 0 && candidates.length === 0 ? 'failed' : jobs.length > 0 ? 'passed' : 'idle' },
       results: { count: candidates.length, tone: connectionFailed ? 'failed' : dataGaps.length > 0 ? 'blocked' : passingCandidates.length > 0 ? 'passed' : failedCandidates > 0 ? 'failed' : 'idle' },
       paper: { count: pendingApprovals.length + observingPromotions.length + reviews.length, tone: connectionFailed ? 'failed' : pendingApprovals.length > 0 || reviews.length > 0 ? 'human' : observingPromotions.length > 0 ? 'passed' : passingCandidates.length > 0 ? 'active' : 'idle' },
     };
-  }, [activeJobs.length, candidates, connection, dataGaps.length, failedJobs.length, jobs.length, observingPromotions.length, passingCandidates.length, pendingApprovals.length, reviews.length]);
+  }, [activeJobs.length, candidates, connection, dataGaps.length, failedJobs.length, jobs.length, observingPromotions.length, passingCandidates.length, pendingApprovals.length, reviews.length, writePath]);
 
   const openAction = (action: PendingAction, prefix: string) => {
     setActionReason('');
@@ -356,17 +363,21 @@ export default function ResearchWorkbench() {
     setMandateSymbolsLoading(true);
     setMandateSymbolsError('');
     try {
-      const response = await marketApi.getSymbols('okx', 'USDT', 'swap');
-      const received = Array.isArray(response.symbols)
-        ? response.symbols.map((symbol) => String(symbol).trim()).filter(Boolean)
-        : [];
+      const responses = await Promise.all([
+        marketApi.getSymbols('CN', 'CNY', 'stock'),
+        marketApi.getSymbols('CN', 'CNY', 'etf'),
+        marketApi.getSymbols('CN', 'CNY', 'index'),
+      ]);
+      const instruments = responses.flatMap((response) => response.instruments || []);
+      const received = instruments.map((instrument) => String(instrument.symbol).trim()).filter(Boolean);
       if (!received.length) {
         setMandateSymbolsError('StockPro 市场接口未返回可选 A 股标的。');
         return;
       }
+      setMandateInstruments(Object.fromEntries(instruments.map((instrument) => [instrument.symbol, instrument])));
       setMandateSymbolOptions(Array.from(new Set([...DEFAULT_MANDATE_SYMBOLS, ...received])).sort((left, right) => left.localeCompare(right)));
     } catch (error) {
-      setMandateSymbolsError(`加载真实 USDT 永续标的失败：${errorText(error)}`);
+      setMandateSymbolsError(`加载 A 股证券目录失败：${errorText(error)}`);
     } finally {
       setMandateSymbolsLoading(false);
     }
@@ -388,8 +399,8 @@ export default function ResearchWorkbench() {
     setMandateSymbolSearch('');
     setCustomMandateSymbol('');
     setMandateSymbolsError('');
-    setMandateTimeframe('4h');
-    setMandateCategory('cta');
+    setMandateTimeframe('1d');
+    setMandateCategory('trend');
     setProposalDirection('');
     setProposalFormError('');
   };
@@ -404,8 +415,8 @@ export default function ResearchWorkbench() {
   const addCustomMandateSymbol = () => {
     const symbol = customMandateSymbol.trim().toUpperCase();
     if (!symbol) return;
-    if (!symbol.includes('/')) {
-      setProposalFormError('自定义标的请使用完整统一格式，例如 BTC/USDT:USDT。');
+    if (!/^\d{6}\.(SH|SZ|BJ)$/.test(symbol)) {
+      setProposalFormError('自定义标的请使用 A 股统一格式，例如 600519.SH、000001.SZ 或 920061.BJ。');
       return;
     }
     setMandateSymbols((current) => current.includes(symbol) ? current : [...current, symbol]);
@@ -414,6 +425,10 @@ export default function ResearchWorkbench() {
   };
 
   const submitProposal = async () => {
+    if (!writeReady) {
+      setProposalFormError(connectionError !== '--' ? connectionError : 'HyperTrade 上游未配置，当前不会创建研究任务。');
+      return;
+    }
     if (mandateSymbols.length === 0 || !proposalDirection.trim()) {
       setProposalFormError('请选择至少一个标的并填写提议方向。');
       return;
@@ -421,16 +436,25 @@ export default function ResearchWorkbench() {
     setProposalFormError('');
     setWriteBusy(true);
     try {
-      const scope = mandateSymbols.map((symbol) => symbol.split('/')[0]).join('/');
-      const category = mandateCategory === 'mean_reversion' ? '均值回归' : mandateCategory === 'grid' ? '网格' : 'CTA';
+      const scope = mandateSymbols.join('、');
+      const category = mandateCategory === 'mean_reversion' ? '均值回归' : mandateCategory === 'factor_rotation' ? '因子轮动' : '趋势';
       const createdMandate = await researchWorkbenchApi.createMandate({
         name: `${scope} ${mandateTimeframe.toUpperCase()} ${category} 研究提议`.slice(0, 160),
-        marketType: 'swap',
+        marketType: 'cn_security',
         symbols: mandateSymbols,
+        assetTypes: mandateSymbols.map((symbol) => mandateInstruments[symbol]?.assetClass || 'stock'),
         timeframes: [mandateTimeframe],
         strategyCategories: [mandateCategory],
-        budget: {},
-        validation: {},
+        marketRules: {
+          tradingCalendar: 'SSE_SZSE_BSE',
+          settlement: 'T+1',
+          boardLotShares: 100,
+          enforcePriceLimits: true,
+          enforceSuspensions: true,
+          noShortSellingByDefault: true,
+        },
+        costModel: { commission: 'configured_broker_rate', stampDuty: 'sell_side', transferFee: 'exchange_rules', slippage: 'required' },
+        validation: { pointInTimeData: true, outOfSampleRequired: true, survivorshipBiasCheck: true },
         paperPromotionMode: 'manual_approval',
         liveMode: 'disabled',
         reason: '提交研究提议并建立内部研究范围',
@@ -454,7 +478,7 @@ export default function ResearchWorkbench() {
       setProposalOpen(false);
       resetProposalForm();
       setSelectedStage('research');
-      setStatus('提议已提交，HT 正在自动完成研究、校验和回测。');
+      setStatus(`提议 ${mandateId} 已提交，研究任务 ${jobId} 已启动；可在研究阶段追踪真实状态。`);
       await refresh();
     } catch (error) {
       setProposalFormError(errorText(error));
@@ -556,7 +580,7 @@ export default function ResearchWorkbench() {
         <div className="rounded-lg border border-blue-400/20 bg-blue-400/5 p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0"><div className="text-sm font-semibold text-gray-100">告诉 HT 你想研究什么</div><p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-400">只需描述方向或假设。StockPro 会在后台建立受控研究范围，HT 自动完成规格、数据/代码校验、回测和验证。</p></div>
-            <button type="button" onClick={openProposalDialog} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-500"><Sparkles size={14} />提交研究提议</button>
+            <button type="button" onClick={openProposalDialog} disabled={!writeReady} title={writeReady ? '提交 A 股研究提议' : connectionError} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"><Sparkles size={14} />{writeReady ? '提交研究提议' : '上游未配置'}</button>
           </div>
           <div className="mt-4 grid grid-cols-1 gap-2 text-[11px] text-gray-400 sm:grid-cols-3"><div className="rounded border border-crypto-border bg-crypto-bg px-3 py-2">1. 选择标的并写提议</div><div className="rounded border border-crypto-border bg-crypto-bg px-3 py-2">2. HT 自动研究与回测</div><div className="rounded border border-crypto-border bg-crypto-bg px-3 py-2">3. 你根据结果决定模拟盘</div></div>
         </div>
@@ -568,20 +592,22 @@ export default function ResearchWorkbench() {
   };
 
   const connectionUnavailable = field(connection, 'status') === 'unavailable';
-  const connectionLabel = connectionUnavailable ? 'HyperTrade 不可用' : field(connection, 'status') === 'connected' ? 'HyperTrade 已连接' : 'HyperTrade 状态未知';
-  const realError = status || (connectionUnavailable ? short(field(connection, 'error')) : '');
+  const upstreamReady = field(connection, 'upstreamStatus', 'upstream_status') === 'configured';
+  const connectionLabel = connectionUnavailable ? '研究台账不可用' : upstreamReady ? 'HyperTrade 已连接' : '本地台账可读 / 上游未配置';
+  const connectionError = short(field(connection, 'error'));
+  const realError = status || (connectionError !== '--' ? connectionError : '');
 
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><FlaskConical size={18} className="text-cyan-300" /><h2 className="text-base font-semibold text-gray-100">策略研发工作台</h2><span className={clsx('rounded border px-2 py-0.5 text-[10px]', connectionUnavailable ? 'border-red-500/40 bg-red-500/10 text-red-200' : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200')}>{connectionLabel}</span></div><p className="mt-1 text-xs text-gray-500">写提议，HT 自动研究回测；你只根据真实回测证据决定是否申请模拟盘。</p></div>
-          <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={openProposalDialog} disabled={connectionUnavailable} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"><Sparkles size={14} />{connectionUnavailable ? '写入未接通' : '提交研究提议'}</button><button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-300 hover:border-blue-400 disabled:opacity-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />同步</button></div>
+          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><FlaskConical size={18} className="text-cyan-300" /><h2 className="text-base font-semibold text-gray-100">策略研发工作台</h2><span className={clsx('rounded border px-2 py-0.5 text-[10px]', connectionUnavailable ? 'border-red-500/40 bg-red-500/10 text-red-200' : upstreamReady ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/40 bg-amber-400/10 text-amber-100')}>{connectionLabel}</span></div><p className="mt-1 text-xs text-gray-500">写提议，HT 自动研究回测；你只根据真实回测证据决定是否申请模拟盘。</p></div>
+          <div className="flex shrink-0 flex-wrap gap-2"><button type="button" onClick={openProposalDialog} disabled={!writeReady} title={writeReady ? '提交 A 股研究提议' : connectionError} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"><Sparkles size={14} />{writeReady ? '提交研究提议' : '上游未配置'}</button><button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-crypto-border px-3 text-xs text-gray-300 hover:border-blue-400 disabled:opacity-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />同步</button></div>
         </div>
         {realError && <div role="alert" className="mt-3 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs text-red-100">真实错误：{realError}</div>}
         {candidateErrors.length > 0 && <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-100">候选证据读取不完整：{candidateErrors.join('；')}</div>}
         <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4"><Metric label="HT 研究中" value={field(metrics, 'runningJobs', 'running_jobs') ?? activeJobs.length} /><Metric label="回测结果" value={candidates.length} /><Metric label="验证通过" value={field(metrics, 'passingCandidates', 'passing_candidates') ?? passingCandidates.length} /><Metric label="模拟盘待处理" value={pendingApprovals.length + reviews.length} /></div>
-        <div className="mt-2 text-[10px] text-gray-600">最近同步：{formatTime(field(summary, 'lastSyncedAt', 'last_synced_at'))}</div>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-600"><span>最近同步：{formatTime(field(summary, 'lastSyncedAt', 'last_synced_at'))}</span><span>连接模式：{short(field(connection, 'mode'))}</span><span>恢复路径：{short(field(connection, 'recoveryPath', 'recovery_path'))}</span></div>
       </section>
 
       <section className="rounded-xl border border-crypto-border bg-crypto-card p-3">
@@ -608,27 +634,29 @@ export default function ResearchWorkbench() {
         <div className="border-t border-crypto-border px-4 py-2 text-[10px] text-gray-600">研究与模拟盘结果仅作为证据，不代表稳定盈利或未来表现。最近同步：{formatTime(field(summary, 'lastSyncedAt', 'last_synced_at'))}</div>
       </section>
 
-      <ThemeDialog open={proposalOpen} variant="confirm" title="提交研究提议" tone="default" confirmText={writeBusy ? '提交中...' : '提交给 HT'} confirmDisabled={writeBusy || mandateSymbols.length === 0 || !proposalDirection.trim()} onCancel={closeProposalDialog} onConfirm={() => void submitProposal()}>
+      <ThemeDialog open={proposalOpen} variant="confirm" title="提交研究提议" tone="default" confirmText={writeBusy ? '提交中...' : '提交给 HT'} confirmDisabled={!writeReady || writeBusy || mandateSymbols.length === 0 || !proposalDirection.trim()} onCancel={closeProposalDialog} onConfirm={() => void submitProposal()}>
         <div className="space-y-3">
           <p className="rounded border border-blue-400/25 bg-blue-400/5 px-3 py-2 text-xs leading-relaxed text-blue-100">提交后 HT 自动完成规格、校验和回测；你只需查看结果并决定是否申请模拟盘。</p>
           {proposalFormError && <p role="alert" className="rounded border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs leading-relaxed text-amber-100">{proposalFormError}</p>}
           <section className="min-w-0" aria-labelledby="research-proposal-symbols-label">
             <div className="flex items-center justify-between gap-2 text-xs text-gray-400"><span id="research-proposal-symbols-label">标的范围</span><span className="shrink-0 text-[11px] text-blue-200">已选 {mandateSymbols.length} 个</span></div>
             <div className="mt-1 overflow-hidden rounded-xl border border-crypto-border bg-crypto-bg shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
-              <div className="flex items-center gap-2 border-b border-crypto-border px-2"><Search size={14} className="shrink-0 text-gray-500" aria-hidden="true" /><input type="search" value={mandateSymbolSearch} onChange={(event) => setMandateSymbolSearch(event.target.value)} className="h-9 min-w-0 flex-1 bg-transparent text-sm text-gray-100 outline-none placeholder:text-gray-600" placeholder="搜索 BTC、ETH 或完整合约标的" aria-label="搜索真实 USDT 永续标的" /></div>
+              <div className="flex items-center gap-2 border-b border-crypto-border px-2"><Search size={14} className="shrink-0 text-gray-500" aria-hidden="true" /><input type="search" value={mandateSymbolSearch} onChange={(event) => setMandateSymbolSearch(event.target.value)} className="h-9 min-w-0 flex-1 bg-transparent text-sm text-gray-100 outline-none placeholder:text-gray-600" placeholder="搜索证券名称或代码" aria-label="搜索真实 A 股证券" /></div>
               <div className="max-h-40 min-h-[6rem] overflow-y-auto p-1" aria-live="polite">
                 {mandateSymbolsLoading ? <p className="px-2 py-3 text-xs text-gray-500">正在读取 StockPro 市场接口中的真实 A 股标的…</p> : mandateSymbolsError ? <p role="alert" className="px-2 py-3 text-xs leading-relaxed text-amber-100">{mandateSymbolsError}</p> : visibleMandateSymbols.length ? visibleMandateSymbols.map((symbol) => {
                   const selected = mandateSymbols.includes(symbol);
-                  return <button key={symbol} type="button" aria-pressed={selected} onClick={() => toggleMandateSymbol(symbol)} className={clsx('flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs transition-colors', selected ? SELECTED_SEGMENT_CLASS : 'text-gray-300 hover:bg-white/[0.045] hover:text-white')}><span className={clsx('inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border', selected ? 'border-yellow-400 bg-yellow-500 text-yellow-950' : 'border-crypto-border')}>{selected && <Check size={11} />}</span><span className="min-w-0 truncate" title={formatSymbolLabel(symbol, mandateSymbolNames[symbol])}>{formatSymbolLabel(symbol, mandateSymbolNames[symbol])}</span></button>;
+                  const assetLabel = ASSET_LABELS[mandateInstruments[symbol]?.assetClass || 'stock'] || '证券';
+                  return <button key={symbol} type="button" aria-pressed={selected} onClick={() => toggleMandateSymbol(symbol)} className={clsx('flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs transition-colors', selected ? SELECTED_SEGMENT_CLASS : 'text-gray-300 hover:bg-white/[0.045] hover:text-white')}><span className={clsx('inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border', selected ? 'border-yellow-400 bg-yellow-500 text-yellow-950' : 'border-crypto-border')}>{selected && <Check size={11} />}</span><span className="min-w-0 flex-1 truncate" title={formatSymbolLabel(symbol, mandateSymbolNames[symbol])}>{formatSymbolLabel(symbol, mandateSymbolNames[symbol])}</span><span className="shrink-0 rounded border border-crypto-border px-1.5 py-0.5 text-[9px] text-gray-500">{assetLabel}</span></button>;
                 }) : <p className="px-2 py-3 text-xs text-gray-500">没有匹配的真实标的；请修改搜索词或手动加入完整统一格式。</p>}
               </div>
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5" aria-label="已选标的">{mandateSymbols.map((symbol) => <button key={symbol} type="button" onClick={() => toggleMandateSymbol(symbol)} className={clsx('inline-flex max-w-full items-center gap-1 rounded border px-2 py-1 text-[11px] hover:border-yellow-300', SELECTED_SEGMENT_BORDER_CLASS)}><span className="truncate">{formatSymbolLabel(symbol, mandateSymbolNames[symbol])}</span><XCircle size={12} className="shrink-0" aria-label={`移除 ${formatSymbolLabel(symbol, mandateSymbolNames[symbol])}`} /></button>)}</div>
             <div className="mt-2 flex min-w-0 gap-2"><input value={customMandateSymbol} onChange={(event) => setCustomMandateSymbol(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addCustomMandateSymbol(); } }} className="h-8 min-w-0 flex-1 rounded border border-crypto-border bg-crypto-card px-2 font-mono text-xs text-gray-100 placeholder:text-gray-600" placeholder="自定义标的（回车加入）" aria-label="手动加入完整统一格式标的" /><button type="button" onClick={addCustomMandateSymbol} disabled={!customMandateSymbol.trim()} className="shrink-0 rounded border border-crypto-border px-2 text-xs text-gray-300 hover:border-blue-400 hover:text-blue-100 disabled:cursor-not-allowed disabled:opacity-45">加入</button></div>
           </section>
-          <div className="grid grid-cols-2 gap-3"><label className="block text-xs text-gray-400">周期<CryptoSelect value={mandateTimeframe} onChange={(event) => setMandateTimeframe(event.target.value)} wrapperClassName="mt-1"><option value="15m">15M</option><option value="1h">1H</option><option value="4h">4H</option><option value="1d">1D</option></CryptoSelect></label><label className="block text-xs text-gray-400">研究类型<CryptoSelect value={mandateCategory} onChange={(event) => setMandateCategory(event.target.value)} wrapperClassName="mt-1"><option value="cta">CTA</option><option value="mean_reversion">均值回归</option><option value="grid">网格</option></CryptoSelect></label></div>
-          <label className="block text-xs text-gray-400">提议方向<textarea value={proposalDirection} onChange={(event) => { setProposalDirection(event.target.value); setProposalFormError(''); }} className="mt-1 min-h-[120px] w-full rounded border border-crypto-border bg-crypto-bg px-2 py-2 text-sm text-gray-100" placeholder="例如：研究 BTC/ETH 4H 突破策略，重点比较趋势过滤与止损方式，并计入手续费、滑点和资金费。" /></label>
-          <p className="text-[11px] leading-relaxed text-gray-500">内部研究范围、StrategySpec、校验和验证门禁由 HT 自动处理；模拟盘仍固定为人工审批，实盘模式固定禁用。</p>
+          <div className="grid grid-cols-2 gap-3"><label className="block text-xs text-gray-400">周期<CryptoSelect value={mandateTimeframe} onChange={(event) => setMandateTimeframe(event.target.value)} wrapperClassName="mt-1"><option value="1d">日线 1D</option></CryptoSelect></label><label className="block text-xs text-gray-400">研究类型<CryptoSelect value={mandateCategory} onChange={(event) => setMandateCategory(event.target.value)} wrapperClassName="mt-1"><option value="trend">趋势</option><option value="mean_reversion">均值回归</option><option value="factor_rotation">因子轮动</option></CryptoSelect></label></div>
+          <div className="rounded border border-crypto-border bg-crypto-bg px-3 py-2 text-[11px] leading-relaxed text-gray-400">研究契约：交易所日历、T+1、涨跌停、停牌、100 股整手、卖出印花税、佣金、过户费和滑点均纳入校验；默认禁止融券做空，并要求时点数据与锁定样本外验证。</div>
+          <label className="block text-xs text-gray-400">提议方向<textarea value={proposalDirection} onChange={(event) => { setProposalDirection(event.target.value); setProposalFormError(''); }} className="mt-1 min-h-[120px] w-full rounded border border-crypto-border bg-crypto-bg px-2 py-2 text-sm text-gray-100" placeholder="例如：研究贵州茅台与银行股的日线趋势策略，比较成交量过滤和止损方式，并计入 A 股交易成本与不可成交约束。" /></label>
+          <p className="text-[11px] leading-relaxed text-gray-500">研究范围、StrategySpec、数据/代码校验和门禁由 HT 自动处理；模拟盘固定为人工审批，实盘模式固定禁用。</p>
         </div>
       </ThemeDialog>
       <ThemeDialog open={pendingAction !== null} variant="confirm" title={pendingAction?.title || ''} tone={pendingAction?.tone || 'default'} confirmText={writeBusy ? '提交中...' : '确认提交'} confirmDisabled={writeBusy || !actionReason.trim() || !actionIdempotencyKey.trim()} onCancel={() => setPendingAction(null)} onConfirm={() => void completeAction()}><div className="space-y-3"><p className="text-xs leading-relaxed text-gray-400">{pendingAction?.description}</p><label className="block text-xs text-gray-400">理由<textarea value={actionReason} onChange={(event) => setActionReason(event.target.value)} className="mt-1 min-h-[88px] w-full rounded border border-crypto-border bg-crypto-bg px-2 py-2 text-sm text-gray-100" placeholder="填写操作者理由（必填）。" /></label><label className="block text-xs text-gray-400">唯一幂等键<div className="mt-1 flex gap-2"><input value={actionIdempotencyKey} onChange={(event) => setActionIdempotencyKey(event.target.value)} className="h-9 min-w-0 flex-1 rounded border border-crypto-border bg-crypto-bg px-2 font-mono text-xs text-gray-100" /><button type="button" onClick={() => setActionIdempotencyKey(idempotencyKey('research-workbench'))} className="shrink-0 rounded border border-crypto-border px-2 text-xs text-gray-300 hover:border-blue-400">生成</button></div></label></div></ThemeDialog>
