@@ -1074,7 +1074,8 @@ class MarketRepository:
                 cursor.execute(
                     """
                     SELECT m.trade_date,m.classification_system,m.sector_code,m.sector_name,
-                           m.symbol,i.name,i.board,m.source_snapshot_id,m.source,m.membership_bias,m.available_at
+                           m.symbol,i.name,i.board,m.source_snapshot_id,m.source,m.membership_bias,m.available_at,
+                           COUNT(*) OVER() AS total_count
                     FROM sector_membership_snapshots m
                     LEFT JOIN instrument_definitions i ON i.market='CN' AND i.symbol=m.symbol
                     WHERE m.trade_date=%s AND m.classification_system=%s AND m.sector_code=%s
@@ -1107,6 +1108,7 @@ class MarketRepository:
             "sector_code": sector_code,
             "source_snapshot_id": items[0]["source_snapshot_id"] if items else None,
             "membership_bias": items[0]["membership_bias"] if items else None,
+            "total": int(rows[0][11]) if rows else 0,
         }
 
     def list_symbol_abnormalities(self, *, trade_date: str | None = None, limit: int = 20) -> Dict:
