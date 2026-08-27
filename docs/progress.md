@@ -1,5 +1,17 @@
 # Progress Log
 
+## GitHub #46 设置中心 PostgreSQL 安全配置底座（2026-08-27）
+
+- 生产复现确认设置中心不再是 Nginx 502，而是 active A 股后端未注册 MCP Token 与飞书 Webhook
+  路由，前端请求 `/settings/mcp-agent-tokens`、`/settings/mcp-token`、
+  `/settings/feishu-webhook` 返回 404；访问权限接口正常 200。
+- 新增 active PostgreSQL settings repository/service：飞书 Webhook 仅接受 HTTPS 飞书机器人固定域名/
+  路径，使用认证密钥派生 Fernet 密钥后以密文写入 `app_settings`，读取只返回掩码；MCP Agent
+  Token 使用 `sp_mcp_` 主前缀并只保存 SHA-256，明文只在创建响应返回一次。
+- additive migration 补齐既有 `mcp_agent_tokens` 的 prefix、tool groups、限流、到期时间和 R/W/L/T
+  scope 约束；新增 `STOCKPRO_MCP_API_TOKEN` / `X-StockPro-MCP-Token` 主配置名，保留 BitPro 旧名
+  作为迁移兼容。当前仅完成安全存储底座，API 管理员门禁与前端设置闭环在后续切片接通。
+
 ## 最近半年全市场 A 股日线同步（2026-08-27）
 
 - 新增 `POST /api/v2/sync/history/sync-all`，管理员默认拉取最近 180 个自然日；按 TuShare
