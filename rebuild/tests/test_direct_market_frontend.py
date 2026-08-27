@@ -16,6 +16,9 @@ def test_bitpro_market_page_uses_a_share_controls_and_renders_short_real_history
     assert "资金费率" not in market
     assert "暂无 K 线数据" in market
     assert "K线数据加载中" not in market
+    assert "if (!query.trim()) return fullList;" in search
+    assert "fullList.slice(0, 50)" not in search
+    assert "默认只展示前50" not in search
 
 
 def test_home_sentiment_uses_a_share_breadth_and_never_fetches_funding():

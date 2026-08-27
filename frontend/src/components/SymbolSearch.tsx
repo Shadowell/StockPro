@@ -9,7 +9,7 @@ export const TOP50_SYMBOLS: string[] = [];
 interface SymbolSearchProps {
   value: string;
   onChange: (symbol: string) => void;
-  /** 额外从服务端获取到的交易对列表（可选，如果不传则只用 TOP50） */
+  /** 额外从服务端获取到的交易对列表 */
   allSymbols?: string[];
   instruments?: MarketInstrument[];
   marketType?: 'stock' | 'etf' | 'index';
@@ -52,7 +52,7 @@ export default function SymbolSearch({ value, onChange, allSymbols, instruments 
 
   // 模糊搜索过滤
   const filtered = useMemo(() => {
-    if (!query.trim()) return fullList.slice(0, 50); // 默认只展示前50
+    if (!query.trim()) return fullList;
     return fullList.filter((symbol) => matchesSymbolSearch(symbol, query, instrumentBySymbol.get(symbol)?.name));
   }, [query, fullList, instrumentBySymbol]);
 
@@ -129,7 +129,7 @@ export default function SymbolSearch({ value, onChange, allSymbols, instruments 
                   >
                     {/* 排名 / 图标 */}
                     <div className="w-7 text-center mr-2">
-                      {!query && idx < 50 ? (
+                      {!query ? (
                         <span className="text-[10px] text-gray-600">{idx + 1}</span>
                       ) : (
                         <span aria-hidden="true" className="block h-5" />
