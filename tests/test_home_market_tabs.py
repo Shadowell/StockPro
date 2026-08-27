@@ -15,7 +15,9 @@ def test_home_uses_one_market_overview_foundation_without_trade_pair_tabs():
 
     assert "市场大盘" in text
     assert "HomeMarketOverview" in text
-    assert "marketApi.getOverview()" in text
+    assert "marketApi.getDashboard()" in text
+    assert text.count("marketApi.getDashboard()") == 1
+    assert "marketApi.getOverview()" not in text
     assert "A 股市场基础层" in (ROOT / "frontend/src/components/HomeMarketOverview.tsx").read_text(encoding="utf-8")
     assert "MARKET_TABS" not in text
     assert "market-universe-panel" not in text
@@ -29,13 +31,19 @@ def test_home_has_visible_a_share_market_command_shell_and_research_metrics():
     assert "Market Command" in home
     assert "POSTGRESQL MARKET DATA" in home
     assert "CN A-SHARE" in home
-    assert "DAILY MARKET PULSE" in home
+    assert "dashboard?.evidence.dataMode" in home
     assert "MarketIntelligencePanel" in home
-    assert "marketApi.getPhase()" in home
-    assert "marketApi.getSectorRps('industry', undefined, HOME_INTEL_LIMIT)" in home
-    assert "marketApi.getMovers(undefined, HOME_INTEL_LIMIT)" in home
-    assert "中文名（代码）" in home
+    assert "marketApi.getDashboard()" in home
+    assert "marketApi.getPhase()" not in home
+    assert "monitorApi.getEvents" not in home
+    assert "涨跌停情绪" in home
+    assert "行业主线 RPS" in home
+    assert "概念主线 RPS" in home
     assert "return `${name}（${symbol}）`;" in home
+    assert "onSelectSector" in home
+    assert "getSectorRpsHistory" in MARKET.read_text(encoding="utf-8")
+    assert "getSectorMembers" in MARKET.read_text(encoding="utf-8")
+    assert "membershipBias" in MARKET.read_text(encoding="utf-8")
     assert "板块动量" in heatmap
     assert "强弱板块" in heatmap
     assert "topMovingSectors" in heatmap
@@ -50,7 +58,7 @@ def test_market_page_does_not_render_full_market_universe_panel_above_chart():
     assert "import MarketUniversePanel from '../components/MarketUniversePanel';" not in text
     assert "<MarketUniversePanel" not in text
     assert "marketTypeForUniverseSymbol" not in text
-    assert loading_pos < chart_pos
+    assert chart_pos < loading_pos
     assert "market-universe-panel flex h-[420px] flex-col" in panel
     assert "min-h-[560px] flex-col" not in panel
 

@@ -41,6 +41,13 @@ async def get_market_overview(
     return ok(await market_domain_service.get_market_overview(trade_date))
 
 
+@router.get("/dashboard")
+async def get_home_market_dashboard(
+    trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新封存结果"),
+):
+    return ok(await market_domain_service.get_home_dashboard(trade_date))
+
+
 @router.get("/tickers")
 async def get_tickers(
     exchange: str = Query(..., description="交易所"),
@@ -146,11 +153,18 @@ async def get_market_phase(
     return ok(await market_domain_service.get_market_phase(trade_date))
 
 
+@router.get("/sentiment")
+async def get_market_sentiment(
+    trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新"),
+):
+    return ok(await market_domain_service.get_market_sentiment(trade_date))
+
+
 @router.get("/sector-rps")
 async def get_sector_rps(
     trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新"),
     classification_system: str = Query("industry", pattern="^(industry|concept)$"),
-    limit: int = Query(20, ge=1, le=200),
+    limit: int = Query(20, ge=1, le=1000),
 ):
     payload = await market_domain_service.list_sector_rps(
         trade_date=trade_date,
@@ -170,6 +184,23 @@ async def get_sector_rps_history(
     payload = await market_domain_service.get_sector_rps_history(
         sector_code,
         classification_system=classification_system,
+        limit=limit,
+    )
+    meta = {key: value for key, value in payload.items() if key != "items"}
+    return ok(payload.get("items", []), meta=meta)
+
+
+@router.get("/sector-rps/{sector_code}/members")
+async def get_sector_members(
+    sector_code: str,
+    classification_system: str = Query("industry", pattern="^(industry|concept)$"),
+    trade_date: Optional[str] = Query(None, description="成员快照交易日；为空返回最新"),
+    limit: int = Query(500, ge=1, le=2000),
+):
+    payload = await market_domain_service.list_sector_members(
+        sector_code,
+        classification_system=classification_system,
+        trade_date=trade_date,
         limit=limit,
     )
     meta = {key: value for key, value in payload.items() if key != "items"}

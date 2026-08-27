@@ -1091,6 +1091,7 @@ export interface MarketPhase {
   definitionVersion: string;
   availableAt?: string | null;
   knowledgeCutoffAt?: string | null;
+  sourceSnapshotId?: number | null;
 }
 
 export interface SectorRpsRow {
@@ -1105,8 +1106,80 @@ export interface SectorRpsRow {
   strongDays?: number | null;
   memberCoverage?: number | null;
   leaderSymbol?: string | null;
+  leaderContributionPct?: number | null;
+  memberCount?: number | null;
+  return5d?: number | null;
+  return10d?: number | null;
+  return20d?: number | null;
+  return60d?: number | null;
+  amountChangePct?: number | null;
+  upRatio?: number | null;
+  limitUpCount?: number | null;
+  sourceSnapshotId?: number | null;
+  availableAt?: string | null;
+  knowledgeCutoffAt?: string | null;
   status: string;
   missingInputs: string[];
+}
+
+export interface MarketSentiment {
+  tradeDate?: string | null;
+  status: string;
+  limitUpCount?: number | null;
+  limitDownCount?: number | null;
+  failedLimitCount?: number | null;
+  oneWordLimitCount?: number | null;
+  sealRatePct?: number | null;
+  highestStreak?: number | null;
+  ladderWidth?: number | null;
+  promotionRatePct?: number | null;
+  ladderCompletenessPct?: number | null;
+  weakMarketVeto: boolean;
+  ladder: Array<{
+    height: number;
+    count: number;
+    leaderSymbol?: string | null;
+    symbols: string[];
+    amountCny?: number | null;
+  }>;
+  priceLimitCoverage?: number | null;
+  missingInputs: string[];
+  sourceSnapshotId?: number | null;
+  definitionVersion?: string;
+  availableAt?: string | null;
+  knowledgeCutoffAt?: string | null;
+  ordersCreated: number;
+  paperMutated: boolean;
+}
+
+export interface SectorRpsPayload {
+  items: SectorRpsRow[];
+  dataStatus: string;
+  unavailableReason?: string | null;
+  definitionVersion?: string;
+}
+
+export interface SectorMember {
+  tradeDate: string;
+  classificationSystem: 'industry' | 'concept';
+  sectorCode: string;
+  sectorName: string;
+  symbol: string;
+  name?: string | null;
+  board?: string | null;
+  sourceSnapshotId?: number | null;
+  source: string;
+  membershipBias: string;
+  availableAt?: string | null;
+}
+
+export interface SectorMembersPayload {
+  items: SectorMember[];
+  dataStatus: string;
+  unavailableReason?: string | null;
+  tradeDate?: string | null;
+  sourceSnapshotId?: number | null;
+  membershipBias?: string | null;
 }
 
 export interface SymbolAbnormality {
@@ -1184,6 +1257,7 @@ export interface MarketOverviewEvidence {
   availableAt?: string | null;
   knowledgeCutoffAt?: string | null;
   lastSuccessAt?: string | null;
+  dataAgeSeconds?: number | null;
   status: MarketOverviewStatus | string;
   dataStatus?: MarketOverviewStatus | string;
   missingInputs: string[];
@@ -1346,6 +1420,30 @@ export interface MarketOverview extends MarketOverviewEvidence {
   topLosers: MarketOverviewRankingItem[];
   turnoverLeaders: MarketOverviewRankingItem[];
   activeLeaders: MarketOverviewRankingItem[];
+}
+
+export interface MarketHomeDashboardEvidence extends MarketOverviewEvidence {
+  consistencyWarnings?: string[];
+  observedTradeDates?: Record<string, string>;
+  observedSnapshotIds?: Record<string, number>;
+  providerCalls: number;
+  writesPerformed: boolean;
+  paperMutated: boolean;
+}
+
+export interface MarketHomeDashboard {
+  evidence: MarketHomeDashboardEvidence;
+  overview: MarketOverview;
+  phase: MarketPhase;
+  sentiment: MarketSentiment;
+  industryRps: SectorRpsPayload;
+  conceptRps: SectorRpsPayload;
+  movers: { items: SymbolAbnormality[]; dataStatus: string; unavailableReason?: string | null };
+  events: MarketEventsPayload;
+  dataStatus: string;
+  providerCalls: number;
+  writesPerformed: boolean;
+  paperMutated: boolean;
 }
 
 export type FactorResearchMode = 'manual' | 'auto' | 'hybrid';
@@ -1714,6 +1812,9 @@ export const marketApi = {
   getOverview: (tradeDate?: string): Promise<MarketOverview> =>
     getReq('/market/overview', { params: { tradeDate } }),
 
+  getDashboard: (tradeDate?: string): Promise<MarketHomeDashboard> =>
+    getReq('/market/dashboard', { params: { tradeDate } }),
+
   getTickers: (exchange: string, symbols?: string[]): Promise<Ticker[]> =>
     getReq('/market/tickers', {
       params: { exchange, symbols: symbols?.join(','), offset: 0, limit: 500 },
@@ -1795,12 +1896,34 @@ export const marketApi = {
   getPhase: (tradeDate?: string): Promise<MarketPhase> =>
     getReq('/market/phase', { params: { tradeDate } }),
 
+  getSentiment: (tradeDate?: string): Promise<MarketSentiment> =>
+    getReq('/market/sentiment', { params: { tradeDate } }),
+
   getSectorRps: (
     classificationSystem: 'industry' | 'concept' = 'industry',
     tradeDate?: string,
     limit = 10
   ): Promise<SectorRpsRow[]> =>
     getReq('/market/sector-rps', { params: { classificationSystem, tradeDate, limit } }),
+
+  getSectorRpsHistory: (
+    sectorCode: string,
+    classificationSystem: 'industry' | 'concept',
+    limit = 60,
+  ): Promise<SectorRpsRow[]> =>
+    getReq(`/market/sector-rps/${encodeURIComponent(sectorCode)}/history`, { params: { classificationSystem, limit } }),
+
+  getSectorMembers: async (
+    sectorCode: string,
+    classificationSystem: 'industry' | 'concept',
+    tradeDate?: string,
+    limit = 500,
+  ): Promise<SectorMembersPayload> => {
+    const page = await getPagedReq<SectorMember[]>(`/market/sector-rps/${encodeURIComponent(sectorCode)}/members`, {
+      params: { classificationSystem, tradeDate, limit },
+    });
+    return { items: page.data || [], ...(page.meta || {}) } as SectorMembersPayload;
+  },
 
   getMovers: (tradeDate?: string, limit = 10): Promise<SymbolAbnormality[]> =>
     getReq('/market/movers', { params: { tradeDate, limit } }),

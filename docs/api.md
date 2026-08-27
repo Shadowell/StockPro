@@ -69,7 +69,7 @@ Authorization: Bearer <access_token>
 
 | 接口域 | 代表路径 | 说明 |
 | --- | --- | --- |
-| 行情研究 | `/api/v2/market/overview`、`/api/v2/market/*` | A 股首页基础层、标的搜索、日线/分时/盘口与研究指标 |
+| 行情研究 | `/api/v2/market/dashboard`、`/api/v2/market/overview`、`/api/v2/market/*` | A 股首页驾驶舱、标的搜索、日线/分时/盘口与研究指标 |
 | 股票池 | `/api/pools/*`、`/api/pool-snapshots*` | 股票池、成员、生成、快照 |
 | 因子 | `/api/factors*`、`/api/factor-versions*/validate|compute`、`/api/factor-snapshots*`、`/api/factor-runs`、`/api/factor-correlations` | 定义、版本验证、计算、快照、指标与相关性 |
 | 策略 | `/api/strategies*` | 目录、不可变版本、`/validate`、`/{id}/quick-run` |
@@ -93,7 +93,7 @@ curl -fsS -H "Authorization: Bearer ${TOKEN}" \
   http://127.0.0.1:4445/api/capabilities
 
 curl -fsS -H "Authorization: Bearer ${TOKEN}" \
-  http://127.0.0.1:4445/api/v2/market/overview
+  http://127.0.0.1:4445/api/v2/market/dashboard
 
 curl -fsS -H "Authorization: Bearer ${TOKEN}" \
   'http://127.0.0.1:4445/api/paper/instances?scope=business'

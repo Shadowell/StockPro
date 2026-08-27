@@ -1,5 +1,25 @@
 import type { Page, Route } from '@playwright/test'
 
+const phaseFixture = { trade_date: '2026-08-27', phase: '主升', status: 'ok', confidence: 0.82, reasons: ['上涨占比 72.0%'], missing_inputs: [], definition_version: 'ashare-market-phase.v1', source_snapshot_id: 7 }
+const sectorFixture = { trade_date: '2026-08-27', classification_system: 'industry', sector_code: 'I001', sector_name: '半导体', rps_percentile: 96, rank: 1, rank_change: 2, strong_days: 3, member_coverage: 1, member_count: 20, leader_symbol: '688001.SH', leader_contribution_pct: 18, return_20d: 12, source_snapshot_id: 7, status: 'ok', missing_inputs: [] }
+const moverFixture = { symbol: '600519.SH', name: '贵州茅台', board: '主板', st: false, trade_date: '2026-08-27', source_snapshot_id: 7, windows: { '3d': { value: 0.16, value_pct: 16, threshold: 0.2, threshold_pct: 20, closeness: 0.8, direction: 'up', status: 'edge' }, '10d': { value: 0.35, value_pct: 35, threshold: 1, threshold_pct: 100, closeness: 0.35, direction: 'up', status: 'watch' }, '30d': { value: 0.8, value_pct: 80, threshold: 2, threshold_pct: 200, closeness: 0.4, direction: 'up', status: 'watch' } }, abnormal_status: 'edge', eligible: true, tags: ['接近前高'], status: 'ok', data_status: 'ok', missing_inputs: [] }
+const eventFixture = { event_id: 'evt-1', source: 'abnormal', severity: 'warning', symbol: '600519.SH', name: '贵州茅台', message: '3日异动边缘', rule_id: 'ashare-abnormal-3d', source_object_type: 'market_alert_event', source_object_id: 'evt-1', triggered_at: '2026-08-27T09:30:00+08:00', orders_created: 0, paper_mutated: false }
+
+function emptyOverviewFixture() {
+  const evidence = { trade_date: '2026-08-27', data_mode: '盘后快照', provider: 'PostgreSQL', source_snapshot_id: 7, available_at: '2026-08-27T17:30:00+08:00', knowledge_cutoff_at: '2026-08-27T17:30:00+08:00', last_success_at: '2026-08-27T17:30:00+08:00', status: 'partial', missing_inputs: ['测试夹具未提供 A 股行情事实'] }
+  return {
+    ...evidence, data_status: 'partial', definition_version: 'ashare-market-overview.v1', evidence,
+    indices: { ...evidence, status: 'empty', items: [], required_count: 4, available_count: 0, denominator: '真实指数点位与当日涨跌' },
+    breadth: { ...evidence, status: 'empty', universe_count: 0, eligible_count: 0, excluded_count: 0, excluded_reasons: {}, gainers: 0, losers: 0, flat: 0, advance_ratio_pct: null, strong_count: 0, weak_count: 0, mean_change_pct: null, median_change_pct: null, strong_move_threshold_pct: 3, denominator: '有效价格与当日涨跌均存在的 A 股' },
+    distribution: { ...evidence, status: 'empty', buckets: [], total_count: null, boundary_definition: '左闭右开', denominator: '同市场宽度 eligible_count' },
+    trend: { ...evidence, status: 'blocked', required_history_days: 60, available_history_days: 0, total_symbols: 0, covered_symbols: 0, denominator: '至少 60 个确认交易日且收盘价有效的 A 股', above_ma5: { count: null, percentage: null }, above_ma20: { count: null, percentage: null }, above_ma60: { count: null, percentage: null }, new_high_60d: { count: null, percentage: null }, new_low_60d: { count: null, percentage: null }, new_high_low_ratio: null },
+    activity: { ...evidence, status: 'empty', total_amount_cny: null, average_amount_cny: null, amount_unit: 'CNY', amount_denominator: '有有效成交额的 eligible 股票', average_turnover_rate_pct: null, turnover_unit: '%', turnover_denominator: '有有效换手率的 eligible 股票', high_turnover_count: null, high_turnover_threshold_pct: 8, average_volume_ratio: null, volume_ratio_unit: '倍', volume_ratio_denominator: '20日平均成交量', volume_expansion_count: null, volume_ratio_threshold: 1.5, amount: { total_cny: null, average_cny: null, unit: 'CNY', denominator: '有效股票' }, turnover: { average_rate_pct: null, high_count: null, unit: '%', threshold_pct: 8 }, volume_ratio: { average: null, expansion_count: null, unit: '倍', threshold: 1.5, denominator: '20日平均成交量' } },
+    amount: { status: 'empty', total_cny: null, average_cny: null, unit: 'CNY', denominator: '有效股票' },
+    rankings: { ...evidence, status: 'empty', limit: 10, top_gainers: [], top_losers: [], turnover_leaders: [], active_leaders: [] },
+    top_gainers: [], top_losers: [], turnover_leaders: [], active_leaders: [],
+  }
+}
+
 export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' = 'admin') {
   await page.route('**/api/v2/**', async (route: Route) => {
     const path = new URL(route.request().url()).pathname
@@ -7,6 +27,17 @@ export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' =
 
     if (path === '/api/v2/auth/me') data = { auth_enabled: false, authenticated: true, role, permissions: role === 'admin' ? ['admin'] : ['read', 'backtest'] }
     else if (path === '/api/v2/system/health') data = { status: 'healthy', project: 'StockPro', database: 'postgresql', private_exchange: false }
+    else if (path === '/api/v2/market/dashboard') data = {
+      evidence: { trade_date: '2026-08-27', data_mode: '盘后快照', provider: 'PostgreSQL', source_snapshot_id: 7, last_success_at: '2026-08-27T17:30:00+08:00', status: 'partial', missing_inputs: [], consistency_warnings: [], provider_calls: 0, writes_performed: false, paper_mutated: false },
+      overview: emptyOverviewFixture(),
+      phase: phaseFixture,
+      sentiment: { trade_date: '2026-08-27', status: 'ok', limit_up_count: 32, limit_down_count: 3, failed_limit_count: 8, one_word_limit_count: 5, seal_rate_pct: 80, highest_streak: 4, ladder: [{ height: 4, count: 1, leader_symbol: '600519.SH', symbols: ['600519.SH'], amount_cny: 100000000 }], price_limit_coverage: 1, missing_inputs: [], source_snapshot_id: 7, orders_created: 0, paper_mutated: false },
+      industry_rps: { items: [sectorFixture], data_status: 'ok', unavailable_reason: null },
+      concept_rps: { items: [], data_status: 'partial', unavailable_reason: '概念成员快照待同步' },
+      movers: { items: [moverFixture], data_status: 'ok', unavailable_reason: null },
+      events: { events: [eventFixture], data_status: 'ok', unavailable_reason: null, orders_created: 0, paper_mutated: false, limit: 10 },
+      data_status: 'partial', provider_calls: 0, writes_performed: false, paper_mutated: false,
+    }
     else if (path === '/api/v2/market/overview') data = {
       status: 'empty',
       data_status: 'empty',

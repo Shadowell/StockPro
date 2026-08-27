@@ -8,7 +8,6 @@ import {
   Database,
   Layers3,
   LayoutDashboard,
-  RefreshCw,
   TrendingUp,
   WifiOff,
   Zap,
@@ -16,27 +15,13 @@ import {
 import { useNavigate } from 'react-router-dom';
 import {
   marketApi,
-  monitorApi,
   parseApiError,
-  type MarketInstrument,
-  type MarketEvent,
-  type MarketPhase,
-  type SectorRpsRow,
+  type MarketHomeDashboard,
+  type SectorRpsPayload,
   type SymbolAbnormality,
 } from '../api/client';
 import HomeMarketOverview from '../components/HomeMarketOverview';
 import { useStore } from '../stores/useStore';
-
-const HOME_INTEL_LIMIT = 8;
-const A_SHARE_EXCHANGES = ['SSE', 'SZSE', 'BSE'] as const;
-
-type HomeMarketIntel = {
-  phase: MarketPhase | null;
-  sectors: SectorRpsRow[];
-  movers: SymbolAbnormality[];
-  events: MarketEvent[];
-  instruments: MarketInstrument[];
-};
 
 function formatPercent(value?: number | null, digits = 2): string {
   if (value == null || !Number.isFinite(value)) return '—';
@@ -97,81 +82,101 @@ function abnormalWindowText(row: SymbolAbnormality, key: '3d' | '10d' | '30d'): 
   return `${value} / ${threshold} · ${(window.closeness * 100).toFixed(0)}%`;
 }
 
-function MarketIntelSkeleton() {
+function SectorRpsCard({
+  title,
+  payload,
+  nameMap,
+  onSelectSymbol,
+  onSelectSector,
+}: {
+  title: string;
+  payload: SectorRpsPayload;
+  nameMap: Map<string, string>;
+  onSelectSymbol: (symbol: string) => void;
+  onSelectSector: (classificationSystem: 'industry' | 'concept', sectorCode: string) => void;
+}) {
+  const rows = payload.items || [];
+  const ranked = rows.filter((row) => row.rank != null);
+  const displayRows = [
+    ...ranked.slice(0, 5).map((row) => ({ row, direction: '领涨' })),
+    ...ranked.slice(-5).reverse().map((row) => ({ row, direction: '领跌' })),
+  ];
   return (
-    <section className="rounded-xl border border-crypto-border bg-crypto-card">
-      <div className="flex h-40 items-center justify-center gap-2 text-xs text-gray-500">
-        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-        正在加载市场指标...
+    <div className="rounded-lg border border-crypto-border/70 bg-slate-950/35">
+      <div className="flex items-center justify-between border-b border-crypto-border/60 px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <Layers3 className="h-4 w-4 text-cyan-300" />
+          <span className="text-xs font-semibold text-gray-200">{title}</span>
+        </div>
+        <span className="text-[10px] text-gray-500">{statusLabel(payload.dataStatus)} · 领涨/领跌各 5</span>
       </div>
-    </section>
+      <div className="divide-y divide-crypto-border/45">
+        {displayRows.length ? displayRows.map(({ row, direction }) => (
+          <div key={`${direction}-${row.classificationSystem}-${row.sectorCode}`} className="px-3 py-2.5 text-xs">
+            <div className="grid grid-cols-[minmax(0,1fr)_58px_50px] items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onSelectSector(row.classificationSystem, row.sectorCode)}
+                className="truncate text-left font-medium text-gray-200 hover:text-white"
+              >
+                <span className={clsx('mr-1 text-[10px]', direction === '领涨' ? 'text-up' : 'text-down')}>{direction}</span>
+                {row.sectorName || row.sectorCode}
+              </button>
+              <span className="text-right font-mono tabular-nums text-blue-200">{formatRatio(row.rpsPercentile)}</span>
+              <span className={clsx('text-right font-mono tabular-nums', (row.rankChange || 0) >= 0 ? 'text-up' : 'text-down')}>
+                {row.rankChange == null ? '—' : `${row.rankChange >= 0 ? '+' : ''}${row.rankChange}`}
+              </span>
+            </div>
+            <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] text-gray-500">
+              <span>20日 {formatPercent(row.return20d, 1)}</span>
+              <span>覆盖 {row.memberCoverage == null ? '—' : `${(row.memberCoverage * 100).toFixed(0)}%`}</span>
+              <span>连续强势 {row.strongDays ?? '—'} 日</span>
+            </div>
+            <div className="mt-1 flex min-w-0 items-center justify-between gap-2 text-[10px] text-gray-600">
+              {row.leaderSymbol ? (
+                <button type="button" onClick={() => onSelectSymbol(row.leaderSymbol || '')} className="min-w-0 truncate text-left hover:text-gray-300">
+                  龙头 {displaySymbol(row.leaderSymbol, nameMap)} · 贡献 {row.leaderContributionPct == null ? '—' : `${row.leaderContributionPct.toFixed(1)}%`}
+                </button>
+              ) : <span>龙头证据 —</span>}
+              <span className="shrink-0">{row.tradeDate || '—'} · #{row.sourceSnapshotId ?? '—'}</span>
+            </div>
+          </div>
+        )) : (
+          <div className="flex min-h-40 items-center justify-center px-4 text-center text-xs leading-5 text-gray-500">
+            {payload.unavailableReason || `${title}暂无可用结果`}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
 function MarketIntelligencePanel({
-  selectedExchange,
+  dashboard,
   onSelectSymbol,
+  onSelectSector,
   onOpenMonitor,
 }: {
-  selectedExchange: string;
+  dashboard: MarketHomeDashboard;
   onSelectSymbol: (symbol: string) => void;
+  onSelectSector: (classificationSystem: 'industry' | 'concept', sectorCode: string) => void;
   onOpenMonitor: () => void;
 }) {
-  const [data, setData] = useState<HomeMarketIntel | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setFailed(false);
-    const exchangeScope = Array.from(new Set([selectedExchange, ...A_SHARE_EXCHANGES]));
-    const [phase, sectors, movers, events, ...symbolPages] = await Promise.allSettled([
-      marketApi.getPhase(),
-      marketApi.getSectorRps('industry', undefined, HOME_INTEL_LIMIT),
-      marketApi.getMovers(undefined, HOME_INTEL_LIMIT),
-      monitorApi.getEvents(10),
-      ...exchangeScope.map((exchange) => marketApi.getSymbols(exchange, 'CNY', 'stock')),
-    ]);
-
-    const instruments = symbolPages.flatMap((page) => {
-      if (page.status !== 'fulfilled') return [];
-      return page.value.instruments || [];
-    });
-
-    const nextData: HomeMarketIntel = {
-      phase: phase.status === 'fulfilled' ? phase.value : null,
-      sectors: sectors.status === 'fulfilled' ? sectors.value : [],
-      movers: movers.status === 'fulfilled' ? movers.value : [],
-      events: events.status === 'fulfilled' ? events.value.events || [] : [],
-      instruments,
-    };
-
-    setData(nextData);
-    setFailed([phase, sectors, movers, events].every((result) => result.status === 'rejected'));
-    setLastRefreshAt(new Date());
-    setLoading(false);
-  }, [selectedExchange]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
   const nameMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const instrument of data?.instruments || []) {
-      const name = instrument.name || instrument.displayName || instrument.symbol;
-      if (instrument.symbol) map.set(instrument.symbol, name);
+    for (const mover of dashboard.movers.items || []) {
+      if (mover.symbol && mover.name) map.set(mover.symbol, mover.name);
+    }
+    for (const event of dashboard.events.events || []) {
+      if (event.symbol && event.name) map.set(event.symbol, event.name);
     }
     return map;
-  }, [data?.instruments]);
+  }, [dashboard.events.events, dashboard.movers.items]);
 
-  if (loading && !data) return <MarketIntelSkeleton />;
-
-  const phase = data?.phase;
-  const sectors = data?.sectors || [];
-  const movers = data?.movers || [];
-  const events = data?.events || [];
+  const phase = dashboard.phase;
+  const sentiment = dashboard.sentiment;
+  const movers = dashboard.movers.items || [];
+  const events = dashboard.events.events || [];
   const phaseNotes = phase?.reasons?.length ? phase.reasons : phase?.missingInputs || [];
 
   return (
@@ -180,36 +185,28 @@ function MarketIntelligencePanel({
         <div className="flex min-w-0 items-center gap-2">
           <Activity className="h-4 w-4 text-blue-300" />
           <div>
-            <h2 className="text-sm font-semibold text-white">市场指标看板</h2>
+            <h2 className="text-sm font-semibold text-white">情绪 · 主线 · 异动</h2>
             <p className="mt-0.5 text-[11px] text-gray-500">
-              接入市场阶段、行业 RPS、异动标的；全部来自后端真实研究指标。
+              与上方市场基础层共用一次只读 Dashboard 请求，不触发上游或重算。
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {failed ? (
+          {(dashboard.evidence.consistencyWarnings || []).length ? (
             <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-300">
               <WifiOff className="h-3.5 w-3.5" />
-              指标接口不可用
+              {dashboard.evidence.consistencyWarnings?.[0]}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/[0.07] px-2.5 py-1 text-[11px] text-emerald-300">
               <Database className="h-3.5 w-3.5" />
-              {lastRefreshAt ? lastRefreshAt.toLocaleTimeString('zh-CN', { hour12: false }) : '—'}
+              Provider 调用 {dashboard.providerCalls} · 只读
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-crypto-border bg-gray-800 px-2.5 text-xs text-gray-400 transition hover:bg-gray-700 hover:text-white"
-          >
-            <RefreshCw className={clsx('h-3.5 w-3.5', loading && 'animate-spin')} />
-            刷新
-          </button>
         </div>
       </div>
 
-      <div className="grid gap-3 p-4 xl:grid-cols-[1.12fr_1fr_1.08fr]">
+      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-lg border border-crypto-border/70 bg-slate-950/35 p-3">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -237,48 +234,79 @@ function MarketIntelligencePanel({
           </div>
           <div className="mt-2 text-xs text-gray-500">
             交易日 <span className="font-mono text-gray-300">{phase?.tradeDate || '—'}</span>
+            {' · '}快照 <span className="font-mono text-gray-300">{phase?.sourceSnapshotId ?? '—'}</span>
           </div>
           <div className="mt-3 min-h-10 rounded-md border border-crypto-border/50 bg-black/15 px-2.5 py-2 text-xs leading-5 text-gray-400">
             {phaseNotes.length ? phaseNotes.slice(0, 3).join(' · ') : '暂无阶段解释或缺失项。'}
           </div>
         </div>
 
-        <div className="rounded-lg border border-crypto-border/70 bg-slate-950/35">
-          <div className="flex items-center justify-between border-b border-crypto-border/60 px-3 py-2.5">
+        <div className="rounded-lg border border-crypto-border/70 bg-slate-950/35 p-3">
+          <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Layers3 className="h-4 w-4 text-cyan-300" />
-              <span className="text-xs font-semibold text-gray-200">行业强弱 RPS</span>
+              <Activity className="h-4 w-4 text-rose-300" />
+              <span className="text-xs font-semibold text-gray-200">涨跌停情绪</span>
             </div>
-            <span className="text-[10px] text-gray-500">Top {Math.min(sectors.length, 5) || '—'}</span>
+            <span className={clsx(
+              'rounded-md border px-2 py-0.5 text-[10px]',
+              sentiment.status === 'ok'
+                ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+                : 'border-amber-500/25 bg-amber-500/10 text-amber-300',
+            )}>
+              {statusLabel(sentiment.status)}
+            </span>
           </div>
-          <div className="divide-y divide-crypto-border/45">
-            {sectors.length ? (
-              sectors.slice(0, 5).map((row) => (
-                <div key={`${row.classificationSystem}-${row.sectorCode}`} className="grid grid-cols-[minmax(0,1fr)_58px_54px] items-center gap-2 px-3 py-2.5 text-xs">
-                  <span className="truncate font-medium text-gray-200">{row.sectorName || row.sectorCode}</span>
-                  <span className="text-right tabular-nums text-blue-200">{formatRatio(row.rpsPercentile)}</span>
-                  <span
-                    className={clsx(
-                      'text-right tabular-nums',
-                      (row.rankChange || 0) >= 0 ? 'text-up' : 'text-down'
-                    )}
-                  >
-                    {row.rankChange == null ? '—' : `${row.rankChange >= 0 ? '+' : ''}${row.rankChange}`}
-                  </span>
-                  {row.leaderSymbol ? (
-                    <span className="col-span-3 truncate text-[11px] text-gray-500">
-                      龙头 {displaySymbol(row.leaderSymbol, nameMap)}
-                    </span>
-                  ) : null}
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              ['涨停', sentiment.limitUpCount],
+              ['跌停', sentiment.limitDownCount],
+              ['炸板', sentiment.failedLimitCount],
+              ['封板率', sentiment.sealRatePct == null ? null : `${sentiment.sealRatePct.toFixed(1)}%`],
+              ['一字板', sentiment.oneWordLimitCount],
+              ['最高板', sentiment.highestStreak == null ? null : `${sentiment.highestStreak} 板`],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-md border border-crypto-border/50 bg-black/15 px-2 py-2">
+                <div className="text-[10px] text-gray-500">{label}</div>
+                <div className="mt-1 font-mono text-sm font-semibold tabular-nums text-gray-100">
+                  {sentiment.status === 'ok' && value != null ? value : '—'}
                 </div>
-              ))
-            ) : (
-              <div className="flex h-40 items-center justify-center text-xs text-gray-500">
-                暂无行业 RPS 结果
               </div>
-            )}
+            ))}
           </div>
+          <div className="mt-3 space-y-1.5">
+            {(sentiment.ladder || []).slice(0, 3).map((level) => (
+              <button
+                key={level.height}
+                type="button"
+                onClick={() => level.leaderSymbol && onSelectSymbol(level.leaderSymbol)}
+                disabled={!level.leaderSymbol}
+                className="grid w-full grid-cols-[50px_44px_minmax(0,1fr)] gap-2 rounded-md border border-crypto-border/45 px-2 py-1.5 text-left text-[11px] disabled:cursor-default"
+              >
+                <span className="font-mono text-rose-300">{level.height} 板</span>
+                <span className="text-gray-500">{level.count} 家</span>
+                <span className="truncate text-gray-300">{level.leaderSymbol ? displaySymbol(level.leaderSymbol, nameMap) : '—'}</span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-gray-500 sm:grid-cols-4">
+            <span>高度 <strong className="font-mono text-gray-300">{sentiment.highestStreak ?? '—'}</strong></span>
+            <span>二板宽度 <strong className="font-mono text-gray-300">{sentiment.ladderWidth ?? '—'}</strong></span>
+            <span>晋级率 <strong className="font-mono text-gray-300">{sentiment.promotionRatePct == null ? '—' : `${sentiment.promotionRatePct.toFixed(1)}%`}</strong></span>
+            <span>完整度 <strong className="font-mono text-gray-300">{sentiment.ladderCompletenessPct == null ? '—' : `${sentiment.ladderCompletenessPct.toFixed(1)}%`}</strong></span>
+          </div>
+          {sentiment.weakMarketVeto ? (
+            <div className="mt-2 rounded-md border border-rose-500/25 bg-rose-500/[0.07] px-2 py-1.5 text-[11px] text-rose-300">弱市否决生效：阶段不得解释为主升或高潮</div>
+          ) : null}
+          <div className="mt-2 text-[10px] text-gray-600">
+            {sentiment.tradeDate || '—'} · 快照 {sentiment.sourceSnapshotId ?? '—'} · 覆盖 {sentiment.priceLimitCoverage == null ? '—' : `${(sentiment.priceLimitCoverage * 100).toFixed(1)}%`}
+          </div>
+          {sentiment.status !== 'ok' ? (
+            <div className="mt-2 text-[11px] leading-4 text-amber-300/80">{sentiment.missingInputs.join(' · ') || '涨跌停证据不足'}</div>
+          ) : null}
         </div>
+
+        <SectorRpsCard title="行业主线 RPS" payload={dashboard.industryRps} nameMap={nameMap} onSelectSymbol={onSelectSymbol} onSelectSector={onSelectSector} />
+        <SectorRpsCard title="概念主线 RPS" payload={dashboard.conceptRps} nameMap={nameMap} onSelectSymbol={onSelectSymbol} onSelectSector={onSelectSector} />
 
         <div className="rounded-lg border border-crypto-border/70 bg-slate-950/35">
           <div className="flex items-center justify-between border-b border-crypto-border/60 px-3 py-2.5">
@@ -327,8 +355,8 @@ function MarketIntelligencePanel({
         </div>
       </div>
 
-      <div className="grid gap-3 px-4 pb-4 xl:grid-cols-[1.12fr_1fr]">
-        <div className="min-w-0 rounded-lg border border-crypto-border/70 bg-slate-950/35">
+      <div className={clsx('grid items-start gap-3 px-4 pb-4', movers.length && 'xl:grid-cols-[1.12fr_1fr]')}>
+        {movers.length ? <div className="min-w-0 rounded-lg border border-crypto-border/70 bg-slate-950/35">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crypto-border/60 px-3 py-2.5">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4 text-amber-300" />
@@ -338,7 +366,7 @@ function MarketIntelligencePanel({
           </div>
           <div className="overflow-x-auto">
             <div className="min-w-[620px] divide-y divide-crypto-border/45">
-              {movers.length ? movers.slice(0, 10).map((row) => (
+              {movers.slice(0, 10).map((row) => (
                 <button
                   key={`detail-${row.symbol}`}
                   type="button"
@@ -356,14 +384,10 @@ function MarketIntelligencePanel({
                     {row.abnormalStatus === 'triggered' ? '已触发' : row.abnormalStatus === 'edge' ? '接近' : '观察'}
                   </span>
                 </button>
-              )) : (
-                <div className="flex h-32 items-center justify-center px-4 text-center text-xs text-gray-500">
-                  数据不足、停牌或复权/基准缺失的标的不会进入正常异动榜单。
-                </div>
-              )}
+              ))}
             </div>
           </div>
-        </div>
+        </div> : null}
 
         <div className="min-w-0 rounded-lg border border-crypto-border/70 bg-slate-950/35">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-crypto-border/60 px-3 py-2.5">
@@ -425,31 +449,29 @@ function MarketIntelligencePanel({
 }
 
 export default function Home() {
-  const { selectedExchange } = useStore();
   const navigate = useNavigate();
-  const [marketOverview, setMarketOverview] = useState<Awaited<ReturnType<typeof marketApi.getOverview>> | null>(null);
-  const [marketOverviewLoading, setMarketOverviewLoading] = useState(true);
-  const [marketOverviewError, setMarketOverviewError] = useState<string | null>(null);
-  const [marketOverviewRefreshing, setMarketOverviewRefreshing] = useState(false);
+  const [dashboard, setDashboard] = useState<MarketHomeDashboard | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
 
-  const loadMarketOverview = useCallback(async (refresh = false) => {
-    if (refresh) setMarketOverviewRefreshing(true);
-    else setMarketOverviewLoading(true);
-    setMarketOverviewError(null);
+  const loadDashboard = useCallback(async (refresh = false) => {
+    if (refresh) setDashboardRefreshing(true);
+    else setDashboardLoading(true);
+    setDashboardError(null);
     try {
-      const overview = await marketApi.getOverview();
-      setMarketOverview(overview);
+      setDashboard(await marketApi.getDashboard());
     } catch (error) {
-      setMarketOverviewError(parseApiError(error, '市场基础指标暂时不可用'));
+      setDashboardError(parseApiError(error, '市场驾驶舱暂时不可用'));
     } finally {
-      if (refresh) setMarketOverviewRefreshing(false);
-      else setMarketOverviewLoading(false);
+      if (refresh) setDashboardRefreshing(false);
+      else setDashboardLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadMarketOverview();
-  }, [loadMarketOverview]);
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const handleSelectSymbol = (symbol: string) => {
     useStore.getState().setSelectedSymbol(symbol);
@@ -476,13 +498,13 @@ export default function Home() {
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
             <span className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-1.5 font-medium text-emerald-300">
               <CircleDot className="h-3.5 w-3.5" />
-              POSTGRESQL MARKET DATA
+              {dashboard?.evidence.dataMode || 'POSTGRESQL MARKET DATA'}
             </span>
             <span className="rounded-md border border-slate-600/45 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-300">
-              CN A-SHARE
+              {dashboard?.evidence.tradeDate || 'CN A-SHARE'}
             </span>
             <span className="rounded-md border border-slate-600/45 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-400">
-              DAILY MARKET PULSE
+              {statusLabel(dashboard?.dataStatus)}
             </span>
           </div>
         </div>
@@ -493,18 +515,26 @@ export default function Home() {
 
       <div className="space-y-5 px-6 py-5 pb-7">
         <HomeMarketOverview
-          data={marketOverview}
-          loading={marketOverviewLoading}
-          error={marketOverviewError}
-          refreshing={marketOverviewRefreshing}
-          onRefresh={() => void loadMarketOverview(true)}
+          data={dashboard ? {
+            ...dashboard.overview,
+            status: dashboard.evidence.status,
+            dataStatus: dashboard.evidence.dataStatus,
+            evidence: { ...dashboard.overview.evidence, ...dashboard.evidence },
+          } : null}
+          loading={dashboardLoading}
+          error={dashboardError}
+          refreshing={dashboardRefreshing}
+          onRefresh={() => void loadDashboard(true)}
           onSelectSymbol={handleSelectSymbol}
         />
-        <MarketIntelligencePanel
-          selectedExchange={selectedExchange}
-          onSelectSymbol={handleSelectSymbol}
-          onOpenMonitor={() => navigate('/monitor')}
-        />
+        {dashboard ? (
+          <MarketIntelligencePanel
+            dashboard={dashboard}
+            onSelectSymbol={handleSelectSymbol}
+            onSelectSector={(classificationSystem, sectorCode) => navigate(`/market?classification=${classificationSystem}&sector=${encodeURIComponent(sectorCode)}`)}
+            onOpenMonitor={() => navigate('/monitor')}
+          />
+        ) : null}
       </div>
     </div>
   );

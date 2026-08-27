@@ -10,8 +10,12 @@ def test_home_wires_one_real_market_overview_foundation_request():
     home = HOME.read_text(encoding="utf-8")
     overview = OVERVIEW.read_text(encoding="utf-8")
 
-    assert "marketApi.getOverview()" in home
+    assert "marketApi.getDashboard()" in home
+    assert "marketApi.getOverview()" not in home
     assert "<HomeMarketOverview" in home
+    assert "涨跌停情绪" in home
+    assert "行业主线 RPS" in home
+    assert "概念主线 RPS" in home
     for label in ("指数行情", "市场宽度", "涨跌分布", "趋势强度", "成交与换手", "排行榜"):
         assert label in overview
     for ranking_key in ("topGainers", "topLosers", "turnoverLeaders", "activeLeaders"):

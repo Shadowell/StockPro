@@ -223,6 +223,7 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
         def __init__(self):
             self.daily_dates = []
             self.benchmark_dates = []
+            self.price_limit_dates = []
 
         def fetch_trade_calendar(self, start_date: str, end_date: str, is_open=None):
             assert (start_date, end_date, is_open) == ("20260825", "20260826", "1")
@@ -269,6 +270,13 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
                 "pct_chg": 0.1, "vol": 1000, "amount": 1_000_000,
             }]
 
+        def fetch_price_limits(self, trade_date: str):
+            self.price_limit_dates.append(trade_date)
+            return [
+                {"ts_code": "600519.SH", "trade_date": trade_date, "pre_close": 1490, "up_limit": 1639, "down_limit": 1341},
+                {"ts_code": "000001.SZ", "trade_date": trade_date, "pre_close": 10, "up_limit": 11, "down_limit": 9},
+            ]
+
     class HistoryRepository(FakeRepository):
         def __init__(self):
             super().__init__()
@@ -278,7 +286,11 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
         def update_history_progress(self, run_id, **payload):
             self.progress.append((run_id, payload))
 
-        def complete_history_run(self, run_id, instruments, daily_rows, start_date, end_date, *, trade_date_count, benchmark_rows, abnormal_metrics):
+        def complete_history_run(
+            self, run_id, instruments, daily_rows, start_date, end_date, *,
+            trade_date_count, benchmark_rows, abnormal_metrics, price_limit_rows,
+            market_sentiment, market_phase, sector_rps, sector_memberships,
+        ):
             self.history_completed = {
                 "run_id": run_id,
                 "instruments": instruments,
@@ -288,6 +300,11 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
                 "trade_date_count": trade_date_count,
                 "benchmark_rows": benchmark_rows,
                 "abnormal_metrics": abnormal_metrics,
+                "price_limit_rows": price_limit_rows,
+                "market_sentiment": market_sentiment,
+                "market_phase": market_phase,
+                "sector_rps": sector_rps,
+                "sector_memberships": sector_memberships,
             }
             return {
                 "run_id": run_id,
@@ -302,13 +319,29 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
 
     provider = HistoryProvider()
     repository = HistoryRepository()
-    result = AshareInstrumentSyncService(repository=repository, provider=provider).sync_history(
+    concept_provider = SimpleNamespace(fetch_memberships=lambda: {
+        "sectors": [{"sector_code": "BK1001", "sector_name": "示例概念"}],
+        "memberships": [
+            {"sector_code": "BK1001", "sector_name": "示例概念", "symbol": "600519.SH"},
+            {"sector_code": "BK1001", "sector_name": "示例概念", "symbol": "000001.SZ"},
+        ],
+        "excluded_sectors": [],
+        "failed_sectors": [],
+        "source": "akshare.test",
+        "filter_version": "test.v1",
+    })
+    result = AshareInstrumentSyncService(
+        repository=repository,
+        provider=provider,
+        concept_provider=concept_provider,
+    ).sync_history(
         history_days=2,
         end_date="2026-08-26",
     )
 
     assert provider.daily_dates == ["20260825", "20260826"]
     assert provider.benchmark_dates == ["20260825", "20260826"]
+    assert provider.price_limit_dates == ["20260825", "20260826"]
     assert result == {
         "run_id": 17,
         "status": "success",
@@ -319,13 +352,30 @@ def test_recent_history_sync_fetches_every_open_day_before_one_atomic_commit():
         "end_date": "2026-08-26",
         "trade_date_count": 2,
         "benchmark_count": 2,
+        "price_limit_count": 4,
         "abnormal_metric_count": 2,
         "eligible_abnormal_metric_count": 0,
+        "sector_rps_count": 0,
+        "sector_membership_count": 4,
+        "concept_sync": {
+            "status": "ok",
+            "sector_count": 1,
+            "membership_count": 2,
+            "failed_sector_count": 0,
+            "excluded_sector_count": 0,
+            "filter_version": "test.v1",
+            "error": None,
+        },
     }
     assert repository.history_completed["daily_rows"][0]["trade_date"] == "2026-08-25"
     assert len(repository.history_completed["benchmark_rows"]) == 2
     assert len(repository.history_completed["abnormal_metrics"]) == 2
     assert all(item["status"] == "partial" for item in repository.history_completed["abnormal_metrics"])
+    assert len(repository.history_completed["price_limit_rows"]) == 4
+    assert repository.history_completed["market_sentiment"]["status"] == "ok"
+    assert repository.history_completed["market_phase"]["status"] == "partial"
+    assert repository.history_completed["sector_memberships"]
+    assert {item["classification_system"] for item in repository.history_completed["sector_memberships"]} == {"industry", "concept"}
     assert repository.progress[-1][1]["processed_trade_dates"] == 2
     assert repository.failed is None
 

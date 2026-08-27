@@ -258,7 +258,9 @@ def test_issue64_home_contract_contains_movers_windows_event_stream_and_safe_dri
     assert "告警事件流" in home
     assert "3日" in home and "10日" in home and "30日" in home
     assert "abnormalStatus" in home
-    assert "monitorApi.getEvents" in home
+    assert "marketApi.getDashboard()" in home
+    assert "dashboard.events.events" in home
+    assert "monitorApi.getEvents" not in home
     assert "navigate('/market')" in home or "navigate(`/market" in home
     assert "监控中心" in home
     assert "getEvents" in client

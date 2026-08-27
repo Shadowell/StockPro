@@ -349,12 +349,13 @@ def _normalize_benchmark_rows(
 
 
 class AshareInstrumentSyncService:
-    def __init__(self, *, repository=None, provider=None):
+    def __init__(self, *, repository=None, provider=None, concept_provider=None):
         if repository is None:
             from app.domain.instruments.repository import AshareInstrumentRepository
             repository = AshareInstrumentRepository()
         self.repository = repository
         self.provider = provider
+        self.concept_provider = concept_provider
 
     def sync_all(self, *, trigger: str = "manual") -> dict:
         run_id = self.repository.begin_run(trigger)
@@ -498,6 +499,7 @@ class AshareInstrumentSyncService:
 
             daily_rows: list[dict[str, Any]] = []
             benchmark_rows: list[dict[str, Any]] = []
+            price_limit_rows: list[dict[str, Any]] = []
             skipped_trade_dates: list[dict[str, str]] = []
             for index, trade_date in enumerate(trade_dates):
                 raw_rows = provider.fetch_daily(trade_date.replace("-", ""))
@@ -509,6 +511,10 @@ class AshareInstrumentSyncService:
                         raise RuntimeError(f"TuShare daily returned no rows for open trade date {trade_date}")
                 else:
                     daily_rows.extend(normalized_rows)
+                    price_limit_rows.extend(_normalize_price_limit_rows(
+                        provider.fetch_price_limits(trade_date.replace("-", "")),
+                        trade_date.replace("-", ""),
+                    ))
                     benchmark_rows.extend(_normalize_benchmark_rows(
                         provider.fetch_benchmark_bars(
                             trade_date.replace("-", ""),
@@ -532,7 +538,12 @@ class AshareInstrumentSyncService:
             if not daily_rows:
                 raise RuntimeError(f"TuShare daily returned no rows for {requested_start} ~ {requested_end}")
             latest_trade_date = max(str(row["trade_date"]) for row in daily_rows)
-            from app.domain.market.materialization import build_symbol_abnormal_metrics
+            from app.domain.market.materialization import (
+                build_market_phase_result,
+                build_market_sentiment,
+                build_sector_rps_history,
+                build_symbol_abnormal_metrics,
+            )
 
             abnormal_metrics = build_symbol_abnormal_metrics(
                 daily_rows=daily_rows,
@@ -540,6 +551,102 @@ class AshareInstrumentSyncService:
                 instruments=instruments,
                 trade_date=latest_trade_date,
             )
+            materialized_trade_dates = sorted({str(row["trade_date"]) for row in daily_rows})
+            market_sentiment = build_market_sentiment(
+                daily_rows=daily_rows,
+                price_limit_rows=price_limit_rows,
+                trade_dates=materialized_trade_dates,
+                trade_date=latest_trade_date,
+            )
+            market_phase = build_market_phase_result(
+                daily_rows=daily_rows,
+                benchmark_rows=benchmark_rows,
+                instruments=instruments,
+                sentiment=market_sentiment,
+                trade_date=latest_trade_date,
+            )
+            industry_rps = build_sector_rps_history(
+                daily_rows=daily_rows,
+                price_limit_rows=price_limit_rows,
+                instruments=instruments,
+                classification_system="industry",
+            )
+            concept_rps: dict[str, list[dict[str, Any]]] = {"results": [], "memberships": []}
+            concept_status: dict[str, Any] = {"status": "disabled", "error": None}
+            concept_provider = self.concept_provider
+            if concept_provider is None and self.provider is None:
+                from app.core.config import settings
+
+                if settings.CONCEPT_MEMBERSHIP_SYNC_ENABLED:
+                    from app.domain.market.akshare_concepts import TushareConceptMembershipProvider
+
+                    concept_provider = TushareConceptMembershipProvider(provider.client)
+            if concept_provider is not None:
+                try:
+                    concept_snapshot = concept_provider.fetch_memberships()
+                    concepts_by_symbol: dict[str, list[str]] = {}
+                    for membership in concept_snapshot.get("memberships") or []:
+                        concepts_by_symbol.setdefault(str(membership["symbol"]), []).append(str(membership["sector_code"]))
+                    concept_instruments = [
+                        {**instrument, "concepts": concepts_by_symbol.get(str(instrument["symbol"]), [])}
+                        for instrument in instruments
+                    ]
+                    concept_rps = build_sector_rps_history(
+                        daily_rows=daily_rows,
+                        price_limit_rows=price_limit_rows,
+                        instruments=concept_instruments,
+                        classification_system="concept",
+                    )
+                    sector_names = {
+                        str(item["sector_code"]): str(item["sector_name"])
+                        for item in concept_snapshot.get("sectors") or []
+                    }
+                    for row in concept_rps["results"]:
+                        row["sector_name"] = sector_names.get(str(row["sector_code"]), row["sector_name"])
+                        row["membership_source"] = str(concept_snapshot.get("source") or "tushare.ths_member")
+                    for row in concept_rps["memberships"]:
+                        row["sector_name"] = sector_names.get(str(row["sector_code"]), row["sector_name"])
+                        row["source"] = str(concept_snapshot.get("source") or "akshare.eastmoney.concept")
+                    concept_status = {
+                        "status": "ok",
+                        "sector_count": len({item["sector_code"] for item in concept_rps["memberships"]}),
+                        "membership_count": len(concept_rps["memberships"]),
+                        "failed_sector_count": len(concept_snapshot.get("failed_sectors") or []),
+                        "excluded_sector_count": len(concept_snapshot.get("excluded_sectors") or []),
+                        "filter_version": concept_snapshot.get("filter_version"),
+                        "error": None,
+                    }
+                except Exception as error:
+                    reason = f"AKShare concept membership unavailable: {type(error).__name__}"
+                    concept_status = {"status": "partial", "error": reason}
+                    concept_rps["results"] = [{
+                        "trade_date": latest_trade_date,
+                        "classification_system": "concept",
+                        "sector_code": "__concept_unavailable__",
+                        "sector_name": "概念成员不可用",
+                        "strength_score": None,
+                        "rps_percentile": None,
+                        "rank": None,
+                        "rank_change": None,
+                        "strong_days": 0,
+                        "member_coverage": 0.0,
+                        "member_count": 0,
+                        "leader_symbol": None,
+                        "leader_contribution_pct": None,
+                        "status": "partial",
+                        "missing_inputs": [reason],
+                        "definition_version": "ashare-sector-rps.v1",
+                        "available_at": market_phase.get("available_at"),
+                        "knowledge_cutoff_at": market_phase.get("knowledge_cutoff_at"),
+                        "return_5d": None,
+                        "return_10d": None,
+                        "return_20d": None,
+                        "return_60d": None,
+                        "amount_change_pct": None,
+                        "up_ratio": None,
+                        "limit_up_count": None,
+                        "membership_source": "concept_provider_unavailable",
+                    }]
             complete_history = getattr(self.repository, "complete_history_run", None)
             if not callable(complete_history):
                 raise RuntimeError("repository does not support atomic A-share history sync")
@@ -552,10 +659,19 @@ class AshareInstrumentSyncService:
                 trade_date_count=len(trade_dates),
                 benchmark_rows=benchmark_rows,
                 abnormal_metrics=abnormal_metrics,
+                price_limit_rows=price_limit_rows,
+                market_sentiment=market_sentiment,
+                market_phase=market_phase,
+                sector_rps=[*industry_rps["results"], *concept_rps["results"]],
+                sector_memberships=[*industry_rps["memberships"], *concept_rps["memberships"]],
             )
             result.setdefault("benchmark_count", len(benchmark_rows))
+            result.setdefault("price_limit_count", len(price_limit_rows))
             result.setdefault("abnormal_metric_count", len(abnormal_metrics))
             result.setdefault("eligible_abnormal_metric_count", sum(1 for item in abnormal_metrics if item.get("eligible")))
+            result.setdefault("sector_rps_count", len(industry_rps["results"]) + len(concept_rps["results"]))
+            result.setdefault("sector_membership_count", len(industry_rps["memberships"]) + len(concept_rps["memberships"]))
+            result["concept_sync"] = concept_status
             if skipped_trade_dates:
                 result["skipped_trade_dates"] = skipped_trade_dates
             return result

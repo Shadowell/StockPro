@@ -1,12 +1,15 @@
 import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
-import { Activity, Layers3, RefreshCw, TrendingUp, Zap } from 'lucide-react';
+import { Activity, History, Layers3, RefreshCw, TrendingUp, Users, X, Zap } from 'lucide-react';
 import clsx from 'clsx';
+import { useSearchParams } from 'react-router-dom';
 import { useStore } from '../stores/useStore';
 import {
   marketApi,
   type MarketInstrument,
   type MarketKlinesMeta,
   type MarketPhase,
+  type SectorMember,
+  type SectorMembersPayload,
   type SectorRpsRow,
   type SymbolAbnormality,
 } from '../api/client';
@@ -109,6 +112,7 @@ function klineStatusLabel(meta?: MarketKlinesMeta | null, hasRows = false): stri
 }
 
 export default function Market() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { selectedExchange, selectedSymbol, setSelectedSymbol } = useStore();
   const [klines, setKlines] = useState<Kline[]>([]);
   const [klineMeta, setKlineMeta] = useState<MarketKlinesMeta | null>(null);
@@ -124,6 +128,11 @@ export default function Market() {
   const [marketPhase, setMarketPhase] = useState<MarketPhase | null>(null);
   const [sectorRps, setSectorRps] = useState<SectorRpsRow[]>([]);
   const [marketMovers, setMarketMovers] = useState<SymbolAbnormality[]>([]);
+  const [sectorHistory, setSectorHistory] = useState<SectorRpsRow[]>([]);
+  const [sectorMembers, setSectorMembers] = useState<SectorMembersPayload | null>(null);
+  const [sectorDetailLoading, setSectorDetailLoading] = useState(false);
+  const sectorCode = searchParams.get('sector') || '';
+  const sectorClassification = searchParams.get('classification') === 'concept' ? 'concept' : 'industry';
   const selectedSymbolMatchesMarketType = Boolean(selectedSymbol);
 
   // 价格闪烁动画状态
@@ -174,6 +183,31 @@ export default function Market() {
     });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!sectorCode) {
+      setSectorHistory([]);
+      setSectorMembers(null);
+      return;
+    }
+    let cancelled = false;
+    setSectorDetailLoading(true);
+    Promise.all([
+      marketApi.getSectorRpsHistory(sectorCode, sectorClassification, 60),
+      marketApi.getSectorMembers(sectorCode, sectorClassification),
+    ]).then(([history, members]) => {
+      if (cancelled) return;
+      setSectorHistory(history);
+      setSectorMembers(members);
+    }).catch(() => {
+      if (cancelled) return;
+      setSectorHistory([]);
+      setSectorMembers({ items: [], dataStatus: 'unavailable', unavailableReason: '板块详情读取失败' });
+    }).finally(() => {
+      if (!cancelled) setSectorDetailLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [sectorClassification, sectorCode]);
 
   const applyMarketDataCacheEntry = useCallback(function applyMarketDataCacheEntry(entry?: MarketDataCacheEntry | null): boolean {
     if (!entry?.klines?.length) return false;
@@ -391,6 +425,90 @@ export default function Market() {
 
         </div>
       </div>
+
+      {sectorCode ? (
+        <section className="mb-4 overflow-hidden rounded-xl border border-cyan-500/20 bg-crypto-card/95">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-crypto-border/60 px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Layers3 className="h-4 w-4 text-cyan-300" />
+                <h2 className="truncate text-sm font-semibold text-gray-100">
+                  {(sectorHistory[sectorHistory.length - 1]?.sectorName || sectorMembers?.items[0]?.sectorName || sectorCode)} · {sectorClassification === 'concept' ? '概念' : '行业'}详情
+                </h2>
+              </div>
+              <div className="mt-1 text-[10px] text-gray-500">
+                成员快照 {sectorMembers?.tradeDate || '—'} · #{sectorMembers?.sourceSnapshotId ?? '—'} · {sectorMembers?.membershipBias || '成员偏差待确认'}
+              </div>
+            </div>
+            <button
+              type="button"
+              title="关闭板块详情"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete('sector');
+                next.delete('classification');
+                setSearchParams(next, { replace: true });
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-crypto-border text-gray-500 hover:bg-slate-800 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {sectorDetailLoading ? (
+            <div className="flex h-32 items-center justify-center text-xs text-gray-500">板块证据读取中...</div>
+          ) : (
+            <div className="grid gap-px bg-crypto-border/50 xl:grid-cols-[1.15fr_1fr]">
+              <div className="min-w-0 bg-crypto-card p-4">
+                <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-gray-300">
+                  <History className="h-3.5 w-3.5 text-blue-300" /> RPS 轮动历史
+                </div>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[620px]">
+                    <div className="grid grid-cols-[90px_55px_60px_repeat(4,72px)_80px] gap-2 border-b border-crypto-border/50 pb-2 text-[10px] text-gray-600">
+                      <span>交易日</span><span>排名</span><span>RPS</span><span>5日</span><span>10日</span><span>20日</span><span>60日</span><span>覆盖</span>
+                    </div>
+                    {sectorHistory.slice(-10).reverse().map((row) => (
+                      <div key={`${row.tradeDate}-${row.sectorCode}`} className="grid grid-cols-[90px_55px_60px_repeat(4,72px)_80px] gap-2 border-b border-crypto-border/35 py-2 text-[11px] text-gray-400">
+                        <span className="font-mono">{row.tradeDate}</span>
+                        <span className="font-mono">{row.rank ?? '—'}</span>
+                        <span className="font-mono text-blue-200">{formatRatioLabel(row.rpsPercentile)}</span>
+                        <span>{formatPercent(row.return5d, 1)}</span>
+                        <span>{formatPercent(row.return10d, 1)}</span>
+                        <span>{formatPercent(row.return20d, 1)}</span>
+                        <span>{formatPercent(row.return60d, 1)}</span>
+                        <span>{row.memberCoverage == null ? '—' : `${(row.memberCoverage * 100).toFixed(0)}%`}</span>
+                      </div>
+                    ))}
+                    {!sectorHistory.length ? <div className="py-8 text-center text-xs text-gray-500">暂无板块历史结果</div> : null}
+                  </div>
+                </div>
+              </div>
+              <div className="min-w-0 bg-crypto-card p-4">
+                <div className="mb-3 flex items-center justify-between gap-2 text-xs font-semibold text-gray-300">
+                  <span className="flex items-center gap-2"><Users className="h-3.5 w-3.5 text-cyan-300" /> 当前成员快照</span>
+                  <span className="font-normal text-gray-600">{sectorMembers?.items.length || 0} 只</span>
+                </div>
+                <div className="grid max-h-80 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
+                  {(sectorMembers?.items || []).map((member: SectorMember) => (
+                    <button
+                      key={member.symbol}
+                      type="button"
+                      onClick={() => setSelectedSymbol(member.symbol)}
+                      className="min-w-0 rounded-md border border-crypto-border/50 px-2.5 py-2 text-left hover:bg-white/[0.03]"
+                    >
+                      <span className="block truncate text-xs text-gray-300">{member.name || member.symbol}</span>
+                      <span className="mt-0.5 block font-mono text-[10px] text-gray-600">{member.symbol} · {member.board || '板块未知'}</span>
+                    </button>
+                  ))}
+                  {!sectorMembers?.items.length ? (
+                    <div className="col-span-full py-8 text-center text-xs text-gray-500">{sectorMembers?.unavailableReason || '暂无成员快照'}</div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <div className="mb-4 grid gap-3 xl:grid-cols-[1.2fr_1fr_1fr]">
         <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card/90">
