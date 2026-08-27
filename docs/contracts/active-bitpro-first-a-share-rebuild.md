@@ -341,6 +341,8 @@ equity/cash、mark/notional、trade timestamp/fee/IDs 在三个页面保持可�
 
 当前第 8 步已恢复 A 股日线撮合、费用和指标内核；异步任务持久化、取消/恢复、
 策略隔离 worker、sealed 输入解析、结果原子写入与 BitPro 回测 UI 单任务入口已经接通。
+策略读合同将版本、验证、回测和 Paper 按 `strategy_version_id` 关联；详情不得从名称或模板猜测逻辑，
+样例策略明确展示未实现退出/调仓等缺口，并使用关联 Paper 实例 ID 打开实例控制台。
 当前写合同为 `/api/v2/backtest/run_job`、`/job/{id}`、`/jobs`、`/job/{id}/cancel|resume`
 和 `/configuration`；历史结果在全部子证据写完后才切换为 success+sealed，不提供物理删除。
 回测读合同分开返回 `fill_count`、`closed_trade_count` 和 `order_count`；列表与详情使用同一事实口径，

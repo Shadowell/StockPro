@@ -10,6 +10,10 @@ import psycopg2.extras
 from app.core.config import settings
 
 
+BACKTEST_ID_SQL = "((('x'||substr(replace(r.id::text,'-',''),1,8))::bit(32)::bigint & 2147483647)::integer)"
+PAPER_ID_SQL = "((('x'||substr(replace(i.id::text,'-',''),1,8))::bit(32)::bigint & 2147483647)::integer)"
+
+
 class StrategyRepository:
     def __init__(self, database_url: str | None = None, *, connection_factory: Callable[..., object] = psycopg2.connect) -> None:
         self.database_url = database_url or settings.DATABASE_URL
@@ -26,14 +30,43 @@ class StrategyRepository:
         with self._connect() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT DISTINCT ON (name)
-                           id,legacy_strategy_id,name,version,description,script_content,
-                           parameter_schema,data_dependencies,output_contract,status,
-                           validation_status,created_at,updated_at
-                    FROM strategy_versions
-                    WHERE status <> 'archived'
-                    ORDER BY name,version DESC,created_at DESC
+                           s.id,s.legacy_strategy_id,s.name,s.version,s.description,s.script_content,
+                           s.parameter_schema,s.data_dependencies,s.output_contract,s.status,
+                           s.validation_status,s.validation_report,s.strategy_api_version,s.content_hash,
+                           s.validated_at,s.created_at,s.updated_at,
+                           r.id AS linked_backtest_uuid,{BACKTEST_ID_SQL} AS linked_backtest_id,
+                           r.status AS linked_backtest_status,r.start_date AS linked_backtest_start_date,
+                           r.end_date AS linked_backtest_end_date,r.universe AS linked_backtest_universe,
+                           r.parameters AS linked_backtest_parameters,r.metrics AS linked_backtest_metrics,
+                           r.equity_point_count,
+                           r.fill_count,r.order_count,
+                           i.id AS linked_paper_uuid,{PAPER_ID_SQL} AS linked_paper_id,
+                           i.status AS linked_paper_status,i.parameters AS linked_paper_parameters,
+                           i.capacity_limits AS linked_paper_capacity_limits,i.feed_config AS linked_paper_feed_config,
+                           i.runtime_version AS linked_paper_runtime_version,
+                           ARRAY(SELECT DISTINCT pos.symbol FROM positions pos WHERE pos.portfolio_id=i.portfolio_id ORDER BY pos.symbol) AS linked_paper_symbols,
+                           t.symbol AS latest_trade_symbol,t.reason AS latest_trade_reason
+                    FROM strategy_versions s
+                    LEFT JOIN LATERAL (
+                        SELECT br.*,
+                               (SELECT COUNT(*) FROM backtest_daily_equity be WHERE be.backtest_run_id=br.id) AS equity_point_count,
+                               (SELECT COUNT(*) FROM backtest_trades bt WHERE bt.backtest_run_id=br.id) AS fill_count,
+                               (SELECT COUNT(*) FROM backtest_orders bo WHERE bo.backtest_run_id=br.id) AS order_count
+                        FROM backtest_runs br WHERE br.strategy_version_id=s.id AND br.status='success' AND br.sealed_at IS NOT NULL
+                        ORDER BY br.created_at DESC LIMIT 1
+                    ) r ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT pi.* FROM paper_instances pi WHERE pi.strategy_version_id=s.id
+                        ORDER BY pi.created_at DESC LIMIT 1
+                    ) i ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT bt.symbol,bt.reason FROM backtest_trades bt WHERE bt.backtest_run_id=r.id
+                        ORDER BY bt.trade_date DESC,bt.id DESC LIMIT 1
+                    ) t ON TRUE
+                    WHERE s.status <> 'archived'
+                    ORDER BY s.name,s.version DESC,s.created_at DESC
                     """
                 )
                 return [dict(row) for row in cursor.fetchall()]
@@ -43,13 +76,42 @@ class StrategyRepository:
         with self._connect() as connection:
             with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                 cursor.execute(
-                    """
-                    SELECT id,legacy_strategy_id,name,version,description,script_content,
-                           parameter_schema,data_dependencies,output_contract,status,
-                           validation_status,created_at,updated_at
-                    FROM strategy_versions
-                    WHERE id::text=%s OR legacy_strategy_id::text=%s
-                    ORDER BY version DESC,created_at DESC LIMIT 1
+                    f"""
+                    SELECT s.id,s.legacy_strategy_id,s.name,s.version,s.description,s.script_content,
+                           s.parameter_schema,s.data_dependencies,s.output_contract,s.status,
+                           s.validation_status,s.validation_report,s.strategy_api_version,s.content_hash,
+                           s.validated_at,s.created_at,s.updated_at,
+                           r.id AS linked_backtest_uuid,{BACKTEST_ID_SQL} AS linked_backtest_id,
+                           r.status AS linked_backtest_status,r.start_date AS linked_backtest_start_date,
+                           r.end_date AS linked_backtest_end_date,r.universe AS linked_backtest_universe,
+                           r.parameters AS linked_backtest_parameters,r.metrics AS linked_backtest_metrics,
+                           r.equity_point_count,
+                           r.fill_count,r.order_count,
+                           i.id AS linked_paper_uuid,{PAPER_ID_SQL} AS linked_paper_id,
+                           i.status AS linked_paper_status,i.parameters AS linked_paper_parameters,
+                           i.capacity_limits AS linked_paper_capacity_limits,i.feed_config AS linked_paper_feed_config,
+                           i.runtime_version AS linked_paper_runtime_version,
+                           ARRAY(SELECT DISTINCT pos.symbol FROM positions pos WHERE pos.portfolio_id=i.portfolio_id ORDER BY pos.symbol) AS linked_paper_symbols,
+                           t.symbol AS latest_trade_symbol,t.reason AS latest_trade_reason
+                    FROM strategy_versions s
+                    LEFT JOIN LATERAL (
+                        SELECT br.*,
+                               (SELECT COUNT(*) FROM backtest_daily_equity be WHERE be.backtest_run_id=br.id) AS equity_point_count,
+                               (SELECT COUNT(*) FROM backtest_trades bt WHERE bt.backtest_run_id=br.id) AS fill_count,
+                               (SELECT COUNT(*) FROM backtest_orders bo WHERE bo.backtest_run_id=br.id) AS order_count
+                        FROM backtest_runs br WHERE br.strategy_version_id=s.id AND br.status='success' AND br.sealed_at IS NOT NULL
+                        ORDER BY br.created_at DESC LIMIT 1
+                    ) r ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT pi.* FROM paper_instances pi WHERE pi.strategy_version_id=s.id
+                        ORDER BY pi.created_at DESC LIMIT 1
+                    ) i ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT bt.symbol,bt.reason FROM backtest_trades bt WHERE bt.backtest_run_id=r.id
+                        ORDER BY bt.trade_date DESC,bt.id DESC LIMIT 1
+                    ) t ON TRUE
+                    WHERE s.id::text=%s OR s.legacy_strategy_id::text=%s
+                    ORDER BY s.version DESC,s.created_at DESC LIMIT 1
                     """,
                     (raw, raw),
                 )
