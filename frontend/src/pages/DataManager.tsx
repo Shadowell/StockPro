@@ -247,6 +247,59 @@ function formatDuration(seconds: number | null | undefined): string {
   return `${hours}时${mins}分`;
 }
 
+function normalizeSyncJobSummary(value: unknown): DataSyncJobSummary | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const text = (key: string): string => typeof row[key] === 'string' ? row[key].trim() : '';
+  const number = (key: string): number => {
+    const parsed = Number(row[key]);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  };
+  const strings = (key: string): string[] => Array.isArray(row[key])
+    ? Array.from(new Set((row[key] as unknown[])
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim())))
+    : [];
+
+  return {
+    jobId: text('jobId'),
+    exchange: text('exchange'),
+    status: text('status'),
+    symbols: strings('symbols'),
+    timeframes: strings('timeframes'),
+    historyDays: number('historyDays'),
+    startDate: text('startDate') || null,
+    endDate: text('endDate') || null,
+    totalSymbols: number('totalSymbols'),
+    totalTimeframes: number('totalTimeframes'),
+    totalItems: number('totalItems'),
+    completedItems: number('completedItems'),
+    runningItems: number('runningItems'),
+    pendingItems: number('pendingItems'),
+    errorItems: number('errorItems'),
+    processedItems: number('processedItems'),
+    progressPercent: number('progressPercent'),
+    totalFetched: number('totalFetched'),
+    totalInserted: number('totalInserted'),
+    errorCount: number('errorCount'),
+    errorMessage: text('errorMessage') || null,
+    createdAt: text('createdAt') || null,
+    startedAt: text('startedAt') || null,
+    completedAt: text('completedAt') || null,
+    updatedAt: text('updatedAt') || null,
+    elapsedSeconds: row.elapsedSeconds === null || row.elapsedSeconds === undefined
+      ? null
+      : number('elapsedSeconds'),
+  };
+}
+
+function normalizeSyncJobRows(value: unknown): DataSyncJobSummary[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(normalizeSyncJobSummary)
+    .filter((job): job is DataSyncJobSummary => job !== null);
+}
+
 function syncStatusLabel(status: string | null | undefined): string {
   if (status === 'queued' || status === 'pending') return '排队中';
   if (status === 'running' || status === 'syncing') return '同步中';
@@ -469,7 +522,7 @@ export default function DataManager() {
       }
 
       void dataSyncApi.getJobs(20)
-        .then((jobsRes) => setSyncJobs(jobsRes.jobs || []))
+        .then((jobsRes) => setSyncJobs(normalizeSyncJobRows(jobsRes?.jobs)))
         .catch((e) => {
           console.error('加载同步任务明细失败', e);
         });
@@ -1045,6 +1098,8 @@ export default function DataManager() {
 
   const renderOperationRow = (job: DataSyncJobSummary) => {
     const active = job.status === 'running' || job.status === 'queued';
+    const shortJobId = job.jobId ? job.jobId.slice(0, 8) : '—';
+    const rowKey = job.jobId || `sync-job-${syncJobRows.indexOf(job)}`;
     const symbolTitle = formatFullList(job.symbols || []);
     const timeframeTitle = formatFullList(job.timeframes || [], dataTimeframeLabel);
     const notice = job.errorMessage || (job.errorItems > 0 ? `失败 ${job.errorItems} 项` : '-');
@@ -1052,10 +1107,10 @@ export default function DataManager() {
     const progressPercent = getJobProgressPercent(job);
 
     return (
-      <tr key={job.jobId} className="text-gray-400 hover:bg-white/[0.02] transition">
+      <tr key={rowKey} className="text-gray-400 hover:bg-white/[0.02] transition">
         <td className="px-4 py-2 align-top whitespace-nowrap">
           <div className="font-medium text-white/80">{formatJobOperationTime(job)}</div>
-          <div className="mt-0.5 text-[11px] text-gray-500">任务 {job.jobId.slice(0, 8)}</div>
+          <div className="mt-0.5 text-[11px] text-gray-500">任务 {shortJobId}</div>
         </td>
         <td className="px-4 py-2 align-top whitespace-nowrap">
           <span className={`inline-flex min-w-[72px] items-center justify-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium leading-none border ${syncStatusTone(job.status)}`}>
