@@ -9,6 +9,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.domain.paper.service import PaperDomainService  # noqa: E402
+from app.api.v2.endpoints import monitor as monitor_endpoint  # noqa: E402
 
 
 class FakePaperRepository:
@@ -18,7 +19,18 @@ class FakePaperRepository:
         self.created_payload = None
 
     def list_instances(self):
-        return [{"id": 11, "instance_uuid": "paper-uuid", "name": "A股模拟", "status": self.status, "strategy_id": 224, "strategy_name": "A股动量", "initial_cash": 1_000_000, "cash_balance": 900_000, "created_at": "2026-08-25T12:00:00+08:00", "symbols": ["600519.SH"]}]
+        return [{
+            "id": 11, "instance_uuid": "paper-uuid", "name": "A股模拟", "status": self.status,
+            "strategy_id": 224, "strategy_name": "A股动量", "initial_cash": 1_000_000,
+            "cash_balance": 900_000, "current_equity": 1_050_000,
+            "created_at": "2026-08-25T12:00:00+08:00", "symbols": ["600519.SH"],
+            "positions": {
+                "600519.SH": {
+                    "quantity": 100, "avg_cost": 1400, "last_price": 1500,
+                    "market_value": 150000, "updated_at": "2026-08-25T15:00:00+08:00",
+                },
+            },
+        }]
 
     def get_instance(self, instance_id): return self.list_instances()[0] if int(instance_id) == 11 else None
     def positions(self, instance_id): return [{"symbol": "600519.SH", "name": "贵州茅台", "quantity": 100, "available_quantity": 100, "avg_cost": 1400, "last_price": 1500, "market_value": 150000}]
@@ -51,6 +63,44 @@ def test_bitpro_live_workspace_maps_a_share_paper_instances_and_dashboard():
     assert dashboard["equity"]["current"] == 1_050_000
     assert dashboard["performance"]["total_pnl_pct"] == 5.0
     assert dashboard["positions"][0]["symbol"] == "600519.SH"
+    assert dashboard["positions"][0]["size"] == 100
+    assert dashboard["positions"][0]["amount"] == 100
+    assert dashboard["positions"][0]["mark_price_source"] == "paper_position_last_price"
+    assert dashboard["account"]["cash"] == 900_000
+    assert dashboard["account"]["market_value"] == 150_000
+    assert dashboard["account"]["total_equity"] == 1_050_000
+
+
+def test_paper_instance_monitor_view_contains_account_and_position_snapshot():
+    item = asyncio.run(PaperDomainService(FakePaperRepository()).list_instances())[0]
+
+    assert item["initial_capital"] == 1_000_000
+    assert item["equity"] == 1_050_000
+    assert item["balance"] == 900_000
+    assert item["unrealized_pnl"] == 10_000
+    assert item["positions"]["600519.SH"]["size"] == 100
+    assert item["positions"]["600519.SH"]["notional"] == 150_000
+
+
+def test_monitor_status_uses_the_same_paper_account_snapshot(monkeypatch):
+    monkeypatch.setattr(monitor_endpoint, "paper_domain_service", PaperDomainService(FakePaperRepository()))
+
+    item = asyncio.run(monitor_endpoint._statuses())[0]
+
+    assert item["equity"] == 1_050_000
+    assert item["balance"] == 900_000
+    assert item["unrealized_pnl"] == 10_000
+    assert item["positions"]["600519.SH"]["size"] == 100
+
+
+def test_paper_trade_view_exposes_time_fee_and_trace_ids():
+    trades = asyncio.run(PaperDomainService(FakePaperRepository()).trades(11, 10))
+
+    assert trades[0]["timestamp"] > 0
+    assert trades[0]["datetime"] == "2026-08-25T12:00:00+08:00"
+    assert trades[0]["fee"] == 5
+    assert trades[0]["trade_id"] == "1"
+    assert trades[0]["symbol"] == "600519.SH"
 
 
 def test_paper_instance_symbols_are_canonical_and_deduplicated():
@@ -110,6 +160,28 @@ def test_watch_workspace_reads_real_paper_accounts_positions_orders_and_market()
     assert watchlist[0]["order_count"] == 1
     assert market["klines"][0]["close"] == 1500
     assert markers[0]["label"] == "B"
+
+
+def test_watch_market_falls_back_to_paper_position_mark_when_sealed_bars_are_empty():
+    repository = FakePaperRepository()
+    repository.watch_market = lambda account_id, symbol, timeframe, limit: {
+        "account_id": account_id,
+        "exchange": "CN",
+        "symbol": symbol,
+        "timeframe": "1d",
+        "ticker": {"symbol": symbol, "last": 0, "open": 0, "high": 0, "low": 0, "volume": 0},
+        "klines": [],
+        "orderbook": {"bids": [], "asks": []},
+        "recent_trades": [],
+        "positions": repository.account_positions(account_id),
+    }
+
+    market = asyncio.run(PaperDomainService(repository).watch_market("paper:11", "600519.SH", "1d", 180))
+
+    assert market["ticker"]["last"] == 1500
+    assert market["ticker"]["mark_price"] == 1500
+    assert market["ticker"]["source"] == "paper_position_mark"
+    assert market["ticker"]["data_status"] == "fallback"
 
 
 def test_watch_workspace_returns_honest_empty_lists_when_production_has_no_paper_account():

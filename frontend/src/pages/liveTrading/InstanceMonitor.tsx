@@ -21,7 +21,7 @@ import {
   Zap,
 } from 'lucide-react';
 import clsx from 'clsx';
-import type { DashboardData, StrategyInfo } from './types';
+import type { DashboardData, LivePositionRow, StrategyInfo } from './types';
 import { ENGINE_SESSION_ID, paperInstanceKey, toLiveApiInstanceId } from './types';
 import { DEFAULT_LIVE_CONFIG } from './constants';
 import { MetricCard } from './MetricCard';
@@ -1563,9 +1563,20 @@ export default function InstanceMonitor({
 
   const formatTradeTime = (ts: unknown) => {
     if (ts == null) return '—';
-    const n = typeof ts === 'number' ? ts : Number(ts);
-    if (!Number.isFinite(n)) return '—';
-    return new Date(n).toLocaleString();
+    const numeric = typeof ts === 'number' ? ts : Number(ts);
+    const parsed = Number.isFinite(numeric) ? new Date(numeric) : new Date(String(ts));
+    return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString();
+  };
+
+  const shortEvidenceId = (value: unknown): string => {
+    const text = String(value || '').trim();
+    return text.length > 12 ? text.slice(-8) : text || '—';
+  };
+
+  const positionPriceSourceLabel = (row: LivePositionRow): string => {
+    if (row.markPriceSource === 'paper_position_last_price') return 'Paper 持仓快照';
+    if (row.markPriceSource === 'paper_position_avg_cost') return '持仓成本回退';
+    return '价格来源未知';
   };
 
   const totalPnlAmountRaw = equity?.change ?? 0;
@@ -1626,7 +1637,7 @@ export default function InstanceMonitor({
           statusClass: positions.length > 0
             ? 'border-blue-500/30 bg-blue-500/10 text-blue-200'
             : 'border-crypto-border bg-white/[0.03] text-gray-300',
-          description: hasContractPositions
+          description: positions.length > 0
             ? 'A 股持仓会持续暴露市场与流动性风险，新增信号仍需通过 T+1、涨跌停、整手和仓位上限风控。'
             : '当前没有 A 股持仓；下一次交易信号仍会受现金、T+1、涨跌停和仓位上限约束。',
         },
@@ -1808,9 +1819,9 @@ export default function InstanceMonitor({
           color="red"
         />
         <MetricCard
-          label="运行时间"
-          value={sys?.uptime || '-'}
-          icon={<Activity className="w-4 h-4" />}
+          label={runningDryRun ? '可用现金' : '运行时间'}
+          value={runningDryRun ? formatUsd(dashboard?.account?.cash) : sys?.uptime || '-'}
+          icon={runningDryRun ? <Wallet className="w-4 h-4" /> : <Activity className="w-4 h-4" />}
           color="gray"
         />
       </div>
@@ -2088,7 +2099,7 @@ export default function InstanceMonitor({
                         </div>
                       </td>
                       <td className={clsx('py-2 pr-2 text-center font-semibold', sideDisplay.className)}>{sideDisplay.label}</td>
-                      <td className="py-2 pr-2 text-right tabular-nums">{row.size?.toFixed?.(6) ?? row.size}</td>
+                      <td className="py-2 pr-2 text-right tabular-nums">{runningDryRun ? Number(row.size).toLocaleString('zh-CN', { maximumFractionDigits: 0 }) : row.size?.toFixed?.(6) ?? row.size}</td>
                       {hasContractPositions && (
                         <td className="py-2 pr-2 text-right tabular-nums text-gray-300">
                           {formatContractUnitSize(positionContractUnitSize)}
@@ -2101,7 +2112,12 @@ export default function InstanceMonitor({
                         {formatPositionPrice(row.entryPrice, positionPriceDigits)}
                       </td>
                       <td className="py-2 pr-2 text-right tabular-nums">
-                        {formatPositionPrice(row.markPrice, positionPriceDigits)}
+                        <div>{formatPositionPrice(row.markPrice, positionPriceDigits)}</div>
+                        {runningDryRun && (
+                          <div className="mt-0.5 whitespace-nowrap text-[10px] text-gray-500">
+                            {positionPriceSourceLabel(row)} · {row.markPriceAt ? new Date(row.markPriceAt).toLocaleString() : '时间未知'}
+                          </div>
+                        )}
                       </td>
                       <td
                         className={clsx(
@@ -2258,7 +2274,10 @@ export default function InstanceMonitor({
                       return (
                         <tr key={t.id ?? i} className="border-b border-crypto-border/60 text-gray-200">
                           <td className="py-2 pr-2 whitespace-nowrap text-[10px] text-gray-400">
-                            {formatTradeTime(t.timestamp)}
+                            <div>{formatTradeTime(t.timestamp ?? t.datetime ?? t.tradedAt)}</div>
+                            <div className="mt-0.5 font-mono text-[9px] text-gray-600" title={`成交 ${String(t.tradeId ?? t.id ?? '')} · 委托 ${String(t.orderId ?? '')}`}>
+                              成交 {shortEvidenceId(t.tradeId ?? t.id)} · 委托 {shortEvidenceId(t.orderId)}
+                            </div>
                           </td>
                           <td className={clsx('py-2 pr-2 text-center font-semibold', sideDisplay.className)}>{sideDisplay.label}</td>
                           <td className="py-2 pr-2 font-mono">

@@ -326,6 +326,11 @@ function WatchSymbolTile({
   const mark = tickerMark(ticker);
   const displayPrice = mark ?? last;
   const change = tickerDisplayPct(ticker);
+  const priceSourceLabel = ticker?.source === 'paper_position_mark'
+    ? 'Paper 持仓最新价回退'
+    : ticker?.source === 'sealed_daily_bar'
+      ? '封存日线收盘价'
+      : '行情来源未知';
 
   useEffect(() => {
     setKlines((current) => patchLatestKlineWithPrice(current, displayPrice));
@@ -419,6 +424,9 @@ function WatchSymbolTile({
                     <Crosshair size={11} />
                     {markers.length} 个成交点
                   </span>
+                </div>
+                <div className="mt-0.5 truncate text-[10px] leading-4 text-gray-500">
+                  {priceSourceLabel} · {ticker?.sourceUpdatedAt ? fmtTime(ticker.sourceUpdatedAt) : lastLoadedAt ? fmtTime(lastLoadedAt.getTime()) : '时间未知'}
                 </div>
               </div>
               }

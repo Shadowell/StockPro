@@ -29,6 +29,10 @@ export interface Ticker {
   sod_utc0?: number;
   sod_utc8?: number;
   timestamp?: number;
+  source?: string;
+  sourceUpdatedAt?: string | null;
+  dataStatus?: string;
+  unavailableReason?: string | null;
 }
 
 export interface Kline {
