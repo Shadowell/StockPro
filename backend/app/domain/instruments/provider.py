@@ -111,3 +111,23 @@ class TushareAshareProvider:
                 fields="ts_code,trade_date,close,open,high,low,pre_close,change,pct_chg,vol,amount",
             )))
         return rows
+
+    def fetch_financial_indicators(self, ts_code: str, start_date: str) -> list[dict]:
+        return _records(self.client.fina_indicator(
+            ts_code=ts_code,
+            start_date=start_date,
+            fields="ts_code,ann_date,end_date,roe,roa,grossprofit_margin,netprofit_margin,or_yoy,netprofit_yoy,ocf_to_or,debt_to_assets",
+        ))
+
+    def fetch_holder_counts(self, ts_code: str, start_date: str) -> list[dict]:
+        return _records(self.client.stk_holdernumber(
+            ts_code=ts_code,
+            start_date=start_date,
+            fields="ts_code,ann_date,end_date,holder_num",
+        ))
+
+    def fetch_dividends(self, ts_code: str) -> list[dict]:
+        return _records(self.client.dividend(
+            ts_code=ts_code,
+            fields="ts_code,end_date,ann_date,div_proc,cash_div,cash_div_tax,record_date,ex_date,pay_date",
+        ))

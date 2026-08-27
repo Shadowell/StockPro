@@ -997,9 +997,61 @@ export interface OnchainSummary {
   emptyReason?: string;
 }
 
+export interface FundamentalFact {
+  factorCode: string;
+  label: string;
+  unit: string;
+  category: string;
+  reportPeriod: string;
+  annDate?: string | null;
+  availableAt: string;
+  value?: number | null;
+  revision: number;
+  source?: string | null;
+  sourceLineage: Record<string, unknown>;
+  definitionVersion: string;
+}
+
+export interface FundamentalSummary {
+  status: string;
+  symbol: string;
+  name: string;
+  board?: string | null;
+  industry?: string | null;
+  asOf: string;
+  valuation?: {
+    tradeDate: string;
+    close?: number | null;
+    pe?: number | null;
+    peTtm?: number | null;
+    pb?: number | null;
+    ps?: number | null;
+    psTtm?: number | null;
+    dividendYield?: number | null;
+    dividendYieldTtm?: number | null;
+    totalMarketCapCny?: number | null;
+    floatMarketCapCny?: number | null;
+    turnoverRate?: number | null;
+    volumeRatio?: number | null;
+    source: string;
+    sourceSnapshotId?: number | null;
+    availableAt?: string | null;
+    knowledgeCutoffAt?: string | null;
+  } | null;
+  latestFactors: Record<string, FundamentalFact>;
+  items: FundamentalFact[];
+  missingInputs: string[];
+  providerCalls: number;
+  writesPerformed: boolean;
+  ordersCreated: number;
+  paperMutated: boolean;
+}
+
 export const onchainApi = {
-  getSummary: (): Promise<OnchainSummary> =>
-    getReq('/onchain/summary'),
+  getSummary: (symbol = '600519.SH', asOf?: string): Promise<FundamentalSummary> =>
+    getReq('/onchain/summary', { params: { symbol, asOf } }),
+  sync: (symbol: string, years = 3): Promise<{ symbol: string; status: string; factCount: number; providerCalls: number; paperMutated: boolean }> =>
+    postReq('/onchain/sync', { symbol, years }),
 };
 
 // ============================================

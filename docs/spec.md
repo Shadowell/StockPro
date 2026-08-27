@@ -99,6 +99,10 @@ BitPro 遗留的 `/pools`、`/factors`、`/paper` 分别跳转到 `/arbitrage`�
 资金流页分钟 OHLCV 主源为 AKShare 分时，服务端缓存 60 秒、前端每分钟刷新；Provider 失败时保留
 最后成功快照并标记 stale。分钟线不是 tick/L2，不得推导主动买卖、大单明细或 CVD。
 
+基本面页读取 sealed `daily_basic` 估值和公告时点 `fundamental_factor_facts`。管理员显式同步
+TuShare 财务指标、股东户数和分红；GET 按 `as_of` 截止过滤未来公告，页面展示报告期、公告日、
+可用时间、来源和 CNY 口径，不保留链上/DeFi 语义。
+
 ## 4. 核心产品对象
 
 | 对象 | 关键要求 |

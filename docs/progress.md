@@ -4110,3 +4110,13 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
   以 rejected Trial 持久化，`orders_created=0`、`paper_mutated=false`。
 - 生产基线为 20 个注册定义、1 个有效不可变版本、1 个 sealed snapshot、3 条最新值；其余 19 个
   定义明确显示“缺少有效版本”。隔离完整库按同一合同成功读取 132 注册、101 实例和 496,641 最新值。
+
+## 2026-08-28 A 股公告时点基本面
+
+- `/onchain` 从 DeFi 空壳替换为 A 股基本面工作台，支持股票搜索、报告期、PE/PB/PS、市值、
+  股息率、ROE/ROA、利润率、营收/净利润同比、现金流质量、资产负债率、股东户数、分红和公告证据表。
+- `GET /api/v2/onchain/summary` 只读 sealed `daily_basic` 与 PIT facts；管理员显式
+  `POST /api/v2/onchain/sync` 调用 TuShare `fina_indicator/stk_holdernumber/dividend`，无公告日不写入，
+  `orders_created=0`、`paper_mutated=false`。
+- 隔离真实同步贵州茅台 3 年数据：Provider 返回 14 行财务指标、12 行股东户数、88 行分红，
+  形成 186 条候选事实，当前 cutoff 可见 156 条；最新 2026-06-30 指标公告于 2026-08-15。

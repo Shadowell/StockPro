@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
-import { Activity, History, Layers3, RefreshCw, TrendingUp, Users, X, Zap } from 'lucide-react';
+import { Activity, Building2, History, Layers3, RefreshCw, TrendingUp, Users, X, Zap } from 'lucide-react';
 import clsx from 'clsx';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useStore } from '../stores/useStore';
 import {
   marketApi,
@@ -127,6 +127,7 @@ function klineStatusLabel(meta?: MarketKlinesMeta | null, hasRows = false): stri
 }
 
 export default function Market() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedExchange, selectedSymbol, setSelectedSymbol } = useStore();
   const [klines, setKlines] = useState<Kline[]>([]);
@@ -439,6 +440,15 @@ export default function Market() {
           >
             <RefreshCw className={clsx('h-4 w-4 shrink-0', refreshSpin && 'animate-spin')} />
             刷新
+          </button>
+          <button
+            type="button"
+            onClick={() => selectedSymbol && navigate(`/onchain?symbol=${encodeURIComponent(selectedSymbol)}`)}
+            disabled={!selectedSymbol || marketType !== 'stock'}
+            className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-gray-400 transition hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            title="查看当前股票基本面"
+          >
+            <Building2 className="h-4 w-4" />基本面
           </button>
 
           {/* 连接状态呼吸灯 */}
