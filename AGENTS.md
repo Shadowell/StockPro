@@ -71,6 +71,12 @@ Safety rules:
 - Keep the local development URLs at `http://localhost:4444` and `http://localhost:4445`.
 - If the GitHub Actions run fails, is blocked, or cannot prove the deployed SHA and health checks, stop and report the failure; do not manually patch the server as a fallback.
 
+## Current Deployment Restriction
+
+- 当前阶段不在 `stockpro` 服务器或生产环境部署；只保证本地部署、前后端重启和本地验证。
+- 原因是服务器环境中的 AKShare 数据链路当前无法调通或尚未验证，服务器端 Provider 结果不能作为本地功能完成的前置条件。
+- 在用户明确解除本限制并确认 AKShare 已恢复前，不得推送会触发生产部署的 `main`、运行服务器端部署/重启或执行生产数据同步；服务器状态与本地验证必须分开报告。
+
 ## Done Criteria
 
 A sprint is done only when:
