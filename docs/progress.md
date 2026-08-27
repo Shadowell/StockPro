@@ -1,5 +1,16 @@
 # Progress Log
 
+## 生产 A 股同步盘中空日线回退（2026-08-27）
+
+- 生产手动触发 A 股同步时，`latest_open_trade_date()` 在交易日盘中返回 `2026-08-27`，
+  但 TuShare `daily` 尚未发布当日日线，旧逻辑把空日线视为硬失败并阻断 sealed research
+  snapshot 生成。
+- 已将同步服务改为从最近开放交易日倒序选择“TuShare daily 已有记录”的最新可用交易日；若跳过
+  最新开放日，会在结果中记录 `latest_open_trade_date` 与 `skipped_trade_dates`，避免把盘中
+  未发布日线误判为数据源整体失败。
+- 新增合同测试覆盖“最新开放日为空，回退到上一可用日”的场景；原 A 股 dataset foundation
+  sealed snapshot 合同继续通过。
+
 ## 直接生产部署与行情指标修复（2026-08-26）
 
 - 用户明确要求本次不走 GitHub Actions，直接把当前 `main` 部署到 `stockpro` 服务器；按现有

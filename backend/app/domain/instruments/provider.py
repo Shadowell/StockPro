@@ -39,13 +39,17 @@ class TushareAshareProvider:
         return rows
 
     def latest_open_trade_date(self) -> str:
-        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
-        start = today - timedelta(days=14)
-        rows = self.fetch_trade_calendar(start.strftime("%Y%m%d"), today.strftime("%Y%m%d"), is_open="1")
-        dates = sorted(str(row.get("cal_date") or "") for row in rows if str(row.get("cal_date") or ""))
+        dates = self.recent_open_trade_dates()
         if not dates:
             raise RuntimeError("TuShare trade_cal 未返回最近开放交易日")
         return dates[-1]
+
+    def recent_open_trade_dates(self, *, lookback_days: int = 14) -> list[str]:
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        start = today - timedelta(days=lookback_days)
+        rows = self.fetch_trade_calendar(start.strftime("%Y%m%d"), today.strftime("%Y%m%d"), is_open="1")
+        dates = sorted(str(row.get("cal_date") or "") for row in rows if str(row.get("cal_date") or ""))
+        return dates
 
     def fetch_trade_calendar(self, start_date: str, end_date: str, *, is_open: str | None = None) -> list[dict]:
         params = {

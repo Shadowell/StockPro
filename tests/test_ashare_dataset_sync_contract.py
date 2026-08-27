@@ -69,6 +69,9 @@ class FakeProvider:
     def latest_open_trade_date(self):
         return "20260826"
 
+    def recent_open_trade_dates(self):
+        return ["20260826"]
+
     def fetch_trade_calendar(self, start_date, end_date):
         assert start_date == "20260826"
         assert end_date == "20260826"
@@ -207,3 +210,42 @@ def test_ashare_sync_publishes_research_ready_dataset_inputs():
     assert len(repository.auxiliary_datasets["adj_factor"]) == 2
     assert len(repository.auxiliary_datasets["price_limits"]) == 2
     assert len(repository.auxiliary_datasets["benchmark_bars"]) == 4
+
+
+class IntradayEmptyDailyProvider(FakeProvider):
+    def latest_open_trade_date(self):
+        return "20260827"
+
+    def recent_open_trade_dates(self):
+        return ["20260826", "20260827"]
+
+    def fetch_trade_calendar(self, start_date, end_date):
+        if start_date == end_date == "20260826":
+            return [{"exchange": "SSE", "cal_date": "20260826", "is_open": 1, "pretrade_date": "20260825"}]
+        if start_date == end_date == "20260827":
+            return [{"exchange": "SSE", "cal_date": "20260827", "is_open": 1, "pretrade_date": "20260826"}]
+        raise AssertionError((start_date, end_date))
+
+    def fetch_daily_basic(self, trade_date):
+        if trade_date == "20260827":
+            return []
+        return super().fetch_daily_basic(trade_date)
+
+    def fetch_daily(self, trade_date):
+        if trade_date == "20260827":
+            return []
+        return super().fetch_daily(trade_date)
+
+
+def test_ashare_sync_uses_latest_available_daily_when_open_day_is_empty():
+    repository = FakeRepository()
+    service = AshareInstrumentSyncService(repository=repository, provider=IntradayEmptyDailyProvider())
+
+    result = service.sync_all()
+
+    assert result["status"] == "success"
+    assert result["trade_date"] == "2026-08-26"
+    assert result["latest_open_trade_date"] == "2026-08-27"
+    assert result["skipped_trade_dates"] == [{"trade_date": "2026-08-27", "reason": "tushare_daily_empty"}]
+    assert repository.trade_date == "2026-08-26"
+    assert repository.failed is None

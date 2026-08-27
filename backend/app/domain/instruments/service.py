@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 
@@ -25,6 +25,36 @@ def _compact_date(value: Any) -> str:
     if not parsed:
         raise ValueError(f"invalid A-share trade date: {value!r}")
     return parsed.replace("-", "")
+
+
+def _previous_compact_date(value: Any, *, days: int = 14) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError(f"invalid A-share trade date: {value!r}")
+    return (datetime.strptime(raw, "%Y%m%d").date() - timedelta(days=days)).strftime("%Y%m%d")
+
+
+def _recent_open_trade_dates(provider: Any, latest_trade_date: str) -> list[str]:
+    recent_dates = getattr(provider, "recent_open_trade_dates", None)
+    if callable(recent_dates):
+        dates = recent_dates()
+    else:
+        calendar_start = _previous_compact_date(latest_trade_date)
+        try:
+            rows = provider.fetch_trade_calendar(
+                calendar_start,
+                latest_trade_date,
+                is_open="1",
+            )
+        except TypeError:
+            dates = [latest_trade_date]
+        else:
+            dates = [row.get("cal_date") for row in rows]
+    unique = sorted({str(item or "").strip() for item in dates if str(item or "").strip()})
+    if latest_trade_date not in unique:
+        unique.append(latest_trade_date)
+        unique.sort()
+    return unique
 
 
 def _canonical_symbol(value: Any) -> str:
@@ -283,21 +313,35 @@ class AshareInstrumentSyncService:
             if not instruments:
                 raise RuntimeError("TuShare stock_basic returned no A-share instruments")
             names = {item["symbol"]: item["name"] for item in instruments}
-            provider_trade_date = provider.latest_open_trade_date()
+            latest_trade_date = provider.latest_open_trade_date()
+            skipped_trade_dates: list[dict[str, str | None]] = []
+            provider_trade_date = latest_trade_date
+            daily_basic_raw: list[dict[str, Any]] = []
+            daily_rows: list[dict[str, Any]] = []
+            for candidate_trade_date in reversed(_recent_open_trade_dates(provider, latest_trade_date)):
+                candidate_daily_basic = provider.fetch_daily_basic(candidate_trade_date)
+                candidate_daily_rows = _normalize_daily_rows(
+                    provider.fetch_daily(candidate_trade_date),
+                    candidate_daily_basic,
+                    names,
+                )
+                if candidate_daily_rows:
+                    provider_trade_date = candidate_trade_date
+                    daily_basic_raw = candidate_daily_basic
+                    daily_rows = candidate_daily_rows
+                    break
+                skipped_trade_dates.append({
+                    "trade_date": _date(candidate_trade_date),
+                    "reason": "tushare_daily_empty",
+                })
+            if not daily_rows:
+                raise RuntimeError(f"TuShare daily returned no rows for recent open trade dates through {latest_trade_date}")
             trade_date = _date(provider_trade_date)
             compact_trade_date = _compact_date(provider_trade_date)
             trade_calendar = _normalize_trade_calendar(
                 provider.fetch_trade_calendar(compact_trade_date, compact_trade_date),
                 provider_trade_date,
             )
-            daily_basic_raw = provider.fetch_daily_basic(provider_trade_date)
-            daily_rows = _normalize_daily_rows(
-                provider.fetch_daily(provider_trade_date),
-                daily_basic_raw,
-                names,
-            )
-            if not daily_rows:
-                raise RuntimeError(f"TuShare daily returned no rows for open trade date {provider_trade_date}")
             daily_basic_rows = _normalize_daily_basic_rows(daily_basic_raw, names, provider_trade_date)
             auxiliary_datasets = {
                 "trade_calendar": trade_calendar,
@@ -308,7 +352,11 @@ class AshareInstrumentSyncService:
                 "corporate_actions": _normalize_corporate_action_rows(provider.fetch_corporate_actions(provider_trade_date), provider_trade_date),
                 "benchmark_bars": _normalize_benchmark_rows(provider.fetch_benchmark_bars(provider_trade_date), provider_trade_date),
             }
-            return self.repository.complete_run(run_id, instruments, daily_rows, trade_date, auxiliary_datasets=auxiliary_datasets)
+            result = self.repository.complete_run(run_id, instruments, daily_rows, trade_date, auxiliary_datasets=auxiliary_datasets)
+            if skipped_trade_dates:
+                result["latest_open_trade_date"] = _date(latest_trade_date)
+                result["skipped_trade_dates"] = skipped_trade_dates
+            return result
         except Exception as error:
             self.repository.fail_run(run_id, error)
             raise
