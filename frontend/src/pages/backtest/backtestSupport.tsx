@@ -6,6 +6,7 @@ import {
 import clsx from 'clsx';
 import type { WatchTradeMarker } from '../../api/client';
 import type { Kline } from '../../types';
+import { normalizeSymbolCode } from '../../utils/symbolDisplay';
 import { formatTimeframeLabel } from '../../utils/timeframe';
 
 export interface EquityPoint {
@@ -51,6 +52,13 @@ export interface BacktestResult {
   winRate?: number;
   profitFactor?: number;
   totalTrades?: number;
+  fillCount?: number;
+  closedTradeCount?: number;
+  orderCount?: number | null;
+  orderCountUnavailableReason?: string | null;
+  sampleDays?: number;
+  metricStatus?: 'eligible' | 'insufficient_sample';
+  metricUnavailableReason?: string | null;
   winningTrades?: number;
   losingTrades?: number;
   avgWinPct?: number;
@@ -88,6 +96,13 @@ export interface BacktestHistoryItem {
   winRate?: number | null;
   profitFactor?: number | null;
   totalTrades?: number | null;
+  fillCount?: number | null;
+  closedTradeCount?: number | null;
+  orderCount?: number | null;
+  orderCountUnavailableReason?: string | null;
+  sampleDays?: number | null;
+  metricStatus?: 'eligible' | 'insufficient_sample' | null;
+  metricUnavailableReason?: string | null;
   timeframe?: string | null;
   timeframeMode?: BacktestTimeframeMode | null;
   matrixResults?: BacktestResult[];
@@ -541,6 +556,13 @@ export function backtestDataQualityStatusMeta(status: string | null | undefined)
       icon: <CheckCircle2 className="h-3.5 w-3.5" />,
     };
   }
+  if (status === 'insufficient_sample') {
+    return {
+      label: '样本不足',
+      className: 'border-amber-500/35 bg-amber-500/10 text-amber-100',
+      icon: <AlertTriangle className="h-3.5 w-3.5" />,
+    };
+  }
   return {
     label: '未标记异常',
     className: 'border-blue-500/30 bg-blue-500/10 text-blue-200',
@@ -785,7 +807,7 @@ export function backtestTradeMargin(trade: TradeRecord): number | null {
 
 export function formatBacktestTradeMoney(value: number | null | undefined, digits = 2): string {
   if (value == null || !Number.isFinite(value)) return '-';
-  return value.toFixed(digits);
+  return `¥${value.toFixed(digits)}`;
 }
 
 export function formatBacktestTradeLeverage(value: number | null | undefined): string {
@@ -1020,12 +1042,12 @@ export function normalizeTradeTimestamp(value: unknown): number {
 export function normalizeHistoryTrades(value: unknown): TradeRecord[] {
   if (!Array.isArray(value)) return [];
   return value.map((trade: any) => ({
-    symbol: trade?.symbol,
+    symbol: normalizeSymbolCode(trade?.symbol),
     timestamp: normalizeTradeTimestamp(trade?.timestamp),
     side: String(trade?.side || ''),
     price: finiteNumber(trade?.price) ?? 0,
     quantity: finiteNumber(trade?.quantity) ?? 0,
-    notional_usdt: optionalFiniteNumber(trade?.notional_usdt ?? trade?.notionalUsdt ?? trade?.notional),
+    notional_usdt: optionalFiniteNumber(trade?.amount ?? trade?.notional ?? trade?.notional_usdt ?? trade?.notionalUsdt),
     leverage: optionalFiniteNumber(trade?.leverage),
     margin: optionalFiniteNumber(trade?.margin ?? trade?.margin_usdt ?? trade?.marginUsdt),
     pnl: finiteNumber(trade?.pnl) ?? 0,
@@ -1264,9 +1286,16 @@ export function historyDetailToBacktestResult(detail: any, strategyName: string)
     calmarRatio: finiteNumber(detail?.calmarRatio) ?? derivedMetrics.calmarRatio ?? undefined,
     winRate: finiteNumber(detail?.winRate) ?? undefined,
     profitFactor: finiteNumber(detail?.profitFactor) ?? undefined,
-    totalTrades: finiteNumber(detail?.totalTrades) ?? trades.length,
-    winningTrades,
-    losingTrades,
+    totalTrades: finiteNumber(detail?.fillCount ?? detail?.totalTrades) ?? trades.length,
+    fillCount: finiteNumber(detail?.fillCount) ?? trades.length,
+    closedTradeCount: finiteNumber(detail?.closedTradeCount) ?? 0,
+    orderCount: finiteNumber(detail?.orderCount),
+    orderCountUnavailableReason: detail?.orderCountUnavailableReason ?? null,
+    sampleDays: finiteNumber(detail?.sampleDays) ?? undefined,
+    metricStatus: detail?.metricStatus,
+    metricUnavailableReason: detail?.metricUnavailableReason ?? null,
+    winningTrades: finiteNumber(detail?.winningTrades) ?? winningTrades,
+    losingTrades: finiteNumber(detail?.losingTrades) ?? losingTrades,
     avgWinPct: finiteNumber(detail?.avgWinPct) ?? derivedMetrics.avgWinPct ?? undefined,
     avgLossPct: finiteNumber(detail?.avgLossPct) ?? derivedMetrics.avgLossPct ?? undefined,
     expectancy: finiteNumber(detail?.expectancy) ?? derivedMetrics.expectancy ?? undefined,
@@ -1374,6 +1403,13 @@ export function historyItemToBacktestInstance(item: BacktestHistoryItem, strateg
       winRate: item.winRate ?? undefined,
       profitFactor: item.profitFactor ?? undefined,
       totalTrades: item.totalTrades ?? undefined,
+      fillCount: item.fillCount ?? undefined,
+      closedTradeCount: item.closedTradeCount ?? undefined,
+      orderCount: item.orderCount ?? null,
+      orderCountUnavailableReason: item.orderCountUnavailableReason ?? null,
+      sampleDays: item.sampleDays ?? undefined,
+      metricStatus: item.metricStatus ?? undefined,
+      metricUnavailableReason: item.metricUnavailableReason ?? null,
       timeframe: itemTimeframe ?? undefined,
       timeframeMode: itemTimeframeMode,
       matrixResults: Array.isArray(item.matrixResults) ? item.matrixResults : undefined,
@@ -1411,6 +1447,13 @@ export function backtestHistoryItemFromInstance(instance: BacktestInstance): Bac
     winRate: instance.result?.winRate ?? null,
     profitFactor: instance.result?.profitFactor ?? null,
     totalTrades: instance.result?.totalTrades ?? null,
+    fillCount: instance.result?.fillCount ?? null,
+    closedTradeCount: instance.result?.closedTradeCount ?? null,
+    orderCount: instance.result?.orderCount ?? null,
+    orderCountUnavailableReason: instance.result?.orderCountUnavailableReason ?? null,
+    sampleDays: instance.result?.sampleDays ?? null,
+    metricStatus: instance.result?.metricStatus ?? null,
+    metricUnavailableReason: instance.result?.metricUnavailableReason ?? null,
     dataQualityStatus: instance.result?.dataQualityStatus ?? null,
     dataQualityMessage: instance.result?.dataQualityMessage ?? null,
     dataQualityCheckedAt: instance.result?.dataQualityCheckedAt ?? null,

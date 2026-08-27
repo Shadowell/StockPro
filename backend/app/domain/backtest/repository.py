@@ -41,7 +41,14 @@ class BacktestRepository:
                     SELECT {RUN_ID_SQL} AS id,r.id AS run_uuid,
                            COALESCE(s.legacy_strategy_id,0) AS strategy_id,
                            COALESCE(s.name,r.name) AS strategy_name,
-                           r.status,r.metrics,r.initial_cash,r.frequency,r.start_date,r.end_date,r.created_at
+                           r.status,r.metrics,r.initial_cash,r.frequency,r.start_date,r.end_date,r.created_at,
+                           (SELECT COUNT(*) FROM backtest_trades bt WHERE bt.backtest_run_id=r.id) AS fill_count,
+                           (SELECT COUNT(*) FROM backtest_orders bo WHERE bo.backtest_run_id=r.id) AS order_count,
+                           (SELECT COALESCE(SUM(COALESCE(bt.commission,0)+COALESCE(bt.tax,0)+COALESCE(bt.transfer_fee,0)),0)
+                              FROM backtest_trades bt WHERE bt.backtest_run_id=r.id) AS fill_total_cost,
+                           (SELECT COUNT(*) FROM backtest_daily_equity be WHERE be.backtest_run_id=r.id) AS equity_point_count,
+                           (SELECT be.equity FROM backtest_daily_equity be WHERE be.backtest_run_id=r.id
+                              ORDER BY be.trade_date DESC LIMIT 1) AS final_equity
                     FROM backtest_runs r
                     LEFT JOIN strategy_versions s ON s.id=r.strategy_version_id
                     WHERE (%s='' OR COALESCE(s.name,r.name) ILIKE %s OR r.status ILIKE %s)
@@ -59,7 +66,14 @@ class BacktestRepository:
                     SELECT {RUN_ID_SQL} AS id,r.id AS run_uuid,
                            COALESCE(s.legacy_strategy_id,0) AS strategy_id,
                            COALESCE(s.name,r.name) AS strategy_name,
-                           r.status,r.metrics,r.initial_cash,r.frequency,r.start_date,r.end_date,r.created_at
+                           r.status,r.metrics,r.initial_cash,r.frequency,r.start_date,r.end_date,r.created_at,
+                           (SELECT COUNT(*) FROM backtest_trades bt WHERE bt.backtest_run_id=r.id) AS fill_count,
+                           (SELECT COUNT(*) FROM backtest_orders bo WHERE bo.backtest_run_id=r.id) AS order_count,
+                           (SELECT COALESCE(SUM(COALESCE(bt.commission,0)+COALESCE(bt.tax,0)+COALESCE(bt.transfer_fee,0)),0)
+                              FROM backtest_trades bt WHERE bt.backtest_run_id=r.id) AS fill_total_cost,
+                           (SELECT COUNT(*) FROM backtest_daily_equity be WHERE be.backtest_run_id=r.id) AS equity_point_count,
+                           (SELECT be.equity FROM backtest_daily_equity be WHERE be.backtest_run_id=r.id
+                              ORDER BY be.trade_date DESC LIMIT 1) AS final_equity
                     FROM backtest_runs r
                     LEFT JOIN strategy_versions s ON s.id=r.strategy_version_id
                     WHERE {RUN_ID_SQL}=%s LIMIT 1
