@@ -1175,6 +1175,7 @@ export interface SectorMember {
 
 export interface SectorMembersPayload {
   items: SectorMember[];
+  total: number;
   dataStatus: string;
   unavailableReason?: string | null;
   tradeDate?: string | null;
@@ -1917,7 +1918,7 @@ export const marketApi = {
     sectorCode: string,
     classificationSystem: 'industry' | 'concept',
     tradeDate?: string,
-    limit = 500,
+    limit = 2000,
   ): Promise<SectorMembersPayload> => {
     const page = await getPagedReq<SectorMember[]>(`/market/sector-rps/${encodeURIComponent(sectorCode)}/members`, {
       params: { classificationSystem, tradeDate, limit },

@@ -202,7 +202,7 @@ export default function Market() {
     }).catch(() => {
       if (cancelled) return;
       setSectorHistory([]);
-      setSectorMembers({ items: [], dataStatus: 'unavailable', unavailableReason: '板块详情读取失败' });
+      setSectorMembers({ items: [], total: 0, dataStatus: 'unavailable', unavailableReason: '板块详情读取失败' });
     }).finally(() => {
       if (!cancelled) setSectorDetailLoading(false);
     });
@@ -486,7 +486,7 @@ export default function Market() {
               <div className="min-w-0 bg-crypto-card p-4">
                 <div className="mb-3 flex items-center justify-between gap-2 text-xs font-semibold text-gray-300">
                   <span className="flex items-center gap-2"><Users className="h-3.5 w-3.5 text-cyan-300" /> 当前成员快照</span>
-                  <span className="font-normal text-gray-600">{sectorMembers?.items.length || 0} 只</span>
+                  <span className="font-normal text-gray-600">{sectorMembers?.total ?? sectorMembers?.items.length ?? 0} 只</span>
                 </div>
                 <div className="grid max-h-80 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
                   {(sectorMembers?.items || []).map((member: SectorMember) => (

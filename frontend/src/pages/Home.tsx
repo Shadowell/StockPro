@@ -127,8 +127,9 @@ function SectorRpsCard({
                 {row.rankChange == null ? '—' : `${row.rankChange >= 0 ? '+' : ''}${row.rankChange}`}
               </span>
             </div>
-            <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] text-gray-500">
+            <div className="mt-1 grid grid-cols-2 gap-2 text-[10px] text-gray-500 sm:grid-cols-4">
               <span>20日 {formatPercent(row.return20d, 1)}</span>
+              <span>成员 {row.memberCount ?? '—'} 只</span>
               <span>覆盖 {row.memberCoverage == null ? '—' : `${(row.memberCoverage * 100).toFixed(0)}%`}</span>
               <span>连续强势 {row.strongDays ?? '—'} 日</span>
             </div>

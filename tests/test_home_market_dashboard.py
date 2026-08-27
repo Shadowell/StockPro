@@ -155,6 +155,7 @@ def test_sector_members_route_exposes_snapshot_bias_without_writes(monkeypatch) 
                     "membership_bias": "current_membership_applied_to_history",
                 }],
                 "data_status": "ok",
+                "total": 1,
                 "source_snapshot_id": 7,
                 "membership_bias": "current_membership_applied_to_history",
             }
@@ -171,6 +172,7 @@ def test_sector_members_route_exposes_snapshot_bias_without_writes(monkeypatch) 
     assert response.status_code == 200
     assert response.json()["data"][0]["symbol"] == "600001.SH"
     assert response.json()["meta"]["membership_bias"] == "current_membership_applied_to_history"
+    assert response.json()["meta"]["total"] == 1
 
 
 def test_home_intelligence_persistence_skips_invalid_price_limit_sentinels() -> None:
