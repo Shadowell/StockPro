@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from app.domain.market.service import MarketDomainService
 from app.domain.market.repository import MarketRepository
 from app.domain.market.akshare_intraday import AkshareIntradayProvider
+from app.domain.market.akshare_symbols import AkshareSymbolProvider
 
 
 class _FakeCursor:
@@ -174,6 +175,115 @@ def test_market_domain_fetches_akshare_intraday_when_minute_cache_empty() -> Non
     assert payload["fallback_from"]["data_status"] == "empty"
     assert indicators["kline_source"] == "akshare.stock_zh_a_hist_min_em"
     assert indicators["timestamps"] == [1_000]
+
+
+def test_market_domain_fetches_akshare_intraday_when_cache_is_unavailable() -> None:
+    class UnavailableMinuteRepo:
+        def get_klines_with_status(self, *_args, **_kwargs):
+            raise RuntimeError("database temporarily unavailable")
+
+    class FakeIntradayProvider:
+        def fetch(self, exchange, symbol, timeframe, limit, start=None, end=None):
+            return {
+                "exchange": exchange,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "items": [{"timestamp": 1_000, "close": 10.5}],
+                "data_status": "ok",
+                "provider_source": "akshare.stock_zh_a_minute",
+                "external_fetch": True,
+            }
+
+    service = MarketDomainService(repo=UnavailableMinuteRepo(), intraday_provider=FakeIntradayProvider())
+
+    payload = asyncio.run(service.get_klines_payload("SSE", "600519.SH", "1m", 50))
+
+    assert payload["items"][0]["close"] == 10.5
+    assert payload["provider_source"] == "akshare.stock_zh_a_minute"
+    assert payload["fallback_from"]["data_status"] == "unavailable"
+    assert "RuntimeError" in payload["fallback_from"]["unavailable_reason"]
+
+
+def test_market_symbols_fall_back_to_akshare_when_repository_is_empty() -> None:
+    class EmptyInstrumentRepo:
+        def list_instruments(self, asset_class, limit):
+            assert asset_class == "stock"
+            assert limit == 10000
+            return []
+
+    provider = AkshareSymbolProvider(
+        fetcher=lambda: [
+            {"代码": "920061", "名称": "华阳变速"},
+            {"代码": "600519", "名称": "贵州茅台"},
+        ]
+    )
+    service = MarketDomainService(repo=EmptyInstrumentRepo(), symbol_provider=provider)
+
+    payload = asyncio.run(service.get_instruments("SSE", "CNY", "stock"))
+    symbols = asyncio.run(service.get_symbols("SSE", "CNY", "stock"))
+
+    assert symbols == ["920061.BJ", "600519.SH"]
+    assert payload[0]["name"] == "华阳变速"
+    assert payload[0]["exchange"] == "BSE"
+    assert payload[1]["name"] == "贵州茅台"
+    assert payload[1]["source"] == "akshare.stock_zh_a_spot_em"
+
+
+def test_market_symbols_fall_back_to_akshare_when_repository_is_unavailable() -> None:
+    class UnavailableInstrumentRepo:
+        def list_symbols(self, *_args, **_kwargs):
+            raise RuntimeError("database temporarily unavailable")
+
+        def list_instruments(self, *_args, **_kwargs):
+            raise RuntimeError("database temporarily unavailable")
+
+    provider = AkshareSymbolProvider(fetcher=lambda: [{"code": "000001", "name": "平安银行"}])
+    service = MarketDomainService(repo=UnavailableInstrumentRepo(), symbol_provider=provider)
+
+    symbols = asyncio.run(service.get_symbols("SSE", "CNY", "stock"))
+    payload = asyncio.run(service.get_instruments("SSE", "CNY", "stock"))
+
+    assert symbols == ["000001.SZ"]
+    assert payload == [
+        {
+            "symbol": "000001.SZ",
+            "name": "平安银行",
+            "display_name": "平安银行 000001.SZ",
+            "exchange": "SZSE",
+            "asset_class": "stock",
+            "industry": None,
+            "board": None,
+            "list_status": "L",
+            "source": "akshare.stock_zh_a_spot_em",
+            "source_code": "000001",
+        }
+    ]
+
+
+def test_market_summary_widgets_return_unavailable_when_repository_is_unavailable() -> None:
+    class UnavailableMetricsRepo:
+        def get_market_phase(self, *_args, **_kwargs):
+            raise RuntimeError("database temporarily unavailable")
+
+        def list_sector_rps(self, *_args, **_kwargs):
+            raise RuntimeError("database temporarily unavailable")
+
+        def list_symbol_abnormalities(self, *_args, **_kwargs):
+            raise RuntimeError("database temporarily unavailable")
+
+    service = MarketDomainService(repo=UnavailableMetricsRepo())
+
+    phase = asyncio.run(service.get_market_phase())
+    rps = asyncio.run(service.list_sector_rps(limit=5))
+    movers = asyncio.run(service.list_symbol_abnormalities(limit=5))
+
+    assert phase["status"] == "unavailable"
+    assert phase["phase"] == "unknown"
+    assert "RuntimeError" in phase["missing_inputs"][0]
+    assert rps["data_status"] == "unavailable"
+    assert rps["items"] == []
+    assert movers["data_status"] == "unavailable"
+    assert movers["items"] == []
 
 
 def test_market_chart_uses_backend_ema_indicator_api_not_local_ma_calculation() -> None:

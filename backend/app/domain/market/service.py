@@ -8,7 +8,13 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from app.domain.market.akshare_intraday import AkshareIntradayProvider
+from app.domain.market.akshare_symbols import AkshareSymbolProvider
 from app.domain.market.repository import MarketRepository
+from app.domain.market.research_metrics import (
+    ABNORMALITY_DEFINITION_VERSION,
+    MARKET_PHASE_DEFINITION_VERSION,
+    SECTOR_RPS_DEFINITION_VERSION,
+)
 from app.services.indicators import EMA, MACD, RSI
 
 
@@ -19,9 +25,11 @@ class MarketDomainService:
         self,
         repo: Optional[MarketRepository] = None,
         intraday_provider: Optional[AkshareIntradayProvider] = None,
+        symbol_provider: Optional[AkshareSymbolProvider] = None,
     ):
         self.repo = repo or MarketRepository()
         self.intraday_provider = intraday_provider or AkshareIntradayProvider()
+        self.symbol_provider = symbol_provider or AkshareSymbolProvider()
 
     async def get_ticker(self, exchange_name: str, symbol: str) -> Dict:
         items = await asyncio.to_thread(self.repo.list_tickers, [symbol])
@@ -61,15 +69,25 @@ class MarketDomainService:
         end: Optional[int] = None,
     ) -> Dict[str, Any]:
         if hasattr(self.repo, "get_klines_with_status"):
-            payload = await asyncio.to_thread(
-                self.repo.get_klines_with_status,
-                exchange_name,
-                symbol,
-                timeframe,
-                limit,
-                start,
-                end,
-            )
+            try:
+                payload = await asyncio.to_thread(
+                    self.repo.get_klines_with_status,
+                    exchange_name,
+                    symbol,
+                    timeframe,
+                    limit,
+                    start,
+                    end,
+                )
+            except Exception as exc:
+                payload = {
+                    "exchange": exchange_name,
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    "items": [],
+                    "data_status": "unavailable",
+                    "unavailable_reason": f"A-share kline cache unavailable: {type(exc).__name__}",
+                }
             if self._should_fetch_intraday(payload, timeframe):
                 fallback = await asyncio.to_thread(
                     self.intraday_provider.fetch,
@@ -283,14 +301,33 @@ class MarketDomainService:
         return tail
 
     async def get_orderbook(self, exchange_name: str, symbol: str, limit: int = 20) -> Dict:
-        return await asyncio.to_thread(self.repo.get_orderbook, exchange_name, symbol, limit)
+        try:
+            return await asyncio.to_thread(self.repo.get_orderbook, exchange_name, symbol, limit)
+        except Exception as exc:
+            return {
+                "exchange": exchange_name,
+                "symbol": symbol,
+                "bids": [],
+                "asks": [],
+                "data_status": "unavailable",
+                "unavailable_reason": f"A-share order-book cache unavailable: {type(exc).__name__}",
+            }
 
     async def get_trades(self, exchange_name: str, symbol: str, limit: int = 50) -> List[Dict]:
         return await asyncio.to_thread(self.repo.get_trades, exchange_name, symbol, limit)
 
     async def get_trades_payload(self, exchange_name: str, symbol: str, limit: int = 50) -> Dict[str, Any]:
         if hasattr(self.repo, "get_trades_with_status"):
-            return await asyncio.to_thread(self.repo.get_trades_with_status, exchange_name, symbol, limit)
+            try:
+                return await asyncio.to_thread(self.repo.get_trades_with_status, exchange_name, symbol, limit)
+            except Exception as exc:
+                return {
+                    "exchange": exchange_name,
+                    "symbol": symbol,
+                    "items": [],
+                    "data_status": "unavailable",
+                    "unavailable_reason": f"A-share recent trade cache unavailable: {type(exc).__name__}",
+                }
         items = await self.get_trades(exchange_name, symbol, limit)
         return {
             "exchange": exchange_name,
@@ -304,13 +341,29 @@ class MarketDomainService:
         asset_class = (market_type or "stock").strip().lower()
         if asset_class not in {"stock", "etf", "index", "all"}:
             asset_class = "stock"
-        return await asyncio.to_thread(self.repo.list_symbols, asset_class, 5000)
+        if hasattr(self.repo, "list_symbols"):
+            try:
+                symbols = await asyncio.to_thread(self.repo.list_symbols, asset_class, 5000)
+            except Exception:
+                symbols = []
+            if symbols:
+                return symbols
+        instruments = await self.get_instruments(exchange_name, quote, market_type)
+        return [item["symbol"] for item in instruments]
 
     async def get_instruments(self, exchange_name: str, quote: str = "CNY", market_type: str = "stock") -> List[Dict]:
         asset_class = (market_type or "stock").strip().lower()
         if asset_class not in {"stock", "etf", "index", "all"}:
             asset_class = "stock"
-        return await asyncio.to_thread(self.repo.list_instruments, asset_class, 10000)
+        if not hasattr(self.repo, "list_instruments"):
+            return await asyncio.to_thread(self.symbol_provider.fetch_instruments, asset_class) if asset_class in {"stock", "all"} else []
+        try:
+            instruments = await asyncio.to_thread(self.repo.list_instruments, asset_class, 10000)
+        except Exception:
+            instruments = []
+        if instruments or asset_class not in {"stock", "all"}:
+            return instruments
+        return await asyncio.to_thread(self.symbol_provider.fetch_instruments, asset_class)
 
     async def lookup_names(self, symbols: List[str]) -> Dict[str, str]:
         return await asyncio.to_thread(self.repo.lookup_names, symbols)
@@ -319,7 +372,18 @@ class MarketDomainService:
         return await asyncio.to_thread(self.repo.market_pulse)
 
     async def get_market_phase(self, trade_date: str | None = None) -> Dict:
-        return await asyncio.to_thread(self.repo.get_market_phase, trade_date)
+        try:
+            return await asyncio.to_thread(self.repo.get_market_phase, trade_date)
+        except Exception as exc:
+            return {
+                "trade_date": trade_date,
+                "phase": "unknown",
+                "status": "unavailable",
+                "confidence": 0.0,
+                "reasons": [],
+                "missing_inputs": [f"A-share market phase cache unavailable: {type(exc).__name__}"],
+                "definition_version": MARKET_PHASE_DEFINITION_VERSION,
+            }
 
     async def list_sector_rps(
         self,
@@ -328,12 +392,20 @@ class MarketDomainService:
         classification_system: str = "industry",
         limit: int = 20,
     ) -> Dict:
-        return await asyncio.to_thread(
-            self.repo.list_sector_rps,
-            trade_date=trade_date,
-            classification_system=classification_system,
-            limit=limit,
-        )
+        try:
+            return await asyncio.to_thread(
+                self.repo.list_sector_rps,
+                trade_date=trade_date,
+                classification_system=classification_system,
+                limit=limit,
+            )
+        except Exception as exc:
+            return {
+                "items": [],
+                "data_status": "unavailable",
+                "unavailable_reason": f"A-share sector RPS cache unavailable: {type(exc).__name__}",
+                "definition_version": SECTOR_RPS_DEFINITION_VERSION,
+            }
 
     async def get_sector_rps_history(
         self,
@@ -342,18 +414,44 @@ class MarketDomainService:
         classification_system: str = "industry",
         limit: int = 60,
     ) -> Dict:
-        return await asyncio.to_thread(
-            self.repo.get_sector_rps_history,
-            sector_code,
-            classification_system=classification_system,
-            limit=limit,
-        )
+        try:
+            return await asyncio.to_thread(
+                self.repo.get_sector_rps_history,
+                sector_code,
+                classification_system=classification_system,
+                limit=limit,
+            )
+        except Exception as exc:
+            return {
+                "items": [],
+                "data_status": "unavailable",
+                "unavailable_reason": f"A-share sector RPS history cache unavailable: {type(exc).__name__}",
+                "definition_version": SECTOR_RPS_DEFINITION_VERSION,
+            }
 
     async def list_symbol_abnormalities(self, *, trade_date: str | None = None, limit: int = 20) -> Dict:
-        return await asyncio.to_thread(self.repo.list_symbol_abnormalities, trade_date=trade_date, limit=limit)
+        try:
+            return await asyncio.to_thread(self.repo.list_symbol_abnormalities, trade_date=trade_date, limit=limit)
+        except Exception as exc:
+            return {
+                "items": [],
+                "data_status": "unavailable",
+                "unavailable_reason": f"A-share abnormality cache unavailable: {type(exc).__name__}",
+                "definition_version": ABNORMALITY_DEFINITION_VERSION,
+            }
 
     async def get_symbol_abnormality(self, symbol: str, *, trade_date: str | None = None) -> Dict:
-        return await asyncio.to_thread(self.repo.get_symbol_abnormality, symbol, trade_date=trade_date)
+        try:
+            return await asyncio.to_thread(self.repo.get_symbol_abnormality, symbol, trade_date=trade_date)
+        except Exception as exc:
+            return {
+                "symbol": symbol,
+                "trade_date": trade_date,
+                "tags": [],
+                "status": "unavailable",
+                "missing_inputs": [f"A-share abnormality cache unavailable: {type(exc).__name__}"],
+                "definition_version": ABNORMALITY_DEFINITION_VERSION,
+            }
 
 
 market_domain_service = MarketDomainService()
