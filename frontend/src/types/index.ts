@@ -70,6 +70,10 @@ export interface OrderBook {
   bids: [number, number][];
   asks: [number, number][];
   timestamp?: number;
+  dataStatus?: string;
+  unavailableReason?: string | null;
+  providerSource?: string;
+  sourceUpdatedAt?: string | null;
 }
 
 // 资金费率相关

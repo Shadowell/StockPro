@@ -4084,3 +4084,16 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
   行业 110 与概念 386 全部排名，统一 snapshot #4，Paper 七表仍各 1 条。
 - 新增只读 `/api/v2/market/timeline` 和行情页“市场情绪时间轴”，展示持久化阶段/情绪历史及
   快照一致性；当前从 2026-08-27 开始累积，不为之前未物化日期回填伪历史。
+
+## 2026-08-28 行情资产类型、逐标的水位与分钟缓存
+
+- 行情页股票/ETF/指数切换清空旧标的和 K 线状态；指数 universe 与 1D 点位只读回退到 sealed
+  `benchmark_bars`，ETF 无真实定义时保持空态。交易时段默认 1m，盘后/周末默认 1D；日线 meta
+  返回真实 `row_count/from/to/latest_trade_date`，空订单簿不再显示 0 价差。
+- 生产 AKShare 5 分钟只读探针成功返回贵州茅台 100 根真实分时，来源
+  `akshare.stock_zh_a_minute`，最新到 2026-08-27 15:00；未写 PostgreSQL。
+- 数据中心 `/sync/assets` 改为 5,550 个活动证券逐标的水位。生产只读探针 3.94 秒返回
+  5,550/5,550 有数据、681,938 行，逐标的求和与顶部完全一致，范围 2026-03-02 至 2026-08-27。
+  页面每页 200 只并提供翻页；统一维护模式隐藏危险移除，逐标的补数按钮禁用并说明原因。
+- TuShare `rt_min` 仍按 10 次/小时边界集中缓存；前端自动刷新从 30 秒改为 6 分钟，限流或异常时
+  保留最后成功 bars 并标记 stale，显示 last_success/cache_age/next_retry；tick/L2 大单与 CVD 不伪造。

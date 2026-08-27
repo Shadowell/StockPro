@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS } from '../utils/selectionStyles';
 import {
+  dataAssetsApi,
   dataSyncApi,
   okxNativeSyncApi,
   type DataSyncConfigResponse,
@@ -57,6 +58,8 @@ const TIMEFRAME_LABELS: Record<string, string> = {
   '12h': '12H',
   '1d': '1D',
 };
+
+const DATA_PAGE_SIZE = 200;
 
 const TIMEFRAME_COLORS: Record<string, string> = {
   '1m': 'from-rose-500/20 to-rose-600/5 border-rose-500/30',
@@ -425,6 +428,7 @@ export default function DataManager() {
   const [filterTf, setFilterTf] = useState<string>('');
   const [filterSymbol, setFilterSymbol] = useState('');
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
+  const [dataPage, setDataPage] = useState(0);
   const [syncDialogMode, setSyncDialogMode] = useState<SyncDialogMode | null>(null);
   const [syncDialogError, setSyncDialogError] = useState('');
   const [showAddSymbolDialog, setShowAddSymbolDialog] = useState(false);
@@ -481,13 +485,29 @@ export default function DataManager() {
     if (tableStatsLoadingRef.current) return;
     tableStatsLoadingRef.current = true;
     try {
-      const statsRes = await dataSyncApi.getTableStats();
-      setTableStats(statsRes.tables || []);
-      setTotalRecords(statsRes.totalRecords || 0);
-      setTotalPairs(statsRes.totalPairs || 0);
+      const [statsRes, assetsRes] = await Promise.all([
+        dataSyncApi.getTableStats(),
+        dataAssetsApi.getAssets(),
+      ]);
+      const assetStats: DataSyncTableStat[] = (assetsRes.assets || []).map((asset) => ({
+        tableName: 'stock_history',
+        timeframe: asset.timeframe || '1d',
+        exchange: asset.exchange || 'CN',
+        symbol: asset.symbol,
+        recordCount: asset.recordCount || 0,
+        firstTimestamp: asset.firstDate ? Date.parse(`${asset.firstDate}T00:00:00Z`) : null,
+        lastTimestamp: asset.lastDate ? Date.parse(`${asset.lastDate}T00:00:00Z`) : null,
+      }));
+      setTableStats([...(statsRes.tables || []).filter((item) => item.symbol !== 'ALL_A_SHARES'), ...assetStats]);
+      setTotalRecords(assetsRes.totalRecords || 0);
+      setTotalPairs(assetsRes.totalPairs || 0);
       setMarketStats({
         swap: statsRes.marketStats?.swap || EMPTY_MARKET_STATS.swap,
-        spot: statsRes.marketStats?.spot || EMPTY_MARKET_STATS.spot,
+        spot: {
+          totalRecords: assetsRes.totalRecords || 0,
+          totalPairs: assetsRes.totalPairs || 0,
+          totalSymbols: assetsRes.totalItems || 0,
+        },
       });
     } catch (e) {
       console.error('加载数据统计失败', e);
@@ -543,6 +563,11 @@ export default function DataManager() {
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [isRunning, syncing, loadData]);
+
+  useEffect(() => {
+    setDataPage(0);
+    setExpandedSymbol(null);
+  }, [dataMarketType, filterSymbol, filterTf]);
 
   const setTargetFeedback = (
     symbol: string,
@@ -862,7 +887,12 @@ export default function DataManager() {
     return symbol.toLowerCase().includes(searchText)
       || String(instrument?.name || '').toLowerCase().includes(searchText);
   });
-  const displayedSymbols = filteredSymbols.slice(0, 200);
+  const dataPageCount = Math.max(1, Math.ceil(filteredSymbols.length / DATA_PAGE_SIZE));
+  const effectiveDataPage = Math.min(dataPage, dataPageCount - 1);
+  const displayedSymbols = filteredSymbols.slice(
+    effectiveDataPage * DATA_PAGE_SIZE,
+    (effectiveDataPage + 1) * DATA_PAGE_SIZE,
+  );
   const removeSymbolSearchText = removeSymbolSearch.trim().toLowerCase();
   const removeSymbolCandidates = configuredVisibleMarketSymbols.filter((symbol) => {
     if (!removeSymbolSearchText) return true;
@@ -1550,7 +1580,7 @@ export default function DataManager() {
                       {total > 0 ? formatCount(total) : '-'}
                     </div>
                   </div>
-                  {configuredSymbol ? (
+                  {canMutateData && configuredSymbol ? (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -1718,15 +1748,16 @@ export default function DataManager() {
                               </div>
                               <div className="flex gap-1">
                                 <button onClick={(e) => { e.stopPropagation(); handleSyncOne(symbol, tf); }}
-                                  disabled={isBusy}
+                                  disabled={!canMutateData || isBusy}
+                                  title={canMutateData ? '同步当前标的增量数据' : '全量 A 股由统一同步任务维护'}
                                   className="flex-1 text-[10px] py-1 rounded-md bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white border border-crypto-border transition disabled:opacity-30 flex items-center justify-center gap-1">
                                   {targetSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                                   {targetSyncing ? '同步中' : '增量'}
                                 </button>
                                 <button onClick={(e) => { e.stopPropagation(); handleSyncOne(symbol, tf, detailStartDate, detailEndDate); }}
-                                  disabled={isBusy}
-                                  className="flex-1 text-[10px] py-1 rounded-md bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/20 transition disabled:opacity-30"
-                                  title={`按日期同步 ${detailStartDate} ~ ${detailEndDate}`}>
+                                  disabled={!canMutateData || isBusy}
+                                  title={canMutateData ? `按日期同步 ${detailStartDate} ~ ${detailEndDate}` : '全量 A 股由统一同步任务维护'}
+                                  className="flex-1 text-[10px] py-1 rounded-md bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/20 transition disabled:opacity-30">
                                   {targetSyncing ? '同步中' : '按日期'}
                                 </button>
                               </div>
@@ -1741,7 +1772,8 @@ export default function DataManager() {
                                 </div>
                               )}
                               <button onClick={(e) => { e.stopPropagation(); handleSyncOne(symbol, tf, detailStartDate, detailEndDate); }}
-                                disabled={isBusy}
+                                disabled={!canMutateData || isBusy}
+                                title={canMutateData ? '开始同步当前标的' : '全量 A 股由统一同步任务维护'}
                                 className="w-full text-[10px] py-1.5 rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/20 transition font-medium disabled:opacity-30 flex items-center justify-center gap-1">
                                 {targetSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                                 {targetSyncing ? '正在同步' : '开始同步'}
@@ -1755,22 +1787,51 @@ export default function DataManager() {
                   </div>
                   {/* 底部操作 */}
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-crypto-border">
-                    <button onClick={(e) => { e.stopPropagation(); requestDeleteData(symbol); }}
-                      className="text-xs text-red-400/70 hover:text-red-400 flex items-center gap-1 transition">
-                      <Trash2 className="w-3 h-3" /> 删除 {coin} 全部数据
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation();
-                      handleSyncMissingTimeframes(symbol); }}
-                      disabled={isBusy}
-                      className="text-xs text-blue-400/70 hover:text-blue-400 flex items-center gap-1 transition disabled:opacity-30">
-                      <Download className="w-3 h-3" /> 同步缺失周期
-                    </button>
+                    {canMutateData ? (
+                      <>
+                        <button onClick={(e) => { e.stopPropagation(); requestDeleteData(symbol); }}
+                          className="text-xs text-red-400/70 hover:text-red-400 flex items-center gap-1 transition">
+                          <Trash2 className="w-3 h-3" /> 删除 {coin} 全部数据
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleSyncMissingTimeframes(symbol); }}
+                          disabled={isBusy}
+                          className="text-xs text-blue-400/70 hover:text-blue-400 flex items-center gap-1 transition disabled:opacity-30">
+                          <Download className="w-3 h-3" /> 同步缺失周期
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-500">全量 A 股历史由统一同步任务维护；逐标的删除与补数已禁用。</span>
+                    )}
                   </div>
                 </div>
               )}
             </div>
           );
         })}
+          </div>
+          <div className="flex items-center justify-between border-t border-crypto-border bg-crypto-card/70 px-3 py-2 text-xs text-gray-500">
+            <span>
+              第 {effectiveDataPage * DATA_PAGE_SIZE + (filteredSymbols.length ? 1 : 0)}–{Math.min((effectiveDataPage + 1) * DATA_PAGE_SIZE, filteredSymbols.length)} 条 · 共 {filteredSymbols.length} 个标的
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDataPage((page) => Math.max(0, page - 1))}
+                disabled={effectiveDataPage === 0}
+                className="h-7 rounded-md border border-crypto-border px-2.5 text-gray-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                上一页
+              </button>
+              <span className="font-mono text-gray-400">{effectiveDataPage + 1} / {dataPageCount}</span>
+              <button
+                type="button"
+                onClick={() => setDataPage((page) => Math.min(dataPageCount - 1, page + 1))}
+                disabled={effectiveDataPage >= dataPageCount - 1}
+                className="h-7 rounded-md border border-crypto-border px-2.5 text-gray-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                下一页
+              </button>
+            </div>
           </div>
         </div>
       </section>

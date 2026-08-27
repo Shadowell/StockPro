@@ -366,12 +366,14 @@ def test_market_no_longer_fetches_kairos_prediction_comparison() -> None:
     assert "marketApi.getKlines" in market_source
 
 
-def test_market_page_defaults_to_akshare_intraday_payload_with_source_status() -> None:
+def test_market_page_uses_intraday_during_cn_session_and_daily_history_after_close() -> None:
     market_source = open("frontend/src/pages/Market.tsx", encoding="utf-8").read()
     client_source = open("frontend/src/api/client.ts", encoding="utf-8").read()
 
     assert "const TIMEFRAMES = ['1m', '5m', '15m', '30m', '60m', '1d']" in market_source
-    assert "useState('1m')" in market_source
+    assert "function defaultMarketTimeframe" in market_source
+    assert "? '1m' : '1d'" in market_source
+    assert "useState<string>(() => defaultMarketTimeframe())" in market_source
     assert "marketApi.getKlinesPayload" in market_source
     assert "AKShare 分时" in market_source
     assert "实时拉取" in market_source

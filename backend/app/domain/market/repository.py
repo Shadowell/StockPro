@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 import json
+import re
 from typing import Any, Callable, Dict, List, Optional
 
 import psycopg2
@@ -47,7 +48,10 @@ class MarketRepository:
         if "_" in value:
             exchange, digits = value.split("_", 1)
             return f"{digits}.{exchange}"
-        exchange = "SH" if value.startswith(("5", "6", "9")) else ("BJ" if value.startswith(("4", "8")) else "SZ")
+        prefixed = re.fullmatch(r"(SH|SZ|BJ)([0-9]{6})", value)
+        if prefixed:
+            return f"{prefixed.group(2)}.{prefixed.group(1)}"
+        exchange = "BJ" if value.startswith(("4", "8", "92")) else ("SH" if value.startswith(("5", "6", "9")) else "SZ")
         return f"{value}.{exchange}"
 
     @classmethod
@@ -146,6 +150,50 @@ class MarketRepository:
             with connection.cursor() as cursor:
                 cursor.execute(query, tuple(params))
                 rows = cursor.fetchall()
+                if normalized == "index" and not rows and self._table_exists(cursor, "market_indices_realtime"):
+                    cursor.execute(
+                        """SELECT code,name FROM market_indices_realtime
+                           WHERE code IS NOT NULL AND code<>'' ORDER BY id LIMIT %s""",
+                        (bounded,),
+                    )
+                    index_rows = cursor.fetchall()
+                    rows = []
+                    for code, name in index_rows:
+                        symbol = self._canonical_symbol(code)
+                        suffix = symbol.rsplit(".", 1)[-1]
+                        rows.append((
+                            symbol,
+                            str(name or symbol),
+                            {"SH": "SSE", "SZ": "SZSE", "BJ": "BSE"}.get(suffix, "CN"),
+                            "index",
+                            None,
+                            "指数",
+                            "L",
+                        ))
+                if normalized == "index" and not rows:
+                    snapshot = self._latest_dataset_snapshot(cursor, "benchmark_bars")
+                    if snapshot:
+                        for payload in self._dataset_snapshot_payloads(cursor, snapshot["id"], "benchmark_bars"):
+                            raw_symbol = payload.get("symbol") or payload.get("ts_code") or payload.get("code")
+                            if not raw_symbol:
+                                continue
+                            symbol = self._canonical_symbol(raw_symbol)
+                            suffix = symbol.rsplit(".", 1)[-1]
+                            name = str(payload.get("name") or {
+                                "000001.SH": "上证指数",
+                                "399001.SZ": "深证成指",
+                                "399006.SZ": "创业板指",
+                                "000300.SH": "沪深300",
+                            }.get(symbol) or symbol)
+                            rows.append((
+                                symbol,
+                                name,
+                                {"SH": "SSE", "SZ": "SZSE", "BJ": "BSE"}.get(suffix, "CN"),
+                                "index",
+                                None,
+                                "指数",
+                                "L",
+                            ))
         return [
             {
                 "symbol": self._canonical_symbol(row[0]),
@@ -292,10 +340,33 @@ class MarketRepository:
             params.append(datetime.fromtimestamp(end / 1000, tz=timezone.utc).date())
         query += " ORDER BY date DESC LIMIT %s"
         params.append(max(1, min(int(limit), 2000)))
+        provider_source = "PostgreSQL stock_history"
+        source_snapshot_id = None
         with self._connect() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(query, tuple(params))
                 rows = list(reversed(cursor.fetchall()))
+                if not rows:
+                    snapshot = self._latest_dataset_snapshot(cursor, "benchmark_bars")
+                    if snapshot:
+                        canonical = self._canonical_symbol(symbol)
+                        payloads = [
+                            payload for payload in self._dataset_snapshot_payloads(cursor, snapshot["id"], "benchmark_bars")
+                            if self._canonical_symbol(payload.get("symbol") or payload.get("ts_code") or payload.get("code")) == canonical
+                        ]
+                        benchmark_rows = [
+                            (
+                                date.fromisoformat(str(payload.get("trade_date") or payload.get("date"))[:10]),
+                                payload.get("open"), payload.get("high"), payload.get("low"), payload.get("close"),
+                                payload.get("volume") or payload.get("vol"), payload.get("amount"),
+                            )
+                            for payload in payloads
+                            if payload.get("trade_date") or payload.get("date")
+                        ]
+                        if benchmark_rows:
+                            rows = benchmark_rows
+                            provider_source = "tushare.index_daily → PostgreSQL sealed snapshot"
+                            source_snapshot_id = snapshot["id"]
         items = [
             {
                 "timestamp": int(datetime.combine(row[0], datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000),
@@ -306,7 +377,7 @@ class MarketRepository:
                 "volume": float(row[5] or 0),
                 "quote_volume": float(row[6] or 0),
                 "trade_date": str(row[0]),
-                "source": "daily_bars",
+                "source": "benchmark_bars" if source_snapshot_id is not None else "daily_bars",
                 "data_status": "ok",
             }
             for row in rows
@@ -320,6 +391,12 @@ class MarketRepository:
             "symbol": self._canonical_symbol(symbol),
             "timeframe": "1d",
             "items": items,
+            "row_count": len(items),
+            "from_date": items[0]["trade_date"] if items else None,
+            "to_date": items[-1]["trade_date"] if items else None,
+            "latest_trade_date": items[-1]["trade_date"] if items else None,
+            "provider_source": provider_source,
+            "source_snapshot_id": source_snapshot_id,
             **status,
         }
 

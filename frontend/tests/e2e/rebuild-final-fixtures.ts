@@ -103,6 +103,7 @@ export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' =
       default_history_days: 500,
     }
     else if (path === '/api/v2/sync/status') data = { is_running: false, current_job: null, summary: { total_records: 0, exchanges: ['CN'], symbols_count: 2, pairs: 0 }, details: [] }
+    else if (path === '/api/v2/sync/assets') data = { assets: [{ exchange: 'CN', symbol: '600519.SH', timeframe: '1d', record_count: 124, first_date: '2026-03-02', last_date: '2026-08-27' }, { exchange: 'CN', symbol: '000001.SZ', timeframe: '1d', record_count: 124, first_date: '2026-03-02', last_date: '2026-08-27' }], total_records: 248, total_pairs: 2, total_items: 2 }
     else if (path === '/api/v2/sync/table-stats') data = { tables: [], total_records: 0, total_pairs: 0, market_stats: { swap: { total_records: 0, total_pairs: 0, total_symbols: 0 }, spot: { total_records: 0, total_pairs: 0, total_symbols: 2 } } }
     else if (path === '/api/v2/sync/schedule') data = { enabled: true, interval_minutes: 1440, history_days: 500, symbols: [], timeframes: ['1d'], next_run_at: '2026-08-27T18:10:00+08:00' }
     else if (path === '/api/v2/sync/jobs') data = { jobs: [] }

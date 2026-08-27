@@ -23,7 +23,7 @@ export function matchesSymbolSearch(symbol: string, query: string, name = ''): b
     || symbol.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(normalizedQuery.replace(/[^A-Z0-9]/g, ''));
 }
 
-export default function SymbolSearch({ value, onChange, allSymbols, instruments = [], className = '' }: SymbolSearchProps) {
+export default function SymbolSearch({ value, onChange, allSymbols, instruments = [], marketType = 'stock', className = '' }: SymbolSearchProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -58,6 +58,7 @@ export default function SymbolSearch({ value, onChange, allSymbols, instruments 
 
   const selectedCode = value.split('.')[0];
   const selectedInstrument = instrumentBySymbol.get(value);
+  const emptyLabel = marketType === 'etf' ? 'ETF 暂无真实标的' : marketType === 'index' ? '指数暂无真实标的' : '股票暂无真实标的';
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
@@ -65,11 +66,12 @@ export default function SymbolSearch({ value, onChange, allSymbols, instruments 
       <button
         data-testid="symbol-search-trigger"
         onClick={() => { setIsOpen(!isOpen); setQuery(''); }}
-        className="flex items-center space-x-2 bg-crypto-card border border-crypto-border rounded-lg px-3 py-2 hover:border-gray-500 transition-colors min-w-[180px]"
+        disabled={fullList.length === 0}
+        className="flex items-center space-x-2 bg-crypto-card border border-crypto-border rounded-lg px-3 py-2 hover:border-gray-500 transition-colors min-w-[180px] disabled:cursor-not-allowed disabled:opacity-70"
       >
         <SymbolIcon symbol={value} base={selectedCode} size="xs" />
         <span className="min-w-0 text-left">
-          <span className="block truncate text-sm font-semibold text-white">{selectedInstrument?.name || '名称待同步'}</span>
+          <span className="block truncate text-sm font-semibold text-white">{value ? selectedInstrument?.name || '名称待同步' : emptyLabel}</span>
           <span className="block truncate font-mono text-[10px] text-gray-500">{value}</span>
         </span>
         <ChevronDown className={`w-4 h-4 text-gray-400 ml-auto transition-transform ${isOpen ? 'rotate-180' : ''}`} />

@@ -83,7 +83,20 @@ def _snapshot():
     try:
         with connection.cursor() as cursor:
             if _table_exists(cursor, "stock_history"):
-                cursor.execute("SELECT COUNT(*),COUNT(DISTINCT symbol),MIN(date),MAX(date) FROM stock_history")
+                cursor.execute(
+                    """
+                    WITH normalized_history AS (
+                        SELECT CASE WHEN symbol ~ '^(SH|SZ|BJ)_[0-9]{6}$'
+                                    THEN split_part(symbol,'_',2)||'.'||split_part(symbol,'_',1)
+                                    ELSE symbol END AS symbol,date
+                        FROM stock_history
+                    )
+                    SELECT COUNT(h.date),COUNT(DISTINCT h.symbol),MIN(h.date),MAX(h.date)
+                    FROM instrument_definitions d
+                    LEFT JOIN normalized_history h ON h.symbol=d.symbol
+                    WHERE d.market='CN' AND d.asset_class='stock' AND d.list_status IN ('L','P')
+                    """
+                )
                 rows, symbols, first_date, last_date = cursor.fetchone()
             else:
                 rows, symbols, first_date, last_date = 0, 0, None, None
@@ -202,11 +215,18 @@ class AshareSyncDomainService:
                     return {"assets": [], "total_records": 0, "total_pairs": 0, "total_items": 0}
                 cursor.execute(
                     """
-                    SELECT symbol,COUNT(*) AS record_count,MIN(date) AS first_date,MAX(date) AS last_date
-                    FROM stock_history
-                    GROUP BY symbol
-                    ORDER BY record_count DESC,symbol
-                    LIMIT 1000
+                    WITH normalized_history AS (
+                        SELECT CASE WHEN symbol ~ '^(SH|SZ|BJ)_[0-9]{6}$'
+                                    THEN split_part(symbol,'_',2)||'.'||split_part(symbol,'_',1)
+                                    ELSE symbol END AS symbol,date
+                        FROM stock_history
+                    )
+                    SELECT d.symbol,COUNT(h.date) AS record_count,MIN(h.date) AS first_date,MAX(h.date) AS last_date
+                    FROM instrument_definitions d
+                    LEFT JOIN normalized_history h ON h.symbol=d.symbol
+                    WHERE d.market='CN' AND d.asset_class='stock' AND d.list_status IN ('L','P')
+                    GROUP BY d.symbol
+                    ORDER BY record_count DESC,d.symbol
                     """
                 )
                 rows = [dict(row) for row in cursor.fetchall()]
@@ -227,7 +247,7 @@ class AshareSyncDomainService:
         return {
             "assets": assets,
             "total_records": sum(item["record_count"] for item in assets),
-            "total_pairs": len(assets),
+            "total_pairs": sum(1 for item in assets if item["record_count"] > 0),
             "total_items": len(assets),
         }
 

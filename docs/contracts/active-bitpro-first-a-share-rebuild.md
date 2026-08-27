@@ -44,6 +44,11 @@ StockPro 当前启用 A股、ETF 和指数；为中国期货、美国股票和�
     为空时，`GET /api/v2/market/symbols` 可只读拉取 AKShare `stock_zh_a_spot_em` 沪深京 A 股
     列表作为展示兜底，东财不可用时可退到 AKShare `stock_info_a_code_name` 代码简称列表，
     但不得写库或替代管理员同步任务。
+12. 行情资产类型必须隔离状态：股票切到 ETF/指数时清空旧标的和行情；指数只读 PostgreSQL
+    指数缓存或 sealed `benchmark_bars`，ETF 缺定义时保持空态。交易时段默认 1m，盘后默认 1D；
+    空盘口不计算 0 价差。
+13. 数据中心 `/sync/assets` 覆盖全部活动 A 股并返回逐标的水位；顶部汇总与逐标的求和一致，
+    页面用分页/虚拟化访问全量，统一维护模式不暴露逐标的危险删除。
 
 ## 3. 仓库、分支和导入边界
 
@@ -367,6 +372,8 @@ BitPro 版式直接继承不等于保留数字资产品牌：活动 HTML 标题�
 （L/P/D，退市 `T*` 独立命名空间）、最近开放交易日 `daily` 与 `daily_basic`，单事务写入
 `instrument_definitions`、`stock_history` 和 `all_stocks_realtime`。所有活动页面的证券标识采用
 中文名称主标签、标准代码次标签；同步任务使用 PostgreSQL 唯一 running 台账避免并发重复。
+逐标的水位必须从同一活动证券分母计算；当前生产 5,550/5,550 有 1D 数据，顶部 active 记录数
+与逐标的 `row_count` 求和一致。
 
 每个页面切片遵循：
 

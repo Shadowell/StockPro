@@ -36,6 +36,20 @@ const MIN_KLINES_TO_RENDER = 1;
 const MARKET_EMA_PERIODS = [5, 10, 20, 30];
 const RECENT_TRADES_LIMIT = 24;
 
+function defaultMarketTimeframe(now = new Date()): '1m' | '1d' {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const minuteOfDay = Number(values.hour || 0) * 60 + Number(values.minute || 0);
+  const tradingDay = !['Sat', 'Sun'].includes(values.weekday || '');
+  return tradingDay && minuteOfDay >= 9 * 60 + 15 && minuteOfDay <= 15 * 60 + 30 ? '1m' : '1d';
+}
+
 type MarketType = 'stock' | 'etf' | 'index';
 
 type MarketTradeRow = {
@@ -125,7 +139,7 @@ export default function Market() {
   const [allSymbols, setAllSymbols] = useState<string[]>([]);
   const [allInstruments, setAllInstruments] = useState<MarketInstrument[]>([]);
   const [marketType, setMarketType] = useState<MarketType>('stock');
-  const [timeframe, setTimeframe] = useState('1m');
+  const [timeframe, setTimeframe] = useState<string>(() => defaultMarketTimeframe());
   const [marketPhase, setMarketPhase] = useState<MarketPhase | null>(null);
   const [sectorRps, setSectorRps] = useState<SectorRpsRow[]>([]);
   const [marketMovers, setMarketMovers] = useState<SymbolAbnormality[]>([]);
@@ -137,7 +151,7 @@ export default function Market() {
   const sectorCode = searchParams.get('sector') || '';
   const sectorClassification = searchParams.get('classification') === 'concept' ? 'concept' : 'industry';
   const showTimeline = searchParams.get('timeline') === '1';
-  const selectedSymbolMatchesMarketType = Boolean(selectedSymbol);
+  const selectedSymbolMatchesMarketType = Boolean(selectedSymbol && allSymbols.includes(selectedSymbol));
 
   // 价格闪烁动画状态
   const prevPriceRef = useRef<number>(0);
@@ -165,8 +179,16 @@ export default function Market() {
 
         setAllSymbols(symbols);
         setAllInstruments(res.instruments || []);
-        if (nextSymbol && nextSymbol !== selectedSymbol) {
-          setSelectedSymbol(nextSymbol);
+        if ((nextSymbol || '') !== selectedSymbol) {
+          setSelectedSymbol(nextSymbol || '');
+        }
+        if (!nextSymbol) {
+          setKlines([]);
+          setKlineMeta(null);
+          setMarketIndicators({});
+          setMarketIndicatorTimestamps([]);
+          setOrderbook(null);
+          setRecentTrades([]);
         }
       })
       .catch(console.error);
@@ -660,7 +682,19 @@ export default function Market() {
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => setMarketType(option.value)}
+                      onClick={() => {
+                        if (marketType === option.value) return;
+                        setMarketType(option.value);
+                        setSelectedSymbol('');
+                        setAllSymbols([]);
+                        setAllInstruments([]);
+                        setKlines([]);
+                        setKlineMeta(null);
+                        setMarketIndicators({});
+                        setMarketIndicatorTimestamps([]);
+                        setOrderbook(null);
+                        setRecentTrades([]);
+                      }}
                       className={clsx(
                         'h-9 px-3 text-xs font-semibold transition-colors',
                         marketType === option.value
@@ -722,12 +756,13 @@ export default function Market() {
                 <span className="tabular-nums">当日低 <span className="text-gray-200">{formatMarketCompact(low24h, 4)}</span></span>
                 <span className="tabular-nums">成交量 <span className="text-gray-200">{formatMarketCompact(volume24h)}</span></span>
                 <span className="tabular-nums">成交额 <span className="text-gray-200">{formatMarketCompact(quoteVolume24h)}</span></span>
-                <span className="tabular-nums">制度 <span className="text-gray-200">T+1 · 100股整手</span></span>
+                <span className="tabular-nums">制度 <span className="text-gray-200">{marketType === 'index' ? '指数点位 · 不可交易' : marketType === 'etf' ? 'T+1 · 100份整手' : 'T+1 · 100股整手'}</span></span>
                 <span className="ml-auto tabular-nums">共 {klines.length} 根K线</span>
               </div>
               <div className="flex basis-full flex-wrap items-center gap-x-3 gap-y-1 border-t border-crypto-border/50 pt-2 text-[11px] text-gray-500">
                 <span>来源 <span className="text-gray-300">{klineSourceLabel}</span></span>
                 <span>状态 <span className="text-gray-300">{klineStateLabel}</span></span>
+                <span>窗口 <span className="font-mono text-gray-300">{klineMeta?.fromDate || '—'} → {klineMeta?.toDate || '—'} · {klineMeta?.rowCount ?? klines.length} 行</span></span>
                 {klineMeta?.fallbackFrom?.dataStatus && (
                   <span>缓存 <span className="text-gray-300">{klineMeta.fallbackFrom.dataStatus}</span></span>
                 )}
