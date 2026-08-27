@@ -95,6 +95,25 @@ def test_home_dashboard_marks_old_latest_data_stale_but_labels_explicit_history(
     assert history["data_status"] != "stale"
 
 
+def test_home_dashboard_promotes_the_only_observed_metric_snapshot_to_top_evidence() -> None:
+    class MissingOverviewSnapshotRepository(FakeDashboardRepository):
+        def get_market_overview(self, trade_date=None):
+            payload = super().get_market_overview(trade_date)
+            payload["evidence"]["source_snapshot_id"] = None
+            return payload
+
+    service = MarketDomainService(
+        repo=MissingOverviewSnapshotRepository(),
+        intraday_provider=object(),
+        symbol_provider=object(),
+    )
+
+    payload = asyncio.run(service.get_home_dashboard())
+
+    assert payload["evidence"]["source_snapshot_id"] == 7
+    assert payload["evidence"]["consistency_warnings"] == []
+
+
 def test_home_dashboard_route_returns_one_read_only_contract(monkeypatch) -> None:
     class FakeService:
         async def get_home_dashboard(self, trade_date=None):

@@ -467,6 +467,10 @@ class MarketDomainService:
             ]
             data_status = "ready" if not warnings and all(item in {"ready", "ok"} for item in required_statuses) else "partial"
             evidence = dict(overview.get("evidence") or {})
+            if len(set(observed_dates.values())) == 1:
+                evidence["trade_date"] = next(iter(observed_dates.values()))
+            if len(set(observed_snapshots.values())) == 1:
+                evidence["source_snapshot_id"] = next(iter(observed_snapshots.values()))
             available_at = evidence.get("available_at") or evidence.get("last_success_at")
             data_age_seconds: int | None = None
             if available_at:
