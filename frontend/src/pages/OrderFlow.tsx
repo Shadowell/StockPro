@@ -25,6 +25,8 @@ const SYMBOL_OPTIONS = [
   '510300.SH',
 ];
 
+const PROVIDER_REFRESH_MS = 6 * 60 * 1000;
+
 const RANGE_OPTIONS = [
   { label: '近 1 小时', hours: 1 },
   { label: '近 6 小时', hours: 6 },
@@ -59,6 +61,9 @@ type OrderflowBarsMeta = {
   unavailableReason?: string | null;
   lastError?: string | null;
   asOf?: number;
+  lastSuccessAt?: string | null;
+  cacheAgeSeconds?: number | null;
+  nextRetryAt?: string | null;
 };
 
 function fmtUsdt(v: number | null | undefined): string {
@@ -77,6 +82,12 @@ function fmtTime(ts: number): string {
     second: '2-digit',
     hour12: false,
   });
+}
+
+function fmtMetaTime(value?: string | null): string {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('zh-CN', { hour12: false });
 }
 
 export default function OrderFlow() {
@@ -126,6 +137,9 @@ export default function OrderFlow() {
         unavailableReason: barRes.unavailableReason,
         lastError: barRes.lastError,
         asOf: barRes.asOf,
+        lastSuccessAt: barRes.lastSuccessAt,
+        cacheAgeSeconds: barRes.cacheAgeSeconds,
+        nextRetryAt: barRes.nextRetryAt,
       });
       setStreamStatus(status);
     } catch (exc) {
@@ -141,7 +155,7 @@ export default function OrderFlow() {
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const timer = setInterval(load, 30_000);
+    const timer = setInterval(load, PROVIDER_REFRESH_MS);
     return () => clearInterval(timer);
   }, [autoRefresh, load]);
 
@@ -407,7 +421,7 @@ export default function OrderFlow() {
               onChange={(e) => setAutoRefresh(e.target.checked)}
               className="accent-blue-500"
             />
-            30s 自动刷新
+            6 分钟自动刷新
           </label>
           <button
             onClick={load}
@@ -496,6 +510,9 @@ export default function OrderFlow() {
           <span>当前接入 TuShare 实时分钟线</span>
           <span className="text-blue-100/70">
             该数据不是 tick/L2，不提供主动买卖、大单明细或 CVD；相关区域保持真实空态。
+          </span>
+          <span className="text-blue-100/70">
+            最近成功 {fmtMetaTime(barsMeta?.lastSuccessAt || streamStatus?.lastSuccessAt)} · 缓存年龄 {barsMeta?.cacheAgeSeconds ?? streamStatus?.cacheAgeSeconds ?? '—'} 秒 · 下次可请求 {fmtMetaTime(barsMeta?.nextRetryAt || streamStatus?.nextRetryAt)}
           </span>
         </div>
       )}

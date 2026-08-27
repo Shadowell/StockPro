@@ -11,7 +11,11 @@ test('data center renders Chinese name before public A-share code', async ({ pag
   const text = await card.innerText()
   expect(text.indexOf('贵州茅台')).toBeGreaterThanOrEqual(0)
   expect(text.indexOf('贵州茅台')).toBeLessThan(text.indexOf('600519.SH'))
+  await expect(card.getByText('124', { exact: true }).first()).toBeVisible()
+  await card.click()
+  await expect(card.getByText(/2026.*3.*2/).first()).toBeVisible()
   await expect(page.getByText('后续同步名单 2 个', { exact: false })).toBeVisible()
+  await expect(page.getByText('第 1–2 条 · 共 2 个标的', { exact: true })).toBeVisible()
 })
 
 test('admin can start the half-year all-stock daily sync', async ({ page }) => {

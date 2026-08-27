@@ -1814,6 +1814,10 @@ export interface MarketKlinesMeta {
   cacheHit?: boolean;
   fallbackSource?: string;
   fallbackError?: string;
+  rowCount?: number;
+  fromDate?: string | null;
+  toDate?: string | null;
+  latestTradeDate?: string | null;
   fallbackFrom?: {
     dataStatus?: string;
     unavailableReason?: string | null;
@@ -3398,6 +3402,9 @@ export interface OrderflowStreamStatus {
   lastMsgAt: number | null;
   lastFlushAt: number | null;
   lastError: string | null;
+  lastSuccessAt?: string | null;
+  cacheAgeSeconds?: number | null;
+  nextRetryAt?: string | null;
   minNotionalUsdt: number;
   instIds: string[];
 }
@@ -3427,6 +3434,9 @@ export const orderflowApi = {
     unavailableReason?: string | null;
     lastError?: string | null;
     asOf?: number;
+    lastSuccessAt?: string | null;
+    cacheAgeSeconds?: number | null;
+    nextRetryAt?: string | null;
   }> =>
     getReq('/orderflow/bars', { params }),
 

@@ -34,10 +34,11 @@ export default function OrderBookChart({
     return { maxAmount, bids, asks, spread, spreadPercent, midPrice };
   }, [data, maxRows]);
 
-  if (!data) {
+  if (!data || (!bids.length && !asks.length)) {
     return (
-      <div className="text-center py-8 text-gray-400">
-        暂无订单簿数据
+      <div className="py-8 text-center text-gray-400">
+        <div>暂无订单簿深度，未计算价差</div>
+        <div className="mt-1 text-xs text-gray-600">{data?.unavailableReason || '实时盘口 Provider 未配置或尚无已持久化快照'}</div>
       </div>
     );
   }

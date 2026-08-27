@@ -106,13 +106,24 @@ class RealtimeMinuteOrderflowService:
         self._clock = clock or (lambda: datetime.now(CN_TZ))
         self._cache: dict[tuple[str, str], tuple[datetime, list[dict[str, Any]]]] = {}
         self._next_provider_call_at: datetime | None = None
+        self._last_success_at: datetime | None = None
         self._last_error: str | None = None
+
+    def _freshness_meta(self, now: datetime, cached_at: datetime | None = None) -> dict[str, Any]:
+        return {
+            "last_success_at": self._last_success_at.isoformat() if self._last_success_at else None,
+            "cache_age_seconds": int((now - cached_at).total_seconds()) if cached_at else None,
+            "next_retry_at": self._next_provider_call_at.isoformat() if self._next_provider_call_at else None,
+        }
 
     def stream_status(self) -> dict[str, Any]:
         provider = self._provider_factory()
+        now = self._clock()
+        latest_cached_at = max((entry[0] for entry in self._cache.values()), default=None)
         if not provider.configured:
             return {
                 **self._base_status("unavailable", "requires_configuration"),
+                **self._freshness_meta(now, latest_cached_at),
                 "enabled": False,
                 "connected": False,
                 "last_error": "Tushare token not configured",
@@ -120,7 +131,8 @@ class RealtimeMinuteOrderflowService:
 
         if self._last_error:
             return {
-                **self._base_status("unavailable", "provider_error"),
+                **self._base_status("stale" if latest_cached_at else "unavailable", "provider_backoff"),
+                **self._freshness_meta(now, latest_cached_at),
                 "enabled": True,
                 "connected": False,
                 "last_error": self._last_error,
@@ -128,6 +140,7 @@ class RealtimeMinuteOrderflowService:
 
         return {
             **self._base_status("realtime_minute_fallback", "available"),
+            **self._freshness_meta(now, latest_cached_at),
             "enabled": True,
             "connected": True,
             "last_error": None,
@@ -202,20 +215,24 @@ class RealtimeMinuteOrderflowService:
                     "bar_minutes": bar_minutes,
                     "as_of": int(now.timestamp() * 1000),
                     "cache_age_seconds": int(cache_age),
+                    "last_success_at": self._last_success_at.isoformat() if self._last_success_at else cached_at.isoformat(),
+                    "next_retry_at": self._next_provider_call_at.isoformat() if self._next_provider_call_at else None,
                     "last_error": None,
                     "unavailable_reason": None if items else "No cached realtime minute bars",
                 }
 
         if self._next_provider_call_at is not None and now < self._next_provider_call_at:
             wait_seconds = int((self._next_provider_call_at - now).total_seconds())
+            stale_items = self._bars_from_rows(cached_rows, normalized_symbol, now, hours) if cached_at else []
             return {
-                **self._base_status("unavailable", "provider_backoff"),
-                "items": [],
-                "count": 0,
+                **self._base_status("stale" if stale_items else "unavailable", "provider_backoff"),
+                **self._freshness_meta(now, cached_at),
+                "items": stale_items,
+                "count": len(stale_items),
                 "symbol": normalized_symbol,
                 "bar_minutes": bar_minutes,
                 "as_of": int(now.timestamp() * 1000),
-                "unavailable_reason": "Tushare realtime minute request is in rate-limit backoff",
+                "unavailable_reason": "Using the last successful minute snapshot during Tushare rate-limit backoff" if stale_items else "Tushare realtime minute request is in rate-limit backoff",
                 "last_error": self._last_error
                 or f"Waiting {wait_seconds}s before the next Tushare rt_min request",
             }
@@ -225,18 +242,21 @@ class RealtimeMinuteOrderflowService:
         except Exception as exc:
             self._last_error = str(exc)
             self._next_provider_call_at = now + timedelta(seconds=CACHE_TTL_SECONDS)
+            stale_items = self._bars_from_rows(cached_rows, normalized_symbol, now, hours) if cached_at else []
             return {
-                **self._base_status("unavailable", "provider_error"),
-                "items": [],
-                "count": 0,
+                **self._base_status("stale" if stale_items else "unavailable", "provider_error"),
+                **self._freshness_meta(now, cached_at),
+                "items": stale_items,
+                "count": len(stale_items),
                 "symbol": normalized_symbol,
                 "bar_minutes": bar_minutes,
-                "unavailable_reason": "Tushare realtime minute request failed",
+                "unavailable_reason": "Using the last successful minute snapshot after a Tushare request failure" if stale_items else "Tushare realtime minute request failed",
                 "last_error": str(exc),
             }
 
         self._cache[(normalized_symbol, freq)] = (now, rows)
         self._next_provider_call_at = now + timedelta(seconds=CACHE_TTL_SECONDS)
+        self._last_success_at = now
         self._last_error = None
         items = self._bars_from_rows(rows, normalized_symbol, now, hours)
         data_status = "realtime_minute_fallback" if items else "empty"
@@ -247,6 +267,7 @@ class RealtimeMinuteOrderflowService:
             "symbol": normalized_symbol,
             "bar_minutes": bar_minutes,
             "as_of": int(now.timestamp() * 1000),
+            **self._freshness_meta(now, now),
             "last_error": None,
             "unavailable_reason": None if items else "No realtime minute bars returned by Tushare",
         }

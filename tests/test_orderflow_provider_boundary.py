@@ -96,6 +96,46 @@ def test_orderflow_bars_reuses_realtime_minute_cache(monkeypatch) -> None:
     assert second.json()["data"]["cache_age_seconds"] == 0
 
 
+def test_orderflow_rate_limit_keeps_last_successful_snapshot_stale() -> None:
+    now = {"value": datetime(2026, 8, 27, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))}
+
+    class FlakyProvider:
+        configured = True
+        calls = 0
+
+        def rt_min(self, ts_code: str, freq: str):
+            type(self).calls += 1
+            if type(self).calls > 1:
+                raise RuntimeError("rt_min frequency exceeded")
+            return [{
+                "ts_code": ts_code, "time": "2026-08-27 09:31:00",
+                "open": 1600.0, "close": 1601.0, "high": 1602.0, "low": 1599.0,
+                "vol": 1000.0, "amount": 1_601_000.0,
+            }]
+
+    service = RealtimeMinuteOrderflowService(
+        provider_factory=FlakyProvider,
+        clock=lambda: now["value"],
+    )
+
+    first = service.bars("600519.SH", 1, 24)
+    now["value"] = datetime(2026, 8, 27, 10, 7, tzinfo=ZoneInfo("Asia/Shanghai"))
+    stale = service.bars("600519.SH", 1, 24)
+    now["value"] = datetime(2026, 8, 27, 10, 8, tzinfo=ZoneInfo("Asia/Shanghai"))
+    backoff = service.bars("600519.SH", 1, 24)
+
+    assert first["count"] == 1
+    assert stale["count"] == 1
+    assert stale["data_status"] == "stale"
+    assert stale["cache_age_seconds"] == 420
+    assert stale["last_success_at"] == "2026-08-27T10:00:00+08:00"
+    assert stale["next_retry_at"] == "2026-08-27T10:13:00+08:00"
+    assert backoff["count"] == 1
+    assert backoff["data_status"] == "stale"
+    assert backoff["cache_age_seconds"] == 480
+    assert FlakyProvider.calls == 2
+
+
 def test_orderflow_large_trades_keeps_tick_provider_boundary(monkeypatch) -> None:
     response = _client(monkeypatch).get("/api/v2/orderflow/large-trades?inst_id=600519.SH")
 
@@ -122,3 +162,8 @@ def test_orderflow_frontend_collapses_provider_missing_state() -> None:
     assert "streamStatus.permissionState === 'requires_configuration'" in page
     assert "A 股 tick Provider 未配置" in page
     assert "{!providerMissing && (" in page
+    assert "PROVIDER_REFRESH_MS" in page
+    assert "6 分钟自动刷新" in page
+    assert "lastSuccessAt" in page
+    assert "nextRetryAt" in page
+    assert "30s 自动刷新" not in page
