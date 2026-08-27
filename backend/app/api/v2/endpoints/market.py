@@ -33,6 +33,14 @@ async def get_ticker(
     return ok(await market_domain_service.get_ticker(exchange, symbol))
 
 
+@router.get("/overview")
+async def get_market_overview(
+    trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新已持久化事实"),
+):
+    """Return the single read-only foundation contract used by the home page."""
+    return ok(await market_domain_service.get_market_overview(trade_date))
+
+
 @router.get("/tickers")
 async def get_tickers(
     exchange: str = Query(..., description="交易所"),

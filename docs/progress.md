@@ -8,6 +8,20 @@
 - 首页市场指标区新增“异动边缘明细”和“告警事件流”，保留紧凑深色操作台、桌面/窄屏横向可读和真实空态；新增 4 项 Mock Playwright 验收。
 - 验证：后端全量 147 项、前端 `check`/零警告 `lint`/生产 `build`/bundle budget、`rebuild/assert_safety.py` 和首页 Mock Playwright 4 项通过。标准 4444/4445 当时被另一并行任务占用，已在独立 4454/4455 临时服务完成启动与健康/路由探测；隔离库迁移因本机 Colima Docker daemon 不可用未执行。
 
+## GitHub #61 首页指数、宽度、趋势与市场活跃度基础层（2026-08-27）
+
+- 新增只读 `GET /api/v2/market/overview` 单一首页基础层合同：从 PostgreSQL 读取同一有效 A 股股票池，
+  返回真实指数、上涨/平盘/下跌与八档分布、平均/中位涨跌、MA5/20/60 与 60 日新高低门槛、成交额/
+  换手/量比口径，以及涨幅/跌幅/成交额/活跃换手四类 Top 10 榜单。
+- 指数优先读取 `market_indices_realtime`，为空时读取封存 `benchmark_bars`；趋势历史不足 60 个确认日
+  时返回 `blocked` 和 null 指标；停牌、无价和明显坏数据不进入分母或榜单。所有模块保留交易日、快照、
+  可用时间、知识截止时间、状态和缺失输入，GET 不调用 Provider、不写库。
+- 首页接入 `HomeMarketOverview`，显示证据条、指数条、宽度/涨跌分布、趋势强度、成交与换手、四类榜单；
+  榜单点击进入行情页，桌面/390px 空态、错误态和页面无横向溢出由 Mock Playwright 覆盖。
+- 验证：基础层 Python 5 项通过、前端类型检查/lint/build/bundle 通过、合并 #64 后全套 Mock E2E 33/33 通过；本机
+  隔离库为空时接口诚实返回 empty，未写入 Paper 或业务数据。生产真实数据与部署 SHA 待该 Issue 的独立
+  分支交付后复核。
+
 ## 最近半年全市场 A 股日线同步（2026-08-27）
 
 - 新增 `POST /api/v2/sync/history/sync-all`，管理员默认拉取最近 180 个自然日；按 TuShare
