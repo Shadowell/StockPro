@@ -40,6 +40,10 @@ StockPro 当前启用 A股、ETF 和指数；为中国期货、美国股票和�
 10. 行情页分钟 K 线可在本地分钟缓存空、不可用或 stale 时只读拉取 AKShare 分时数据作为显式
     fallback，实际来源可以是东财 `stock_zh_a_hist_min_em` 或新浪 `stock_zh_a_minute`；该路径不写库、
     不触发同步、不伪造盘口或逐笔成交，并必须在 API meta 与页面证据条标明来源和状态。
+11. 行情页证券列表必须展示后端返回的全量股票，不再截断为 50 个；当 `instrument_definitions`
+    为空时，`GET /api/v2/market/symbols` 可只读拉取 AKShare `stock_zh_a_spot_em` 沪深京 A 股
+    列表作为展示兜底，东财不可用时可退到 AKShare `stock_info_a_code_name` 代码简称列表，
+    但不得写库或替代管理员同步任务。
 
 ## 3. 仓库、分支和导入边界
 

@@ -451,12 +451,7 @@ export default function Market() {
         </section>
       </div>
 
-      {loading && klines.length < MIN_KLINES_TO_RENDER ? (
-        <div className="flex-1 flex items-center justify-center text-gray-400">
-          加载中...
-        </div>
-      ) : (
-        <div className="grid min-h-[720px] grid-cols-1 gap-4 lg:grid-cols-4">
+      <div className="grid min-h-[720px] grid-cols-1 gap-4 lg:grid-cols-4">
           {/* K线图区域：flex 竖向占满格子高度，否则子元素 height:100% 失效，ECharts 主图会被压成一条 */}
           <div className="lg:col-span-3 bg-crypto-card border border-crypto-border rounded-lg p-4 min-h-0 h-full flex flex-col">
             <div className="mb-2 flex flex-wrap items-center gap-3">
@@ -558,7 +553,11 @@ export default function Market() {
             </div>
             <div className="flex-1 min-h-0 flex flex-col gap-2">
               <div className="flex-1 min-h-[280px] min-w-0">
-                {klines.length >= MIN_KLINES_TO_RENDER ? (
+                {loading && klines.length < MIN_KLINES_TO_RENDER ? (
+                  <div className="flex h-full items-center justify-center text-gray-400">
+                    加载中...
+                  </div>
+                ) : klines.length >= MIN_KLINES_TO_RENDER ? (
                   <Suspense
                     fallback={
                       <div className="flex h-full items-center justify-center text-gray-400">
@@ -628,7 +627,6 @@ export default function Market() {
             </div>
           </div>
         </div>
-      )}
 
     </div>
   );
