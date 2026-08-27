@@ -83,6 +83,7 @@ export function reconcileProviderCapabilities(
 export interface LLMProviderCardProps {
   provider: LLMProviderSettings;
   activating?: boolean;
+  managementEnabled?: boolean;
   onActivate?: (providerKey: string) => void;
   onProviderUpdated?: () => Promise<void> | void;
 }
@@ -152,6 +153,7 @@ function FeatureState({ label, supported }: { label: string; supported: boolean 
 export default function LLMProviderCard({
   provider,
   activating = false,
+  managementEnabled = true,
   onActivate,
   onProviderUpdated,
 }: LLMProviderCardProps) {
@@ -343,7 +345,7 @@ export default function LLMProviderCard({
     : capabilities?.errorCode
       ? 'unhealthy'
       : 'unprobed';
-  const canActivate = !isCliProvider && Boolean(onActivate) && !active;
+  const canActivate = managementEnabled && !isCliProvider && Boolean(onActivate) && !active;
 
   const providerStatus = useMemo(() => {
     if (!enabled) return { label: '已停用', tone: 'amber' as CapabilityTone };
@@ -362,7 +364,7 @@ export default function LLMProviderCard({
   };
 
   const saveProviderMetadata = async () => {
-    if (operationBusy) return;
+    if (operationBusy || !managementEnabled) return;
     const requestConfigSignature = parentConfigSignatureRef.current;
     const parsedModels = modelsText.split(/[\n,，]/).map((model) => model.trim()).filter(Boolean);
     const nextDefaultModel = defaultModel.trim();
@@ -706,7 +708,8 @@ export default function LLMProviderCard({
             setActionError('');
           }}
           className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-crypto-border px-2.5 text-[11px] text-gray-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-200"
-          disabled={operationBusy}
+          disabled={operationBusy || !managementEnabled}
+          title={managementEnabled ? undefined : 'Provider 由服务端环境变量管理'}
         >
           <Edit3 className="h-3.5 w-3.5" />
           {editing ? '取消编辑' : '编辑能力'}
@@ -714,8 +717,8 @@ export default function LLMProviderCard({
         <button
           type="button"
           onClick={() => void toggleProvider()}
-          disabled={operationBusy || (active && enabled)}
-          title={active && enabled ? '当前 Provider 不可停用，请先切换路由' : undefined}
+          disabled={!managementEnabled || operationBusy || (active && enabled)}
+          title={!managementEnabled ? 'Provider 由服务端环境变量管理' : active && enabled ? '当前 Provider 不可停用，请先切换路由' : undefined}
           className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-red-500/25 px-2.5 text-[11px] text-red-300 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:border-crypto-border disabled:text-gray-600"
         >
           {enabled ? <Trash2 className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}

@@ -12,6 +12,8 @@ def test_settings_dialog_exposes_mcp_agent_token_manager() -> None:
 
     assert "McpAgentTokenManager" in main_layout
     assert "MCP Agent Token" in main_layout
+    assert "X-StockPro-MCP-Token" in main_layout
+    assert "STOCKPRO_MCP_API_TOKEN" in main_layout
     assert "X-BitPro-MCP-Token" in main_layout
     assert "BITPRO_MCP_API_TOKEN" in main_layout
     assert "navigator.clipboard.writeText" in main_layout

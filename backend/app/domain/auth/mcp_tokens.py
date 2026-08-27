@@ -26,7 +26,9 @@ class PostgresMcpTokenVerifier:
         value = str(token or "").strip()
         if not value:
             return None
-        env_token = str(settings.BITPRO_MCP_API_TOKEN or "").strip()
+        env_token = str(getattr(settings, "STOCKPRO_MCP_API_TOKEN", "") or "").strip()
+        if not env_token:
+            env_token = str(settings.BITPRO_MCP_API_TOKEN or "").strip()
         if env_token and secrets.compare_digest(value, env_token):
             return {
                 "authenticated": True,

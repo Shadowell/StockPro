@@ -293,6 +293,10 @@ BitPro 页面使用其成熟 ViewModel；适配层从现有 PostgreSQL 对象生
 - 数字资产私有调用、实盘订阅或交易所账户读取必须 fail-closed。
 - 用户代码不能直接访问 Provider、数据库、文件写入、网络或券商。
 - 新系统默认且唯一可执行环境是 A股 Paper。
+- 设置中心所有配置域必须返回真实 2xx/4xx 状态，不允许 502/404 被前端标成“已配置”；AI Provider
+  由服务端环境管理，未开放的浏览器写操作显式禁用。
+- MCP Agent 主认证名为 `X-StockPro-MCP-Token` / `STOCKPRO_MCP_API_TOKEN`，旧 BitPro 名只作迁移
+  兼容；Token 只存 PostgreSQL SHA-256，飞书 Webhook 只存加密值，所有管理路由要求 admin。
 
 ## 11. 实施顺序
 

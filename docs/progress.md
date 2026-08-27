@@ -1,5 +1,30 @@
 # Progress Log
 
+## GitHub #46 设置中心 PostgreSQL 安全配置底座（2026-08-27）
+
+- 生产复现确认设置中心不再是 Nginx 502，而是 active A 股后端未注册 MCP Token 与飞书 Webhook
+  路由，前端请求 `/settings/mcp-agent-tokens`、`/settings/mcp-token`、
+  `/settings/feishu-webhook` 返回 404；访问权限接口正常 200。
+- 新增 active PostgreSQL settings repository/service：飞书 Webhook 仅接受 HTTPS 飞书机器人固定域名/
+  路径，使用认证密钥派生 Fernet 密钥后以密文写入 `app_settings`，读取只返回掩码；MCP Agent
+  Token 使用 `sp_mcp_` 主前缀并只保存 SHA-256，明文只在创建响应返回一次。
+- additive migration 补齐既有 `mcp_agent_tokens` 的 prefix、tool groups、限流、到期时间和 R/W/L/T
+  scope 约束；新增 `STOCKPRO_MCP_API_TOKEN` / `X-StockPro-MCP-Token` 主配置名，保留 BitPro 旧名
+  作为迁移兼容。
+- MCP Token 与飞书 Webhook 的 GET/POST/DELETE 路由已接 active PostgreSQL service，所有路径显式要求
+  admin；请求模型禁止额外字段并限制名称、天数、限流和 URL 长度，非法 Webhook 返回 400，安全密钥
+  未就绪返回不泄露内部信息的 503。认证中间件优先读取 `X-StockPro-MCP-Token`，仅在主 Header 缺失
+  时兼容旧 Header。
+- AI GET 现返回真实 DashScope provider/capability 与服务端 Key 来源，不再同时显示“已配置”和
+  “Provider 未加载/未配置”；模型名与候选写入 PostgreSQL，Provider 新增/编辑在服务端环境管理
+  模式下明确禁用，能力刷新与连接测试拥有真实 200/503/502 合同。
+- 前端主文案改为 `X-StockPro-MCP-Token` / `STOCKPRO_MCP_API_TOKEN` 并单独说明旧名兼容；设置
+  四域 Mock E2E 无失败响应或 console error。隔离库应用 migration 后真实创建/列表/撤销 Token，
+  列表计数 +1 且无明文；通知发送器已按 env → PostgreSQL → 旧 SQLite 顺序读取保存的 Webhook。
+- 分支安全审查发现 MCP scope 与 admin role 混用：R-only Token 可进入设置写路由。共享门禁现要求
+  MCP 身份执行 Token/Webhook/模型写入或连接测试时必须包含 `W`；浏览器管理员不受影响，R-only
+  MCP 仍可读取设置状态。新增回归覆盖 R 读取 200、R 写入 403、R+W 正常进入业务分支。
+
 ## GitHub Issue #64 异动边缘与告警事件流（2026-08-27）
 
 - 异动研究规则补齐主板、创业板、科创板、北交所及 ST 展示语义；3/10/30 日偏离分别按对应正/负阈值计算接近度，窗口同时保留比率和百分比单位，并在缺少至少 30 个确认交易日、基准、行业或关键价格证据时标记 partial，不进入正常榜单。
