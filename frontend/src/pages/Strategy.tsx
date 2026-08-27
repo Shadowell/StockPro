@@ -379,20 +379,37 @@ function readTextField(record: Record<string, unknown>, keys: string[]): string 
 
 function getStrategyLogicSummary(strategy: StrategyType | null): {
   selectionLogic: string;
-  tradingLogic: string;
+  entryLogic: string;
+  exitLogic: string;
+  rebalanceLogic: string;
+  riskConstraints: string[];
 } {
   const config = isRecord(strategy?.config) ? strategy.config : {};
   const nested = isRecord(config.logicSummary) ? config.logicSummary : {};
+  const audit = strategy?.auditSummary;
 
   return {
     selectionLogic:
+      audit?.selectionLogic ||
       readTextField(config, ['selectionLogic', 'selection_logic']) ||
       readTextField(nested, ['selection', 'selectionLogic', 'selection_logic']) ||
       MISSING_SELECTION_LOGIC,
-    tradingLogic:
-      readTextField(config, ['tradingLogic', 'trading_logic']) ||
-      readTextField(nested, ['trading', 'tradingLogic', 'trading_logic']) ||
+    entryLogic:
+      audit?.entryLogic ||
+      readTextField(config, ['entryLogic', 'entry_logic']) ||
+      readTextField(nested, ['entry', 'entryLogic', 'entry_logic']) ||
       MISSING_TRADING_LOGIC,
+    exitLogic:
+      audit?.exitLogic ||
+      readTextField(config, ['exitLogic', 'exit_logic']) ||
+      readTextField(nested, ['exit', 'exitLogic', 'exit_logic']) ||
+      '尚未补充退出逻辑说明。',
+    rebalanceLogic:
+      audit?.rebalanceLogic ||
+      readTextField(config, ['rebalanceLogic', 'rebalance_logic']) ||
+      readTextField(nested, ['rebalance', 'rebalanceLogic', 'rebalance_logic']) ||
+      '尚未补充调仓逻辑说明。',
+    riskConstraints: audit?.riskConstraints || getStrategyConfigArray(config, ['riskConstraints', 'risk_constraints']),
   };
 }
 
@@ -500,7 +517,7 @@ export default function Strategy() {
   const [aiSymbol, setAiSymbol] = useState('600519.SH');
   const [aiTimeframe, setAiTimeframe] = useState('1d');
   const [aiGenerating, setAiGenerating] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: StrategyType['id']; name: string } | null>(null);
   const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
   const [logicSummaryOpen, setLogicSummaryOpen] = useState(false);
 
@@ -597,7 +614,7 @@ export default function Strategy() {
   ]);
 
   useEffect(() => {
-    setLogicSummaryOpen(false);
+    setLogicSummaryOpen(Boolean(selectedStrategy));
   }, [selectedStrategy?.id]);
 
   // 消息自动关闭
@@ -676,6 +693,7 @@ export default function Strategy() {
 
   const handleViewStrategyDetails = (strategy: StrategyType) => {
     setSelectedStrategy(strategy);
+    setLogicSummaryOpen(true);
     setView('detail');
   };
 
@@ -1070,6 +1088,7 @@ export default function Strategy() {
                   const timeframe = cfg.timeframe;
                   const suitableFor = cfg.suitable_for || cfg.suitableFor;
                   const isRecommended = cfg.recommended;
+                  const activePaper = s.linkedPaper && ['running', 'paused'].includes(s.linkedPaper.status) ? s.linkedPaper : null;
                   const riskColor = riskLevel === '低' ? 'text-green-400 bg-green-500/10 border-green-500/10'
                     : riskLevel === '中' ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/10'
                     : riskLevel === '中低' ? 'text-green-300 bg-green-500/10 border-green-500/10'
@@ -1130,11 +1149,12 @@ export default function Strategy() {
                             {formatTimeframeLabel(timeframe)}
                           </span>
                         )}
-                        {s.symbols?.map(sym => (
+                        {s.symbols?.slice(0, 6).map(sym => (
                           <span key={sym} className="text-[10px] px-1.5 py-0.5 rounded bg-crypto-bg text-gray-500 border border-crypto-border">
                             {sym.split('/')[0]}
                           </span>
                         ))}
+                        {(s.symbols?.length || 0) > 6 && <span className="text-[10px] text-gray-600">+{(s.symbols?.length || 0) - 6}</span>}
                         {updatedAt && (
                           <span className="text-[10px] text-gray-600 flex items-center gap-0.5 ml-auto">
                             <Clock className="w-3 h-3" />
@@ -1155,14 +1175,14 @@ export default function Strategy() {
                         <button
                           type="button"
                           onClick={() => {
-                            if (isStrategyRunningOrPaused(s.status)) {
-                              navigate(`/live?strategyId=${encodeURIComponent(String(s.id))}`);
+                            if (activePaper) {
+                              navigate(activePaper.consolePath);
                             }
                           }}
-                          disabled={!isStrategyRunningOrPaused(s.status)}
+                          disabled={!activePaper}
                           className={clsx(
                             'h-11 min-w-0 flex items-center justify-center gap-1.5 px-3 text-xs border-r border-crypto-border transition-colors',
-                            isStrategyRunningOrPaused(s.status)
+                            activePaper
                               ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10'
                               : 'text-gray-700 cursor-not-allowed',
                           )}
@@ -1309,7 +1329,7 @@ export default function Strategy() {
 
     return (
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
@@ -1330,20 +1350,34 @@ export default function Strategy() {
                   {assetClassLabel}
                 </span>
                 {timeframe && <span className="text-xs text-gray-500">{formatTimeframeLabel(timeframe)}</span>}
+                {selectedStrategy.isSample && (
+                  <span className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-200">样例 / 非投资建议</span>
+                )}
+                <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-0.5 text-xs text-gray-400">v{selectedStrategy.version ?? (Number(readTextField(config, ['version'])) || 1)}</span>
+                <span className={clsx('rounded-md border px-2 py-0.5 text-xs', selectedStrategy.validationStatus === 'valid' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-200')}>
+                  {selectedStrategy.validationStatus === 'valid' ? '验证通过' : '验证未通过'}
+                </span>
               </div>
               <h1 className={clsx('truncate text-2xl font-bold', strategyNameColorClass(assetClass))}>{selectedStrategy.name}</h1>
             </div>
           </div>
-          {canWriteStrategy && (
-            <button
-              type="button"
-              onClick={() => handleEditStrategy(selectedStrategy)}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
-            >
-              <Edit3 className="h-4 w-4" />
-              编辑策略
-            </button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {selectedStrategy.linkedPaper && ['running', 'paused'].includes(selectedStrategy.linkedPaper.status) && (
+              <button type="button" onClick={() => navigate(selectedStrategy.linkedPaper!.consolePath)} className="flex items-center gap-2 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/15">
+                <Activity className="h-4 w-4" />实例控制台
+              </button>
+            )}
+            {canWriteStrategy && (
+              <button
+                type="button"
+                onClick={() => handleEditStrategy(selectedStrategy)}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+              >
+                <Edit3 className="h-4 w-4" />
+                编辑策略
+              </button>
+            )}
+          </div>
         </div>
 
         <section className="rounded-xl border border-crypto-border bg-crypto-card/80">
@@ -1362,7 +1396,7 @@ export default function Strategy() {
             />
           </button>
           {logicSummaryOpen && (
-            <div className="grid gap-5 border-t border-crypto-border px-4 py-4 lg:grid-cols-2">
+            <div className="grid gap-5 border-t border-crypto-border px-4 py-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="border-l border-blue-500/40 pl-4">
                 <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-300">
                   <Layers className="h-4 w-4" />
@@ -1373,9 +1407,23 @@ export default function Strategy() {
               <div className="border-l border-emerald-500/40 pl-4">
                 <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-emerald-300">
                   <BarChart3 className="h-4 w-4" />
-                  交易逻辑
+                  入场逻辑
                 </div>
-                <p className="text-sm leading-6 text-gray-300">{logic.tradingLogic}</p>
+                <p className="text-sm leading-6 text-gray-300">{logic.entryLogic}</p>
+              </div>
+              <div className="border-l border-rose-500/40 pl-4">
+                <div className="mb-2 text-sm font-semibold text-rose-300">退出逻辑</div>
+                <p className="text-sm leading-6 text-gray-300">{logic.exitLogic}</p>
+              </div>
+              <div className="border-l border-cyan-500/40 pl-4">
+                <div className="mb-2 text-sm font-semibold text-cyan-300">调仓规则</div>
+                <p className="text-sm leading-6 text-gray-300">{logic.rebalanceLogic}</p>
+              </div>
+              <div className="border-l border-amber-500/40 pl-4 md:col-span-2">
+                <div className="mb-2 text-sm font-semibold text-amber-200">风险约束</div>
+                {logic.riskConstraints.length ? (
+                  <ul className="space-y-1 text-sm leading-6 text-gray-300">{logic.riskConstraints.map((item) => <li key={item}>· {item}</li>)}</ul>
+                ) : <p className="text-sm text-gray-500">尚未补充风险约束。</p>}
               </div>
             </div>
           )}
@@ -1383,18 +1431,42 @@ export default function Strategy() {
 
         <StrategyParameterSections sections={parameterSections} />
 
+        <section className="rounded-xl border border-crypto-border bg-crypto-card p-5">
+          <h2 className="mb-4 text-sm font-semibold text-white">版本与运行证据</h2>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 p-3"><div className="text-[10px] text-gray-600">策略版本</div><div className="mt-1 break-all text-xs text-gray-200">v{selectedStrategy.version ?? 1} · {selectedStrategy.versionId || '--'}</div><div className="mt-1 break-all text-[10px] text-gray-600">hash {selectedStrategy.contentHash || '--'}</div></div>
+            <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 p-3"><div className="text-[10px] text-gray-600">验证</div><div className="mt-1 text-xs text-gray-200">{selectedStrategy.strategyApiVersion || '--'} · {selectedStrategy.validationStatus || '--'}</div><div className="mt-1 text-[10px] text-gray-600">{selectedStrategy.validatedAt ? new Date(selectedStrategy.validatedAt).toLocaleString('zh-CN') : '无验证时间'}</div></div>
+            <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 p-3"><div className="text-[10px] text-gray-600">最近 sealed 回测</div><div className="mt-1 text-xs text-gray-200">{selectedStrategy.linkedBacktest ? `#${selectedStrategy.linkedBacktest.id} · ${selectedStrategy.linkedBacktest.status}` : '无关联回测'}</div><div className="mt-1 text-[10px] text-gray-600">{selectedStrategy.linkedBacktest ? `${selectedStrategy.linkedBacktest.startDate} 至 ${selectedStrategy.linkedBacktest.endDate} · 成交 ${selectedStrategy.linkedBacktest.fillCount} / 闭合 ${selectedStrategy.linkedBacktest.closedTradeCount} · ${selectedStrategy.linkedBacktest.metricStatus === 'insufficient_sample' ? '样本不足' : '指标可判定'}` : '--'}</div></div>
+            <div className="rounded-lg border border-crypto-border bg-crypto-bg/55 p-3"><div className="text-[10px] text-gray-600">关联 Paper</div><div className="mt-1 text-xs text-gray-200">{selectedStrategy.linkedPaper ? `#${selectedStrategy.linkedPaper.id} · ${selectedStrategy.linkedPaper.status}` : '无关联实例'}</div><div className="mt-1 text-[10px] text-gray-600">{selectedStrategy.linkedPaper?.runtimeVersion || '--'}</div></div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="min-w-0 rounded-xl border border-crypto-border bg-crypto-card p-5">
+            <h2 className="mb-3 text-sm font-semibold text-white">版本代码</h2>
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-crypto-border bg-black/25 p-3 text-xs leading-5 text-gray-300">{selectedStrategy.scriptContent || '无代码'}</pre>
+          </div>
+          <div className="min-w-0 rounded-xl border border-crypto-border bg-crypto-card p-5">
+            <h2 className="mb-3 text-sm font-semibold text-white">版本参数</h2>
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-crypto-border bg-black/25 p-3 text-xs leading-5 text-gray-300">{JSON.stringify(selectedStrategy.versionParameters ?? {}, null, 2)}</pre>
+          </div>
+        </section>
+
         <section className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
           <div className="rounded-xl border border-crypto-border bg-crypto-card p-5">
             <h2 className="mb-3 text-sm font-semibold text-white">策略描述</h2>
             <p className="text-sm leading-6 text-gray-400">
               {selectedStrategy.description || '暂无描述'}
             </p>
+            {selectedStrategy.auditSummary?.latestExecutionReason && (
+              <p className="mt-3 rounded-lg border border-crypto-border bg-crypto-bg/50 px-3 py-2 text-xs leading-5 text-gray-500">最近成交原因：{selectedStrategy.auditSummary.latestExecutionReason}</p>
+            )}
           </div>
           <div className="rounded-xl border border-crypto-border bg-crypto-card p-5">
             <h2 className="mb-3 text-sm font-semibold text-white">交易范围</h2>
             {displaySymbols.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {displaySymbols.map((symbol) => (
+                {displaySymbols.slice(0, 30).map((symbol) => (
                   <span
                     key={symbol}
                     className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-xs text-gray-300"
@@ -1402,6 +1474,7 @@ export default function Strategy() {
                     {formatSymbolLabel(symbol, selectedSymbolNames[symbol])}
                   </span>
                 ))}
+                {displaySymbols.length > 30 && <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1 text-xs text-gray-500">另有 {displaySymbols.length - 30} 只</span>}
               </div>
             ) : (
               <p className="text-sm text-gray-500">暂无交易范围</p>

@@ -78,6 +78,65 @@ def test_bitpro_strategy_catalog_maps_postgres_a_share_versions():
     assert asyncio.run(service.get(224))["name"].startswith("[A股]")
 
 
+def test_sample_strategy_view_links_one_version_backtest_and_paper_evidence():
+    row = {
+        "id": "c10c9805-5b0c-534d-860f-c860f0659eaa",
+        "legacy_strategy_id": None,
+        "name": "StockPro minimal research chain 2026-08-26",
+        "version": 1,
+        "description": "Minimal audited sample strategy; not investment advice.",
+        "script_content": "def generate_signals(rows):\n    return sorted(rows, key=lambda row: row['daily_return'], reverse=True)\n",
+        "parameter_schema": {},
+        "data_dependencies": ["stock_history.close"],
+        "output_contract": {"signals": "candidate/buy records"},
+        "status": "active",
+        "validation_status": "valid",
+        "validation_report": {"signal": "rank by real close-to-close return"},
+        "strategy_api_version": "stockpro.v1",
+        "content_hash": "57f66708",
+        "validated_at": "2026-08-27T10:29:29+08:00",
+        "linked_backtest_uuid": "7e436e7c-afd0-5424-90c2-6f841eef6e35",
+        "linked_backtest_id": 2118348412,
+        "linked_backtest_status": "success",
+        "linked_backtest_start_date": "2026-08-26",
+        "linked_backtest_end_date": "2026-08-26",
+        "linked_backtest_universe": {"symbols": ["BJ_920000", "BJ_920001", "BJ_920002"]},
+        "linked_backtest_metrics": {"sample_only": True},
+        "linked_backtest_manifest": {"sealed": True},
+        "equity_point_count": 1,
+        "fill_count": 1,
+        "order_count": 0,
+        "linked_paper_uuid": "5695cf86-1688-5d7f-874b-7678fbf8b442",
+        "linked_paper_id": 1452658566,
+        "linked_paper_status": "running",
+        "linked_paper_parameters": {"sample_chain": True},
+        "linked_paper_capacity_limits": {"max_position_weight": 0.1},
+        "linked_paper_feed_config": {"mode": "local_snapshot"},
+        "linked_paper_runtime_version": "minimal-research-chain.v1",
+        "linked_paper_symbols": ["BJ_920000"],
+        "latest_trade_symbol": "BJ_920000",
+        "latest_trade_reason": "Minimal sample fill priced from stock_history close.",
+        "created_at": "2026-08-27T10:29:29+08:00",
+        "updated_at": "2026-08-27T10:29:29+08:00",
+    }
+
+    view = StrategyDomainService._view(row)
+
+    assert view["id"] == row["id"]
+    assert view["status"] == "running"
+    assert view["symbols"] == ["920000.BJ", "920001.BJ", "920002.BJ"]
+    assert view["is_sample"] is True
+    assert view["disclaimer"] == "样例 / 非投资建议"
+    assert "未实现" in view["audit_summary"]["exit_logic"]
+    assert "最大仓位 10%" in view["audit_summary"]["risk_constraints"][0]
+    assert view["linked_backtest"]["id"] == 2118348412
+    assert view["linked_backtest"]["metric_status"] == "insufficient_sample"
+    assert view["linked_paper"]["id"] == 1452658566
+    assert view["linked_paper"]["console_path"].endswith("instance_id=1452658566")
+    assert view["config"]["version"] == view["version"] == 1
+    assert view["script_content"].startswith("def generate_signals")
+
+
 VALID_CODE = """
 def initialize(context):
     set_benchmark('000300.SH')

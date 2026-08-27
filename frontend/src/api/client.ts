@@ -2211,7 +2211,7 @@ export const strategyApi = {
       },
     }),
 
-  get: (id: number): Promise<Strategy> => getReq(`/strategies/${id}`),
+  get: (id: Strategy['id']): Promise<Strategy> => getReq(`/strategies/${id}`),
 
   create: (data: {
     name: string;
@@ -2222,17 +2222,17 @@ export const strategyApi = {
     symbols?: string[];
   }): Promise<Strategy> => postReq('/strategies', data),
 
-  update: (id: number, data: Partial<Strategy>): Promise<Strategy> =>
+  update: (id: Strategy['id'], data: Partial<Strategy>): Promise<Strategy> =>
     putReq(`/strategies/${id}`, data),
 
-  delete: (id: number): Promise<void> => deleteReq(`/strategies/${id}`),
+  delete: (id: Strategy['id']): Promise<void> => deleteReq(`/strategies/${id}`),
 
-  start: (id: number): Promise<{ started: boolean }> => postReq(`/strategies/${id}/start`),
+  start: (id: Strategy['id']): Promise<{ started: boolean }> => postReq(`/strategies/${id}/start`),
 
-  stop: (id: number): Promise<{ stopped: boolean }> => postReq(`/strategies/${id}/stop`),
+  stop: (id: Strategy['id']): Promise<{ stopped: boolean }> => postReq(`/strategies/${id}/stop`),
 
-  getStatus: (id: number): Promise<{
-    strategyId: number;
+  getStatus: (id: Strategy['id']): Promise<{
+    strategyId: number | string;
     name: string;
     status: string;
     pnl: number;

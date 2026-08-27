@@ -96,22 +96,72 @@ export interface FundingOpportunity {
 }
 
 // 策略相关
-export interface Strategy {
+export interface StrategyAuditSummary {
+  selectionLogic: string;
+  entryLogic: string;
+  exitLogic: string;
+  rebalanceLogic: string;
+  riskConstraints: string[];
+  universeSymbols: string[];
+  latestExecutionReason?: string | null;
+}
+
+export interface StrategyLinkedBacktest {
   id: number;
+  uuid: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  fillCount: number;
+  closedTradeCount: number;
+  orderCount: number;
+  equityPointCount: number;
+  metricStatus: 'eligible' | 'insufficient_sample';
+}
+
+export interface StrategyLinkedPaper {
+  id: number;
+  uuid: string;
+  status: string;
+  runtimeVersion?: string | null;
+  symbols: string[];
+  capacityLimits: Record<string, unknown>;
+  feedConfig: Record<string, unknown>;
+  consolePath: string;
+}
+
+export interface Strategy {
+  id: number | string;
   name: string;
   description?: string;
   scriptContent: string;
   config?: Record<string, unknown>;
-  status: 'running' | 'stopped' | 'error' | 'paused';
+  status: 'running' | 'stopped' | 'error' | 'paused' | 'not_started';
+  definitionStatus?: string;
   exchange?: string;
   symbols?: string[];
+  versionId?: string;
+  version?: number;
+  versionParameters?: Record<string, unknown>;
+  contentHash?: string | null;
+  strategyApiVersion?: string | null;
+  validationStatus?: string | null;
+  validationReport?: Record<string, unknown>;
+  validatedAt?: string | null;
+  dataDependencies?: string[];
+  outputContract?: Record<string, unknown>;
+  isSample?: boolean;
+  disclaimer?: string | null;
+  auditSummary?: StrategyAuditSummary;
+  linkedBacktest?: StrategyLinkedBacktest | null;
+  linkedPaper?: StrategyLinkedPaper | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface StrategyTrade {
   id: number;
-  strategyId: number;
+  strategyId: number | string;
   exchange: string;
   symbol: string;
   orderId?: string;
