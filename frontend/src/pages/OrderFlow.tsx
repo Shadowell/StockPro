@@ -146,6 +146,8 @@ export default function OrderFlow() {
   }, [autoRefresh, load]);
 
   const minuteFallback = Boolean(
+    streamStatus?.providerSource === 'tushare.rt_min' ||
+      barsMeta?.providerSource === 'tushare.rt_min' ||
     streamStatus?.dataStatus === 'realtime_minute_fallback' ||
       barsMeta?.dataStatus === 'realtime_minute_fallback' ||
       bars.some((bar) => bar.dataStatus === 'realtime_minute_fallback'),
@@ -330,9 +332,18 @@ export default function OrderFlow() {
     };
   }, []);
 
-  const statusBadge = streamStatus?.connected
-    ? { text: '已连接', cls: 'bg-up/10 text-up border-up/30' }
-    : streamStatus?.enabled
+  const providerError = Boolean(
+    barsMeta?.permissionState === 'provider_error' ||
+      barsMeta?.permissionState === 'provider_backoff' ||
+      streamStatus?.permissionState === 'provider_error' ||
+      streamStatus?.permissionState === 'provider_backoff',
+  );
+  const providerLastError = barsMeta?.lastError || streamStatus?.lastError;
+  const statusBadge = providerError
+    ? { text: '限频/异常', cls: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30' }
+    : streamStatus?.connected
+      ? { text: '已连接', cls: 'bg-up/10 text-up border-up/30' }
+      : streamStatus?.enabled
       ? { text: '重连中', cls: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' }
       : { text: '未启用', cls: 'bg-gray-500/10 text-gray-400 border-gray-500/30' };
   const providerMissing = Boolean(
@@ -384,7 +395,7 @@ export default function OrderFlow() {
           {streamStatus && (
             <span className="text-xs text-gray-500">
               数据源 {streamStatus.providerSource || '—'} · 频率 {streamStatus.frequency || '—'}
-              {streamStatus.lastError ? ` · ${streamStatus.lastError}` : ''}
+              {providerLastError ? ` · ${providerLastError}` : ''}
             </span>
           )}
         </div>

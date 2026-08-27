@@ -17,6 +17,7 @@ SUPPORTED_BAR_MINUTES = {
 }
 
 DEFAULT_SYMBOLS = ["600519.SH", "000001.SZ", "300750.SZ", "510300.SH"]
+CACHE_TTL_SECONDS = 6 * 60
 
 
 def _records(frame: Any) -> list[dict[str, Any]]:
@@ -103,6 +104,9 @@ class RealtimeMinuteOrderflowService:
     ) -> None:
         self._provider_factory = provider_factory or TushareRealtimeMinuteProvider
         self._clock = clock or (lambda: datetime.now(CN_TZ))
+        self._cache: dict[tuple[str, str], tuple[datetime, list[dict[str, Any]]]] = {}
+        self._next_provider_call_at: datetime | None = None
+        self._last_error: str | None = None
 
     def stream_status(self) -> dict[str, Any]:
         provider = self._provider_factory()
@@ -112,6 +116,14 @@ class RealtimeMinuteOrderflowService:
                 "enabled": False,
                 "connected": False,
                 "last_error": "Tushare token not configured",
+            }
+
+        if self._last_error:
+            return {
+                **self._base_status("unavailable", "provider_error"),
+                "enabled": True,
+                "connected": False,
+                "last_error": self._last_error,
             }
 
         return {
@@ -174,9 +186,45 @@ class RealtimeMinuteOrderflowService:
             }
 
         now = self._clock()
+        cached_at, cached_rows = self._cache.get((normalized_symbol, freq), (None, []))
+        if cached_at is not None:
+            cache_age = (now - cached_at).total_seconds()
+            if cache_age < CACHE_TTL_SECONDS:
+                items = self._bars_from_rows(cached_rows, normalized_symbol, now, hours)
+                return {
+                    **self._base_status(
+                        "realtime_minute_fallback" if items else "empty",
+                        "available",
+                    ),
+                    "items": items,
+                    "count": len(items),
+                    "symbol": normalized_symbol,
+                    "bar_minutes": bar_minutes,
+                    "as_of": int(now.timestamp() * 1000),
+                    "cache_age_seconds": int(cache_age),
+                    "last_error": None,
+                    "unavailable_reason": None if items else "No cached realtime minute bars",
+                }
+
+        if self._next_provider_call_at is not None and now < self._next_provider_call_at:
+            wait_seconds = int((self._next_provider_call_at - now).total_seconds())
+            return {
+                **self._base_status("unavailable", "provider_backoff"),
+                "items": [],
+                "count": 0,
+                "symbol": normalized_symbol,
+                "bar_minutes": bar_minutes,
+                "as_of": int(now.timestamp() * 1000),
+                "unavailable_reason": "Tushare realtime minute request is in rate-limit backoff",
+                "last_error": self._last_error
+                or f"Waiting {wait_seconds}s before the next Tushare rt_min request",
+            }
+
         try:
             rows = provider.rt_min(ts_code=normalized_symbol, freq=freq)
         except Exception as exc:
+            self._last_error = str(exc)
+            self._next_provider_call_at = now + timedelta(seconds=CACHE_TTL_SECONDS)
             return {
                 **self._base_status("unavailable", "provider_error"),
                 "items": [],
@@ -187,6 +235,9 @@ class RealtimeMinuteOrderflowService:
                 "last_error": str(exc),
             }
 
+        self._cache[(normalized_symbol, freq)] = (now, rows)
+        self._next_provider_call_at = now + timedelta(seconds=CACHE_TTL_SECONDS)
+        self._last_error = None
         items = self._bars_from_rows(rows, normalized_symbol, now, hours)
         data_status = "realtime_minute_fallback" if items else "empty"
         return {

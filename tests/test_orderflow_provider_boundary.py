@@ -22,8 +22,10 @@ from app.domain.orderflow.realtime_minute import (  # noqa: E402
 
 class FakeRealtimeMinuteProvider:
     configured = True
+    calls = 0
 
     def rt_min(self, ts_code: str, freq: str) -> list[dict[str, object]]:
+        type(self).calls += 1
         assert ts_code == "600519.SH"
         assert freq == "1MIN"
         return [
@@ -41,6 +43,7 @@ class FakeRealtimeMinuteProvider:
 
 
 def _client(monkeypatch) -> TestClient:
+    FakeRealtimeMinuteProvider.calls = 0
     service = RealtimeMinuteOrderflowService(
         provider_factory=FakeRealtimeMinuteProvider,
         clock=lambda: datetime(2026, 8, 27, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
@@ -79,6 +82,18 @@ def test_orderflow_bars_uses_tushare_realtime_minute(monkeypatch) -> None:
     assert payload["items"][0]["amount"] == 1_601_000.0
     assert payload["items"][0]["close_px"] == 1601.0
     assert payload["items"][0]["delta"] == 0.0
+
+
+def test_orderflow_bars_reuses_realtime_minute_cache(monkeypatch) -> None:
+    client = _client(monkeypatch)
+
+    first = client.get("/api/v2/orderflow/bars?inst_id=600519.SH&bar_minutes=1&hours=6")
+    second = client.get("/api/v2/orderflow/bars?inst_id=600519.SH&bar_minutes=1&hours=6")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert FakeRealtimeMinuteProvider.calls == 1
+    assert second.json()["data"]["cache_age_seconds"] == 0
 
 
 def test_orderflow_large_trades_keeps_tick_provider_boundary(monkeypatch) -> None:
