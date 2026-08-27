@@ -37,8 +37,11 @@ def guest_can_access(path: str, method: str) -> bool:
 
 
 def mcp_token_auth(request: Request) -> dict[str, object] | None:
-    header_name = str(getattr(settings, "BITPRO_MCP_AUTH_HEADER", "X-BitPro-MCP-Token") or "").strip()
-    provided = str(request.headers.get(header_name, "") or "").strip()
+    primary_header = str(getattr(settings, "STOCKPRO_MCP_AUTH_HEADER", "X-StockPro-MCP-Token") or "").strip()
+    legacy_header = str(getattr(settings, "BITPRO_MCP_AUTH_HEADER", "X-BitPro-MCP-Token") or "").strip()
+    provided = str(request.headers.get(primary_header, "") or "").strip()
+    if not provided and legacy_header and legacy_header.lower() != primary_header.lower():
+        provided = str(request.headers.get(legacy_header, "") or "").strip()
     return postgres_mcp_token_verifier.verify_token(provided)
 
 

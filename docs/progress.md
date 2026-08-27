@@ -10,7 +10,11 @@
   Token 使用 `sp_mcp_` 主前缀并只保存 SHA-256，明文只在创建响应返回一次。
 - additive migration 补齐既有 `mcp_agent_tokens` 的 prefix、tool groups、限流、到期时间和 R/W/L/T
   scope 约束；新增 `STOCKPRO_MCP_API_TOKEN` / `X-StockPro-MCP-Token` 主配置名，保留 BitPro 旧名
-  作为迁移兼容。当前仅完成安全存储底座，API 管理员门禁与前端设置闭环在后续切片接通。
+  作为迁移兼容。
+- MCP Token 与飞书 Webhook 的 GET/POST/DELETE 路由已接 active PostgreSQL service，所有路径显式要求
+  admin；请求模型禁止额外字段并限制名称、天数、限流和 URL 长度，非法 Webhook 返回 400，安全密钥
+  未就绪返回不泄露内部信息的 503。认证中间件优先读取 `X-StockPro-MCP-Token`，仅在主 Header 缺失
+  时兼容旧 Header；AI 状态与前端设置闭环仍在后续切片接通。
 
 ## 最近半年全市场 A 股日线同步（2026-08-27）
 
