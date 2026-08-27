@@ -133,6 +133,13 @@ def _as_float(value: Any) -> float | None:
     return number if isfinite(number) else None
 
 
+def valid_price_limit_pair(up_limit: Any, down_limit: Any) -> bool:
+    """Reject provider sentinels while retaining every current A-share limit band."""
+    up = _as_float(up_limit)
+    down = _as_float(down_limit)
+    return bool(up is not None and down is not None and up > 0 and down > 0 and up >= down and up / down <= 2.0)
+
+
 def _pct(current: float | None, previous: float | None) -> float | None:
     if current is None or previous is None or previous <= 0:
         return None

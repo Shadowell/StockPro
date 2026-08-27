@@ -4075,3 +4075,7 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
   固定标注 Provider 调用 0、写入 false、Paper 修改 false，并报告模块交易日/快照不一致。
 - 首页保留一套市场总览，新增紧凑涨跌停情绪、行业/概念领涨领跌、主线持续度、龙头贡献、
   异动和事件模块；板块可进入行情页查看 RPS 历史和当前成员快照及 membership bias。
+- 首次生产任务 #5 在原子提交前被价格约束拦截：TuShare 对无涨跌停约束标的返回
+  `up_limit=99999.99/down_limit=0` 哨兵，代码误把非空当有效。任务完整回滚，新结果表仍为 0，
+  Paper 七表计数不变。共享校验现要求上下限均为正、`up>=down` 且 `up/down<=2`；哨兵行不入库并
+  计入覆盖缺失，持久化层和物化层均有回归测试。

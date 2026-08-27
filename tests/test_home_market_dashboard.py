@@ -15,6 +15,7 @@ if str(BACKEND) not in sys.path:
 
 from app.api.v2.endpoints import market as market_endpoint  # noqa: E402
 from app.domain.market.service import MarketDomainService  # noqa: E402
+from app.domain.instruments.repository import AshareInstrumentRepository  # noqa: E402
 
 
 class FakeDashboardRepository:
@@ -151,3 +152,33 @@ def test_sector_members_route_exposes_snapshot_bias_without_writes(monkeypatch) 
     assert response.status_code == 200
     assert response.json()["data"][0]["symbol"] == "600001.SH"
     assert response.json()["meta"]["membership_bias"] == "current_membership_applied_to_history"
+
+
+def test_home_intelligence_persistence_skips_invalid_price_limit_sentinels() -> None:
+    class Cursor:
+        def __init__(self):
+            self.executemany_calls = []
+
+        def executemany(self, query, values):
+            self.executemany_calls.append((query, values))
+
+    cursor = Cursor()
+    counts = AshareInstrumentRepository._persist_home_intelligence(
+        cursor,
+        source_snapshot_id=7,
+        price_limit_rows=[{
+            "trade_date": "2026-03-04",
+            "symbol": "920183.BJ",
+            "pre_close": 19.71,
+            "up_limit": 99999.99,
+            "down_limit": 0.0,
+            "source": "tushare.stk_limit",
+        }],
+        market_sentiment=None,
+        market_phase=None,
+        sector_rps=[],
+        sector_memberships=[],
+    )
+
+    assert counts["price_limit_count"] == 0
+    assert cursor.executemany_calls == []

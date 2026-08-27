@@ -4,6 +4,8 @@ from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from app.domain.market.research_metrics import valid_price_limit_pair
+
 
 def _number(value: Any) -> float | None:
     if value in (None, ""):
@@ -278,7 +280,7 @@ def _normalize_price_limit_rows(rows: list[dict[str, Any]], trade_date: str) -> 
             "pre_close": _number(row.get("pre_close")),
             "up_limit": _number(row.get("up_limit")),
             "down_limit": _number(row.get("down_limit")),
-            "has_price_limit": row.get("up_limit") not in (None, "") and row.get("down_limit") not in (None, ""),
+            "has_price_limit": valid_price_limit_pair(row.get("up_limit"), row.get("down_limit")),
             "source": "tushare.stk_limit",
         })
     result.sort(key=lambda item: item["symbol"])

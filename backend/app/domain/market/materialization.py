@@ -6,7 +6,12 @@ from datetime import date, datetime, time, timedelta, timezone
 from statistics import mean
 from typing import Any
 
-from app.domain.market.research_metrics import compute_market_phase, compute_sector_rps, compute_symbol_abnormality
+from app.domain.market.research_metrics import (
+    compute_market_phase,
+    compute_sector_rps,
+    compute_symbol_abnormality,
+    valid_price_limit_pair,
+)
 
 
 CN_TZ = timezone(timedelta(hours=8))
@@ -68,7 +73,7 @@ def build_market_sentiment(
     for row in target_rows:
         symbol = str(row.get("symbol") or "")
         limits = limits_by_key.get((symbol, target))
-        if not limits or _number(limits.get("up_limit")) is None or _number(limits.get("down_limit")) is None:
+        if not limits or not valid_price_limit_pair(limits.get("up_limit"), limits.get("down_limit")):
             missing_limits += 1
             continue
         hit_up = _at_limit(row.get("high"), limits.get("up_limit"), direction="up")
@@ -88,7 +93,7 @@ def build_market_sentiment(
         for day in reversed([item for item in ordered_dates if item <= target]):
             row = rows_by_key.get((symbol, day))
             limits = limits_by_key.get((symbol, day))
-            if not row or not limits or not _at_limit(row.get("close"), limits.get("up_limit"), direction="up"):
+            if not row or not limits or not valid_price_limit_pair(limits.get("up_limit"), limits.get("down_limit")) or not _at_limit(row.get("close"), limits.get("up_limit"), direction="up"):
                 break
             streak += 1
         streaks[symbol] = streak
@@ -99,7 +104,7 @@ def build_market_sentiment(
     if previous_target:
         for (symbol, day), row in rows_by_key.items():
             limits = limits_by_key.get((symbol, day))
-            if day == previous_target and limits and _at_limit(row.get("close"), limits.get("up_limit"), direction="up"):
+            if day == previous_target and limits and valid_price_limit_pair(limits.get("up_limit"), limits.get("down_limit")) and _at_limit(row.get("close"), limits.get("up_limit"), direction="up"):
                 previous_closed_up.add(symbol)
 
     ladder: list[dict[str, Any]] = []
@@ -357,7 +362,7 @@ def build_sector_rps_history(
                     leader_returns[symbol] = return_20d
                 if limit_up_count is not None:
                     limits = limits_by_key.get((symbol, target))
-                    if limits and _number(limits.get("up_limit")) is not None:
+                    if limits and valid_price_limit_pair(limits.get("up_limit"), limits.get("down_limit")):
                         observed_price_limits += 1
                         if _at_limit(rows[index].get("close"), limits.get("up_limit"), direction="up"):
                             limit_up_count += 1

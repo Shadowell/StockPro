@@ -9,6 +9,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from app.core.config import settings
+from app.domain.market.research_metrics import valid_price_limit_pair
 
 
 class AshareInstrumentRepository:
@@ -201,7 +202,7 @@ class AshareInstrumentRepository:
                 source_snapshot_id, row["trade_date"], Jsonb({"source": row.get("source") or "tushare.stk_limit"}),
             )
             for row in price_limit_rows
-            if row.get("up_limit") is not None and row.get("down_limit") is not None
+            if valid_price_limit_pair(row.get("up_limit"), row.get("down_limit"))
         ]
         if price_limit_values:
             cursor.executemany(

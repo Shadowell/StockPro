@@ -105,6 +105,29 @@ def test_market_sentiment_uses_provider_limits_and_open_trade_day_streaks() -> N
     assert payload["paper_mutated"] is False
 
 
+def test_market_sentiment_treats_tushare_limit_sentinels_as_missing_coverage() -> None:
+    dates = _trade_dates(2)
+    rows = _daily_rows(dates)
+    target = dates[-1]
+    limits = [
+        {"symbol": row["symbol"], "trade_date": target, "up_limit": row["close"] * 1.1, "down_limit": row["close"] * 0.9}
+        for row in rows
+        if row["trade_date"] == target and row["symbol"] != "300002.SZ"
+    ]
+    limits.append({"symbol": "300002.SZ", "trade_date": target, "up_limit": 99999.99, "down_limit": 0.0})
+
+    payload = build_market_sentiment(
+        daily_rows=rows,
+        price_limit_rows=limits,
+        trade_dates=dates,
+        trade_date=target,
+    )
+
+    assert payload["status"] == "partial"
+    assert payload["price_limit_coverage"] == 0.75
+    assert "涨跌停价格覆盖不足 80%" in payload["missing_inputs"]
+
+
 def test_sector_rps_history_keeps_windows_coverage_rank_change_and_leader() -> None:
     dates = _trade_dates(66)
     rows = _daily_rows(dates)
@@ -115,7 +138,7 @@ def test_sector_rps_history_keeps_windows_coverage_rank_change_and_leader() -> N
         {"symbol": "300002.SZ", "name": "乙二", "industry": "行业乙", "list_status": "L"},
     ]
     limits = [
-        {"symbol": row["symbol"], "trade_date": row["trade_date"], "up_limit": row["close"] * 2, "down_limit": row["close"] / 2}
+        {"symbol": row["symbol"], "trade_date": row["trade_date"], "up_limit": row["close"] * 1.3, "down_limit": row["close"] * 0.7}
         for row in rows
     ]
 
@@ -173,7 +196,7 @@ def test_sector_rps_does_not_treat_missing_price_limits_as_zero_limit_ups() -> N
         {"symbol": "600001.SH", "name": "甲一", "industry": "行业甲", "list_status": "L"},
         {"symbol": "600002.SH", "name": "甲二", "industry": "行业甲", "list_status": "L"},
     ]
-    only_one_limit = [{"symbol": "600001.SH", "trade_date": dates[-1], "up_limit": 99, "down_limit": 1}]
+    only_one_limit = [{"symbol": "600001.SH", "trade_date": dates[-1], "up_limit": 11, "down_limit": 9}]
 
     result = build_sector_rps_history(
         daily_rows=rows,
