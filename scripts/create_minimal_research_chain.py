@@ -2,8 +2,8 @@
 """Create an explicitly authorized minimal StockPro research chain.
 
 The script is intentionally dry-run by default. Applying it writes an isolated
-sample chain from existing stock_history rows only; it does not fetch, mock, or
-reset data.
+sample chain from existing synchronized A-share rows only; it does not fetch,
+mock, or reset data.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ class MarketRow:
     trade_date: date
     close: Decimal
     prev_close: Decimal
+    prev_close_source: str
     volume: int | None
     turnover: Decimal | None
 
@@ -95,24 +96,42 @@ def load_real_market_rows(conn: Any, symbols: list[str], max_symbols: int) -> li
     sql = f"""
         WITH priced AS (
             SELECT
-                symbol,
-                name,
-                date AS trade_date,
-                close,
-                volume,
-                turnover,
-                LAG(close) OVER (PARTITION BY symbol ORDER BY date) AS prev_close,
-                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+                stock_history.symbol,
+                stock_history.name,
+                stock_history.date AS trade_date,
+                stock_history.close,
+                stock_history.volume,
+                stock_history.turnover,
+                LAG(stock_history.close) OVER (PARTITION BY stock_history.symbol ORDER BY stock_history.date) AS prev_close,
+                CASE
+                    WHEN realtime.change_percent IS NOT NULL
+                     AND realtime.change_percent > -99.99
+                    THEN stock_history.close / (1 + realtime.change_percent / 100.0)
+                    ELSE NULL
+                END AS prev_close_from_realtime,
+                ROW_NUMBER() OVER (PARTITION BY stock_history.symbol ORDER BY stock_history.date DESC) AS rn
             FROM stock_history
+            LEFT JOIN all_stocks_realtime realtime ON realtime.code = stock_history.symbol
             WHERE close IS NOT NULL
               AND close > 0
               {symbol_filter}
         )
-        SELECT symbol, name, trade_date, close, prev_close, volume, turnover
+        SELECT
+            symbol,
+            name,
+            trade_date,
+            close,
+            COALESCE(prev_close, prev_close_from_realtime) AS prev_close,
+            CASE
+                WHEN prev_close IS NOT NULL THEN 'stock_history.previous_close'
+                ELSE 'all_stocks_realtime.change_percent'
+            END AS prev_close_source,
+            volume,
+            turnover
         FROM priced
         WHERE rn = 1
-          AND prev_close IS NOT NULL
-          AND prev_close > 0
+          AND COALESCE(prev_close, prev_close_from_realtime) IS NOT NULL
+          AND COALESCE(prev_close, prev_close_from_realtime) > 0
         ORDER BY trade_date DESC, symbol
         LIMIT %s
     """
@@ -120,7 +139,9 @@ def load_real_market_rows(conn: Any, symbols: list[str], max_symbols: int) -> li
         cursor.execute(sql, params)
         rows = cursor.fetchall()
     if not rows:
-        raise SampleChainError("stock_history has no symbol with a valid latest close and previous close")
+        raise SampleChainError(
+            "synchronized A-share rows have no symbol with latest close and previous close evidence"
+        )
     return [
         MarketRow(
             symbol=str(row["symbol"]),
@@ -128,6 +149,7 @@ def load_real_market_rows(conn: Any, symbols: list[str], max_symbols: int) -> li
             trade_date=row["trade_date"],
             close=Decimal(str(row["close"])),
             prev_close=Decimal(str(row["prev_close"])),
+            prev_close_source=str(row["prev_close_source"]),
             volume=int(row["volume"]) if row.get("volume") is not None else None,
             turnover=Decimal(str(row["turnover"])) if row.get("turnover") is not None else None,
         )
@@ -150,6 +172,7 @@ def summarize_rows(rows: list[MarketRow]) -> dict[str, Any]:
                 "trade_date": row.trade_date.isoformat(),
                 "close": float(row.close),
                 "prev_close": float(row.prev_close),
+                "prev_close_source": row.prev_close_source,
                 "daily_return": float(row.daily_return),
             }
             for row in rows
@@ -266,7 +289,7 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
             ON CONFLICT(code) DO NOTHING
             RETURNING id
             """,
-            (universe_code, SCRIPT_VERSION, "Symbols with real latest and previous stock_history closes."),
+            (universe_code, SCRIPT_VERSION, "Symbols with real synchronized latest close and previous close evidence."),
             "SELECT id FROM universe_definitions WHERE code=%s",
             (universe_code,),
         )
@@ -310,7 +333,7 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
             (
                 "minimal_real_close_return_1d",
                 "Minimal real close return 1d",
-                "One-day close-to-close return computed from real stock_history rows.",
+                "One-day close-to-close return computed from real synchronized A-share rows.",
                 "(close / previous_close) - 1",
             ),
             "SELECT id FROM factor_definitions WHERE factor_code=%s",
@@ -329,7 +352,17 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
             ON CONFLICT(factor_definition_id,version_no) DO NOTHING
             RETURNING id
             """,
-            (factor_definition_id, factor_code, factor_hash, Json(["stock_history.close"]), Json({"sample_chain": True, "source_table": "stock_history"})),
+            (
+                factor_definition_id,
+                factor_code,
+                factor_hash,
+                Json(["stock_history.close", "all_stocks_realtime.change_percent"]),
+                Json({
+                    "sample_chain": True,
+                    "source_table": "stock_history",
+                    "prev_close_sources": sorted({row.prev_close_source for row in rows}),
+                }),
+            ),
             "SELECT id FROM factor_versions WHERE factor_definition_id=%s AND version_no=1",
             (factor_definition_id,),
         )
@@ -376,7 +409,12 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
                     quantile,
                     Json({"real_stock_history": True, "script_version": SCRIPT_VERSION}),
                     cutoff,
-                    Json({"source_table": "stock_history", "source_columns": ["close"], "sample_chain_hash": chain_hash}),
+                    Json({
+                        "source_table": "stock_history",
+                        "source_columns": ["close"],
+                        "prev_close_sources": sorted({row.prev_close_source for row in rows}),
+                        "sample_chain_hash": chain_hash,
+                    }),
                 ),
             )
         value_hash = stable_hash({"factor_values": [(row.symbol, str(row.daily_return)) for row in ordered]})
@@ -481,7 +519,13 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
             (generation_id, pool_id, rule_id, dataset_snapshot_id, universe_snapshot_id, factor_snapshot_id, market_evidence_snapshot_id, latest, cutoff, Json(input_manifest), input_hash, value_hash),
         )
         for rank, row in enumerate(ordered, start=1):
-            evidence = {"daily_return": float(row.daily_return), "close": float(row.close), "prev_close": float(row.prev_close), "source_table": "stock_history"}
+            evidence = {
+                "daily_return": float(row.daily_return),
+                "close": float(row.close),
+                "prev_close": float(row.prev_close),
+                "prev_close_source": row.prev_close_source,
+                "source_table": "stock_history",
+            }
             cursor.execute(
                 """
                 INSERT INTO stock_pool_members(
@@ -511,7 +555,11 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
         pool_snapshot_status = one(cursor, "SELECT status FROM stock_pool_snapshots WHERE id=%s", (pool_snapshot_id,))
         if pool_snapshot_status != "sealed":
             for rank, row in enumerate(ordered, start=1):
-                evidence = {"daily_return": float(row.daily_return), "source_table": "stock_history"}
+                evidence = {
+                    "daily_return": float(row.daily_return),
+                    "prev_close_source": row.prev_close_source,
+                    "source_table": "stock_history",
+                }
                 cursor.execute(
                     """
                     INSERT INTO stock_pool_snapshot_members(
@@ -540,7 +588,7 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
             (
                 sample_name,
                 "Positive one-day close return is used only as a minimal auditable research-chain sample.",
-                "Symbols selected from real stock_history rows with latest and previous closes.",
+                "Symbols selected from real synchronized rows with latest close and previous close evidence.",
                 earliest,
                 latest,
                 earliest,
@@ -549,7 +597,7 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
                 latest,
                 Json({"sample_only": True, "max_position_weight": 0.10}),
                 Json({"backtest_status": "success", "promotion_status": "paper_eligible"}),
-                "Created by explicitly authorized minimal sample script from existing stock_history rows.",
+                "Created by explicitly authorized minimal sample script from existing synchronized A-share rows.",
                 protocol_hash,
             ),
             "SELECT id FROM research_protocols WHERE content_hash=%s",
@@ -579,7 +627,7 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
                 "Minimal audited sample strategy; not investment advice.",
                 strategy_content,
                 Json({}),
-                Json(["stock_history.close"]),
+                Json(["stock_history.close", "all_stocks_realtime.change_percent"]),
                 Json({"signals": "candidate/buy records"}),
                 stable_hash(strategy_content),
                 Json(strategy_payload),

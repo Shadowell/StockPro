@@ -47,12 +47,17 @@ def test_script_documents_real_source_and_does_not_fabricate_market_rows() -> No
     source = SCRIPT_PATH.read_text(encoding="utf-8")
 
     assert "FROM stock_history" in source
+    assert "all_stocks_realtime.change_percent" in source
     assert '"source_table": "stock_history"' in source
     assert "import random" not in source
     assert "uuid4" not in source
 
 
-def test_dry_run_reports_missing_database_url_without_applying(capsys: pytest.CaptureFixture[str]) -> None:
+def test_dry_run_reports_missing_database_url_without_applying(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     script = load_script()
 
     exit_code = script.main([])

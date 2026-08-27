@@ -10,6 +10,10 @@
   未发布日线误判为数据源整体失败。
 - 新增合同测试覆盖“最新开放日为空，回退到上一可用日”的场景；原 A 股 dataset foundation
   sealed snapshot 合同继续通过。
+- 生产库首次全量 A 股同步后只有一个 `stock_history` 交易日，最小研究闭环脚本无法通过
+  `LAG(close)` 取得前一收盘。脚本已改为仍以 `stock_history.close` 为价格来源，并在只有单日
+  历史时使用同步写入的 `all_stocks_realtime.change_percent` 反推真实上一收盘，同时在证据中标明
+  `prev_close_source`。
 
 ## 直接生产部署与行情指标修复（2026-08-26）
 
