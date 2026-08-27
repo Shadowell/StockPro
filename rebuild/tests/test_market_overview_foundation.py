@@ -187,3 +187,28 @@ def test_market_overview_route_returns_one_read_only_foundation_contract(monkeyp
 
     assert response.status_code == 200
     assert response.json()["data"]["trade_date"] == "2026-08-26"
+
+
+def test_market_overview_trend_query_uses_bounded_symbol_index_lookups():
+    from app.domain.market.repository import MarketRepository
+
+    class CaptureCursor:
+        def execute(self, query, params=()):
+            self.query = str(query)
+            self.params = params
+
+        def fetchone(self):
+            return ("stock_history",)
+
+        def fetchall(self):
+            return []
+
+    cursor = CaptureCursor()
+
+    assert MarketRepository()._overview_trend_rows(cursor, "2026-08-27") == []
+
+    normalized = " ".join(cursor.query.split())
+    assert "CROSS JOIN LATERAL" in normalized
+    assert "ORDER BY deduped.date DESC LIMIT 60" in normalized
+    assert "h.symbol=d.symbol OR" not in normalized
+    assert cursor.params[-2:] == ("2026-08-27", "2026-08-27")

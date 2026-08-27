@@ -4051,3 +4051,12 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 - GitHub issue #43 接通 A 股 research-workbench 本地 PostgreSQL ledger：新增 mandate/job/candidate/paper promotion/observation 表，POST 可保存任务输入、Provider 快照、输出、成本和版本证据；无 LLM Provider 时 run job fail-closed 为 `LLM Provider not configured`，不生成候选、不创建回测、不改 Paper。
 - GitHub issue #41 完成受控最小闭环脚本：`scripts/create_minimal_research_chain.py` 默认只 dry-run，从真实 `stock_history` 读取最新/前一交易日收盘价并计算因子、股票池、策略验证、sealed 回测、Paper 实例和复盘记录；真正写入必须同时提供 `--apply`、`--confirm-production-sample-write I_UNDERSTAND_THIS_WRITES_PRODUCTION_SAMPLE_DATA` 和 `STOCKPRO_ALLOW_PRODUCTION_SAMPLE_WRITE=1`，生产 apply 仍需用户显式授权。
 - Verification: `DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)" ./scripts/check.sh` 完整通过；`tests/test_minimal_research_chain_script.py` 通过 4 项；最小闭环脚本在隔离库 dry-run 与带确认 apply 均通过，二次 apply 幂等；本地重启 4445/4444 后 `/api/health`、`/api/health/storage`、`/sync/quality`、`/live/watchlist/derivatives-data`、`/orderflow/stream-status`、`/research-workbench/summary` 与前端 `/`、`/factors`、`/paper`、`/pools` smoke 通过。
+
+## 2026-08-28 首页全市场趋势查询性能
+
+- 生产完成 180 个自然日、125 个交易日的全市场历史回补后，`stock_history` 达到
+  682,753 行；首页趋势查询中的函数 `OR` 关联超过前端 30 秒超时，并留下并发只读慢查询。
+- 趋势查询改为按有效证券使用现有 `(symbol,date)` 索引分别读取标准代码和旧下划线代码，
+  按交易日优先保留标准代码并将每只证券限制为最近 60 日。生产规模只读探针仍返回 5,550
+  个证券，耗时从超过 90 秒降至约 1.92 秒。
+- 新增查询形态回归测试，禁止恢复全表函数 `OR` 关联，并锁定最近 60 日的有界索引读取。
