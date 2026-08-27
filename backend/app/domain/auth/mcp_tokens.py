@@ -27,17 +27,15 @@ class PostgresMcpTokenVerifier:
         if not value:
             return None
         env_token = str(getattr(settings, "STOCKPRO_MCP_API_TOKEN", "") or "").strip()
-        env_source = "env"
         if not env_token:
             env_token = str(settings.BITPRO_MCP_API_TOKEN or "").strip()
-            env_source = "legacy_env"
         if env_token and secrets.compare_digest(value, env_token):
             return {
                 "authenticated": True,
                 "role": "admin",
                 "auth_enabled": bool(settings.BITPRO_AUTH_ENABLED),
                 "auth_method": "mcp_token",
-                "token_source": env_source,
+                "token_source": "env",
                 "tool_groups": list(SCOPE_TOOL_GROUPS.values()),
                 "scopes": list(SCOPE_TOOL_GROUPS),
             }
