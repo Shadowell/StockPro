@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 def _number(value: Any) -> float | None:
@@ -25,6 +26,56 @@ def _compact_date(value: Any) -> str:
     if not parsed:
         raise ValueError(f"invalid A-share trade date: {value!r}")
     return parsed.replace("-", "")
+
+
+def _iso_date(value: Any) -> str:
+    raw = str(value or "").strip()
+    if len(raw) == 8 and raw.isdigit():
+        return datetime.strptime(raw, "%Y%m%d").date().isoformat()
+    try:
+        return date.fromisoformat(raw[:10]).isoformat()
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid A-share history date: {value!r}") from exc
+
+
+def _history_range(*, history_days: int, start_date: Any = None, end_date: Any = None) -> tuple[str, str]:
+    try:
+        days = int(history_days)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("history_days must be an integer") from exc
+    if days < 1 or days > 366:
+        raise ValueError("history_days must be between 1 and 366")
+
+    end = _iso_date(end_date) if end_date else datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    end_value = date.fromisoformat(end)
+    start = _iso_date(start_date) if start_date else (end_value - timedelta(days=days - 1)).isoformat()
+    if date.fromisoformat(start) > end_value:
+        raise ValueError("history start_date cannot be after end_date")
+    return start, end
+
+
+def _open_history_trade_dates(provider: Any, start_date: str, end_date: str) -> list[str]:
+    fetch_open = getattr(provider, "fetch_open_trade_dates", None)
+    if callable(fetch_open):
+        raw_dates = fetch_open(start_date.replace("-", ""), end_date.replace("-", ""))
+        return sorted({_iso_date(value) for value in raw_dates if str(value or "").strip()})
+
+    fetch_calendar = getattr(provider, "fetch_trade_calendar", None)
+    if not callable(fetch_calendar):
+        raise RuntimeError("TuShare provider does not expose trade calendar")
+    try:
+        rows = fetch_calendar(start_date.replace("-", ""), end_date.replace("-", ""), is_open="1")
+    except TypeError:
+        rows = fetch_calendar(start_date.replace("-", ""), end_date.replace("-", ""))
+    dates = []
+    for row in rows or []:
+        value = row.get("cal_date") or row.get("trade_date") or row.get("date")
+        is_open = row.get("is_open", 1)
+        if str(is_open).strip().lower() not in {"1", "true", "t", "y", "yes", "open"}:
+            continue
+        if value:
+            dates.append(_iso_date(value))
+    return sorted(set(dates))
 
 
 def _previous_compact_date(value: Any, *, days: int = 14) -> str:
@@ -355,6 +406,129 @@ class AshareInstrumentSyncService:
             result = self.repository.complete_run(run_id, instruments, daily_rows, trade_date, auxiliary_datasets=auxiliary_datasets)
             if skipped_trade_dates:
                 result["latest_open_trade_date"] = _date(latest_trade_date)
+                result["skipped_trade_dates"] = skipped_trade_dates
+            return result
+        except Exception as error:
+            self.repository.fail_run(run_id, error)
+            raise
+
+    def reserve_history(
+        self,
+        *,
+        history_days: int = 180,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        trigger: str = "manual",
+    ) -> dict:
+        requested_start, requested_end = _history_range(
+            history_days=history_days,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        run_id = self.repository.begin_run(trigger)
+        if run_id is None:
+            return {"status": "locked", "trigger": trigger, "sync_scope": "history"}
+        return {
+            "run_id": run_id,
+            "status": "accepted",
+            "sync_scope": "history",
+            "start_date": requested_start,
+            "end_date": requested_end,
+            "history_days": history_days,
+        }
+
+    def sync_history(
+        self,
+        *,
+        history_days: int = 180,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        trigger: str = "manual",
+        run_id: int | None = None,
+    ) -> dict:
+        """Fetch the full A-share daily universe by open trade date.
+
+        Provider calls happen before the repository's single history commit. A
+        missing interior open day therefore fails the run without leaving a
+        partial history in PostgreSQL. The final open day may be empty while a
+        provider is still publishing it intraday; that day is reported as
+        skipped and the latest available day is committed instead.
+        """
+        requested_start, requested_end = _history_range(
+            history_days=history_days,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if run_id is None:
+            run_id = self.repository.begin_run(trigger)
+            if run_id is None:
+                return {"status": "locked", "trigger": trigger, "sync_scope": "history"}
+
+        try:
+            provider = self.provider
+            if provider is None:
+                from app.domain.instruments.provider import TushareAshareProvider
+
+                provider = TushareAshareProvider()
+            instruments = _normalize_instruments(provider.fetch_instruments())
+            if not instruments:
+                raise RuntimeError("TuShare stock_basic returned no A-share instruments")
+
+            names = {item["symbol"]: item["name"] for item in instruments}
+            trade_dates = _open_history_trade_dates(provider, requested_start, requested_end)
+            if not trade_dates:
+                raise RuntimeError(f"{requested_start} ~ {requested_end} 内没有 TuShare 开放交易日")
+
+            update_progress = getattr(self.repository, "update_history_progress", None)
+            if callable(update_progress):
+                update_progress(
+                    run_id,
+                    sync_scope="history",
+                    start_date=requested_start,
+                    end_date=requested_end,
+                    total_trade_dates=len(trade_dates),
+                    processed_trade_dates=0,
+                    daily_count=0,
+                )
+
+            daily_rows: list[dict[str, Any]] = []
+            skipped_trade_dates: list[dict[str, str]] = []
+            for index, trade_date in enumerate(trade_dates):
+                raw_rows = provider.fetch_daily(trade_date.replace("-", ""))
+                normalized_rows = _normalize_daily_rows(raw_rows, [], names)
+                if not normalized_rows:
+                    if index == len(trade_dates) - 1:
+                        skipped_trade_dates.append({"trade_date": trade_date, "reason": "tushare_daily_empty"})
+                    else:
+                        raise RuntimeError(f"TuShare daily returned no rows for open trade date {trade_date}")
+                else:
+                    daily_rows.extend(normalized_rows)
+                if callable(update_progress):
+                    update_progress(
+                        run_id,
+                        sync_scope="history",
+                        start_date=requested_start,
+                        end_date=requested_end,
+                        total_trade_dates=len(trade_dates),
+                        processed_trade_dates=index + 1,
+                        last_processed_trade_date=trade_date,
+                        daily_count=len(daily_rows),
+                    )
+
+            if not daily_rows:
+                raise RuntimeError(f"TuShare daily returned no rows for {requested_start} ~ {requested_end}")
+            complete_history = getattr(self.repository, "complete_history_run", None)
+            if not callable(complete_history):
+                raise RuntimeError("repository does not support atomic A-share history sync")
+            result = complete_history(
+                run_id,
+                instruments,
+                daily_rows,
+                requested_start,
+                requested_end,
+                trade_date_count=len(trade_dates),
+            )
+            if skipped_trade_dates:
                 result["skipped_trade_dates"] = skipped_trade_dates
             return result
         except Exception as error:

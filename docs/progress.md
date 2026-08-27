@@ -1,5 +1,21 @@
 # Progress Log
 
+## 最近半年全市场 A 股日线同步（2026-08-27）
+
+- 新增 `POST /api/v2/sync/history/sync-all`，管理员默认拉取最近 180 个自然日；按 TuShare
+  `trade_cal(is_open=1)` 逐交易日请求 `daily`，请求完成后一次性幂等写入 PostgreSQL，保留
+  `instrument_definitions` 与 `stock_history` 的原子边界。
+- `a_share_daily_sync_runs` 新增同步范围、请求区间、交易日总数/进度和最后处理日期；数据中心
+  新增“拉取近半年 A股”按钮，访客禁用，页面按 `CN` 口径显示真实标的/记录统计。
+- 隔离库 run 4 已完成 `2026-03-01`~`2026-08-27` 的 124 个开放交易日，写入 677,206
+  条日线；校验后库内历史为 683,279 条、5,567 个历史标的、300 个历史交易日（保留先前数据）。
+- 随后的异步入口幂等校验 run 5 在最终 upsert 阶段遇到 `No space left on device`；远端根分区
+  69G 已用满、剩余约 13MB，PostgreSQL 随后拒绝新连接。该事务未提交，不能把 run 5 视为成功，
+  也没有执行任何清理或重试；释放远端磁盘并收敛 run 5 状态后，才可继续验证任务入口。
+- 验证通过：历史同步单测 4 项、当前前端 `check`/lint/build、数据中心 Mock E2E 3 项、API
+  非法区间 422、桌面/390px 页面无横向溢出；本机独立隔离库的完整 `scripts/check.sh` 也已通过。
+  远端磁盘仍阻塞远端数据复核与生产部署。
+
 ## 行情页 AKShare 实时分时接入（2026-08-27）
 
 - `/api/v2/market/klines` 的分钟周期改为 `minute_bars` 缓存优先；缓存空、不可用或 stale 时，

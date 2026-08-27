@@ -37,11 +37,11 @@ import {
   type DataSyncTableStat,
   type OkxNativeSyncScheduleConfig,
 } from '../api/client';
-import { useStore } from '../stores/useStore';
 import ThemeDialog from '../components/ThemeDialog';
 import SymbolIcon, { extractSymbolBase } from '../components/SymbolIcon';
 import SymbolCell from '../components/SymbolCell';
 import { formatTimeframeLabel } from '../utils/timeframe';
+import { useAuth } from '../auth/AuthProvider';
 
 // ============================================
 // 常量
@@ -82,7 +82,7 @@ const TIMEFRAME_BADGE: Record<string, string> = {
 
 const TIMEFRAME_ORDER = ['1m', '5m', '15m', '30m', '1h', '4h', '12h', '1d'];
 const SYNC_TIMEFRAME_ORDER = ['15m', '30m', '1h', '4h', '12h', '1d'];
-const SYNC_HISTORY_DAYS = 90;
+const SYNC_HISTORY_DAYS = 180;
 
 function dataTimeframeLabel(timeframe: string): string {
   return TIMEFRAME_LABELS[timeframe] || formatTimeframeLabel(timeframe);
@@ -169,6 +169,10 @@ function dedupeSymbols(symbols: Array<string | null | undefined>): string[] {
     result.push(symbol);
   }
   return result;
+}
+
+function isRenderableAshareSymbol(symbol: string): boolean {
+  return symbol !== 'ALL_A_SHARES';
 }
 
 function sortTimeframes(timeframes: string[]): string[] {
@@ -337,8 +341,9 @@ function getCoveragePercent(firstTs: number | null, lastTs: number | null, targe
 // ============================================
 
 export default function DataManager() {
+  const { isAdmin } = useAuth();
+  const dataExchange = 'CN';
   const canMutateData = false;
-  const { selectedExchange } = useStore();
 
   const [config, setConfig] = useState<DataSyncConfigResponse | null>(null);
   const [scheduleConfig, setScheduleConfig] = useState<DataSyncScheduleConfig | null>(null);
@@ -358,6 +363,8 @@ export default function DataManager() {
   const [jobHistoryExpanded, setJobHistoryExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [ashareHistorySyncing, setAshareHistorySyncing] = useState(false);
+  const [ashareHistoryFeedback, setAshareHistoryFeedback] = useState<{ type: SyncFeedbackType; message: string } | null>(null);
   const [syncingMode, setSyncingMode] = useState<SyncDialogMode | null>(null);
   const [syncingTarget, setSyncingTarget] = useState<{ symbol: string; timeframe: string } | null>(null);
   const [targetSyncFeedback, setTargetSyncFeedback] = useState<Record<string, TargetSyncFeedback>>({});
@@ -553,7 +560,7 @@ export default function DataManager() {
       setSyncingMode(mode);
       setSyncDialogError('');
       const payload = {
-        exchange: selectedExchange,
+        exchange: dataExchange,
         symbols: syms,
         timeframes: tfs,
         startDate: syncDialogStartDate,
@@ -561,7 +568,7 @@ export default function DataManager() {
         historyDays,
       };
       if (mode === 'daily') {
-        await dataSyncApi.dailyUpdate(selectedExchange, payload);
+        await dataSyncApi.dailyUpdate(dataExchange, payload);
       } else {
         await dataSyncApi.startSync(payload);
       }
@@ -619,7 +626,7 @@ export default function DataManager() {
       const dateHint = startDate ? ` (${startDate} ~ ${endDate || '至今'})` : '';
       setTargetFeedback(symbol, timeframe, `正在启动 ${dataTimeframeLabel(timeframe)}${dateHint} 同步任务...`, 'info');
       const res = await dataSyncApi.startSync({
-        exchange: selectedExchange,
+        exchange: dataExchange,
         symbols: [symbol],
         timeframes: [timeframe],
         historyDays: SYNC_HISTORY_DAYS,
@@ -676,7 +683,7 @@ export default function DataManager() {
       setExpandedSymbol(preferredSymbol);
       if (syncAddedSymbolHistory) {
         await dataSyncApi.startSync({
-          exchange: selectedExchange,
+          exchange: dataExchange,
           symbols: symbolsToAdd,
           timeframes: SYNC_TIMEFRAME_ORDER,
           historyDays: addSymbolHistoryDays,
@@ -724,7 +731,7 @@ export default function DataManager() {
     const { symbol, timeframe } = deleteTarget;
     setDeleteTarget(null);
     try {
-      const res = await dataSyncApi.deleteData({ exchange: selectedExchange, symbol, timeframe });
+      const res = await dataSyncApi.deleteData({ exchange: dataExchange, symbol, timeframe });
       console.info(res.message || '删除完成');
       await loadData();
     } catch (e) {
@@ -749,18 +756,18 @@ export default function DataManager() {
     ...syncMeta.map((m) => m.timeframe),
     ...(syncCurrentJob?.progress || []).map((row) => row.timeframe),
   ]));
-  const allTimeframes = discoveredTimeframes.length > 0 ? discoveredTimeframes : TIMEFRAME_ORDER;
+  const allTimeframes = discoveredTimeframes.length > 0 ? discoveredTimeframes : ['1d'];
   const configuredSymbols: string[] = config?.defaultSymbols || [];
   const instrumentBySymbol = new Map((config?.instruments || []).map((item) => [item.symbol, item]));
   const syncedSymbols = dedupeSymbols([
     ...tableStats
-      .filter((s) => s.exchange === selectedExchange && s.recordCount > 0)
+      .filter((s) => s.exchange === dataExchange && s.recordCount > 0 && isRenderableAshareSymbol(s.symbol))
       .map((s) => s.symbol),
     ...syncMeta
-      .filter((m) => m.exchange === selectedExchange && m.dataType === 'kline' && (m.totalRecords > 0 || m.status === 'syncing'))
+      .filter((m) => m.exchange === dataExchange && m.dataType === 'kline' && (m.totalRecords > 0 || m.status === 'syncing'))
       .map((m) => m.symbol),
     ...(syncCurrentJob?.progress || [])
-      .filter((row) => (row.exchange || selectedExchange) === selectedExchange)
+      .filter((row) => (row.exchange || dataExchange) === dataExchange)
       .map((row) => row.symbol),
   ]);
   const allSymbols: string[] = dedupeSymbols([...configuredSymbols, ...syncedSymbols]);
@@ -769,7 +776,7 @@ export default function DataManager() {
 
   const statMap = new Map<string, DataSyncTableStat>();
   for (const s of tableStats) {
-    if (s.exchange !== selectedExchange) continue;
+    if (s.exchange !== dataExchange) continue;
     const key = `${s.symbol}_${s.timeframe}`;
     const existing = statMap.get(key);
     if (!existing || s.tableName !== 'kline_history') {
@@ -779,13 +786,13 @@ export default function DataManager() {
 
   const metaMap = new Map<string, DataSyncMeta>();
   for (const m of syncMeta) {
-    if (m.exchange !== selectedExchange) continue;
+    if (m.exchange !== dataExchange) continue;
     metaMap.set(`${m.symbol}_${m.timeframe}`, m);
   }
 
   const qualityMap = new Map<string, DataSyncQualityItem>();
   for (const item of qualityItems) {
-    if (item.exchange !== selectedExchange) continue;
+    if (item.exchange !== dataExchange) continue;
     qualityMap.set(`${item.symbol}_${item.timeframe}`, item);
   }
 
@@ -857,6 +864,32 @@ export default function DataManager() {
     syncingTarget?.symbol === symbol && syncingTarget?.timeframe === timeframe;
 
   const isBusy = isRunning || syncing || syncingTarget !== null;
+  const handleAshareHistorySync = async () => {
+    if (!isAdmin || isBusy || ashareHistorySyncing) return;
+    try {
+      setAshareHistorySyncing(true);
+      setSyncing(true);
+      setSyncingMode('full');
+      setAshareHistoryFeedback({ type: 'info', message: '正在按交易日拉取全部 A 股近半年 1D 日线，完成后一次写入 PostgreSQL…' });
+      const result = await dataSyncApi.syncAllAshareHistory({ historyDays: SYNC_HISTORY_DAYS });
+      if (result.status === 'locked') {
+        setAshareHistoryFeedback({ type: 'error', message: '已有 A 股同步任务运行中，本次未重复提交。' });
+      } else if (result.status === 'accepted') {
+        setAshareHistoryFeedback({ type: 'info', message: `近半年 A 股同步任务已启动（任务 #${result.runId ?? '-'}），页面会持续显示交易日进度。` });
+      } else {
+        const rows = formatCount(result.dailyCount || 0);
+        const dates = result.tradeDateCount || 0;
+        setAshareHistoryFeedback({ type: 'success', message: `近半年 A 股日线同步完成：${rows} 条记录，${dates} 个交易日。` });
+      }
+      await loadData();
+    } catch (e) {
+      setAshareHistoryFeedback({ type: 'error', message: `近半年 A 股同步失败：${getErrorMessage(e)}` });
+    } finally {
+      setAshareHistorySyncing(false);
+      setSyncing(false);
+      setSyncingMode(null);
+    }
+  };
   const runQualityCheck = async () => {
     const symbols = filteredSymbols;
     const timeframes = filterTf ? [filterTf] : allTimeframes;
@@ -877,7 +910,7 @@ export default function DataManager() {
         ? symbols.slice(0, maxSymbols)
         : symbols;
       const res = await dataSyncApi.getQuality({
-        exchange: selectedExchange,
+        exchange: dataExchange,
         symbols: scopedSymbols,
         timeframes,
         maxItems,
@@ -918,20 +951,30 @@ export default function DataManager() {
   );
   const currentJob = syncCurrentJob;
   const progressRows = currentJob ? (currentJob.progress || []) : [];
-  const currentJobSymbols = Array.from(new Set(progressRows.map((row) => row.symbol))).filter(Boolean);
-  const currentJobTimeframes = Array.from(new Set(progressRows.map((row) => row.timeframe))).filter(Boolean);
-  const currentJobTotalItems = currentJob?.totalItems || progressRows.length;
-  const currentJobCompletedItems = currentJob?.completedItems ?? progressRows.filter((row) => row.status === 'completed').length;
+  const currentJobSymbols = Array.from(new Set([
+    ...(currentJob?.symbols || []),
+    ...progressRows.map((row) => row.symbol),
+  ])).filter(Boolean);
+  const currentJobTimeframes = Array.from(new Set([
+    ...(currentJob?.timeframes || []),
+    ...progressRows.map((row) => row.timeframe),
+  ])).filter(Boolean);
+  const currentJobTotalItems = currentJob?.totalItems || currentJob?.tradeDateCount || progressRows.length;
+  const currentJobCompletedItems = currentJob?.completedItems
+    ?? currentJob?.processedTradeDates
+    ?? progressRows.filter((row) => row.status === 'completed').length;
   const currentJobRunningItems = progressRows.filter((row) => row.status === 'running' || row.status === 'syncing').length;
   const currentJobErrorItems = currentJob?.errorItems ?? progressRows.filter((row) => row.status === 'error' || row.error).length;
   const currentJobProcessedItems = currentJob?.processedItems ?? currentJobCompletedItems + currentJobErrorItems;
-  const currentJobFallback: DataSyncJobSummary | null = currentJob?.jobId ? {
-    jobId: currentJob.jobId,
-    exchange: currentJob.exchange || selectedExchange,
+  const currentJobFallback: DataSyncJobSummary | null = (currentJob?.jobId || currentJob?.runId != null) ? {
+    jobId: currentJob.jobId || String(currentJob.runId),
+    exchange: currentJob.exchange || dataExchange,
     status: currentJob.status || (isRunning ? 'running' : 'completed'),
     symbols: currentJobSymbols,
     timeframes: currentJobTimeframes,
-    historyDays: SYNC_HISTORY_DAYS,
+    historyDays: currentJob.historyDays || SYNC_HISTORY_DAYS,
+    startDate: currentJob.startDate,
+    endDate: currentJob.endDate,
     totalSymbols: currentJobSymbols.length,
     totalTimeframes: currentJobTimeframes.length,
     totalItems: currentJobTotalItems,
@@ -941,8 +984,8 @@ export default function DataManager() {
     errorItems: currentJobErrorItems,
     processedItems: currentJobProcessedItems,
     progressPercent: currentJobTotalItems > 0 ? (currentJobProcessedItems / currentJobTotalItems) * 100 : 0,
-    totalFetched: currentJob.totalFetched || progressRows.reduce((sum, row) => sum + (row.totalFetched || 0), 0),
-    totalInserted: currentJob.totalInserted || progressRows.reduce((sum, row) => sum + (row.totalInserted || 0), 0),
+    totalFetched: currentJob.totalFetched || currentJob.dailyCount || progressRows.reduce((sum, row) => sum + (row.totalFetched || 0), 0),
+    totalInserted: currentJob.totalInserted || (currentJob.status === 'success' ? currentJob.dailyCount || 0 : 0),
     errorCount: currentJob.errors || currentJobErrorItems,
     errorMessage: null,
     createdAt: currentJob.startedAt || null,
@@ -950,7 +993,7 @@ export default function DataManager() {
     completedAt: currentJob.completedAt || null,
     elapsedSeconds: currentJob.elapsedSeconds,
   } : null;
-  const filteredSyncJobs = syncJobs.filter((job) => !job.exchange || job.exchange === selectedExchange);
+  const filteredSyncJobs = syncJobs.filter((job) => !job.exchange || job.exchange === dataExchange);
   const currentJobAlreadyInHistory = currentJobFallback
     ? filteredSyncJobs.some((job) => job.jobId === currentJobFallback.jobId)
     : false;
@@ -959,7 +1002,7 @@ export default function DataManager() {
     : filteredSyncJobs;
   const dailyButtonBusy = syncingMode === 'daily';
   const customButtonBusy = syncingMode === 'custom';
-  const fullButtonBusy = syncingMode === 'full';
+  const fullButtonBusy = syncingMode === 'full' || ashareHistorySyncing;
   const schedulePulseOn = Boolean(scheduleConfig?.enabled);
   const scheduleSummary = schedulePulseOn
     ? `${scheduleConfig?.intervalMinutes || 240}分钟 · ${(scheduleConfig?.timeframes || []).map(dataTimeframeLabel).join('/') || '全部周期'}`
@@ -988,7 +1031,7 @@ export default function DataManager() {
     try {
       setSyncing(true);
       await dataSyncApi.startSync({
-        exchange: selectedExchange,
+        exchange: dataExchange,
         symbols: [symbol],
         timeframes: missingTimeframes,
         historyDays: SYNC_HISTORY_DAYS,
@@ -1078,7 +1121,7 @@ export default function DataManager() {
           <div>
             <h1 className="text-xl font-bold text-white">数据管理中心</h1>
             <p className="text-xs text-gray-500 mt-0.5">
-              {selectedExchange.toUpperCase()} · {allSymbols.length} 个交易对 · {allTimeframes.length} 个周期
+              A股 CN · {allSymbols.length} 个标的 · {allTimeframes.length} 个周期
             </p>
             {loading && (
               <div className="mt-1 flex items-center gap-1.5 text-xs text-blue-300">
@@ -1139,13 +1182,34 @@ export default function DataManager() {
             {customButtonBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Calendar className="w-3.5 h-3.5" />}
             自定义同步
           </button>
-          <button onClick={() => openSyncDialog('full')} disabled={!canMutateData || isBusy}
+          <button
+            type="button"
+            data-testid="ashare-history-sync-button"
+            onClick={() => void handleAshareHistorySync()}
+            disabled={!isAdmin || isBusy || ashareHistorySyncing}
+            title={isAdmin ? '按交易日拉取全部 A 股近半年 1D 日线' : '需要管理员登录'}
             className="h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
             {fullButtonBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-            全量同步
+            拉取近半年 A股
           </button>
         </div>
       </div>
+
+      {ashareHistoryFeedback && (
+        <div
+          role="status"
+          data-testid="ashare-history-sync-feedback"
+          className={`-mt-2 rounded-lg border px-3 py-2 text-xs ${
+            ashareHistoryFeedback.type === 'success'
+              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+              : ashareHistoryFeedback.type === 'error'
+                ? 'border-red-500/25 bg-red-500/10 text-red-200'
+                : 'border-blue-500/25 bg-blue-500/10 text-blue-200'
+          }`}
+        >
+          {ashareHistoryFeedback.message}
+        </div>
+      )}
 
       {/* ========== 统计概览 ========== */}
       <div className="grid grid-cols-6 gap-3 shrink-0">
