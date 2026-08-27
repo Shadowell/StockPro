@@ -210,6 +210,9 @@ class ResearchLedger:
 
     def summary(self) -> dict[str, Any]:
         provider = _provider_snapshot()
+        upstream_base_set = bool(settings.HYPERTRADE_API_BASE or settings.HYPERTRADE_BASE_URL)
+        upstream_session_set = bool(settings.HYPERTRADE_ADMIN_SESSION_COOKIE)
+        upstream_ready = upstream_base_set and upstream_session_set
         try:
             connection = self._connect(readonly=True)
             try:
@@ -222,6 +225,19 @@ class ResearchLedger:
                     jobs = [dict(row) for row in cursor.fetchall()]
                     cursor.execute("SELECT * FROM research_workbench_paper_promotions ORDER BY created_at DESC LIMIT 20")
                     promotions = [dict(row) for row in cursor.fetchall()]
+                    cursor.execute(
+                        """
+                        SELECT MAX(updated_at) AS last_synced_at
+                        FROM (
+                            SELECT updated_at FROM research_workbench_mandates
+                            UNION ALL
+                            SELECT updated_at FROM research_workbench_jobs
+                            UNION ALL
+                            SELECT updated_at FROM research_workbench_paper_promotions
+                        ) AS ledger_updates
+                        """
+                    )
+                    last_synced_at = dict(cursor.fetchone() or {}).get("last_synced_at")
             finally:
                 connection.rollback()
                 connection.close()
@@ -233,12 +249,21 @@ class ResearchLedger:
             "connection": {
                 "status": "ready",
                 "mode": "local_postgres_ledger",
-                "upstream_status": "configured" if settings.HYPERTRADE_API_BASE else "unavailable",
-                "error": None,
+                "upstream_status": "configured" if upstream_ready else "unavailable",
+                "missing_config": [
+                    key
+                    for key, present in (
+                        ("HYPERTRADE_API_BASE", upstream_base_set),
+                        ("HYPERTRADE_ADMIN_SESSION_COOKIE", upstream_session_set),
+                    )
+                    if not present
+                ],
+                "recovery_path": "服务器设置 / HyperTrade",
+                "error": None if upstream_ready else "HyperTrade 上游地址或服务端会话未配置；本地台账只读可用，研究写入已停用",
             },
             "provider": provider,
             "write_path": {
-                "status": "provider_required" if not provider["api_key_configured"] else "ready",
+                "status": "ready" if upstream_ready else "upstream_required",
                 "stores_input_output_cost_version": True,
                 "paper_mutation": False,
             },
@@ -246,6 +271,7 @@ class ResearchLedger:
             "paper_promotions": promotions,
             "paper_review_requests": _review_items({"items": promotions}),
             "metrics": {"mandates": mandates, "jobs": len(jobs), "paper_promotions": len(promotions)},
+            "last_synced_at": last_synced_at,
         }
 
     @staticmethod

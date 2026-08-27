@@ -4120,3 +4120,13 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
   `orders_created=0`、`paper_mutated=false`。
 - 隔离真实同步贵州茅台 3 年数据：Provider 返回 14 行财务指标、12 行股东户数、88 行分红，
   形成 186 条候选事实，当前 cutoff 可见 156 条；最新 2026-06-30 指标公告于 2026-08-15。
+
+## 2026-08-28 A 股 AI 研究提议边界
+
+- 研究提议标的改为 StockPro `stock/etf/index` 证券目录，显示资产类型并校验
+  `600519.SH`、`000001.SZ`、`920061.BJ` 等统一格式；删除合约、USDT、BTC/ETH 和资金费语义。
+- 当前研究数据能力只开放日线，研究类型为趋势、均值回归和因子轮动；提议契约显式写入交易所
+  日历、T+1、涨跌停、停牌、100 股整手、A 股成本、默认禁止做空、时点数据和样本外门禁。
+- Research Workbench 摘要区分本地 PostgreSQL 台账与 HyperTrade 上游，返回缺失配置、恢复路径、
+  最近台账更新时间和错误原因；上游未配置时前后两个提交入口与弹窗确认均禁用，不创建任务、
+  回测或 Paper。接通后提交状态显示 mandate/job 可追踪 ID。
