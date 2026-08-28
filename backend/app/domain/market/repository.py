@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 import json
+import math
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import psycopg2
 import psycopg2.extras
@@ -19,6 +20,111 @@ from app.domain.market.research_metrics import (
     build_abnormal_windows,
 )
 from app.domain.market.overview import build_market_overview, unavailable_market_overview
+
+SECTOR_HEATMAP_WINDOWS = ("1d", "5d", "20d")
+
+
+def aggregate_sector_heatmap(
+    instruments: List[Dict],
+    realtime: Dict[str, Dict],
+    history: Dict[str, Dict],
+    window: str,
+) -> Tuple[List[Dict], int]:
+    """按行业聚合板块热力图（纯函数，便于单测）。
+
+    - 等权涨跌：1d 优先实时 change_percent（缺失回退日线相邻收盘）；
+      5d/20d 用 ``stock_history`` 最近第 1/6/21 个有数据交易日收盘比。
+    - 无可计算涨跌的标的不进入板块（计入 total 覆盖差值）。
+    返回 ``(sectors, covered_symbols)``；sectors 按标的数降序，成员按涨跌降序。
+    """
+    sectors: Dict[str, Dict] = {}
+    covered = 0
+    for instrument in instruments:
+        symbol = str(instrument.get("symbol") or "")
+        if not symbol:
+            continue
+        hist = history.get(symbol) or {}
+        quote = realtime.get(symbol) or {}
+        close_now = hist.get("close_now")
+        change: Optional[float] = None
+        if window == "1d":
+            change = quote.get("change_percent")
+            if change is None and close_now and hist.get("close_prev"):
+                change = (float(close_now) / float(hist["close_prev"]) - 1.0) * 100.0
+        elif window == "5d":
+            if close_now and hist.get("close_5d"):
+                change = (float(close_now) / float(hist["close_5d"]) - 1.0) * 100.0
+        else:
+            if close_now and hist.get("close_20d"):
+                change = (float(close_now) / float(hist["close_20d"]) - 1.0) * 100.0
+        if change is None or not math.isfinite(float(change)):
+            continue
+        covered += 1
+        change = round(float(change), 2)
+        industry = str(instrument.get("industry") or "").strip() or "其他"
+        last_price = quote.get("last") or close_now
+        try:
+            last_value = float(last_price) if last_price is not None else None
+        except (TypeError, ValueError):
+            last_value = None
+        amount = quote.get("amount")
+        try:
+            amount_value = float(amount) if amount is not None else None
+        except (TypeError, ValueError):
+            amount_value = None
+        member = {
+            "symbol": symbol,
+            "name": str(instrument.get("name") or quote.get("name") or symbol),
+            "board": instrument.get("board"),
+            "last": (
+                round(last_value, 2)
+                if last_value is not None and math.isfinite(last_value) and last_value > 0
+                else None
+            ),
+            "change_percent": change,
+            "amount": (
+                round(amount_value, 2)
+                if amount_value is not None and math.isfinite(amount_value)
+                else None
+            ),
+            "high": hist.get("high_now"),
+            "low": hist.get("low_now"),
+        }
+        bucket = sectors.setdefault(industry, {
+            "code": industry,
+            "name": industry,
+            "count": 0,
+            "change_sum": 0.0,
+            "gainers": 0,
+            "losers": 0,
+            "flat": 0,
+            "members": [],
+        })
+        bucket["count"] += 1
+        bucket["change_sum"] += change
+        if change > 0:
+            bucket["gainers"] += 1
+        elif change < 0:
+            bucket["losers"] += 1
+        else:
+            bucket["flat"] += 1
+        bucket["members"].append(member)
+
+    result: List[Dict] = []
+    for bucket in sectors.values():
+        members = sorted(bucket["members"], key=lambda m: m["change_percent"], reverse=True)
+        result.append({
+            "code": bucket["code"],
+            "name": bucket["name"],
+            "count": bucket["count"],
+            "average_change": round(bucket["change_sum"] / bucket["count"], 2) if bucket["count"] else 0.0,
+            "gainers": bucket["gainers"],
+            "losers": bucket["losers"],
+            "flat": bucket["flat"],
+            "members": members,
+        })
+    result.sort(key=lambda sector: sector["count"], reverse=True)
+    return result, covered
 
 
 class MarketRepository:
@@ -292,6 +398,173 @@ class MarketRepository:
     def lookup_names(self, symbols: List[str]) -> Dict[str, str]:
         from app.domain.instruments.repository import AshareInstrumentRepository
         return AshareInstrumentRepository(self.database_url).lookup_names(symbols)
+
+    def get_sector_heatmap(self, window: str = "1d") -> Dict:
+        """板块热力图只读聚合：行业 × 实时/日线等权涨跌。
+
+        实时优先 ``realtime_quotes``，为空回退 ``all_stocks_realtime``；
+        5d/20d 窗口基于 ``stock_history`` 最近第 1/6/21 个有数据交易日的收盘。
+        只读 SELECT，不调用 Provider、不写库。
+        """
+        normalized = window if window in SECTOR_HEATMAP_WINDOWS else "1d"
+        instruments: List[Dict] = []
+        realtime: Dict[str, Dict] = {}
+        realtime_updated_at: Optional[datetime] = None
+        realtime_source: Optional[str] = None
+        history: Dict[str, Dict] = {}
+        history_latest_date: Optional[str] = None
+        sources: List[str] = []
+        missing: List[str] = []
+
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "instrument_definitions"):
+                    return {
+                        "window": normalized,
+                        "sectors": [],
+                        "covered_symbols": 0,
+                        "total_symbols": 0,
+                        "sector_count": 0,
+                        "trade_date": None,
+                        "realtime_updated_at": None,
+                        "realtime_source": None,
+                        "sources": [],
+                        "data_status": "unavailable",
+                        "unavailable_reason": "instrument_definitions table is not migrated",
+                        "provider_calls": 0,
+                        "writes_performed": False,
+                        "paper_mutated": False,
+                    }
+                cursor.execute(
+                    """
+                    SELECT symbol,name,industry,board
+                    FROM instrument_definitions
+                    WHERE market='CN' AND list_status IN ('L','P') AND asset_class='stock'
+                    """
+                )
+                for row in cursor.fetchall():
+                    instruments.append({
+                        "symbol": self._canonical_symbol(row[0]),
+                        "name": str(row[1] or ""),
+                        "industry": row[2],
+                        "board": row[3],
+                    })
+                sources.append("instrument_definitions")
+
+                if self._table_exists(cursor, "realtime_quotes"):
+                    cursor.execute(
+                        """
+                        SELECT symbol,last_price,change_percent,amount,source_updated_at
+                        FROM realtime_quotes
+                        WHERE change_percent IS NOT NULL
+                        """
+                    )
+                    for row in cursor.fetchall():
+                        realtime[self._canonical_symbol(row[0])] = {
+                            "last": row[1],
+                            "change_percent": float(row[2]) if row[2] is not None else None,
+                            "amount": row[3],
+                            "name": None,
+                        }
+                        if row[4] is not None and (realtime_updated_at is None or row[4] > realtime_updated_at):
+                            realtime_updated_at = row[4]
+                    if realtime:
+                        realtime_source = "realtime_quotes"
+                if not realtime and self._table_exists(cursor, "all_stocks_realtime"):
+                    cursor.execute(
+                        """
+                        SELECT code,name,price,change_percent,amount,updated_at
+                        FROM all_stocks_realtime
+                        WHERE change_percent IS NOT NULL
+                        """
+                    )
+                    for row in cursor.fetchall():
+                        realtime[self._canonical_symbol(row[0])] = {
+                            "last": row[2],
+                            "change_percent": float(row[3]) if row[3] is not None else None,
+                            "amount": row[4],
+                            "name": str(row[1] or "") or None,
+                        }
+                        if row[5] is not None and (realtime_updated_at is None or row[5] > realtime_updated_at):
+                            realtime_updated_at = row[5]
+                    if realtime:
+                        realtime_source = "all_stocks_realtime"
+                if realtime_source:
+                    sources.append(realtime_source)
+                else:
+                    missing.append("实时行情缓存为空（1d 将回退日线相邻收盘）")
+
+                if self._table_exists(cursor, "stock_history"):
+                    cursor.execute(
+                        """
+                        WITH recent_dates AS (
+                            SELECT DISTINCT date FROM stock_history ORDER BY date DESC LIMIT 21
+                        ),
+                        ranked AS (
+                            SELECT symbol,date,close,high,low,
+                                   ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+                            FROM stock_history
+                            WHERE date IN (SELECT date FROM recent_dates)
+                        )
+                        SELECT symbol,
+                               MAX(close) FILTER (WHERE rn = 1) AS close_now,
+                               MAX(close) FILTER (WHERE rn = 2) AS close_prev,
+                               MAX(close) FILTER (WHERE rn = 6) AS close_5d,
+                               MAX(close) FILTER (WHERE rn = 21) AS close_20d,
+                               MAX(high) FILTER (WHERE rn = 1) AS high_now,
+                               MIN(low) FILTER (WHERE rn = 1) AS low_now,
+                               MAX(date) FILTER (WHERE rn = 1) AS latest_date
+                        FROM ranked
+                        GROUP BY symbol
+                        """
+                    )
+                    for row in cursor.fetchall():
+                        def _num(value: Any) -> Optional[float]:
+                            try:
+                                parsed = float(value) if value is not None else None
+                            except (TypeError, ValueError):
+                                return None
+                            return parsed if parsed is not None and math.isfinite(parsed) and parsed > 0 else None
+
+                        history[self._canonical_symbol(row[0])] = {
+                            "close_now": _num(row[1]),
+                            "close_prev": _num(row[2]),
+                            "close_5d": _num(row[3]),
+                            "close_20d": _num(row[4]),
+                            "high_now": round(_num(row[5]), 2) if _num(row[5]) is not None else None,
+                            "low_now": round(_num(row[6]), 2) if _num(row[6]) is not None else None,
+                        }
+                        if row[7] is not None:
+                            observed_date = str(row[7])
+                            if history_latest_date is None or observed_date > history_latest_date:
+                                history_latest_date = observed_date
+                    sources.append("stock_history")
+                else:
+                    missing.append("stock_history 表未迁移")
+
+        sectors, covered = aggregate_sector_heatmap(instruments, realtime, history, normalized)
+        payload: Dict = {
+            "window": normalized,
+            "sectors": sectors,
+            "covered_symbols": covered,
+            "total_symbols": len(instruments),
+            "sector_count": len(sectors),
+            "trade_date": history_latest_date,
+            "realtime_updated_at": self._iso(realtime_updated_at),
+            "realtime_source": realtime_source,
+            "window_basis": "trading_bars",
+            "sources": sources,
+            "data_status": "ok" if sectors else "empty",
+            "unavailable_reason": None if sectors else (
+                "; ".join(missing) if missing else "无可用行业成员或涨跌事实（确认已跑每日同步）"
+            ),
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
+        }
+        if realtime_updated_at is not None:
+            payload["realtime_freshness"] = self._freshness(realtime_updated_at)
+        return payload
 
     def get_klines(
         self,

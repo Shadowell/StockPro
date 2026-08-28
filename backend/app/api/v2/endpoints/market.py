@@ -228,3 +228,21 @@ async def get_symbol_mover(
     trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新"),
 ):
     return ok(await market_domain_service.get_symbol_abnormality(symbol, trade_date=trade_date))
+
+
+@router.get("/sector-heatmap")
+async def get_sector_heatmap(
+    window: str = Query("1d", description="涨跌窗口: 1d/5d/20d", pattern="^(1d|5d|20d)$"),
+):
+    """板块热力图（只读）：行业 × 等权涨跌，面积 = 标的数。GET 不写库、不调 Provider。"""
+    return ok(await market_domain_service.get_sector_heatmap(window))
+
+
+@router.get("/key-levels")
+async def get_symbol_key_levels(
+    exchange: str = Query(..., description="交易所"),
+    symbol: str = Query(..., description="A 股证券代码"),
+    limit: int = Query(500, ge=20, le=2000, description="参与计算的日线根数"),
+):
+    """个股关键价位（只读）：11 类价位分组 + 摘要，基于 1d 日线实时计算。"""
+    return ok(await market_domain_service.get_key_levels(exchange, symbol, limit))

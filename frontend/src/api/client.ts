@@ -1320,6 +1320,75 @@ export interface SymbolAbnormality {
   unavailableReason?: string;
 }
 
+export interface KeyPriceLevelPoint {
+  value: number;
+  label: string;
+  type: string;
+  side: 'resistance' | 'support' | 'neutral' | string;
+  strength?: 'strong' | 'medium' | 'weak' | string;
+  rank?: number;
+}
+
+export interface KeyLevelsPayload {
+  symbol: string;
+  exchange?: string;
+  close: number | null;
+  rowsUsed?: number;
+  rowsAvailable?: number;
+  groups: Record<string, KeyPriceLevelPoint[]>;
+  summary?: string;
+  levelTypes?: Record<string, string>;
+  asOfTradeDate?: string | null;
+  dataStatus?: string;
+  unavailableReason?: string | null;
+  providerSource?: string | null;
+  turnoverSource?: string | null;
+  providerCalls?: number;
+  writesPerformed?: boolean;
+  paperMutated?: boolean;
+}
+
+export interface SectorHeatmapMember {
+  symbol: string;
+  name: string;
+  board?: string | null;
+  last: number | null;
+  changePercent: number;
+  amount?: number | null;
+  high?: number | null;
+  low?: number | null;
+}
+
+export interface SectorHeatmapSector {
+  code: string;
+  name: string;
+  count: number;
+  averageChange: number;
+  gainers: number;
+  losers: number;
+  flat: number;
+  members: SectorHeatmapMember[];
+}
+
+export interface SectorHeatmapPayload {
+  window: '1d' | '5d' | '20d' | string;
+  sectors: SectorHeatmapSector[];
+  coveredSymbols: number;
+  totalSymbols: number;
+  sectorCount?: number;
+  tradeDate?: string | null;
+  realtimeUpdatedAt?: string | null;
+  realtimeSource?: string | null;
+  windowBasis?: string;
+  sources?: string[];
+  dataStatus: string;
+  unavailableReason?: string | null;
+  realtimeFreshness?: { stale?: boolean; ageSeconds?: number | null } | null;
+  providerCalls?: number;
+  writesPerformed?: boolean;
+  paperMutated?: boolean;
+}
+
 export interface MarketEvent {
   eventId: string;
   source: 'strategy' | 'signal' | 'price' | 'abnormal' | 'sector' | string;
@@ -2069,6 +2138,12 @@ export const marketApi = {
 
   getSymbolMover: (symbol: string, tradeDate?: string): Promise<SymbolAbnormality> =>
     getReq(`/market/movers/${symbol}`, { params: { tradeDate } }),
+
+  getSectorHeatmap: (window: '1d' | '5d' | '20d' = '1d'): Promise<SectorHeatmapPayload> =>
+    getReq('/market/sector-heatmap', { params: { window } }),
+
+  getKeyLevels: (exchange: string, symbol: string, limit = 500): Promise<KeyLevelsPayload> =>
+    getReq('/market/key-levels', { params: { exchange, symbol, limit } }),
 };
 
 export interface MarketInstrument {

@@ -12,6 +12,7 @@ import numpy as np
 
 from app.domain.market.akshare_intraday import AkshareIntradayProvider
 from app.domain.market.akshare_symbols import AkshareSymbolProvider
+from app.domain.market.key_levels import LEVEL_TYPES, compute_key_levels, summarize_levels
 from app.domain.market.repository import MarketRepository
 from app.domain.market.research_metrics import (
     ABNORMALITY_DEFINITION_VERSION,
@@ -125,6 +126,43 @@ class MarketDomainService:
             "items": items,
             "data_status": "ok" if items else "empty",
             "unavailable_reason": None if items else "cache returned no rows",
+        }
+
+    async def get_sector_heatmap(self, window: str = "1d") -> Dict[str, Any]:
+        """板块热力图聚合（只读）。窗口 1d/5d/20d，等权涨跌，面积 = 标的数。"""
+        normalized = str(window or "1d").strip().lower()
+        if normalized not in {"1d", "5d", "20d"}:
+            normalized = "1d"
+        return await asyncio.to_thread(self.repo.get_sector_heatmap, normalized)
+
+    async def get_key_levels(self, exchange_name: str, symbol: str, limit: int = 500) -> Dict[str, Any]:
+        """个股关键价位（只读）：基于 1d 日线复用 get_klines_payload 链路实时计算。"""
+        bounded_limit = max(20, min(int(limit), 2000))
+        payload = await self.get_klines_payload(exchange_name, symbol, "1d", bounded_limit)
+        klines = payload.get("items", [])
+        levels = compute_key_levels(klines)
+        turnover_source = (
+            "row_field"
+            if any(isinstance(k.get("turnover_rate"), (int, float)) for k in klines)
+            else "unavailable"
+        )
+        return {
+            "exchange": exchange_name,
+            "symbol": payload.get("symbol") or symbol,
+            "close": levels.get("close"),
+            "rows_used": levels.get("rows_used", 0),
+            "groups": levels.get("groups", {}),
+            "summary": summarize_levels(levels.get("groups", {}), levels.get("close")),
+            "level_types": LEVEL_TYPES,
+            "as_of_trade_date": payload.get("to_date"),
+            "rows_available": len(klines),
+            "data_status": payload.get("data_status"),
+            "unavailable_reason": payload.get("unavailable_reason"),
+            "provider_source": payload.get("provider_source") or payload.get("source"),
+            "turnover_source": turnover_source,
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
         }
 
     async def get_technical_indicators(

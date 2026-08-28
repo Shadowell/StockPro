@@ -1,5 +1,30 @@
 # Progress Log
 
+## 个股关键价位模块 + A股板块热力图（2026-08-28）
+
+- 从 `origin/main`（`56b73cba`）派生 `codex/key-levels-sector-heatmap`，按 sprint 合同
+  `docs/contracts/sprint-key-levels-sector-heatmap.md` 交付两个只读增量。
+- 移植 tick-stock-panel `levels.py` 的 11 类关键价位纯函数为 numpy 实现
+  （`backend/app/domain/market/key_levels.py`）：成交密集区（筹码分布，换手率不可得时
+  退化为量堆积并在 meta 标注）、枢轴点、前高前低、布林、Keltner 三档、ATR 通道、
+  未回补缺口、斐波那契、整数关口；停牌/坏 bar 在入口过滤。17 项数值回归测试全绿。
+- 新增 `GET /api/v2/market/key-levels`（复用 `1d` 日线只读链路实时计算）与
+  `GET /api/v2/market/sector-heatmap`（`instrument_definitions.industry` ×
+  `realtime_quotes`/`all_stocks_realtime` × `stock_history` 1d/5d/20d 等权聚合），
+  两端点 GET 均不调用 Provider、不写库，空数据返回诚实状态。
+- 行情页新增 `板块热力图`（treemap 面积=标的数、颜色=窗口等权涨跌，右栏领涨/领跌与
+  强弱榜，窗口当日/5日/20日，点击板块展开成员行情表并联动标的）与 `关键价位` 面板
+  （11 类分组开关，开启分组以 markLine 叠加 K 线主图，压力琥珀/支撑天蓝/中性灰）；
+  `KlineChart` 新增可选 `priceLevels` prop，不影响既有消费者。
+- 隔离库真实数据验收：600519.SH 124 根日线输出 10 组价位；热力图 110 个行业、
+  5550/5550 覆盖、领涨铜 +4.18%/领跌黄金 -1.46%，点击电气设备展开 347 只成员
+  （顺钠股份 +10.05% 涨停等真实数据）。浏览器冒烟 console errors / page errors /
+  failed requests 均为 0；修复面板 `basis-full` 在列向 flex 被解释为高度基准导致的
+  551px 空白与 onChange 引用循环。
+- 验证：后端 17 项新测试 + 全量 `./scripts/check.sh`（前端 tsc/lint/build/bundle +
+  后端 pytest + 43 项 Mock E2E）通过；4444/4445 以隔离库 `stockpro_bitpro_rebase_dev`
+  干净重启并完成真实页面验收。同步更新 `docs/pages/行情.md` 页面合同与 sprint 合同。
+
 ## 本地数据持久化与服务启动收敛（2026-08-28）
 
 - 新增本地数据库选择器，`start.sh` / `restart.sh` 只接受可达的
