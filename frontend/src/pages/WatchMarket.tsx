@@ -742,7 +742,7 @@ export default function WatchMarket() {
                   </div>
                 ) : (
                   <div className="flex h-full min-h-[360px] items-center justify-center rounded-xl border border-dashed border-crypto-border text-gray-500">
-                    当前 A 股 Paper 账户暂无持仓盯盘标的；接通只读持仓适配后将在此展示 A 股 K 线卡片。
+                    正在等待本地实时行情生成盯盘卡片。
                   </div>
                 )}
               </div>

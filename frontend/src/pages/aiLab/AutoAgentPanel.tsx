@@ -74,7 +74,7 @@ export default function AutoAgentPanel({
                   自动交易 Agent 决策驾驶舱
                 </h2>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-400">
-                  自动采集 OKX 公开行情，完成五 Agent 研究闭环，并把结论、操作和证据压缩到首屏；Hermes 只参与研究深化，不接触 OKX 私有接口，不自动实盘下单。
+                  自动采集 A 股公开行情，完成五 Agent 研究闭环，并把结论、操作和证据压缩到首屏；只参与研究深化，不自动实盘下单。
                 </p>
                 <div className="mt-5 flex flex-wrap items-center gap-2">
                   <button
@@ -136,7 +136,7 @@ export default function AutoAgentPanel({
                     </div>
                     <h3 className="mt-3 text-lg font-semibold text-gray-50">自动交易Agent定时执行</h3>
                     <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-300">
-                      开启后，系统按固定间隔自动采集公开行情、调用 Hermes 研究、运行安全回测矩阵；仍然不会连接 OKX 私有接口，也不会自动实盘下单。
+                      开启后，系统按固定间隔自动采集 A 股公开行情、调用 Hermes 研究、运行安全回测矩阵；仍然不会连接券商实盘，也不会自动下单。
                     </p>
                   </div>
                   <span className={`w-fit rounded-full px-2.5 py-1 text-[11px] font-semibold ${autoAgentSchedulerConfig.enabled ? 'bg-emerald-500/15 text-emerald-300' : 'bg-gray-500/15 text-gray-300'}`}>
@@ -184,7 +184,7 @@ export default function AutoAgentPanel({
                 </div>
 
                 <label className="mt-3 block rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-xs text-gray-300">
-                  <span className="font-semibold text-gray-100">扫描币池</span>
+                  <span className="font-semibold text-gray-100">扫描股票池</span>
                   <textarea
                     value={autoAgentSchedulerSymbolsText}
                     onChange={(e) => setAutoAgentScheduler({
@@ -194,7 +194,7 @@ export default function AutoAgentPanel({
                     rows={2}
                     className="mt-2 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-purple-400/50"
                   />
-                  <span className="mt-1 block text-[11px] text-gray-400">逗号或换行分隔；默认 BTC/ETH/SOL/DOGE/XRP USDT 永续。</span>
+                  <span className="mt-1 block text-[11px] text-gray-400">逗号或换行分隔；默认沪深主板与创业板流动性较好的样本股。</span>
                 </label>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -383,7 +383,7 @@ export default function AutoAgentPanel({
               </div>
               <div className="rounded-xl border border-white/[0.08] bg-black/20 p-3 text-xs text-gray-400">
                 <div className="font-semibold text-gray-200">下一步数据输入</div>
-                <div className="mt-1">后端采集 OKX 公开行情 + K 线快照，Market Agent 才会生成候选。</div>
+                <div className="mt-1">后端采集 A 股日线快照与本地实时行情，Market Agent 才会生成候选。</div>
               </div>
               <div className="rounded-xl border border-white/[0.08] bg-black/20 p-3 text-xs text-gray-400">
                 <div className="font-semibold text-gray-200">实盘边界</div>

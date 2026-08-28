@@ -566,6 +566,20 @@ def test_strategy_diagnostic_log_uses_backend_event_id_for_polling_deduplication
     assert "`event-log-${ts}-${idx}`" in monitor_source
 
 
+def test_stale_detail_does_not_treat_empty_instance_catalog_as_still_loading():
+    page = _read("frontend/src/pages/liveTrading/index.tsx")
+    helper = _read("frontend/src/pages/liveTrading/detailHydration.ts")
+
+    assert "export function shouldAbandonStaleDetail" in helper
+    assert "instancesReady" in helper
+    assert "instanceKnown" in helper
+    assert "shouldAbandonStaleDetail(" in page
+    assert "const [instancesReady, setInstancesReady]" in page
+    assert "setInstancesReady(true)" in page
+    assert "if (activeInstanceId.startsWith('live:strategy:') && strategies.length === 0) return;" not in page
+    assert "if (activeInstanceId.startsWith('paper:') && paperInstances.length === 0)" not in page
+
+
 def test_ai_lab_monitor_link_opens_strategy_detail_and_live_accepts_legacy_alias():
     ai_lab_source = _read_ai_lab_modules()
     live_page_source = _read("frontend/src/pages/liveTrading/index.tsx")

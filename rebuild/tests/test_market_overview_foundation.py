@@ -33,6 +33,9 @@ def _facts() -> list[dict[str, object]]:
             "amount": 1_000_000.0,
             "turnover": 12.0,
             "volume_ratio": 2.0,
+            "pe_dynamic": 8.0,
+            "pb": 1.2,
+            "total_market_cap": 100_000_000.0,
         },
         {
             "symbol": "600519.SH",
@@ -42,6 +45,9 @@ def _facts() -> list[dict[str, object]]:
             "amount": 800_000.0,
             "turnover": 3.0,
             "volume_ratio": 0.8,
+            "pe_dynamic": 20.0,
+            "pb": 6.0,
+            "total_market_cap": 1_600_000_000_000.0,
         },
         {
             "symbol": "300750.SZ",
@@ -123,6 +129,10 @@ def test_market_overview_reconciles_breadth_and_filters_invalid_ranking_rows():
     assert overview["activity"]["amount_unit"] == "CNY"
     assert overview["activity"]["turnover_unit"] == "%"
     assert overview["activity"]["volume_ratio_denominator"] == "20日平均成交量"
+    assert overview["valuation"]["status"] == "ready"
+    assert overview["valuation"]["median_pe_ttm"] == 14.0
+    assert overview["valuation"]["median_pb"] == 3.6
+    assert overview["valuation"]["total_market_cap_cny"] == 1_600_100_000_000.0
 
 
 def test_trend_strength_is_blocked_until_each_symbol_has_sixty_confirmed_days():

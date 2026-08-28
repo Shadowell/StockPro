@@ -92,21 +92,24 @@ After every code, configuration, script, or test change, restart both the fronte
 
 Documentation-only changes do not require a service restart.
 
-Restart the backend with the virtual environment's Python module entrypoint:
+Restart the backend with the virtual environment's Python module entrypoint
+and the local isolation database URL. Never inherit a server `DATABASE_URL`:
 
 ```bash
 kill $(lsof -ti:4445) 2>/dev/null; sleep 1
+export DATABASE_URL="$(./scripts/local_database.sh --print-url)"
 source backend/venv/bin/activate
 cd backend
-nohup python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 4445 > /tmp/backend.log 2>&1 &
+nohup env DATABASE_URL="$DATABASE_URL" python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 4445 > /tmp/backend.log 2>&1 &
 ```
 
-Restart the frontend after returning to the repository root:
+Restart the frontend after returning to the repository root; proxy only the
+local backend:
 
 ```bash
 kill $(lsof -ti:4444) 2>/dev/null; sleep 1
 cd frontend
-nohup npm run dev -- --host 127.0.0.1 --port 4444 > /tmp/frontend.log 2>&1 &
+nohup env VITE_DEV_API_PROXY_TARGET=http://127.0.0.1:4445 npm run dev -- --host 127.0.0.1 --port 4444 > /tmp/frontend.log 2>&1 &
 ```
 
 After each restart, verify both ports are listening and call the backend health endpoint. Do not report a code change complete while either service is unavailable.

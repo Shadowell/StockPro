@@ -12,7 +12,7 @@ async function installPaperConsistencyFixtures(page: Parameters<typeof installFi
     const path = url.pathname
     const strategy = {
       id: INSTANCE_ID,
-      name: 'StockPro minimal research chain',
+      name: '[A股][日线][动量] 最小研究链',
       description: 'A股 Paper',
       status: 'running',
       exchange: 'CN',

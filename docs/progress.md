@@ -1,5 +1,112 @@
 # Progress Log
 
+## 资金流接入北向 + 信号中心并行加载（2026-08-28）
+
+- 信号中心不再等 80 条策略元数据后才拉连板/异动。
+- `GET /orderflow/capital-flow` 读 TuShare `moneyflow_hsgt` + `moneyflow`，过滤 NaN，
+  万元转人民币；资金流页展示北向/沪深股通与个股主力净额。
+- 本轮未推 `main`、未部署服务器。
+
+## 新建回测跑通 + 估值铺到首页/基本面（2026-08-28）
+
+- 隔离库策略 228 + snapshot 10 + pool 5 提交 `run_job`，62 个交易日撮合后
+  `success`，结果 id 1623374419，区间 2024-10-01～2025-01-02，收益 -4.01%。
+- 基本面估值不再只查不存在的 `daily_basic` 符号精确匹配；改为读最新
+  `daily_valuation`（兼容 `600519.SH` / `SH_600519`），没有封存则回退
+  `all_stocks_realtime` 的 PE/PB/市值。
+- 首页市场基础层增加全市场中位 PE/PB 与合计市值；信号中心金额改为人民币。
+- 本轮未推 `main`、未部署服务器。
+
+## 策略命名规范（2026-08-28）
+
+- 产品名统一为 `[市场][周期][风格] 策略简称`。写入路径校验并自动去掉 `Paper` /
+  `100万` / `模拟盘` / 日期；Sprint、验收和英文测试链映射或拒绝。
+- Paper 创建不再追加 `/ Paper`。本地隔离库已把模拟台 23 个实例名改成规范名。
+- 本轮未推 `main`、未部署服务器。
+
+## 本地启动只连本机库和本机后端（2026-08-28）
+
+- `scripts/local_database.sh` 不再继承环境 `DATABASE_URL`（避免把服务器地址当成本地库），
+  并拒绝非本机 host；发现顺序改为优先 Docker `127.0.0.1:55432`，其次同名 Unix socket。
+- `backend/.env` 仅在其 host 已是本机时用于补凭证。`start.sh` 启动后打印实际本地 URL；
+  前端代理固定 `http://127.0.0.1:4445`。
+- 本机同时存在空 Paper 的 socket 库和有 23 个实例的 Docker 隔离库时，本地服务改连后者。
+
+## A 股工作台策略种子 + 盯盘兜底 + 去币圈文案（2026-08-28）
+
+- 本机 socket 库 `strategy_versions` / `paper_instances` 为空，策略/模拟/盯盘/复盘整页空。
+  本轮写入 6 条通过 `stockpro.v1` 校验的 A 股日线策略，让 `/strategy` 与 `/live`
+  （`live:strategy:*`）有可点条目。
+- Paper 账户为空时，盯盘账户回退为「A股市场盯盘」，名单取 `all_stocks_realtime` 涨幅前列，
+  K 线直接读 `stock_history`，不再要求晋级 Paper 才能看图。
+- 复盘在无回测样本时展示当日阶段与异动；信号/监控/数据/AI 研发去掉仍可见的 OKX/USDT 默认值。
+- 本轮未推 `main`、未部署服务器。
+
+## A 股工作台去币圈残留 + 空页即时补数（2026-08-28）
+
+- 用户要求：修 bug、去掉 USDT/OKX/PostgreSQL 外泄、禁止 unknown/空页，尽量把已有
+  Tushare/本地行情铺到页面上。
+- 首页/行情/监控/策略/数据/因子/AI 研发可见文案去掉 USDT、OKX、PostgreSQL、unknown；
+  来源改为「TuShare 日线快照 / 本地行情」。
+- 物化表 `market_phase_results` / `sector_rps_results` 为空时，GET 从大盘宽度、行业等权、
+  实时涨跌停即时推导阶段/RPS/异动/情绪，不再返回 `unknown`。
+- 本机 socket 库没有连板/概念快照时：涨跌停池用 `all_stocks_realtime` 按主板 9.8%、
+  创业/科创 19.8%、北交所 29.8%、ST 4.8% 阈值即时统计；概念 tab 用行业等权涨跌代替主题强度。
+- 信号中心增加今日市场/涨停信号；价差页在 ETF 折溢价未接通时展示行业/概念相对强弱。
+- 验证：`rebuild/tests/test_live_derived_research.py` 3 项通过；4444/4445 干净重启后
+  `/market/phase` 为「主升」、行业 RPS 110 条、涨停池 92 只、概念 110 条；浏览器首页/
+  行情/连板 tab 无 USDT/PostgreSQL/unknown。本轮未推 `main`、未部署服务器。
+
+## 模拟台过期实例无限加载（2026-08-28）
+
+- 根因：`/live` 把 localStorage / `?strategyId=` 恢复成 `live:strategy:<id>` 详情后，用
+  `strategies.length === 0` 判断「目录还在加载」。隔离库或空夹具返回空列表后该判断永远为真，
+  而 `GET /live/dashboard?instance_id=` 对缺失实例只给 `strategy_id: null`，匹配失败，页面卡在
+  「正在加载实例控制台」。
+- 修复：目录首次拉取（成功或失败）后置 `instancesReady`；实例确认不存在时退回控制台并清掉
+  过期查询参数，不再把空列表当成加载中。
+- 验证：新增源码合同与 Mock E2E（过期 prefs / 缺失 `strategyId` 都回到空控制台）；既有 Paper
+  同源对账 E2E 仍绿。本地 4444/4445 干净重启后用真实空实例列表验收。
+
+## 首页分析板块 tab（2026-08-28）
+
+- 在 `codex/key-levels-sector-heatmap`（`ef041d1a`）上续作 sprint
+  `docs/contracts/sprint-home-analysis-tabs.md`：首页新增 `?tab=` 二级标签，默认总览不变。
+- 三个只读端点 `GET /api/v2/market/limit-ladder`、`/concept-analysis`、`/industry-analysis`
+  分别聚合 `lianban_ladder_history` + `limit_pool_members`、`daily_concept_sectors` +
+  `hot_concepts_realtime`、以及与热力图同口径的行业 1d/5d/20d 等权涨跌；GET 不写库、不调 Provider。
+- 修复涨跌停池查询误选不存在的 `board`/`is_st` 列（改为从名称推导 ST），以及空 `pools`
+  字典被当成有内容导致 `data_status=ok` 的判断。
+- 六个 lazy tab：连板梯队、概念分析、行业分析、市场环境（phase/timeline/梯队趋势/领涨行业与概念）、
+  异动监控、个股分析（搜索 + 关键价位摘要，跳转行情页）。非法 tab 回退总览。
+- 验证与文档：新增聚合/服务合同测试、首页 Mock E2E 覆盖 tab URL 与 390px；同步
+  `docs/pages/首页.md`、`docs/spec.md` 与本合同。本地 4444/4445 干净重启后做真实页面验收。
+
+## 个股关键价位模块 + A股板块热力图（2026-08-28）
+
+- 从 `origin/main`（`56b73cba`）派生 `codex/key-levels-sector-heatmap`，按 sprint 合同
+  `docs/contracts/sprint-key-levels-sector-heatmap.md` 交付两个只读增量。
+- 移植 tick-stock-panel `levels.py` 的 11 类关键价位纯函数为 numpy 实现
+  （`backend/app/domain/market/key_levels.py`）：成交密集区（筹码分布，换手率不可得时
+  退化为量堆积并在 meta 标注）、枢轴点、前高前低、布林、Keltner 三档、ATR 通道、
+  未回补缺口、斐波那契、整数关口；停牌/坏 bar 在入口过滤。17 项数值回归测试全绿。
+- 新增 `GET /api/v2/market/key-levels`（复用 `1d` 日线只读链路实时计算）与
+  `GET /api/v2/market/sector-heatmap`（`instrument_definitions.industry` ×
+  `realtime_quotes`/`all_stocks_realtime` × `stock_history` 1d/5d/20d 等权聚合），
+  两端点 GET 均不调用 Provider、不写库，空数据返回诚实状态。
+- 行情页新增 `板块热力图`（treemap 面积=标的数、颜色=窗口等权涨跌，右栏领涨/领跌与
+  强弱榜，窗口当日/5日/20日，点击板块展开成员行情表并联动标的）与 `关键价位` 面板
+  （11 类分组开关，开启分组以 markLine 叠加 K 线主图，压力琥珀/支撑天蓝/中性灰）；
+  `KlineChart` 新增可选 `priceLevels` prop，不影响既有消费者。
+- 隔离库真实数据验收：600519.SH 124 根日线输出 10 组价位；热力图 110 个行业、
+  5550/5550 覆盖、领涨铜 +4.18%/领跌黄金 -1.46%，点击电气设备展开 347 只成员
+  （顺钠股份 +10.05% 涨停等真实数据）。浏览器冒烟 console errors / page errors /
+  failed requests 均为 0；修复面板 `basis-full` 在列向 flex 被解释为高度基准导致的
+  551px 空白与 onChange 引用循环。
+- 验证：后端 17 项新测试 + 全量 `./scripts/check.sh`（前端 tsc/lint/build/bundle +
+  后端 pytest + 43 项 Mock E2E）通过；4444/4445 以隔离库 `stockpro_bitpro_rebase_dev`
+  干净重启并完成真实页面验收。同步更新 `docs/pages/行情.md` 页面合同与 sprint 合同。
+
 ## 本地数据持久化与服务启动收敛（2026-08-28）
 
 - 新增本地数据库选择器，`start.sh` / `restart.sh` 只接受可达的

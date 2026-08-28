@@ -66,6 +66,11 @@ BitPro 遗留的 `/pools`、`/factors`、`/paper` 分别跳转到 `/arbitrage`�
 股票代替指数、用客户端合成走势或把缺失值改成 0。Dashboard GET 只读 PostgreSQL，并用短时单航班缓存避免
 重复读取；`provider_calls=0`、`writes_performed=false`、`paper_mutated=false` 是固定安全边界。
 
+首页另提供 `?tab=` 分析板块：连板梯队、概念分析、行业分析、市场环境、异动监控、个股分析。
+三个只读端点 `/api/v2/market/limit-ladder`、`/concept-analysis`、`/industry-analysis`
+分别聚合旧管道连板/涨跌停池、概念每日快照+资金流、以及与热力图同口径的行业等权涨跌；
+RPS/六阶段/异动物化缺失时页面显示诚实空态与原因，GET 不补算、不写库。
+
 完整路由：
 
 ```text
@@ -203,6 +208,9 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 - 策略详情必须从同一 `strategy_versions` 版本展示代码、参数、content hash、验证状态、标的池、入场、
   退出、调仓和风险约束，并关联最近 sealed 回测与 Paper 实例。示例链路必须标记“样例/非投资建议”；
   未实现的退出、止损或调仓必须作为缺口展示，不得生成看似完整的说明。
+- 策略与 Paper 实例名称统一为 `[市场][周期][风格] 策略简称`，例如 `[A股][日线][打板] 首板放量隔日T`。
+  市场仅 `A股` / `ETF`，周期以 `日线` 为主；风格是 2–12 字分类（动量、打板、隔日T 等）。
+  页面已展示周期和资金，名称不得再写 `Paper`、`模拟盘`、`100万`、Sprint、验收、测试链或日期。
 - 回测和 Paper Replay 执行同一策略版本，不允许悄悄切换实现。
 - 预置打板 / 隔日 T 策略运行在 A 股日线 T+1 引擎上：用收盘涨幅 ≥ 9.5%、连板计数和收盘位置近似涨停生态，今日信号次日成交。这不是逐笔高频，也不是当日 T+0。
 - 当前可复现的多年日线宇宙是研究 20 动量池；大票涨停稀疏时，打板策略按同方向强度补齐，避免空仓被误读成系统故障。
@@ -290,7 +298,8 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 - 后端：FastAPI，`http://localhost:4445`。
 - 数据库：本地服务与 `./scripts/check.sh` 黄金路径固定使用隔离库 `stockpro_bitpro_rebase_dev`，
   可用 `./scripts/setup_isolation_db.sh` 在本机 Docker（`127.0.0.1:55432`）或已有 Postgres 上创建；
-  `start.sh` / `restart.sh` 不读取服务器数据库配置、不打开 SSH 隧道，并在健康检查后核对实际数据库名。
+  `start.sh` / `restart.sh` 只连接本机隔离库（优先 `127.0.0.1:55432`，其次 Unix socket），
+  拒绝远程 host、不继承环境里的 `DATABASE_URL`、不打开 SSH 隧道，并在健康检查后核对实际数据库名。
   `stockpro_dev` / 生产库不得作为本地运行目标。
 - 调度：APScheduler，计划与执行状态持久化到 PostgreSQL。
 - Electron：可选壳层，不是核心产品架构或主要验收入口。

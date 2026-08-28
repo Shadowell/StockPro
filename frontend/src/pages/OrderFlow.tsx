@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import {
   orderflowApi,
+  type CapitalFlowPayload,
   type OrderflowBar,
   type OrderflowLargeTrade,
   type OrderflowStreamStatus,
@@ -68,8 +69,9 @@ type OrderflowBarsMeta = {
 
 function fmtUsdt(v: number | null | undefined): string {
   if (v == null) return '—';
-  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  if (Math.abs(v) >= 1e12) return `${(v / 1e12).toFixed(2)}万亿`;
+  if (Math.abs(v) >= 1e8) return `${(v / 1e8).toFixed(2)}亿`;
+  if (Math.abs(v) >= 1e4) return `${(v / 1e4).toFixed(2)}万`;
   return v.toFixed(0);
 }
 
@@ -103,6 +105,7 @@ export default function OrderFlow() {
   const [bars, setBars] = useState<OrderflowBar[]>([]);
   const [barsMeta, setBarsMeta] = useState<OrderflowBarsMeta | null>(null);
   const [streamStatus, setStreamStatus] = useState<OrderflowStreamStatus | null>(null);
+  const [capitalFlow, setCapitalFlow] = useState<CapitalFlowPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -116,7 +119,7 @@ export default function OrderFlow() {
     setLoading(true);
     setError(null);
     try {
-      const [tradeRes, barRes, status] = await Promise.all([
+      const [tradeRes, barRes, status, flow] = await Promise.all([
         orderflowApi.getLargeTrades({
           instId: symbol,
           hours,
@@ -126,6 +129,7 @@ export default function OrderFlow() {
         }),
         orderflowApi.getBars({ instId: symbol, barMinutes, hours }),
         orderflowApi.getStreamStatus(),
+        orderflowApi.getCapitalFlow(symbol, 20).catch(() => null),
       ]);
       setTrades(tradeRes.items ?? []);
       setBars(barRes.items ?? []);
@@ -142,6 +146,7 @@ export default function OrderFlow() {
         nextRetryAt: barRes.nextRetryAt,
       });
       setStreamStatus(status);
+      setCapitalFlow(flow);
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : '加载失败');
     } finally {
@@ -541,6 +546,63 @@ export default function OrderFlow() {
           </div>
         ))}
       </div>
+
+      {capitalFlow ? (
+        <section className={PANEL_CLASS}>
+          <div className="border-b border-crypto-border px-3 py-2.5">
+            <div className="text-xs font-semibold text-white">北向与个股主力资金</div>
+            <div className="mt-0.5 text-[11px] text-gray-500">
+              {capitalFlow.providerSource || 'tushare.moneyflow'} · {capitalFlow.status}
+              {capitalFlow.latest?.tradeDate ? ` · 北向截至 ${capitalFlow.latest.tradeDate}` : ''}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4">
+            {[
+              ['北向净流入', capitalFlow.latest?.northMoneyCny],
+              ['沪股通', capitalFlow.latest?.hgtCny],
+              ['深股通', capitalFlow.latest?.sgtCny],
+              ['个股主力净额', capitalFlow.stockFlow[0]?.netAmountCny],
+            ].map(([label, value]) => {
+              const amount = typeof value === 'number' ? value : null;
+              return (
+                <div key={String(label)} className="rounded-lg border border-crypto-border/70 bg-slate-950/35 px-3 py-2">
+                  <div className="text-[11px] text-gray-500">{label}</div>
+                  <div className={`mt-1 font-mono text-sm tabular-nums ${amount == null ? 'text-gray-500' : amount >= 0 ? 'text-up' : 'text-down'}`}>
+                    {amount == null ? '—' : `${amount >= 0 ? '+' : ''}¥${fmtUsdt(amount)}`}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-xs">
+              <thead className="bg-slate-950/45 text-gray-500">
+                <tr>
+                  <th className="px-3 py-2 font-normal">日期</th>
+                  <th className="px-3 py-2 text-right font-normal">北向</th>
+                  <th className="px-3 py-2 text-right font-normal">沪股通</th>
+                  <th className="px-3 py-2 text-right font-normal">深股通</th>
+                  <th className="px-3 py-2 text-right font-normal">个股净额</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-crypto-border/40">
+                {(capitalFlow.northbound || []).slice(0, 8).map((row) => {
+                  const stock = (capitalFlow.stockFlow || []).find((item) => item.tradeDate === row.tradeDate);
+                  return (
+                    <tr key={row.tradeDate}>
+                      <td className="px-3 py-1.5 text-gray-300">{row.tradeDate}</td>
+                      <td className={`px-3 py-1.5 text-right tabular-nums ${(row.northMoneyCny || 0) >= 0 ? 'text-up' : 'text-down'}`}>{row.northMoneyCny == null ? '—' : `¥${fmtUsdt(row.northMoneyCny)}`}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">{row.hgtCny == null ? '—' : `¥${fmtUsdt(row.hgtCny)}`}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-400">{row.sgtCny == null ? '—' : `¥${fmtUsdt(row.sgtCny)}`}</td>
+                      <td className={`px-3 py-1.5 text-right tabular-nums ${(stock?.netAmountCny || 0) >= 0 ? 'text-up' : 'text-down'}`}>{stock?.netAmountCny == null ? '—' : `¥${fmtUsdt(stock.netAmountCny)}`}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       {!providerMissing && (
         <>

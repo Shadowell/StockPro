@@ -228,3 +228,44 @@ async def get_symbol_mover(
     trade_date: Optional[str] = Query(None, description="交易日 YYYY-MM-DD；为空返回最新"),
 ):
     return ok(await market_domain_service.get_symbol_abnormality(symbol, trade_date=trade_date))
+
+
+@router.get("/sector-heatmap")
+async def get_sector_heatmap(
+    window: str = Query("1d", description="涨跌窗口: 1d/5d/20d", pattern="^(1d|5d|20d)$"),
+):
+    """板块热力图（只读）：行业 × 等权涨跌，面积 = 标的数。GET 不写库、不调 Provider。"""
+    return ok(await market_domain_service.get_sector_heatmap(window))
+
+
+@router.get("/key-levels")
+async def get_symbol_key_levels(
+    exchange: str = Query(..., description="交易所"),
+    symbol: str = Query(..., description="A 股证券代码"),
+    limit: int = Query(500, ge=20, le=2000, description="参与计算的日线根数"),
+):
+    """个股关键价位（只读）：11 类价位分组 + 摘要，基于 1d 日线实时计算。"""
+    return ok(await market_domain_service.get_key_levels(exchange, symbol, limit))
+
+
+@router.get("/limit-ladder")
+async def get_limit_ladder(
+    trend_days: int = Query(30, ge=5, le=120, description="梯队历史趋势天数"),
+):
+    """连板梯队（只读）：最新梯队 + 涨停/炸板/跌停池 + 高度宽度趋势。GET 不写库。"""
+    return ok(await market_domain_service.get_limit_ladder(trend_days))
+
+
+@router.get("/concept-analysis")
+async def get_concept_analysis(
+    rotation_days: int = Query(20, ge=5, le=60, description="轮动矩阵交易日数"),
+    hot_limit: int = Query(20, ge=1, le=50, description="热门概念条数"),
+):
+    """概念分析（只读）：最新概念榜单 + 轮动矩阵 + 热门概念资金流。GET 不写库。"""
+    return ok(await market_domain_service.get_concept_analysis(rotation_days, hot_limit))
+
+
+@router.get("/industry-analysis")
+async def get_industry_analysis():
+    """行业分析（只读）：行业 1d/5d/20d 等权涨跌 + 领涨成员，与热力图同口径。"""
+    return ok(await market_domain_service.get_industry_analysis())

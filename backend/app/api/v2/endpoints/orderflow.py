@@ -1,6 +1,7 @@
 """A-share order-flow evidence boundary in the original BitPro page contract."""
 from fastapi import APIRouter, Query
 from app.core.contracts import ok
+from app.domain.orderflow.capital_flow import capital_flow_service
 from app.domain.orderflow.realtime_minute import RealtimeMinuteOrderflowService
 
 router=APIRouter()
@@ -26,6 +27,11 @@ async def bars(
 @router.get("/symbols")
 async def symbols():
     return ok(realtime_minute_service.symbols())
+
+
+@router.get("/capital-flow")
+async def capital_flow(symbol: str = Query("600519.SH"), days: int = Query(20, ge=5, le=60)):
+    return ok(capital_flow_service.summary(symbol, days=days))
 
 
 @router.get("/stream-status")

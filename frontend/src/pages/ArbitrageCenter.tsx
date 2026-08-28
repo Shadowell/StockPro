@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { SELECTED_SEGMENT_BORDER_CLASS } from '../utils/selectionStyles';
-import { arbitrageApi, type ArbitrageSummary } from '../api/client';
+import { arbitrageApi, marketApi, type ArbitrageSummary, type ConceptAnalysisPayload, type IndustryAnalysisPayload } from '../api/client';
 
 type LiquidityMode = 'maker' | 'taker';
 
@@ -137,12 +137,21 @@ export default function ArbitrageCenter() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [calculator, setCalculator] = useState<CalculatorState>(CALCULATOR_DEFAULTS);
+  const [industry, setIndustry] = useState<IndustryAnalysisPayload | null>(null);
+  const [concept, setConcept] = useState<ConceptAnalysisPayload | null>(null);
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      setSummary(await arbitrageApi.getSummary());
+      const [nextSummary, nextIndustry, nextConcept] = await Promise.all([
+        arbitrageApi.getSummary(),
+        marketApi.getIndustryAnalysis().catch(() => null),
+        marketApi.getConceptAnalysis().catch(() => null),
+      ]);
+      setSummary(nextSummary);
+      setIndustry(nextIndustry);
+      setConcept(nextConcept);
     } catch (err: any) {
       setError(err?.response?.data?.detail || err?.message || '套利中心加载失败');
     } finally {
@@ -249,9 +258,40 @@ export default function ArbitrageCenter() {
           </div>
           <button type="button" onClick={() => void loadSummary()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-crypto-border bg-crypto-card px-3 text-sm font-semibold text-gray-200 hover:border-cyan-400/45 hover:text-cyan-100">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}刷新</button>
         </header>
-        <div className="rounded-xl border border-amber-500/25 bg-crypto-card p-8">
-          <div className="text-base font-semibold text-amber-200">A 股价差数据尚未接通</div>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-400">当前没有经过验证的 ETF、LOF 或可转债申赎/折溢价数据。数据接通前保持诚实空态，不生成虚假套利机会。</p>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+            <div className="border-b border-crypto-border px-4 py-3">
+              <h2 className="text-sm font-semibold text-white">行业相对强弱</h2>
+              <p className="mt-1 text-[11px] text-gray-500">用等权 1日/20日涨跌代替尚未接通的 ETF 折溢价，交易日 {industry?.tradeDate || '—'}</p>
+            </div>
+            <div className="divide-y divide-crypto-border/40">
+              {(industry?.industries || []).slice(0, 8).map((row) => (
+                <div key={row.code} className="grid grid-cols-[minmax(0,1fr)_72px_72px_72px] items-center gap-2 px-4 py-2.5 text-xs">
+                  <span className="truncate text-gray-200">{row.name}</span>
+                  <span className={clsx('text-right tabular-nums', (row.change1d || 0) >= 0 ? 'text-up' : 'text-down')}>{row.change1d == null ? '—' : `${row.change1d >= 0 ? '+' : ''}${row.change1d.toFixed(2)}%`}</span>
+                  <span className={clsx('text-right tabular-nums', (row.change20d || 0) >= 0 ? 'text-up' : 'text-down')}>{row.change20d == null ? '—' : `${row.change20d >= 0 ? '+' : ''}${row.change20d.toFixed(2)}%`}</span>
+                  <span className="truncate text-right text-gray-500">{row.topMember?.name || '—'}</span>
+                </div>
+              ))}
+              {!(industry?.industries || []).length && <div className="px-4 py-8 text-center text-xs text-gray-500">行业涨跌尚未同步</div>}
+            </div>
+          </section>
+          <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+            <div className="border-b border-crypto-border px-4 py-3">
+              <h2 className="text-sm font-semibold text-white">概念相对强弱</h2>
+              <p className="mt-1 text-[11px] text-gray-500">概念日涨跌与热门资金流，交易日 {concept?.tradeDate || '—'}</p>
+            </div>
+            <div className="divide-y divide-crypto-border/40">
+              {(concept?.sectors || []).slice(0, 8).map((row) => (
+                <div key={row.sectorCode || row.sectorName} className="grid grid-cols-[minmax(0,1fr)_80px_minmax(0,1fr)] items-center gap-2 px-4 py-2.5 text-xs">
+                  <span className="truncate text-gray-200">{row.sectorName}</span>
+                  <span className={clsx('text-right tabular-nums', (row.changePercent || 0) >= 0 ? 'text-up' : 'text-down')}>{row.changePercent == null ? '—' : `${row.changePercent >= 0 ? '+' : ''}${row.changePercent.toFixed(2)}%`}</span>
+                  <span className="truncate text-right text-gray-500">{row.leaderStock || '—'}</span>
+                </div>
+              ))}
+              {!(concept?.sectors || []).length && <div className="px-4 py-8 text-center text-xs text-gray-500">概念涨跌尚未同步</div>}
+            </div>
+          </section>
         </div>
       </div>
     );

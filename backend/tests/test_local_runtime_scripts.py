@@ -55,6 +55,71 @@ def test_local_database_rejects_non_isolated_target() -> None:
     assert "stockpro_bitpro_rebase_dev" in result.stderr
 
 
+def test_local_database_rejects_remote_host_even_when_name_matches() -> None:
+    env = {
+        **os.environ,
+        "STOCKPRO_LOCAL_DATABASE_URL": "postgresql://stockpro:secret@db.example.com:5432/stockpro_bitpro_rebase_dev",
+    }
+
+    result = subprocess.run(
+        [str(LOCAL_DATABASE), "--print-url"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "拒绝远程数据库" in result.stderr
+
+
+def test_local_database_ignores_inherited_remote_database_url(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _fake_psql(bin_dir)
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "DATABASE_URL": "postgresql://stockpro:secret@db.example.com:5432/stockpro_bitpro_rebase_dev",
+    }
+    env.pop("STOCKPRO_LOCAL_DATABASE_URL", None)
+
+    result = subprocess.run(
+        [str(LOCAL_DATABASE), "--print-url"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "db.example.com" not in result.stdout
+    assert result.stdout.strip() == "postgresql://stockpro:stockpro@127.0.0.1:55432/stockpro_bitpro_rebase_dev"
+
+
+def test_local_database_prefers_docker_isolation_over_socket(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _fake_psql(bin_dir)
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    env.pop("STOCKPRO_LOCAL_DATABASE_URL", None)
+    env.pop("DATABASE_URL", None)
+
+    result = subprocess.run(
+        [str(LOCAL_DATABASE), "--print-url"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "postgresql://stockpro:stockpro@127.0.0.1:55432/stockpro_bitpro_rebase_dev"
+
+
 def test_local_database_accepts_reachable_isolated_target(tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()

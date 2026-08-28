@@ -136,7 +136,7 @@ export default function OnchainResearch() {
         <section className="mt-4">
           <div className="mb-2 flex items-center gap-2"><Search className="h-4 w-4 text-blue-300" /><h2 className="text-sm font-semibold text-gray-100">估值与市场规模</h2></div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-            <EvidenceMetric label="PE TTM" value={number(valuation?.peTtm)} note={valuation?.source || 'daily_basic 缺失'} />
+            <EvidenceMetric label="PE TTM" value={number(valuation?.peTtm)} note={valuation?.source || '估值未就绪'} />
             <EvidenceMetric label="PB" value={number(valuation?.pb)} note={valuation?.tradeDate || '—'} />
             <EvidenceMetric label="PS TTM" value={number(valuation?.psTtm)} note={valuation?.tradeDate || '—'} />
             <EvidenceMetric label="总市值" value={money(valuation?.totalMarketCapCny)} note="CNY" />

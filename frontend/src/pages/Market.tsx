@@ -16,10 +16,14 @@ import {
 } from '../api/client';
 import OrderBookChart from '../components/OrderBookChart';
 import SymbolSearch from '../components/SymbolSearch';
+import KeyPriceLevelsPanel from '../components/KeyPriceLevelsPanel';
 import type { Kline, OrderBook } from '../types';
 import { formatTimeframeLabel } from '../utils/timeframe';
 
 const KlineChart = lazy(() => import('../components/KlineChart'));
+const AshareSectorHeatmap = lazy(() => import('../components/AshareSectorHeatmap'));
+
+type VisibleKeyLevel = { value: number; label: string; side: string };
 
 const TIMEFRAMES = ['1m', '5m', '15m', '30m', '60m', '1d'];
 
@@ -108,20 +112,20 @@ function klineDataSourceLabel(meta?: MarketKlinesMeta | null, timeframe?: string
   if (meta?.providerSource?.startsWith('akshare.')) {
     return meta.cacheHit ? 'AKShare 分时 · 缓存' : 'AKShare 分时';
   }
-  if (timeframe === '1d') return 'PostgreSQL 日线';
-  return 'PostgreSQL 分时缓存';
+  if (timeframe === '1d') return '本地日线';
+  return '本地分时缓存';
 }
 
 function klineStatusLabel(meta?: MarketKlinesMeta | null, hasRows = false): string {
   const status = meta?.dataStatus;
   if (!status) return hasRows ? 'ok' : '暂无数据';
   const labels: Record<string, string> = {
-    ok: 'ok',
-    stale: 'stale',
-    empty: 'empty',
-    unavailable: 'unavailable',
-    unsupported: 'unsupported',
-    provider_error: 'provider error',
+    ok: '可用',
+    stale: '数据偏旧',
+    empty: '暂无数据',
+    unavailable: '暂不可用',
+    unsupported: '周期不支持',
+    provider_error: '数据源异常',
   };
   return labels[status] || status;
 }
@@ -169,6 +173,12 @@ export default function Market() {
   const marketDataRequestSeqRef = useRef(0);
   const marketLoadingRequestSeqRef = useRef(0);
   const marketDataCacheRef = useRef<Map<string, MarketDataCacheEntry>>(new Map());
+
+  // 关键价位面板 → K 线 markLine 联动
+  const [visibleKeyLevels, setVisibleKeyLevels] = useState<VisibleKeyLevel[]>([]);
+  const handleKeyLevelsChange = useCallback((levels: VisibleKeyLevel[]) => {
+    setVisibleKeyLevels(levels);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -615,6 +625,16 @@ export default function Market() {
         </section>
       ) : null}
 
+      <Suspense
+        fallback={
+          <div className="mb-4 flex h-40 items-center justify-center rounded-xl border border-crypto-border bg-crypto-card/60 text-xs text-gray-500">
+            板块热力图加载中…
+          </div>
+        }
+      >
+        <AshareSectorHeatmap onSelectSymbol={setSelectedSymbol} />
+      </Suspense>
+
       <div className="mb-4 grid gap-3 xl:grid-cols-[1.2fr_1fr_1fr]">
         <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card/90">
           <div className="flex items-center justify-between border-b border-crypto-border/60 px-4 py-3">
@@ -623,12 +643,12 @@ export default function Market() {
               <span className="text-sm font-semibold text-gray-100">市场阶段</span>
             </div>
             <span className={clsx('rounded-lg border px-2 py-1 text-[11px]', marketPhase?.status === 'ok' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/25 bg-amber-500/10 text-amber-300')}>
-              {marketPhase?.status || 'empty'}
+              {marketPhase?.status === 'ok' ? '可用' : marketPhase?.status === 'partial' ? '部分可用' : '暂无数据'}
             </span>
           </div>
           <div className="px-4 py-3">
             <div className="flex items-end gap-3">
-              <div className="text-xl font-semibold text-white">{marketPhase?.phase || 'unknown'}</div>
+              <div className="text-xl font-semibold text-white">{marketPhase?.phase && marketPhase.phase !== 'unknown' ? marketPhase.phase : '待计算'}</div>
               <div className="pb-0.5 text-xs tabular-nums text-gray-500">
                 置信度 {marketPhase ? `${Math.round(marketPhase.confidence * 100)}%` : '—'}
               </div>
@@ -788,6 +808,11 @@ export default function Market() {
                 )}
               </div>
             </div>
+            <KeyPriceLevelsPanel
+              symbol={selectedSymbol}
+              exchange={selectedExchange}
+              onChange={handleKeyLevelsChange}
+            />
             <div className="flex-1 min-h-0 flex flex-col gap-2">
               <div className="flex-1 min-h-[280px] min-w-0">
                 {loading && klines.length < MIN_KLINES_TO_RENDER ? (
@@ -814,6 +839,7 @@ export default function Market() {
                       indicatorSeries={marketIndicators}
                       indicatorTimestamps={marketIndicatorTimestamps}
                       showRealCandles
+                      priceLevels={visibleKeyLevels}
                     />
                   </Suspense>
                 ) : (

@@ -6,6 +6,7 @@ import math
 import re
 from typing import Dict, Optional
 
+from app.domain.strategy.naming import display_strategy_name, require_strategy_name
 from app.domain.strategy.repository import StrategyRepository
 from app.domain.strategy.validation import validate_strategy_python
 from app.services.ashare_execution import instrument_key
@@ -84,7 +85,7 @@ class StrategyDomainService:
             description = "用于验证 A 股数据、回测、成交与 Paper 关联的最小审计样例，不构成投资建议，也不是正式候选策略。"
         return {
             "id": strategy_id,
-            "name": str(row.get("name") or ""),
+            "name": display_strategy_name(str(row.get("name") or "")),
             "description": description,
             "script_content": str(row.get("script_content") or ""),
             "config": {
@@ -185,10 +186,8 @@ class StrategyDomainService:
 
     @staticmethod
     def _write_payload(payload: dict, *, current: dict | None = None) -> tuple[dict, dict]:
-        name = str(payload.get("name") or (current or {}).get("name") or "").strip()
+        name = require_strategy_name(str(payload.get("name") or (current or {}).get("name") or ""))
         code = str(payload.get("script_content") or (current or {}).get("script_content") or "")
-        if not name:
-            raise ValueError("策略名称必填")
         if not code.strip():
             raise ValueError("策略代码必填")
         validation = validate_strategy_python(code)

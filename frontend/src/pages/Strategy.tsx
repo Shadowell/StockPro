@@ -18,6 +18,7 @@ import { SELECTED_SEGMENT_CLASS, SELECTED_SEGMENT_COUNT_CLASS } from '../utils/s
 import { useAuth } from '../auth/AuthProvider';
 import { useSymbolNames } from '../hooks/useSymbolNames';
 import { formatSymbolLabel } from '../utils/symbolDisplay';
+import { formatStrategyDisplayName, STRATEGY_NAME_EXAMPLE, STRATEGY_NAME_HINT, strategyNameError } from '../utils/strategyNaming';
 
 function isStrategyRunningOrPaused(status: string | undefined): boolean {
   return status === 'running' || status === 'paused';
@@ -33,7 +34,7 @@ export const BITPRO_SOURCE_STRATEGY_TEMPLATES = [
     category: '预测 / DCA',
     difficulty: '进阶',
     description:
-      '与后端 Kairos30mHorizonDcaStrategy 一致：1m 执行、预测约 T+30m、信号通过则固定 USDT 买入、30 根 1m 后 FIFO 卖出。请优先使用种子导入。',
+      '与后端 Kairos30mHorizonDcaStrategy 一致：1m 执行、预测约 T+30m、信号通过则按人民币金额买入、30 根 1m 后 FIFO 卖出。请优先使用种子导入。',
     tags: ['Kairos', 'DCA', '1m'],
     code: `"""使用内置类：config 设 strategy_key=kairos_30m_horizon_dca（见种子）。勿粘贴完整策略源码。"""
 
@@ -68,12 +69,12 @@ class _UseSeedKairosDca(BaseStrategy):
 
 【1】策略在系统里怎么跑？
   - 回测：引擎按时间顺序喂给你一根根 K 线；每根 K 线会调用一次下面的 on_bar。
-  - 实盘：逻辑相同，只是 K 线来自交易所实时推送。你写的这一套代码两种环境共用。
+  - 模拟盘：逻辑相同，只是 K 线来自 A 股日线/分钟线。你写的这一套代码回测和模拟盘共用。
 
 【2】K 线（Bar）里有什么？
   - bar.open / high / low / close / volume：这根 K 线的开高低收、成交量
-  - bar.symbol：交易对，如 BTC/USDT（与左侧配置里的交易对一致）
-  - bar.timeframe：周期，如 1h、15m（与实例/回测选用的周期一致）
+  - bar.symbol：证券代码，如 600519.SH（与左侧配置里的标的一致）
+  - bar.timeframe：周期，如 1d、15m（与实例/回测选用的周期一致）
 
 【3】你必须实现的核心：async def on_bar(self, bar)
   - 在这里写「看到当前这根 K 线时，我要不要买/卖」。
@@ -86,8 +87,8 @@ class _UseSeedKairosDca(BaseStrategy):
   - pos = self.broker.get_position_size(bar.symbol)  # 正数多仓数量，大概为 0 表示空仓（取决于 broker）
 
 【6】下单金额单位
-  - self.buy(symbol, amount) 里的 amount 是币的数量（如 BTC 个数），不是 USDT。
-  - 建议先用很小 amount + 回测验证，再考虑实盘。
+  - self.buy(symbol, amount) 里的 amount 是股数，A 股按 100 股整手、T+1 只做多。
+  - 建议先用很小仓位 + 回测验证，再考虑模拟盘。
 
 【7】常见错误
   - 前 N 根 K 线数据不够算指标时：先 return，等窗口攒够（「预热」）。
@@ -702,7 +703,8 @@ export default function Strategy() {
       setMessage({ type: 'error', text: '访客只能查看策略，不能保存策略' });
       return;
     }
-    if (!formData.name.trim()) { setMessage({ type: 'error', text: '请输入策略名称' }); return; }
+    const nameError = strategyNameError(formData.name);
+    if (nameError) { setMessage({ type: 'error', text: nameError }); return; }
     if (!formData.scriptContent.trim()) { setMessage({ type: 'error', text: '请输入策略代码' }); return; }
 
     let configObj = {};
@@ -714,7 +716,7 @@ export default function Strategy() {
     try {
       if (editMode === 'edit' && editingStrategy) {
         await strategyApi.update(editingStrategy.id, {
-          name: formData.name,
+          name: formatStrategyDisplayName(formData.name),
           description: formData.description,
           scriptContent: formData.scriptContent,
           exchange: formData.exchange,
@@ -724,7 +726,7 @@ export default function Strategy() {
         setMessage({ type: 'success', text: '策略保存成功' });
       } else {
         await strategyApi.create({
-          name: formData.name,
+          name: formatStrategyDisplayName(formData.name),
           description: formData.description,
           scriptContent: formData.scriptContent,
           exchange: formData.exchange,
@@ -1105,7 +1107,7 @@ export default function Strategy() {
                                 : s.status === 'paused' ? 'bg-yellow-400'
                                   : s.status === 'error' ? 'bg-red-400' : 'bg-gray-600'
                             )} />
-                            <h3 className={clsx('text-sm font-semibold truncate', strategyNameColorClass(assetClass))}>{s.name}</h3>
+                            <h3 className={clsx('text-sm font-semibold truncate', strategyNameColorClass(assetClass))}>{formatStrategyDisplayName(s.name)}</h3>
                           </div>
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             {isRecommended && (
@@ -1358,7 +1360,7 @@ export default function Strategy() {
                   {selectedStrategy.validationStatus === 'valid' ? '验证通过' : '验证未通过'}
                 </span>
               </div>
-              <h1 className={clsx('truncate text-2xl font-bold', strategyNameColorClass(assetClass))}>{selectedStrategy.name}</h1>
+              <h1 className={clsx('truncate text-2xl font-bold', strategyNameColorClass(assetClass))}>{formatStrategyDisplayName(selectedStrategy.name)}</h1>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1521,8 +1523,9 @@ export default function Strategy() {
           <div>
             <label className="block text-xs text-gray-400 mb-1.5">策略名称 <span className="text-red-400">*</span></label>
             <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
-              placeholder="输入策略名称"
+              placeholder={STRATEGY_NAME_EXAMPLE}
               className="w-full bg-crypto-bg border border-crypto-border rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+            <p className="mt-1.5 text-[11px] leading-4 text-gray-500">{STRATEGY_NAME_HINT}</p>
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1.5">策略描述</label>

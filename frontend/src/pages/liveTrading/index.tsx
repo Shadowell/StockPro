@@ -21,6 +21,8 @@ import type {
   TradingInstance,
 } from './types';
 import { ENGINE_SESSION_ID, paperInstanceKey, toLiveApiInstanceId } from './types';
+import { shouldAbandonStaleDetail } from './detailHydration';
+import { formatStrategyDisplayName } from '../../utils/strategyNaming';
 import {
   DEFAULT_LIVE_CONFIG,
   DEFAULT_PAPER_INITIAL_EQUITY,
@@ -301,7 +303,7 @@ function buildTradingInstances(strategies: StrategyInfo[]): TradingInstance[] {
         symbols: s.symbols,
         config: cfg,
       }),
-      name: s.name || `策略 #${sid}`,
+      name: formatStrategyDisplayName(s.name, `策略 #${sid}`),
       symbol: strategySymbol(s, cfg),
       timeframe: String(cfg.timeframe ?? s.timeframe ?? '—'),
       status,
@@ -530,6 +532,7 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
+  const [instancesReady, setInstancesReady] = useState(false);
   const [selectedStrategy, setSelectedStrategy] = useState<string | number>(
     () => initialPrefs?.selectedStrategy ?? '',
   );
@@ -827,10 +830,19 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
     ) {
       return;
     }
-    if (activeInstanceId.startsWith('live:strategy:') && strategies.length === 0) return;
-    if (activeInstanceId.startsWith('paper:') && paperInstances.length === 0) {
+    if (
+      !shouldAbandonStaleDetail({
+        view,
+        activeInstanceId,
+        instancesReady,
+        instanceKnown: modeInstances.some((i) => i.id === activeInstanceId),
+      })
+    ) {
       return;
     }
+    const next = new URLSearchParams(searchParams);
+    deleteStrategyIdSearchParams(next);
+    setSearchParams(next, { replace: true });
     setActiveInstanceId(null);
     setView('dashboard');
     setDashboard(null);
@@ -842,11 +854,12 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
   }, [
     activeInstanceId,
     engineSnapshot,
+    instancesReady,
     modeInstances,
     modeScope,
-    paperInstances.length,
+    searchParams,
+    setSearchParams,
     strategies,
-    strategies.length,
     tradeMode,
     view,
   ]);
@@ -1008,7 +1021,7 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
       const list: StrategyInfo[] = raw.map((s: any) => ({
         ...s,
         id: s.id ?? s.strategyId,
-        name: s.name || `策略 #${s.id}`,
+        name: formatStrategyDisplayName(s.name, `策略 #${s.id}`),
         description: s.description || '',
         riskLevel: s.riskLevel || s.risk_level,
         status: s.status || 'stopped',
@@ -1037,6 +1050,8 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
       })));
     } catch (err) {
       console.error('加载策略列表失败:', err);
+    } finally {
+      setInstancesReady(true);
     }
   };
 
@@ -1358,7 +1373,7 @@ function LiveTradingWorkspace({ modeScope }: { modeScope?: TradeMode }) {
           throw new Error('请选择已通过 Paper 晋级门禁的 A 股策略');
         }
         await liveApi.createPaperInstance({
-          name: `${candidate.name} / Paper`,
+          name: formatStrategyDisplayName(candidate.name),
           qualifyingBacktestRunId,
           initialCash: config.initialEquity,
           start: true,

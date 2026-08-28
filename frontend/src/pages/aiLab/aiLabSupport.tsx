@@ -252,49 +252,45 @@ export const HUNTER_GOAL: GoalCriteria = {
 
 export const AI_RESEARCH_MARKETS: Record<MarketType, { label: string; shortLabel: string; badge: string; symbols: string[]; scope: string; note: string }> = {
   spot: {
-    label: 'OKX 高流动性现货币池',
-    shortLabel: '现货',
-    badge: '[现货]',
+    label: 'A 股主板 / 创业板股票池',
+    shortLabel: '股票',
+    badge: '[股票]',
     symbols: [
-      'BTC', 'ETH', 'DOGE', 'SOL', 'XRP', 'PEPE', 'TRX', 'PENGU',
-      'PI', 'SUI', 'FIL', 'ADA', 'APE', 'LINK', 'LTC',
+      '600519.SH', '000001.SZ', '300750.SZ', '601318.SH', '000858.SZ',
+      '002594.SZ', '600036.SH', '000333.SZ', '601899.SH', '002475.SZ',
     ],
-    scope: '只能做多或空仓，适合趋势、反转、成交量和截面强弱因子验证。',
-    note: '策略保存后默认模拟盘运行，不会进入实盘。',
+    scope: '只做多或空仓，适合趋势、反转、成交量和截面强弱因子验证。',
+    note: '策略保存后默认进入 A 股模拟盘，不会进入实盘。',
   },
   swap: {
-    label: 'OKX 高流动性 USDT 永续合约池',
-    shortLabel: '合约',
-    badge: '[合约]',
+    label: 'A 股 ETF / 宽基指数池',
+    shortLabel: 'ETF',
+    badge: '[ETF]',
     symbols: [
-      'BTC/USDT:USDT', 'ETH/USDT:USDT', 'DOGE/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT',
-      'PEPE/USDT:USDT', 'TRX/USDT:USDT', 'PENGU/USDT:USDT', 'PI/USDT:USDT', 'SUI/USDT:USDT',
-      'FIL/USDT:USDT', 'ADA/USDT:USDT', 'APE/USDT:USDT', 'LINK/USDT:USDT', 'LTC/USDT:USDT',
+      '510300.SH', '510500.SH', '159915.SZ', '588000.SH', '512480.SH',
+      '512880.SH', '159919.SZ', '510050.SH',
     ],
-    scope: '支持 long/short、名义本金和 1-10x 杠杆，当前仅合约模拟盘。',
-    note: 'AI 生成策略必须使用 open_contract / close_contract，不触发真实合约下单。',
+    scope: '只做多，按人民币名义和 100 股整手执行，当前仅模拟盘。',
+    note: 'AI 生成策略必须遵守 T+1 / 100 股，不触发真实券商下单。',
   },
 };
 
 export const AI_RESEARCH_SCOPE_LABEL = AI_RESEARCH_MARKETS.spot.label;
 export const AI_RESEARCH_DEFAULT_TIMEFRAME = '15m';
 export const TOP30_USDT_SWAP_SYMBOLS = [
-  'ETH/USDT:USDT', 'BTC/USDT:USDT', 'BSB/USDT:USDT', 'HYPE/USDT:USDT', 'SOL/USDT:USDT',
-  'ZEC/USDT:USDT', 'BEAT/USDT:USDT', 'DOGE/USDT:USDT', 'NEAR/USDT:USDT', 'BILL/USDT:USDT',
-  'EDEN/USDT:USDT', 'XRP/USDT:USDT', 'WLD/USDT:USDT', 'XAU/USDT:USDT', 'CL/USDT:USDT',
-  'SUI/USDT:USDT', 'PEPE/USDT:USDT', 'LAB/USDT:USDT', 'ONDO/USDT:USDT', 'UB/USDT:USDT',
-  'XAG/USDT:USDT', 'LIT/USDT:USDT', 'FIL/USDT:USDT', 'BNB/USDT:USDT', 'TON/USDT:USDT',
-  'ADA/USDT:USDT', 'LINK/USDT:USDT', 'GRASS/USDT:USDT', 'SNDK/USDT:USDT', 'TRUMP/USDT:USDT',
+  '600519.SH', '000001.SZ', '300750.SZ', '601318.SH', '000858.SZ',
+  '002594.SZ', '600036.SH', '000333.SZ', '601899.SH', '002475.SZ',
+  '600900.SH', '601012.SH', '000725.SZ', '002415.SZ', '600276.SH',
+  '601088.SH', '600030.SH', '000568.SZ', '002371.SZ', '600809.SH',
 ];
 export const AUTONOMOUS_HERMES_MODEL = 'gpt-5.5';
 export const AUTONOMOUS_HERMES_PROVIDER_LABEL = 'Hermes / Codex';
 export const AUTONOMOUS_DEFAULT_OPERATOR_PROMPT = [
-  '通过 Hermes 调用 Codex，只做 OKX USDT 永续合约模拟盘，禁止实盘、禁止真实账户、禁止任何真实下单建议。',
-  '目标是在严格 paper 风控内提升模拟盘净收益：允许 open_long/open_short/close_long/close_short/close_all/hold，多空双向选择，不固定 K 线周期，由模型根据行情强弱、波动和流动性决定观察窗口。',
-  '优先从系统 Top30 候选中选择强弱分化清晰、成交活跃、盘口和成交量足够、波动率能覆盖手续费与滑点的标的；避开流动性差、价差大、方向混乱、连续假突破或消息噪音过强的标的。',
-  '无持仓且候选信号有优势时，不要长期观望；杠杆必须在 5-10x 默认范围内由 AI 自主决定杠杆，仓位比例也由 AI 根据信号强度、波动、止损空间和流动性自行决定：弱信号小仓位试单，强信号可接近系统单笔上限，并严格遵守系统 max_leverage、max_single_position_pct、max_total_exposure_pct、max_positions、max_trades_per_hour 和 min_order_notional_usdt；默认最多 6 个持仓，最小开仓名义 50U。',
-  '做多优先选择相对强势、上行动量、突破后回踩确认或空头衰竭的标的；做空优先选择相对弱势、下行动量、跌破支撑、反弹失败或多头衰竭的标的。',
-  '持仓后主动管理：优势消失、反向信号、波动失控或亏损扩大时及时减仓/平仓；盈利后保护浮盈，不为了追涨杀跌扩大仓位。',
+  '只做 A 股模拟盘，禁止实盘、禁止真实账户、禁止任何真实下单建议。',
+  '目标是在严格 paper 风控内提升模拟盘净收益：只允许做多或空仓，遵守 T+1、100 股整手、涨跌停和人民币资金。',
+  '优先从高流动性 A 股中选择强弱分化清晰、成交活跃、能覆盖佣金印花税的标的；避开停牌、ST、一字板无法成交或流动性过差的标的。',
+  '无持仓且候选信号有优势时不要长期观望；仓位由信号强度、波动和止损空间决定，并严格遵守单笔上限、总敞口和持仓数量。',
+  '做多优先选择相对强势、上行动量、突破后回踩确认的标的；持仓后优势消失或反向信号出现时及时减仓/卖出。',
   '每次决策必须用中文 reason 说明标的选择、方向、观察窗口、风险和下一次检查间隔。',
 ].join('\n');
 export const AUTONOMOUS_TRADER_DEFAULT_CONFIG: AutonomousTraderConfig = {
@@ -436,16 +432,13 @@ export function researchMarketForTask(task: TaskInfo | null | undefined): Market
 export function apiSymbolScopeForMarket(marketType: MarketType): string {
   if (marketType === 'swap') {
     return [
-      'BTC/USDT:USDT', 'ETH/USDT:USDT', 'DOGE/USDT:USDT', 'SOL/USDT:USDT',
-      'XRP/USDT:USDT', 'PEPE/USDT:USDT', 'TRX/USDT:USDT', 'PENGU/USDT:USDT',
-      'PI/USDT:USDT', 'SUI/USDT:USDT', 'FIL/USDT:USDT', 'ADA/USDT:USDT',
-      'APE/USDT:USDT', 'LINK/USDT:USDT', 'LTC/USDT:USDT',
+      '510300.SH', '510500.SH', '159915.SZ', '588000.SH',
+      '512480.SH', '512880.SH', '159919.SZ', '510050.SH',
     ].join(',');
   }
   return [
-    'BTC/USDT', 'ETH/USDT', 'DOGE/USDT', 'SOL/USDT', 'XRP/USDT',
-    'PEPE/USDT', 'TRX/USDT', 'PENGU/USDT', 'PI/USDT', 'SUI/USDT',
-    'FIL/USDT', 'ADA/USDT', 'APE/USDT', 'LINK/USDT', 'LTC/USDT',
+    '600519.SH', '000001.SZ', '300750.SZ', '601318.SH', '000858.SZ',
+    '002594.SZ', '600036.SH', '000333.SZ', '601899.SH', '002475.SZ',
   ].join(',');
 }
 
@@ -583,7 +576,7 @@ export function formatAutonomousLeverage(value: unknown): string {
 
 export function formatAutonomousUsdt(value: unknown): string {
   const formatted = formatAutonomousCompactNumber(value, 2);
-  return formatted === '--' ? '--' : `${formatted} USDT`;
+  return formatted === '--' ? '--' : `${formatted} CNY`;
 }
 
 export function autonomousInstanceConfigItems(config: Record<string, any> = {}): { label: string; value: string }[] {

@@ -13,7 +13,11 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from app.api.v2.endpoints import onchain  # noqa: E402
-from app.domain.fundamentals.service import FundamentalService  # noqa: E402
+from app.domain.fundamentals.service import (  # noqa: E402
+    FundamentalService,
+    build_valuation_payload,
+    symbol_aliases,
+)
 
 
 def test_fundamental_provider_rows_become_announcement_time_facts() -> None:
@@ -67,3 +71,40 @@ def test_fundamental_page_has_only_a_share_cny_and_pit_evidence() -> None:
     assert "availableAt" in page and "annDate" in page and "reportPeriod" in page
     assert "navigate(`/onchain?symbol=" in market
     assert '@router.post("/sync")' in router
+
+
+def test_valuation_payload_matches_storage_and_canonical_symbols() -> None:
+    assert "SH_600519" in symbol_aliases("600519.SH")
+    assert "600519.SH" in symbol_aliases("SH_600519")
+    sealed = build_valuation_payload(
+        {
+            "symbol": "SH_600519",
+            "ts_code": "600519.SH",
+            "trade_date": "2026-08-21",
+            "close": 1302.8,
+            "pe_ttm": 19.78,
+            "pb": 6.48,
+            "ps_ttm": 10.1,
+            "dv_ttm": 3.2,
+            "total_mv": 162860630.85,
+            "circ_mv": 162860630.85,
+        },
+        {"id": 29, "end_date": "2026-08-21"},
+    )
+    assert sealed is not None
+    assert sealed["pe_ttm"] == 19.78
+    assert sealed["source"] == "tushare.daily_valuation"
+    assert sealed["total_market_cap_cny"] == 1_628_606_308_500.0
+    live = build_valuation_payload(
+        {
+            "close": 1302.8,
+            "pe_ttm": 19.7838,
+            "pb": 6.4819,
+            "total_market_cap_cny": 1_628_606_308_480,
+            "source": "all_stocks_realtime",
+            "trade_date": "2026-08-26",
+        }
+    )
+    assert live is not None
+    assert live["source"] == "all_stocks_realtime"
+    assert live["total_market_cap_cny"] == 1_628_606_308_480

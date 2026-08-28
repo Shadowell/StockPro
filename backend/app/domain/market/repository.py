@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 import json
+import math
 import re
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import psycopg2
 import psycopg2.extras
@@ -19,6 +20,303 @@ from app.domain.market.research_metrics import (
     build_abnormal_windows,
 )
 from app.domain.market.overview import build_market_overview, unavailable_market_overview
+
+SECTOR_HEATMAP_WINDOWS = ("1d", "5d", "20d")
+
+
+def aggregate_sector_heatmap(
+    instruments: List[Dict],
+    realtime: Dict[str, Dict],
+    history: Dict[str, Dict],
+    window: str,
+) -> Tuple[List[Dict], int]:
+    """按行业聚合板块热力图（纯函数，便于单测）。
+
+    - 等权涨跌：1d 优先实时 change_percent（缺失回退日线相邻收盘）；
+      5d/20d 用 ``stock_history`` 最近第 1/6/21 个有数据交易日收盘比。
+    - 无可计算涨跌的标的不进入板块（计入 total 覆盖差值）。
+    返回 ``(sectors, covered_symbols)``；sectors 按标的数降序，成员按涨跌降序。
+    """
+    sectors: Dict[str, Dict] = {}
+    covered = 0
+    for instrument in instruments:
+        symbol = str(instrument.get("symbol") or "")
+        if not symbol:
+            continue
+        hist = history.get(symbol) or {}
+        quote = realtime.get(symbol) or {}
+        close_now = hist.get("close_now")
+        change: Optional[float] = None
+        if window == "1d":
+            change = quote.get("change_percent")
+            if change is None and close_now and hist.get("close_prev"):
+                change = (float(close_now) / float(hist["close_prev"]) - 1.0) * 100.0
+        elif window == "5d":
+            if close_now and hist.get("close_5d"):
+                change = (float(close_now) / float(hist["close_5d"]) - 1.0) * 100.0
+        else:
+            if close_now and hist.get("close_20d"):
+                change = (float(close_now) / float(hist["close_20d"]) - 1.0) * 100.0
+        if change is None or not math.isfinite(float(change)):
+            continue
+        covered += 1
+        change = round(float(change), 2)
+        industry = str(instrument.get("industry") or "").strip() or "其他"
+        last_price = quote.get("last") or close_now
+        try:
+            last_value = float(last_price) if last_price is not None else None
+        except (TypeError, ValueError):
+            last_value = None
+        amount = quote.get("amount")
+        try:
+            amount_value = float(amount) if amount is not None else None
+        except (TypeError, ValueError):
+            amount_value = None
+        member = {
+            "symbol": symbol,
+            "name": str(instrument.get("name") or quote.get("name") or symbol),
+            "board": instrument.get("board"),
+            "last": (
+                round(last_value, 2)
+                if last_value is not None and math.isfinite(last_value) and last_value > 0
+                else None
+            ),
+            "change_percent": change,
+            "amount": (
+                round(amount_value, 2)
+                if amount_value is not None and math.isfinite(amount_value)
+                else None
+            ),
+            "high": hist.get("high_now"),
+            "low": hist.get("low_now"),
+        }
+        bucket = sectors.setdefault(industry, {
+            "code": industry,
+            "name": industry,
+            "count": 0,
+            "change_sum": 0.0,
+            "gainers": 0,
+            "losers": 0,
+            "flat": 0,
+            "members": [],
+        })
+        bucket["count"] += 1
+        bucket["change_sum"] += change
+        if change > 0:
+            bucket["gainers"] += 1
+        elif change < 0:
+            bucket["losers"] += 1
+        else:
+            bucket["flat"] += 1
+        bucket["members"].append(member)
+
+    result: List[Dict] = []
+    for bucket in sectors.values():
+        members = sorted(bucket["members"], key=lambda m: m["change_percent"], reverse=True)
+        result.append({
+            "code": bucket["code"],
+            "name": bucket["name"],
+            "count": bucket["count"],
+            "average_change": round(bucket["change_sum"] / bucket["count"], 2) if bucket["count"] else 0.0,
+            "gainers": bucket["gainers"],
+            "losers": bucket["losers"],
+            "flat": bucket["flat"],
+            "members": members,
+        })
+    result.sort(key=lambda sector: sector["count"], reverse=True)
+    return result, covered
+
+
+def aggregate_limit_ladder_rows(
+    ladder_rows: List[Tuple],
+    pool_rows: List[Tuple],
+    trend_rows: List[Tuple],
+) -> Dict:
+    """连板梯队聚合（纯函数）。
+
+    输入行元组：
+    - ladder_rows: (today_level, code, name, price, change_percent, duration_days, reason)
+    - pool_rows: (pool_kind, symbol, name, limit_times, open_times, seal_amount, industry, board, is_st)
+    - trend_rows: (date, max_level, total, two_plus)
+    """
+    levels: Dict[int, List[Dict]] = {}
+    for level, code, name, price, change_percent, duration_days, reason in ladder_rows:
+        canonical = MarketRepository._canonical_symbol(code)
+        levels.setdefault(int(level), []).append({
+            "symbol": canonical,
+            "name": str(name or canonical),
+            "price": round(float(price), 2) if price is not None else None,
+            "change_percent": round(float(change_percent), 2) if change_percent is not None else None,
+            "duration_days": int(duration_days) if duration_days is not None else None,
+            "reason": str(reason) if reason else None,
+        })
+    pools: Dict[str, List[Dict]] = {"up": [], "broken": [], "down": []}
+    for kind, symbol, name, limit_times, open_times, seal_amount, industry, board, is_st in pool_rows:
+        if kind not in pools:
+            continue
+        pools[kind].append({
+            "symbol": MarketRepository._canonical_symbol(symbol),
+            "name": str(name or symbol),
+            "limit_times": int(limit_times) if limit_times is not None else None,
+            "open_times": int(open_times) if open_times is not None else None,
+            "seal_amount": round(float(seal_amount), 2) if seal_amount is not None else None,
+            "industry": industry,
+            "board": board,
+            "is_st": bool(is_st) if is_st is not None else None,
+        })
+    for kind in pools:
+        pools[kind].sort(
+            key=lambda m: (m["limit_times"] or 0, m["seal_amount"] or 0), reverse=True,
+        )
+    trend = [
+        {"date": str(row[0]), "max_height": int(row[1] or 0), "total": int(row[2] or 0), "two_plus": int(row[3] or 0)}
+        for row in trend_rows
+    ]
+    return {"levels": levels, "pools": pools, "trend": trend}
+
+
+def aggregate_concept_analysis(
+    sector_rows: List[Tuple],
+    rotation_rows: List[Tuple],
+    hot_rows: List[Tuple],
+    top_names: int = 12,
+) -> Dict:
+    """概念分析聚合（纯函数）。
+
+    输入行元组：
+    - sector_rows: (sector_code, sector_name, change_percent, leader_stock, leader_change, up_count, down_count, rank)
+    - rotation_rows: (date, sector_name, change_percent) 近窗口内全部概念
+    - hot_rows: (rank, name, change_percent, inflow, outflow, net_inflow)
+    """
+    sectors = [
+        {
+            "sector_code": code,
+            "sector_name": name,
+            "change_percent": round(float(change), 2) if change is not None else None,
+            "leader_stock": leader,
+            "leader_change": round(float(leader_change), 2) if leader_change is not None else None,
+            "up_count": up,
+            "down_count": down,
+            "rank": rank,
+        }
+        for code, name, change, leader, leader_change, up, down, rank in sector_rows
+        if name is not None and change is not None
+    ]
+    sectors.sort(key=lambda s: s["change_percent"], reverse=True)
+    picks = {s["sector_name"] for s in sectors[:top_names]} | {s["sector_name"] for s in sectors[-top_names:]}
+    by_name: Dict[str, Dict[str, Optional[float]]] = {}
+    dates: set = set()
+    for date, name, change in rotation_rows:
+        if name not in picks:
+            continue
+        dates.add(str(date))
+        by_name.setdefault(name, {})[str(date)] = round(float(change), 2) if change is not None else None
+    rotation = [
+        {"sector_name": name, "changes": by_name[name]}
+        for name in sorted(by_name)
+    ]
+    rotation.sort(key=lambda r: (
+        r["changes"].get(max(dates)) if dates and r["changes"].get(max(dates)) is not None else -999,
+    ), reverse=True)
+    hot = [
+        {
+            "rank": rank,
+            "name": name,
+            "change_percent": round(float(change), 2) if change is not None else None,
+            "inflow": round(float(inflow), 2) if inflow is not None else None,
+            "outflow": round(float(outflow), 2) if outflow is not None else None,
+            "net_inflow": round(float(net_inflow), 2) if net_inflow is not None else None,
+        }
+        for rank, name, change, inflow, outflow, net_inflow in hot_rows
+    ]
+    return {"sectors": sectors, "rotation_dates": sorted(dates), "rotation": rotation, "hot": hot}
+
+
+def aggregate_industry_analysis(
+    instruments: List[Dict],
+    realtime: Dict[str, Dict],
+    history: Dict[str, Dict],
+) -> Dict:
+    """行业分析聚合（纯函数）：与热力图同口径，一次输出 1d/5d/20d 三窗口。
+
+    涨跌口径：1d 优先实时 change_percent（缺失回退日线相邻收盘）；
+    5d/20d 用 stock_history 最近第 1/6/21 个有数据交易日收盘比。
+    """
+    buckets: Dict[str, Dict] = {}
+    for instrument in instruments:
+        symbol = str(instrument.get("symbol") or "")
+        if not symbol:
+            continue
+        hist = history.get(symbol) or {}
+        quote = realtime.get(symbol) or {}
+        close_now = hist.get("close_now")
+        changes: Dict[str, Optional[float]] = {}
+        change_1d = quote.get("change_percent")
+        if change_1d is None and close_now and hist.get("close_prev"):
+            change_1d = (float(close_now) / float(hist["close_prev"]) - 1.0) * 100.0
+        changes["1d"] = change_1d
+        for window, key in (("5d", "close_5d"), ("20d", "close_20d")):
+            changes[window] = (
+                (float(close_now) / float(hist[key]) - 1.0) * 100.0
+                if close_now and hist.get(key) else None
+            )
+        if all(value is None or not math.isfinite(float(value)) for value in changes.values()):
+            continue
+        industry = str(instrument.get("industry") or "").strip() or "其他"
+        bucket = buckets.setdefault(industry, {
+            "code": industry,
+            "name": industry,
+            "count": 0,
+            "sums": {"1d": 0.0, "5d": 0.0, "20d": 0.0},
+            "counts": {"1d": 0, "5d": 0, "20d": 0},
+            "gainers_1d": 0,
+            "losers_1d": 0,
+            "top_member": None,
+        })
+        bucket["count"] += 1
+        change_1d_value = changes["1d"]
+        if change_1d_value is not None and math.isfinite(float(change_1d_value)):
+            change_1d_value = float(change_1d_value)
+            bucket["sums"]["1d"] += change_1d_value
+            bucket["counts"]["1d"] += 1
+            if change_1d_value > 0:
+                bucket["gainers_1d"] += 1
+            elif change_1d_value < 0:
+                bucket["losers_1d"] += 1
+            top = bucket["top_member"]
+            if top is None or change_1d_value > top["change_percent"]:
+                bucket["top_member"] = {
+                    "symbol": symbol,
+                    "name": str(instrument.get("name") or symbol),
+                    "change_percent": round(change_1d_value, 2),
+                }
+        for window in ("5d", "20d"):
+            value = changes[window]
+            if value is not None and math.isfinite(float(value)):
+                bucket["sums"][window] += float(value)
+                bucket["counts"][window] += 1
+
+    industries: List[Dict] = []
+    for bucket in buckets.values():
+        def _avg(window: str) -> Optional[float]:
+            count = bucket["counts"][window]
+            return round(bucket["sums"][window] / count, 2) if count else None
+
+        industries.append({
+            "code": bucket["code"],
+            "name": bucket["name"],
+            "count": bucket["count"],
+            "change_1d": _avg("1d"),
+            "change_5d": _avg("5d"),
+            "change_20d": _avg("20d"),
+            "gainers_1d": bucket["gainers_1d"],
+            "losers_1d": bucket["losers_1d"],
+            "top_member": bucket["top_member"],
+        })
+    industries.sort(
+        key=lambda row: (row["change_1d"] if row["change_1d"] is not None else -999), reverse=True,
+    )
+    return {"industries": industries}
 
 
 class MarketRepository:
@@ -292,6 +590,586 @@ class MarketRepository:
     def lookup_names(self, symbols: List[str]) -> Dict[str, str]:
         from app.domain.instruments.repository import AshareInstrumentRepository
         return AshareInstrumentRepository(self.database_url).lookup_names(symbols)
+
+    def get_sector_heatmap(self, window: str = "1d") -> Dict:
+        """板块热力图只读聚合：行业 × 实时/日线等权涨跌。
+
+        实时优先 ``realtime_quotes``，为空回退 ``all_stocks_realtime``；
+        5d/20d 窗口基于 ``stock_history`` 最近第 1/6/21 个有数据交易日的收盘。
+        只读 SELECT，不调用 Provider、不写库。
+        """
+        normalized = window if window in SECTOR_HEATMAP_WINDOWS else "1d"
+        instruments: List[Dict] = []
+        realtime: Dict[str, Dict] = {}
+        realtime_updated_at: Optional[datetime] = None
+        realtime_source: Optional[str] = None
+        history: Dict[str, Dict] = {}
+        history_latest_date: Optional[str] = None
+        sources: List[str] = []
+        missing: List[str] = []
+
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "instrument_definitions"):
+                    return {
+                        "window": normalized,
+                        "sectors": [],
+                        "covered_symbols": 0,
+                        "total_symbols": 0,
+                        "sector_count": 0,
+                        "trade_date": None,
+                        "realtime_updated_at": None,
+                        "realtime_source": None,
+                        "sources": [],
+                        "data_status": "unavailable",
+                        "unavailable_reason": "instrument_definitions table is not migrated",
+                        "provider_calls": 0,
+                        "writes_performed": False,
+                        "paper_mutated": False,
+                    }
+                cursor.execute(
+                    """
+                    SELECT symbol,name,industry,board
+                    FROM instrument_definitions
+                    WHERE market='CN' AND list_status IN ('L','P') AND asset_class='stock'
+                    """
+                )
+                for row in cursor.fetchall():
+                    instruments.append({
+                        "symbol": self._canonical_symbol(row[0]),
+                        "name": str(row[1] or ""),
+                        "industry": row[2],
+                        "board": row[3],
+                    })
+                sources.append("instrument_definitions")
+
+                if self._table_exists(cursor, "realtime_quotes"):
+                    cursor.execute(
+                        """
+                        SELECT symbol,last_price,change_percent,amount,source_updated_at
+                        FROM realtime_quotes
+                        WHERE change_percent IS NOT NULL
+                        """
+                    )
+                    for row in cursor.fetchall():
+                        realtime[self._canonical_symbol(row[0])] = {
+                            "last": row[1],
+                            "change_percent": float(row[2]) if row[2] is not None else None,
+                            "amount": row[3],
+                            "name": None,
+                        }
+                        if row[4] is not None and (realtime_updated_at is None or row[4] > realtime_updated_at):
+                            realtime_updated_at = row[4]
+                    if realtime:
+                        realtime_source = "realtime_quotes"
+                if not realtime and self._table_exists(cursor, "all_stocks_realtime"):
+                    cursor.execute(
+                        """
+                        SELECT code,name,price,change_percent,amount,updated_at
+                        FROM all_stocks_realtime
+                        WHERE change_percent IS NOT NULL
+                        """
+                    )
+                    for row in cursor.fetchall():
+                        realtime[self._canonical_symbol(row[0])] = {
+                            "last": row[2],
+                            "change_percent": float(row[3]) if row[3] is not None else None,
+                            "amount": row[4],
+                            "name": str(row[1] or "") or None,
+                        }
+                        if row[5] is not None and (realtime_updated_at is None or row[5] > realtime_updated_at):
+                            realtime_updated_at = row[5]
+                    if realtime:
+                        realtime_source = "all_stocks_realtime"
+                if realtime_source:
+                    sources.append(realtime_source)
+                else:
+                    missing.append("实时行情缓存为空（1d 将回退日线相邻收盘）")
+
+                if self._table_exists(cursor, "stock_history"):
+                    cursor.execute(
+                        """
+                        WITH recent_dates AS (
+                            SELECT DISTINCT date FROM stock_history ORDER BY date DESC LIMIT 21
+                        ),
+                        ranked AS (
+                            SELECT symbol,date,close,high,low,
+                                   ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+                            FROM stock_history
+                            WHERE date IN (SELECT date FROM recent_dates)
+                        )
+                        SELECT symbol,
+                               MAX(close) FILTER (WHERE rn = 1) AS close_now,
+                               MAX(close) FILTER (WHERE rn = 2) AS close_prev,
+                               MAX(close) FILTER (WHERE rn = 6) AS close_5d,
+                               MAX(close) FILTER (WHERE rn = 21) AS close_20d,
+                               MAX(high) FILTER (WHERE rn = 1) AS high_now,
+                               MIN(low) FILTER (WHERE rn = 1) AS low_now,
+                               MAX(date) FILTER (WHERE rn = 1) AS latest_date
+                        FROM ranked
+                        GROUP BY symbol
+                        """
+                    )
+                    for row in cursor.fetchall():
+                        def _num(value: Any) -> Optional[float]:
+                            try:
+                                parsed = float(value) if value is not None else None
+                            except (TypeError, ValueError):
+                                return None
+                            return parsed if parsed is not None and math.isfinite(parsed) and parsed > 0 else None
+
+                        history[self._canonical_symbol(row[0])] = {
+                            "close_now": _num(row[1]),
+                            "close_prev": _num(row[2]),
+                            "close_5d": _num(row[3]),
+                            "close_20d": _num(row[4]),
+                            "high_now": round(_num(row[5]), 2) if _num(row[5]) is not None else None,
+                            "low_now": round(_num(row[6]), 2) if _num(row[6]) is not None else None,
+                        }
+                        if row[7] is not None:
+                            observed_date = str(row[7])
+                            if history_latest_date is None or observed_date > history_latest_date:
+                                history_latest_date = observed_date
+                    sources.append("stock_history")
+                else:
+                    missing.append("stock_history 表未迁移")
+
+        sectors, covered = aggregate_sector_heatmap(instruments, realtime, history, normalized)
+        payload: Dict = {
+            "window": normalized,
+            "sectors": sectors,
+            "covered_symbols": covered,
+            "total_symbols": len(instruments),
+            "sector_count": len(sectors),
+            "trade_date": history_latest_date,
+            "realtime_updated_at": self._iso(realtime_updated_at),
+            "realtime_source": realtime_source,
+            "window_basis": "trading_bars",
+            "sources": sources,
+            "data_status": "ok" if sectors else "empty",
+            "unavailable_reason": None if sectors else (
+                "; ".join(missing) if missing else "无可用行业成员或涨跌事实（确认已跑每日同步）"
+            ),
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
+        }
+        if realtime_updated_at is not None:
+            payload["realtime_freshness"] = self._freshness(realtime_updated_at)
+        return payload
+
+    def get_limit_ladder(self, trend_days: int = 30) -> Dict:
+        """连板梯队只读聚合：最新梯队快照 + 涨停/炸板/跌停池 + 历史趋势。
+
+        梯队源 `lianban_ladder_history`（旧同步管道，数据日期可能滞后），
+        池源最新 `market_evidence_snapshots` 的 `limit_pool_members`。两源日期分别标注。
+        """
+        bounded_trend = max(5, min(int(trend_days), 120))
+        ladder_date: Optional[str] = None
+        pool_trade_date: Optional[str] = None
+        ladder_rows: List[Tuple] = []
+        pool_rows: List[Tuple] = []
+        trend_rows: List[Tuple] = []
+        sources: List[str] = []
+        missing: List[str] = []
+
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "lianban_ladder_history"):
+                    missing.append("lianban_ladder_history 表未迁移")
+                else:
+                    cursor.execute("SELECT MAX(date) FROM lianban_ladder_history")
+                    max_date = cursor.fetchone()[0]
+                    if max_date is None:
+                        missing.append("连板梯队历史为空（需运行旧版梯队同步）")
+                    else:
+                        ladder_date = str(max_date)
+                        cursor.execute(
+                            """
+                            SELECT today_level,code,name,price,change_percent,duration_days,reason
+                            FROM lianban_ladder_history WHERE date=%s
+                            ORDER BY today_level DESC, code
+                            """,
+                            (max_date,),
+                        )
+                        ladder_rows = cursor.fetchall()
+                        cursor.execute(
+                            """
+                            SELECT date,MAX(today_level),COUNT(*),
+                                   SUM(CASE WHEN today_level>=2 THEN 1 ELSE 0 END)
+                            FROM lianban_ladder_history
+                            GROUP BY date ORDER BY date DESC LIMIT %s
+                            """,
+                            (bounded_trend,),
+                        )
+                        trend_rows = list(reversed(cursor.fetchall()))
+                        sources.append("lianban_ladder_history")
+
+                if not self._table_exists(cursor, "limit_pool_members"):
+                    missing.append("limit_pool_members 表未迁移")
+                else:
+                    cursor.execute(
+                        """
+                        SELECT s.id,s.trade_date FROM market_evidence_snapshots s
+                        WHERE s.id IN (SELECT DISTINCT snapshot_id FROM limit_pool_members)
+                        ORDER BY s.id DESC LIMIT 1
+                        """
+                    )
+                    snapshot = cursor.fetchone()
+                    if snapshot is None:
+                        missing.append("暂无含涨跌停池的市场证据快照")
+                    else:
+                        pool_trade_date = str(snapshot[1])
+                        cursor.execute(
+                            """
+                            SELECT pool_kind,symbol,name,limit_times,open_times,seal_amount,industry
+                            FROM limit_pool_members WHERE snapshot_id=%s
+                            """,
+                            (snapshot[0],),
+                        )
+                        pool_rows = [
+                            (
+                                row[0],
+                                row[1],
+                                row[2],
+                                row[3],
+                                row[4],
+                                row[5],
+                                row[6],
+                                None,
+                                "ST" in str(row[2] or "").upper(),
+                            )
+                            for row in cursor.fetchall()
+                        ]
+                        sources.append("limit_pool_members")
+
+        aggregated = aggregate_limit_ladder_rows(ladder_rows, pool_rows, trend_rows)
+        has_any = bool(
+            aggregated["levels"]
+            or any(aggregated["pools"].values())
+            or aggregated["trend"]
+        )
+        return {
+            "ladder_date": ladder_date,
+            "pool_trade_date": pool_trade_date,
+            "levels": [
+                {"level": level, "members": aggregated["levels"][level]}
+                for level in sorted(aggregated["levels"], reverse=True)
+            ],
+            "ladder_total": sum(len(v) for v in aggregated["levels"].values()),
+            "pools": aggregated["pools"],
+            "trend": aggregated["trend"],
+            "trend_days": bounded_trend,
+            "sources": sources,
+            "data_status": "ok" if has_any else "empty",
+            "unavailable_reason": None if has_any else ("; ".join(missing) if missing else "无梯队与涨跌停池事实"),
+            "missing_inputs": missing,
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
+        }
+
+    def get_realtime_limit_snapshot(self) -> Dict:
+        """Build a 1-board limit pool from the latest realtime quotes when sealed ladder tables are empty."""
+        rows: List[Tuple] = []
+        trade_date: Optional[str] = None
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "all_stocks_realtime"):
+                    return {
+                        "ladder_date": None,
+                        "pool_trade_date": None,
+                        "levels": [],
+                        "ladder_total": 0,
+                        "pools": {"up": [], "broken": [], "down": []},
+                        "trend": [],
+                        "trend_days": 0,
+                        "sources": [],
+                        "data_status": "empty",
+                        "unavailable_reason": "没有可用的实时行情，无法即时统计涨跌停",
+                        "missing_inputs": ["all_stocks_realtime"],
+                        "provider_calls": 0,
+                        "writes_performed": False,
+                        "paper_mutated": False,
+                    }
+                cursor.execute(
+                    """
+                    SELECT r.code, COALESCE(NULLIF(d.name,''), r.name), r.price, r.change_percent,
+                           r.amount, d.industry, d.board
+                    FROM all_stocks_realtime r
+                    LEFT JOIN instrument_definitions d
+                      ON d.market='CN'
+                     AND d.symbol=(split_part(r.code,'_',2)||'.'||split_part(r.code,'_',1))
+                    WHERE r.change_percent IS NOT NULL
+                    """
+                )
+                rows = cursor.fetchall()
+        up: List[Dict] = []
+        down: List[Dict] = []
+        for raw_code, name, price, change, amount, industry, board in rows:
+            symbol = self._canonical_symbol(raw_code)
+            change_pct = float(change)
+            name_text = str(name or symbol)
+            code = symbol.split(".", 1)[0]
+            if "ST" in name_text.upper():
+                threshold = 4.8
+            elif code.startswith(("300", "301", "688", "689")):
+                threshold = 19.8
+            elif code.startswith(("4", "8")):
+                threshold = 29.8
+            else:
+                threshold = 9.8
+            member = {
+                "symbol": symbol,
+                "name": name_text,
+                "price": round(float(price), 2) if price is not None else None,
+                "change_percent": round(change_pct, 2),
+                "limit_times": 1,
+                "open_times": 0,
+                "seal_amount": round(float(amount), 2) if amount is not None else None,
+                "industry": industry,
+                "board": board,
+                "is_st": "ST" in name_text.upper(),
+                "duration_days": 1,
+                "reason": "当日涨停（实时）" if change_pct >= threshold else "当日跌停（实时）",
+            }
+            if change_pct >= threshold:
+                up.append(member)
+            elif change_pct <= -threshold:
+                down.append(member)
+        up.sort(key=lambda item: item["change_percent"] or 0, reverse=True)
+        down.sort(key=lambda item: item["change_percent"] or 0)
+        if not up and not down:
+            return {
+                "ladder_date": trade_date,
+                "pool_trade_date": trade_date,
+                "levels": [],
+                "ladder_total": 0,
+                "pools": {"up": [], "broken": [], "down": []},
+                "trend": [],
+                "trend_days": 0,
+                "sources": ["all_stocks_realtime"],
+                "data_status": "empty",
+                "unavailable_reason": "实时行情中没有达到涨跌停阈值的标的",
+                "missing_inputs": [],
+                "provider_calls": 0,
+                "writes_performed": False,
+                "paper_mutated": False,
+            }
+        return {
+            "ladder_date": trade_date,
+            "pool_trade_date": trade_date,
+            "levels": [{"level": 1, "members": [
+                {
+                    "symbol": item["symbol"],
+                    "name": item["name"],
+                    "price": item["price"],
+                    "change_percent": item["change_percent"],
+                    "duration_days": 1,
+                    "reason": item["reason"],
+                }
+                for item in up
+            ]}] if up else [],
+            "ladder_total": len(up),
+            "pools": {"up": up, "broken": [], "down": down},
+            "trend": [],
+            "trend_days": 0,
+            "sources": ["all_stocks_realtime"],
+            "data_status": "ok",
+            "unavailable_reason": None,
+            "missing_inputs": ["连板高度未物化，仅展示当日涨跌停"],
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
+        }
+
+    def get_concept_analysis(self, rotation_days: int = 20, hot_limit: int = 20) -> Dict:
+        """概念分析只读聚合：最新榜单 + 近窗口轮动矩阵 + 热门概念资金流。"""
+        bounded_rotation = max(5, min(int(rotation_days), 60))
+        bounded_hot = max(1, min(int(hot_limit), 50))
+        sector_rows: List[Tuple] = []
+        rotation_rows: List[Tuple] = []
+        hot_rows: List[Tuple] = []
+        trade_date: Optional[str] = None
+        hot_updated_at: Optional[str] = None
+        sources: List[str] = []
+        missing: List[str] = []
+
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "daily_concept_sectors"):
+                    missing.append("daily_concept_sectors 表未迁移")
+                else:
+                    cursor.execute(
+                        """
+                        SELECT sector_code,sector_name,change_percent,leader_stock,leader_change,
+                               up_count,down_count,rank
+                        FROM daily_concept_sectors
+                        WHERE date=(SELECT MAX(date) FROM daily_concept_sectors)
+                        ORDER BY change_percent DESC NULLS LAST
+                        """
+                    )
+                    sector_rows = cursor.fetchall()
+                    if sector_rows:
+                        cursor.execute("SELECT MAX(date) FROM daily_concept_sectors")
+                        trade_date = str(cursor.fetchone()[0])
+                        sources.append("daily_concept_sectors")
+                        cursor.execute(
+                            """
+                            SELECT date,sector_name,change_percent FROM daily_concept_sectors
+                            WHERE date IN (
+                                SELECT DISTINCT date FROM daily_concept_sectors
+                                ORDER BY date DESC LIMIT %(days)s
+                            )
+                            ORDER BY date
+                            """,
+                            {"days": bounded_rotation},
+                        )
+                        rotation_rows = cursor.fetchall()
+                    else:
+                        missing.append("概念每日快照为空（需运行概念同步）")
+                if self._table_exists(cursor, "hot_concepts_realtime"):
+                    cursor.execute(
+                        f"""
+                        SELECT rank,name,change_percent,inflow,outflow,net_inflow,updated_at
+                        FROM hot_concepts_realtime ORDER BY rank LIMIT {bounded_hot}
+                        """
+                    )
+                    for row in cursor.fetchall():
+                        hot_updated_at = self._iso(row[6]) or hot_updated_at
+                        hot_rows.append(row[:6])
+                    if hot_rows:
+                        sources.append("hot_concepts_realtime")
+
+        aggregated = aggregate_concept_analysis(sector_rows, rotation_rows, hot_rows)
+        has_any = bool(aggregated["sectors"] or aggregated["hot"])
+        return {
+            "trade_date": trade_date,
+            "sectors": aggregated["sectors"],
+            "sector_count": len(aggregated["sectors"]),
+            "rotation_dates": aggregated["rotation_dates"],
+            "rotation": aggregated["rotation"],
+            "rotation_days": bounded_rotation,
+            "hot": aggregated["hot"],
+            "hot_updated_at": hot_updated_at,
+            "sources": sources,
+            "data_status": "ok" if has_any else "empty",
+            "unavailable_reason": None if has_any else ("; ".join(missing) if missing else "无概念事实"),
+            "missing_inputs": missing,
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
+        }
+
+    def get_industry_analysis(self) -> Dict:
+        """行业分析只读聚合：与热力图同源同口径，一次输出 1d/5d/20d。"""
+        instruments: List[Dict] = []
+        realtime: Dict[str, Dict] = {}
+        realtime_source: Optional[str] = None
+        history: Dict[str, Dict] = {}
+        history_latest_date: Optional[str] = None
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "instrument_definitions"):
+                    return {
+                        "trade_date": None,
+                        "industries": [],
+                        "industry_count": 0,
+                        "realtime_source": None,
+                        "sources": [],
+                        "data_status": "unavailable",
+                        "unavailable_reason": "instrument_definitions table is not migrated",
+                        "provider_calls": 0,
+                        "writes_performed": False,
+                        "paper_mutated": False,
+                    }
+                cursor.execute(
+                    """
+                    SELECT symbol,name,industry,board
+                    FROM instrument_definitions
+                    WHERE market='CN' AND list_status IN ('L','P') AND asset_class='stock'
+                    """
+                )
+                for row in cursor.fetchall():
+                    instruments.append({
+                        "symbol": self._canonical_symbol(row[0]),
+                        "name": str(row[1] or ""),
+                        "industry": row[2],
+                        "board": row[3],
+                    })
+                if self._table_exists(cursor, "realtime_quotes"):
+                    cursor.execute(
+                        "SELECT symbol,last_price,change_percent,amount FROM realtime_quotes WHERE change_percent IS NOT NULL"
+                    )
+                    for row in cursor.fetchall():
+                        realtime[self._canonical_symbol(row[0])] = {
+                            "last": row[1], "change_percent": float(row[2]), "amount": row[3], "name": None,
+                        }
+                    if realtime:
+                        realtime_source = "realtime_quotes"
+                if not realtime and self._table_exists(cursor, "all_stocks_realtime"):
+                    cursor.execute(
+                        "SELECT code,name,price,change_percent,amount FROM all_stocks_realtime WHERE change_percent IS NOT NULL"
+                    )
+                    for row in cursor.fetchall():
+                        realtime[self._canonical_symbol(row[0])] = {
+                            "last": row[2], "change_percent": float(row[3]), "amount": row[4], "name": str(row[1] or "") or None,
+                        }
+                    if realtime:
+                        realtime_source = "all_stocks_realtime"
+                if self._table_exists(cursor, "stock_history"):
+                    cursor.execute(
+                        """
+                        WITH recent_dates AS (
+                            SELECT DISTINCT date FROM stock_history ORDER BY date DESC LIMIT 21
+                        ),
+                        ranked AS (
+                            SELECT symbol,date,close,
+                                   ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
+                            FROM stock_history
+                            WHERE date IN (SELECT date FROM recent_dates)
+                        )
+                        SELECT symbol,
+                               MAX(close) FILTER (WHERE rn = 1) AS close_now,
+                               MAX(close) FILTER (WHERE rn = 2) AS close_prev,
+                               MAX(close) FILTER (WHERE rn = 6) AS close_5d,
+                               MAX(close) FILTER (WHERE rn = 21) AS close_20d,
+                               MAX(date) FILTER (WHERE rn = 1) AS latest_date
+                        FROM ranked GROUP BY symbol
+                        """
+                    )
+                    for row in cursor.fetchall():
+                        def _num(value: Any) -> Optional[float]:
+                            try:
+                                parsed = float(value) if value is not None else None
+                            except (TypeError, ValueError):
+                                return None
+                            return parsed if parsed is not None and math.isfinite(parsed) and parsed > 0 else None
+
+                        history[self._canonical_symbol(row[0])] = {
+                            "close_now": _num(row[1]),
+                            "close_prev": _num(row[2]),
+                            "close_5d": _num(row[3]),
+                            "close_20d": _num(row[4]),
+                        }
+                        if row[5] is not None:
+                            observed = str(row[5])
+                            if history_latest_date is None or observed > history_latest_date:
+                                history_latest_date = observed
+        aggregated = aggregate_industry_analysis(instruments, realtime, history)
+        industries = aggregated["industries"]
+        return {
+            "trade_date": history_latest_date,
+            "industries": industries,
+            "industry_count": len(industries),
+            "realtime_source": realtime_source,
+            "sources": ["instrument_definitions", realtime_source or "daily_close_fallback", "stock_history"],
+            "data_status": "ok" if industries else "empty",
+            "unavailable_reason": None if industries else "无可用行业或涨跌事实（确认已跑每日同步）",
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
+        }
 
     def get_klines(
         self,
@@ -690,6 +1568,31 @@ class MarketRepository:
             for row in cursor.fetchall()
         ]
 
+    def _overview_valuation_map(self, cursor) -> Dict[str, Dict[str, Any]]:
+        if not self._table_exists(cursor, "all_stocks_realtime"):
+            return {}
+        cursor.execute(
+            """
+            SELECT code, pe_dynamic, pb, total_market_cap, float_market_cap
+            FROM all_stocks_realtime
+            WHERE code ~ '^(SH|SZ|BJ)_[0-9]{6}$'
+            """
+        )
+        mapping: Dict[str, Dict[str, Any]] = {}
+        for row in cursor.fetchall():
+            symbol = self._canonical_symbol(row[0])
+            if not symbol:
+                continue
+            mapping[symbol] = {
+                "pe_dynamic": row[1],
+                "pe_ttm": row[1],
+                "pb": row[2],
+                "total_market_cap": row[3],
+                "total_market_cap_cny": row[3],
+                "float_market_cap": row[4],
+            }
+        return mapping
+
     def _overview_daily_rows(self, cursor) -> list[Dict[str, Any]]:
         query = """
             SELECT r.code,COALESCE(NULLIF(d.name,''),r.name),COALESCE(d.exchange,'CN'),
@@ -828,6 +1731,11 @@ class MarketRepository:
                         requested_date = self._iso(cursor.fetchone()[0])
                     realtime_rows = self._overview_realtime_rows(cursor, requested_date)
                     ticker_rows = realtime_rows or self._overview_daily_rows(cursor)
+                    valuation_map = self._overview_valuation_map(cursor)
+                    for row in ticker_rows:
+                        extra = valuation_map.get(self._canonical_symbol(row.get("symbol") or row.get("code") or ""))
+                        if extra:
+                            row.update({key: value for key, value in extra.items() if row.get(key) is None})
                     latest_updated = max(
                         (row.get("source_updated_at") or row.get("updated_at") or "" for row in ticker_rows),
                         default=None,
@@ -849,7 +1757,7 @@ class MarketRepository:
             evidence = {
                 "trade_date": requested_date,
                 "data_mode": "盘中实时" if realtime_rows else "盘后快照",
-                "provider": "PostgreSQL · realtime_quotes" if realtime_rows else "TuShare → PostgreSQL",
+                "provider": "本地实时行情" if realtime_rows else "TuShare 日线快照",
                 "source_snapshot_id": snapshot["id"] if snapshot else None,
                 "available_at": snapshot["available_at"] if snapshot else latest_updated,
                 "knowledge_cutoff_at": snapshot["knowledge_cutoff_at"] if snapshot else requested_date,
@@ -899,7 +1807,7 @@ class MarketRepository:
                 "status": "empty",
                 "confidence": 0.0,
                 "reasons": [],
-                "missing_inputs": ["market phase has not been computed for this trade_date"],
+                "missing_inputs": ["市场阶段尚未完成当日物化，已改用大盘即时统计"],
                 "definition_version": MARKET_PHASE_DEFINITION_VERSION,
             }
         return {
@@ -946,7 +1854,7 @@ class MarketRepository:
             return {
                 "trade_date": trade_date,
                 "status": "empty",
-                "missing_inputs": ["market sentiment has not been computed for this trade_date"],
+                "missing_inputs": ["涨跌停情绪尚未完成当日物化，已改用涨跌停池即时统计"],
                 "definition_version": "ashare-market-sentiment.v1",
             }
         return {

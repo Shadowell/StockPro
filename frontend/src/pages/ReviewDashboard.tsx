@@ -16,7 +16,9 @@ import {
 import clsx from 'clsx';
 import { SELECTED_SEGMENT_CLASS } from '../utils/selectionStyles';
 import {
+  marketApi,
   reviewApi,
+  type MarketPhase,
   type ReviewBucket,
   type ReviewGroupRow,
   type ReviewHeatmapBucket,
@@ -25,6 +27,7 @@ import {
   type ReviewSummary,
   type ReviewTag,
   type ReviewWindow,
+  type SymbolAbnormality,
 } from '../api/client';
 import { useSettingsStore } from '../stores/useSettingsStore';
 
@@ -503,6 +506,8 @@ function TagPanel({ tags, nextActions }: { tags: ReviewTag[]; nextActions: strin
 export default function ReviewDashboard() {
   const [windowKey, setWindowKey] = useState<ReviewWindow>('24h');
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
+  const [marketPhase, setMarketPhase] = useState<MarketPhase | null>(null);
+  const [marketMovers, setMarketMovers] = useState<SymbolAbnormality[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -515,8 +520,14 @@ export default function ReviewDashboard() {
     }
     setError(null);
     try {
-      const data = await reviewApi.getSummary({ window: windowKey, bucket: REVIEW_BUCKET });
+      const [data, phase, movers] = await Promise.all([
+        reviewApi.getSummary({ window: windowKey, bucket: REVIEW_BUCKET }),
+        marketApi.getPhase().catch(() => null),
+        marketApi.getMovers(undefined, 8).catch(() => []),
+      ]);
       setSummary(data);
+      setMarketPhase(phase);
+      setMarketMovers(movers);
     } catch (err: any) {
       setError(err?.response?.data?.detail || err?.message || '读取复盘数据失败');
     } finally {
@@ -657,6 +668,35 @@ export default function ReviewDashboard() {
         </div>
       ) : (
         <div className="space-y-6">
+          {(overview?.strategyCount ?? 0) === 0 && (
+            <section className="rounded-xl border border-crypto-border bg-crypto-card p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-white">当日市场复盘</h2>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    尚无已完成回测样本，先用本地行情阶段与异动对照。交易日 {marketPhase?.tradeDate || '—'} · 阶段 {marketPhase?.phase || '待计算'}
+                  </p>
+                </div>
+                <span className="rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-200">
+                  置信度 {marketPhase?.confidence == null ? '—' : `${Math.round(marketPhase.confidence * 100)}%`}
+                </span>
+              </div>
+              <div className="divide-y divide-crypto-border/40">
+                {marketMovers.slice(0, 8).map((row) => (
+                  <div key={row.symbol} className="grid grid-cols-[minmax(0,1fr)_88px_88px] items-center gap-2 py-2 text-xs">
+                    <span className="truncate text-gray-200">{row.name || row.symbol}</span>
+                    <span className="truncate text-right text-gray-500">{row.symbol}</span>
+                    <span className={clsx('text-right tabular-nums', (row.return3d || 0) >= 0 ? 'text-up' : 'text-down')}>
+                      {row.return3d == null ? '—' : `${row.return3d >= 0 ? '+' : ''}${row.return3d.toFixed(2)}%`}
+                    </span>
+                  </div>
+                ))}
+                {!marketMovers.length && (
+                  <div className="py-6 text-center text-xs text-gray-500">当日异动尚未生成</div>
+                )}
+              </div>
+            </section>
+          )}
           {(summary?.diagnostics?.length ?? 0) > 0 && (
             <section className="rounded-xl border border-amber-500/30 bg-amber-500/[0.07] p-4">
               <div className="flex items-start gap-2">

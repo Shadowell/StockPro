@@ -56,6 +56,11 @@ export interface KlineChartProps {
    * 画到轴末端（含右侧仅预测类目），便于 1m + 未来预测合并轴时仍能铺满约 N 根分钟 K。
    */
   defaultShowLastRealBars?: number;
+  /**
+   * 关键价位水平线（只读叠加）：在真实 K 线主图上绘制 markLine。
+   * 由行情页关键价位面板按分组开关筛选后传入。
+   */
+  priceLevels?: Array<{ value: number; label: string; side?: string }>;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -204,6 +209,7 @@ export default function KlineChart({
   historicalPredCloseByTs,
   defaultShowLastBars,
   defaultShowLastRealBars,
+  priceLevels,
 }: KlineChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
@@ -629,6 +635,32 @@ export default function KlineChart({
         ? Number(data[data.length - 1].close)
         : null;
 
+    /** 关键价位水平线（只读叠加）：压力 amber / 支撑 sky / 中性 slate，随主图缩放。 */
+    const priceLevelMarkLines = (priceLevels || [])
+      .map((level, index) => ({ level, index }))
+      .filter(({ level }) => {
+        const value = Number(level.value);
+        return Number.isFinite(value) && value > 0;
+      })
+      .map(({ level, index }) => {
+        const value = Number(level.value);
+        const side = level.side || 'neutral';
+        const color =
+          side === 'resistance' ? '#f59e0b' : side === 'support' ? '#38bdf8' : '#94a3b8';
+        return {
+          name: level.label || `level-${index}`,
+          yAxis: value,
+          lineStyle: { color, type: 'dashed' as const, width: 1, opacity: 0.9 },
+          label: {
+            show: true,
+            position: 'insideEndTop' as const,
+            formatter: `${level.label} ${value.toFixed(2)}`,
+            color,
+            fontSize: 10,
+          },
+        };
+      });
+
     const tMarkIdx = chartData.thirtiethFuturePredDataIndex;
     const tMarkClose = chartData.thirtiethFuturePredClose;
     /** 右侧预留像素：让「第30根预测」说明框显示在最后一根预测 K 线右边 */
@@ -707,6 +739,10 @@ export default function KlineChart({
     const series: any[] = [];
 
     if (hasReal) {
+      const realMarkLineData = [
+        ...(markLineData.length > 0 && showPredCandles ? markLineData : []),
+        ...priceLevelMarkLines,
+      ];
       series.push({
         name: symbol,
         type: 'candlestick',
@@ -720,11 +756,12 @@ export default function KlineChart({
           borderColor0: downColor,
         },
         markLine:
-          markLineData.length > 0 && showPredCandles
+          realMarkLineData.length > 0
             ? {
                 symbol: 'none',
-                data: markLineData,
+                data: realMarkLineData,
                 silent: true,
+                animation: false,
               }
             : undefined,
       });
@@ -1302,6 +1339,7 @@ export default function KlineChart({
     historicalPredCloseByTs,
     defaultShowLastBars,
     defaultShowLastRealBars,
+    priceLevels,
   ]);
 
   useEffect(() => {

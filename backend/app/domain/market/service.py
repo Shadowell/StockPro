@@ -12,11 +12,19 @@ import numpy as np
 
 from app.domain.market.akshare_intraday import AkshareIntradayProvider
 from app.domain.market.akshare_symbols import AkshareSymbolProvider
+from app.domain.market.key_levels import LEVEL_TYPES, compute_key_levels, summarize_levels
 from app.domain.market.repository import MarketRepository
 from app.domain.market.research_metrics import (
     ABNORMALITY_DEFINITION_VERSION,
     MARKET_PHASE_DEFINITION_VERSION,
     SECTOR_RPS_DEFINITION_VERSION,
+)
+from app.domain.market.live_derived import (
+    derive_concept_rps,
+    derive_industry_rps,
+    derive_market_phase,
+    derive_movers_from_overview,
+    derive_sentiment_from_ladder,
 )
 from app.domain.market.overview import unavailable_market_overview
 from app.services.indicators import EMA, MACD, RSI
@@ -125,6 +133,105 @@ class MarketDomainService:
             "items": items,
             "data_status": "ok" if items else "empty",
             "unavailable_reason": None if items else "cache returned no rows",
+        }
+
+    async def get_sector_heatmap(self, window: str = "1d") -> Dict[str, Any]:
+        """板块热力图聚合（只读）。窗口 1d/5d/20d，等权涨跌，面积 = 标的数。"""
+        normalized = str(window or "1d").strip().lower()
+        if normalized not in {"1d", "5d", "20d"}:
+            normalized = "1d"
+        return await asyncio.to_thread(self.repo.get_sector_heatmap, normalized)
+
+    async def get_limit_ladder(self, trend_days: int = 30) -> Dict[str, Any]:
+        """连板梯队（只读）：最新梯队 + 涨停/炸板/跌停池 + 历史趋势。"""
+        cached = await asyncio.to_thread(self.repo.get_limit_ladder, trend_days)
+        if cached.get("levels") or any((cached.get("pools") or {}).values()):
+            return cached
+        live = await asyncio.to_thread(self.repo.get_realtime_limit_snapshot)
+        return live if live.get("levels") or any((live.get("pools") or {}).values()) else cached
+
+    async def get_concept_analysis(self, rotation_days: int = 20, hot_limit: int = 20) -> Dict[str, Any]:
+        """概念分析（只读）：最新榜单 + 轮动矩阵 + 热门概念资金流。"""
+        cached = await asyncio.to_thread(self.repo.get_concept_analysis, rotation_days, hot_limit)
+        if cached.get("sectors"):
+            return cached
+        industry = await self.get_industry_analysis()
+        industries = industry.get("industries") or []
+        if not industries:
+            return cached
+        sectors = []
+        for index, row in enumerate(industries, start=1):
+            leader = row.get("top_member") or {}
+            sectors.append({
+                "sector_code": row.get("code") or row.get("name"),
+                "sector_name": row.get("name") or row.get("code"),
+                "change_percent": row.get("change_1d"),
+                "leader_stock": leader.get("symbol"),
+                "leader_change": leader.get("change_percent"),
+                "up_count": row.get("gainers_1d"),
+                "down_count": row.get("losers_1d"),
+                "rank": index,
+            })
+        return {
+            "trade_date": industry.get("trade_date"),
+            "sectors": sectors,
+            "sector_count": len(sectors),
+            "rotation_dates": [],
+            "rotation": [],
+            "rotation_days": rotation_days,
+            "hot": [
+                {
+                    "rank": index,
+                    "name": row["sector_name"],
+                    "change_percent": row.get("change_percent"),
+                    "inflow": None,
+                    "outflow": None,
+                    "net_inflow": None,
+                }
+                for index, row in enumerate(sectors[:hot_limit], start=1)
+            ],
+            "hot_updated_at": None,
+            "sources": ["industry_analysis", *(industry.get("sources") or [])],
+            "data_status": "ok",
+            "unavailable_reason": None,
+            "missing_inputs": ["概念快照未同步，已用行业等权涨跌代替主题强度"],
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
+        }
+
+    async def get_industry_analysis(self) -> Dict[str, Any]:
+        """行业分析（只读）：1d/5d/20d 等权涨跌 + 领涨成员。"""
+        return await asyncio.to_thread(self.repo.get_industry_analysis)
+
+    async def get_key_levels(self, exchange_name: str, symbol: str, limit: int = 500) -> Dict[str, Any]:
+        """个股关键价位（只读）：基于 1d 日线复用 get_klines_payload 链路实时计算。"""
+        bounded_limit = max(20, min(int(limit), 2000))
+        payload = await self.get_klines_payload(exchange_name, symbol, "1d", bounded_limit)
+        klines = payload.get("items", [])
+        levels = compute_key_levels(klines)
+        turnover_source = (
+            "row_field"
+            if any(isinstance(k.get("turnover_rate"), (int, float)) for k in klines)
+            else "unavailable"
+        )
+        return {
+            "exchange": exchange_name,
+            "symbol": payload.get("symbol") or symbol,
+            "close": levels.get("close"),
+            "rows_used": levels.get("rows_used", 0),
+            "groups": levels.get("groups", {}),
+            "summary": summarize_levels(levels.get("groups", {}), levels.get("close")),
+            "level_types": LEVEL_TYPES,
+            "as_of_trade_date": payload.get("to_date"),
+            "rows_available": len(klines),
+            "data_status": payload.get("data_status"),
+            "unavailable_reason": payload.get("unavailable_reason"),
+            "provider_source": payload.get("provider_source") or payload.get("source"),
+            "turnover_source": turnover_source,
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
         }
 
     async def get_technical_indicators(
@@ -385,28 +492,53 @@ class MarketDomainService:
 
     async def get_market_phase(self, trade_date: str | None = None) -> Dict:
         try:
-            return await asyncio.to_thread(self.repo.get_market_phase, trade_date)
+            cached = await asyncio.to_thread(self.repo.get_market_phase, trade_date)
         except Exception as exc:
-            return {
+            cached = {
                 "trade_date": trade_date,
-                "phase": "unknown",
+                "phase": "待计算",
                 "status": "unavailable",
                 "confidence": 0.0,
                 "reasons": [],
                 "missing_inputs": [f"A-share market phase cache unavailable: {type(exc).__name__}"],
                 "definition_version": MARKET_PHASE_DEFINITION_VERSION,
             }
+        if str(cached.get("status") or "") in {"ok", "partial"} and cached.get("phase") not in {None, "", "unknown", "待计算"}:
+            return cached
+        try:
+            overview, ladder, industry = await asyncio.gather(
+                self.get_market_overview(trade_date),
+                self.get_limit_ladder(),
+                self.get_industry_analysis(),
+            )
+            live = derive_market_phase(overview, ladder, industry)
+            if live.get("phase") not in {None, "", "unknown", "待计算"}:
+                return live
+        except Exception:
+            pass
+        if cached.get("phase") in {None, "", "unknown"}:
+            cached["phase"] = "待计算"
+        return cached
 
     async def get_market_sentiment(self, trade_date: str | None = None) -> Dict:
         try:
-            return await asyncio.to_thread(self.repo.get_market_sentiment, trade_date)
+            cached = await asyncio.to_thread(self.repo.get_market_sentiment, trade_date)
         except Exception as exc:
-            return {
+            cached = {
                 "trade_date": trade_date,
                 "status": "unavailable",
                 "missing_inputs": [f"A-share market sentiment cache unavailable: {type(exc).__name__}"],
                 "definition_version": "ashare-market-sentiment.v1",
             }
+        if str(cached.get("status") or "") == "ok":
+            return cached
+        try:
+            live = derive_sentiment_from_ladder(await self.get_limit_ladder())
+            if str(live.get("status") or "") == "ok":
+                return live
+        except Exception:
+            pass
+        return cached
 
     async def list_market_timeline(self, *, limit: int = 60) -> Dict[str, Any]:
         try:
@@ -433,15 +565,51 @@ class MarketDomainService:
             now = time.monotonic()
             if cached and now - cached[0] < 5.0:
                 return copy.deepcopy(cached[1])
-            overview, phase, sentiment, industry, concept, movers, events = await asyncio.gather(
+            async def _safe_thread(fn, *args, fallback, **kwargs):
+                try:
+                    return await asyncio.to_thread(fn, *args, **kwargs)
+                except Exception:
+                    return fallback
+
+            (
+                overview,
+                ladder,
+                industry_raw,
+                concept_raw,
+                phase,
+                sentiment,
+                industry,
+                concept,
+                movers,
+                events,
+            ) = await asyncio.gather(
                 self.get_market_overview(trade_date),
-                self.get_market_phase(trade_date),
-                self.get_market_sentiment(trade_date),
-                self.list_sector_rps(trade_date=trade_date, classification_system="industry", limit=1000),
-                self.list_sector_rps(trade_date=trade_date, classification_system="concept", limit=1000),
-                self.list_symbol_abnormalities(trade_date=trade_date, limit=10),
+                self.get_limit_ladder(),
+                self.get_industry_analysis(),
+                self.get_concept_analysis(),
+                _safe_thread(self.repo.get_market_phase, trade_date, fallback={"status": "empty", "phase": "待计算"}),
+                _safe_thread(self.repo.get_market_sentiment, trade_date, fallback={"status": "empty"}),
+                _safe_thread(self.repo.list_sector_rps, trade_date=trade_date, classification_system="industry", limit=1000, fallback={"items": []}),
+                _safe_thread(self.repo.list_sector_rps, trade_date=trade_date, classification_system="concept", limit=1000, fallback={"items": []}),
+                _safe_thread(self.repo.list_symbol_abnormalities, trade_date=trade_date, limit=10, fallback={"items": []}),
                 self.list_market_events(limit=10),
             )
+            if str(phase.get("status") or "") not in {"ok", "partial"} or phase.get("phase") in {None, "", "unknown", "待计算"}:
+                live_phase = derive_market_phase(overview, ladder, industry_raw)
+                if live_phase.get("phase") not in {None, "", "unknown", "待计算"}:
+                    phase = live_phase
+                elif phase.get("phase") in {None, "", "unknown"}:
+                    phase = {**phase, "phase": "待计算"}
+            if str(sentiment.get("status") or "") != "ok":
+                live_sentiment = derive_sentiment_from_ladder(ladder)
+                if str(live_sentiment.get("status") or "") == "ok":
+                    sentiment = live_sentiment
+            if not industry.get("items"):
+                industry = derive_industry_rps(industry_raw, limit=1000)
+            if not concept.get("items"):
+                concept = derive_concept_rps(concept_raw, limit=1000)
+            if not movers.get("items"):
+                movers = derive_movers_from_overview(overview, limit=10)
             modules = {
                 "overview": overview,
                 "phase": phase,
@@ -532,19 +700,27 @@ class MarketDomainService:
         limit: int = 20,
     ) -> Dict:
         try:
-            return await asyncio.to_thread(
+            cached = await asyncio.to_thread(
                 self.repo.list_sector_rps,
                 trade_date=trade_date,
                 classification_system=classification_system,
                 limit=limit,
             )
         except Exception as exc:
-            return {
+            cached = {
                 "items": [],
                 "data_status": "unavailable",
                 "unavailable_reason": f"A-share sector RPS cache unavailable: {type(exc).__name__}",
                 "definition_version": SECTOR_RPS_DEFINITION_VERSION,
             }
+        if cached.get("items"):
+            return cached
+        try:
+            if classification_system == "concept":
+                return derive_concept_rps(await self.get_concept_analysis(), limit=limit)
+            return derive_industry_rps(await self.get_industry_analysis(), limit=limit)
+        except Exception:
+            return cached
 
     async def get_sector_rps_history(
         self,
@@ -593,14 +769,20 @@ class MarketDomainService:
 
     async def list_symbol_abnormalities(self, *, trade_date: str | None = None, limit: int = 20) -> Dict:
         try:
-            return await asyncio.to_thread(self.repo.list_symbol_abnormalities, trade_date=trade_date, limit=limit)
+            cached = await asyncio.to_thread(self.repo.list_symbol_abnormalities, trade_date=trade_date, limit=limit)
         except Exception as exc:
-            return {
+            cached = {
                 "items": [],
                 "data_status": "unavailable",
                 "unavailable_reason": f"A-share abnormality cache unavailable: {type(exc).__name__}",
                 "definition_version": ABNORMALITY_DEFINITION_VERSION,
             }
+        if cached.get("items"):
+            return cached
+        try:
+            return derive_movers_from_overview(await self.get_market_overview(trade_date), limit=limit)
+        except Exception:
+            return cached
 
     async def get_symbol_abnormality(self, symbol: str, *, trade_date: str | None = None) -> Dict:
         try:

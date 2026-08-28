@@ -123,6 +123,7 @@ def test_sample_strategy_view_links_one_version_backtest_and_paper_evidence():
     view = StrategyDomainService._view(row)
 
     assert view["id"] == row["id"]
+    assert view["name"] == "[A股][日线][动量] 最小研究链"
     assert view["status"] == "running"
     assert view["symbols"] == ["920000.BJ", "920001.BJ", "920002.BJ"]
     assert view["is_sample"] is True
@@ -226,9 +227,10 @@ def test_strategy_validator_allows_initialized_context_containers_but_rejects_un
 def test_strategy_writes_create_immutable_versions_and_archive():
     repository = FakeStrategyRepository()
     service = StrategyDomainService(repository)
-    created = asyncio.run(service.create({"name": "A股测试策略", "script_content": VALID_CODE, "config": {"asset_class": "stock"}, "symbols": ["600519.SH"]}))
+    created = asyncio.run(service.create({"name": "[A股][日线][动量] 测试策略", "script_content": VALID_CODE, "config": {"asset_class": "stock"}, "symbols": ["600519.SH"]}))
     updated = asyncio.run(service.update(224, {"name": "[A股][日线][均值回归] 五日超跌反弹", "script_content": VALID_CODE, "config": {"asset_class": "stock"}}))
     archived = asyncio.run(service.archive(224))
+    assert created["name"] == "[A股][日线][动量] 测试策略"
     assert created["exchange"] == "CN"
     assert created["config"]["symbols"] == ["600519.SH"]
     assert created["symbols"] == ["600519.SH"]
@@ -241,9 +243,13 @@ def test_strategy_write_forces_a_share_domain_and_rejects_non_a_share_symbols():
     repository = FakeStrategyRepository()
     service = StrategyDomainService(repository)
     with pytest.raises(ValueError, match="asset_class"):
-        asyncio.run(service.create({"name": "bad", "script_content": VALID_CODE, "config": {"asset_class": "crypto"}}))
+        asyncio.run(service.create({"name": "[A股][日线][动量] 测试策略", "script_content": VALID_CODE, "config": {"asset_class": "crypto"}}))
     with pytest.raises(ValueError, match="无效 A 股标的"):
-        asyncio.run(service.create({"name": "bad", "script_content": VALID_CODE, "config": {"asset_class": "stock", "capital": "10USDT"}, "symbols": ["BTC-USDT"]}))
+        asyncio.run(service.create({"name": "[A股][日线][动量] 测试策略", "script_content": VALID_CODE, "config": {"asset_class": "stock", "capital": "10USDT"}, "symbols": ["BTC-USDT"]}))
+    normalized = asyncio.run(service.create({"name": "Paper · [A股][日线][打板] 首板放量隔日T", "script_content": VALID_CODE, "config": {"asset_class": "stock"}}))
+    assert normalized["name"] == "[A股][日线][打板] 首板放量隔日T"
+    with pytest.raises(ValueError, match="策略名称须为"):
+        asyncio.run(service.create({"name": "e2e_strategy_v1_1", "script_content": VALID_CODE, "config": {"asset_class": "stock"}}))
 
 
 def test_read_only_mcp_token_cannot_mutate_strategies(monkeypatch: pytest.MonkeyPatch):

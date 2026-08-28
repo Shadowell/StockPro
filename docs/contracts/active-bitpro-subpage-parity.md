@@ -1,6 +1,8 @@
 # 当前合同入口
 
-当前活跃合同为 [BitPro-first A股整仓重建设计合同](active-bitpro-first-a-share-rebuild.md)，状态为“BitPro-first 主线增量交付中；当前运行事实以 `main`、`backend/app/main.py`、`docs/spec.md` 和页面合同为准”。
+- 当前 sprint 合同为 [首页分析板块 tab（连板梯队/概念/行业/市场环境/异动/个股）](sprint-home-analysis-tabs.md)（2026-08-28 已完成，等待部署窗口）。
+- 上一 sprint [个股关键价位模块 + A股板块热力图](sprint-key-levels-sector-heatmap.md) 已完成，等待部署窗口。
+- 设计基线合同为 [BitPro-first A股整仓重建设计合同](active-bitpro-first-a-share-rebuild.md)，状态为“BitPro-first 主线增量交付中；当前运行事实以 `main`、`backend/app/main.py`、`docs/spec.md` 和页面合同为准”。
 
 以下内容是已完成并被新方向取代的历史合同。它继续保留作为旧 StockPro UI 改造的决策记录；其中“不得复制 BitPro 业务页面源码”的约束不再适用于已获用户明确批准的整仓重建。
 
