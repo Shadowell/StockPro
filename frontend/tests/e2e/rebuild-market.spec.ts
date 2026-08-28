@@ -14,3 +14,18 @@ test('market selector searches Chinese name and renders it before code', async (
   const text = await option.innerText()
   expect(text.indexOf('平安银行')).toBeLessThan(text.indexOf('000001.SZ'))
 })
+
+test('market type and symbol controls keep equal responsive widths', async ({ page }) => {
+  await installFinalFixtures(page)
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/market')
+    await expect(page.getByTestId('symbol-search-trigger')).toBeVisible()
+    const widths = await page.evaluate(() => ({
+      marketType: document.querySelector('.market-type-toggle')?.getBoundingClientRect().width || 0,
+      symbol: document.querySelector('[data-testid="symbol-search-trigger"]')?.getBoundingClientRect().width || 0,
+    }))
+    expect(widths.marketType).toBeGreaterThan(0)
+    expect(Math.abs(widths.marketType - widths.symbol)).toBeLessThanOrEqual(1)
+  }
+})
