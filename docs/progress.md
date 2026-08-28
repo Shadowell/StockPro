@@ -1,5 +1,19 @@
 # Progress Log
 
+## 首页分析板块 tab（2026-08-28）
+
+- 在 `codex/key-levels-sector-heatmap`（`ef041d1a`）上续作 sprint
+  `docs/contracts/sprint-home-analysis-tabs.md`：首页新增 `?tab=` 二级标签，默认总览不变。
+- 三个只读端点 `GET /api/v2/market/limit-ladder`、`/concept-analysis`、`/industry-analysis`
+  分别聚合 `lianban_ladder_history` + `limit_pool_members`、`daily_concept_sectors` +
+  `hot_concepts_realtime`、以及与热力图同口径的行业 1d/5d/20d 等权涨跌；GET 不写库、不调 Provider。
+- 修复涨跌停池查询误选不存在的 `board`/`is_st` 列（改为从名称推导 ST），以及空 `pools`
+  字典被当成有内容导致 `data_status=ok` 的判断。
+- 六个 lazy tab：连板梯队、概念分析、行业分析、市场环境（phase/timeline/梯队趋势/领涨行业与概念）、
+  异动监控、个股分析（搜索 + 关键价位摘要，跳转行情页）。非法 tab 回退总览。
+- 验证与文档：新增聚合/服务合同测试、首页 Mock E2E 覆盖 tab URL 与 390px；同步
+  `docs/pages/首页.md`、`docs/spec.md` 与本合同。本地 4444/4445 干净重启后做真实页面验收。
+
 ## 个股关键价位模块 + A股板块热力图（2026-08-28）
 
 - 从 `origin/main`（`56b73cba`）派生 `codex/key-levels-sector-heatmap`，按 sprint 合同

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import {
   Activity,
@@ -12,7 +12,7 @@ import {
   WifiOff,
   Zap,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   marketApi,
   parseApiError,
@@ -22,6 +22,25 @@ import {
 } from '../api/client';
 import HomeMarketOverview from '../components/HomeMarketOverview';
 import { useStore } from '../stores/useStore';
+
+const LimitUpLadder = lazy(() => import('../components/LimitUpLadder'));
+const ConceptAnalysis = lazy(() => import('../components/ConceptAnalysis'));
+const IndustryAnalysis = lazy(() => import('../components/IndustryAnalysis'));
+const MarketEnvironment = lazy(() => import('../components/MarketEnvironment'));
+const AbnormalMonitor = lazy(() => import('../components/AbnormalMonitor'));
+const StockQuickAnalysis = lazy(() => import('../components/StockQuickAnalysis'));
+
+const HOME_TABS = [
+  { key: 'overview', label: '总览' },
+  { key: 'ladder', label: '连板梯队' },
+  { key: 'concept', label: '概念分析' },
+  { key: 'industry', label: '行业分析' },
+  { key: 'environment', label: '市场环境' },
+  { key: 'abnormal', label: '异动监控' },
+  { key: 'stock', label: '个股分析' },
+] as const;
+
+type HomeTabKey = (typeof HOME_TABS)[number]['key'];
 
 function formatPercent(value?: number | null, digits = 2): string {
   if (value == null || !Number.isFinite(value)) return '—';
@@ -456,10 +475,22 @@ function MarketIntelligencePanel({
 
 export default function Home() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [dashboard, setDashboard] = useState<MarketHomeDashboard | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
+  const requestedTab = searchParams.get('tab');
+  const activeTab: HomeTabKey = HOME_TABS.some((tab) => tab.key === requestedTab)
+    ? (requestedTab as HomeTabKey)
+    : 'overview';
+
+  const setTab = (key: HomeTabKey) => {
+    const next = new URLSearchParams(searchParams);
+    if (key === 'overview') next.delete('tab');
+    else next.set('tab', key);
+    setSearchParams(next, { replace: true });
+  };
 
   const loadDashboard = useCallback(async (refresh = false) => {
     if (refresh) setDashboardRefreshing(true);
@@ -517,31 +548,68 @@ export default function Home() {
         <p className="mt-3 max-w-3xl border-l-2 border-blue-500/40 pl-3 text-xs leading-5 text-gray-500">
           聚合 PostgreSQL A 股行情的市场广度、成交活跃度和强弱排行；点击榜单标的后进入行情页查看日线详情。
         </p>
+        <nav className="mt-4 flex flex-wrap gap-1.5" aria-label="首页分析板块">
+          {HOME_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setTab(tab.key)}
+              aria-current={activeTab === tab.key ? 'page' : undefined}
+              className={clsx(
+                'rounded-lg border px-3.5 py-1.5 text-xs font-medium transition-colors',
+                activeTab === tab.key
+                  ? 'border-blue-500/40 bg-blue-600 text-white shadow-sm shadow-blue-900/30'
+                  : 'border-crypto-border bg-crypto-card/60 text-gray-400 hover:bg-white/[0.05] hover:text-gray-200',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <div className="space-y-5 px-6 py-5 pb-7">
-        <HomeMarketOverview
-          data={dashboard ? {
-            ...dashboard.overview,
-            status: dashboard.evidence.status,
-            dataStatus: dashboard.evidence.dataStatus,
-            evidence: { ...dashboard.overview.evidence, ...dashboard.evidence },
-          } : null}
-          loading={dashboardLoading}
-          error={dashboardError}
-          refreshing={dashboardRefreshing}
-          onRefresh={() => void loadDashboard(true)}
-          onSelectSymbol={handleSelectSymbol}
-        />
-        {dashboard ? (
-          <MarketIntelligencePanel
-            dashboard={dashboard}
-            onSelectSymbol={handleSelectSymbol}
-            onSelectSector={(classificationSystem, sectorCode) => navigate(`/market?classification=${classificationSystem}&sector=${encodeURIComponent(sectorCode)}`)}
-            onOpenTimeline={() => navigate('/market?timeline=1')}
-            onOpenMonitor={() => navigate('/monitor')}
-          />
-        ) : null}
+        {activeTab === 'overview' ? (
+          <>
+            <HomeMarketOverview
+              data={dashboard ? {
+                ...dashboard.overview,
+                status: dashboard.evidence.status,
+                dataStatus: dashboard.evidence.dataStatus,
+                evidence: { ...dashboard.overview.evidence, ...dashboard.evidence },
+              } : null}
+              loading={dashboardLoading}
+              error={dashboardError}
+              refreshing={dashboardRefreshing}
+              onRefresh={() => void loadDashboard(true)}
+              onSelectSymbol={handleSelectSymbol}
+            />
+            {dashboard ? (
+              <MarketIntelligencePanel
+                dashboard={dashboard}
+                onSelectSymbol={handleSelectSymbol}
+                onSelectSector={(classificationSystem, sectorCode) => navigate(`/market?classification=${classificationSystem}&sector=${encodeURIComponent(sectorCode)}`)}
+                onOpenTimeline={() => navigate('/market?timeline=1')}
+                onOpenMonitor={() => navigate('/monitor')}
+              />
+            ) : null}
+          </>
+        ) : (
+          <Suspense
+            fallback={
+              <div className="flex h-64 items-center justify-center rounded-xl border border-crypto-border bg-crypto-card/60 text-xs text-gray-500">
+                分析板块加载中…
+              </div>
+            }
+          >
+            {activeTab === 'ladder' ? <LimitUpLadder onSelectSymbol={handleSelectSymbol} /> : null}
+            {activeTab === 'concept' ? <ConceptAnalysis /> : null}
+            {activeTab === 'industry' ? <IndustryAnalysis onSelectSymbol={handleSelectSymbol} /> : null}
+            {activeTab === 'environment' ? <MarketEnvironment /> : null}
+            {activeTab === 'abnormal' ? <AbnormalMonitor onSelectSymbol={handleSelectSymbol} /> : null}
+            {activeTab === 'stock' ? <StockQuickAnalysis /> : null}
+          </Suspense>
+        )}
       </div>
     </div>
   );

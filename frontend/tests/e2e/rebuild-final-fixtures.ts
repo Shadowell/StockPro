@@ -80,6 +80,32 @@ export async function installFinalFixtures(page: Page, role: 'admin' | 'guest' =
     else if (path === '/api/v2/market/phase') data = { trade_date: '2026-08-27', phase: '主升', status: 'ok', confidence: 0.82, reasons: ['上涨占比 72.0%'], missing_inputs: [], definition_version: 'ashare-market-phase.v1' }
     else if (path === '/api/v2/market/sector-rps') data = [{ trade_date: '2026-08-27', classification_system: 'industry', sector_code: 'I001', sector_name: '半导体', rps_percentile: 96, rank: 1, rank_change: 2, leader_symbol: '688001.SH', status: 'ok', missing_inputs: [] }]
     else if (path === '/api/v2/market/movers') data = [{ symbol: '600519.SH', name: '贵州茅台', board: '主板', st: false, trade_date: '2026-08-27', windows: { '3d': { value: 0.16, value_pct: 16, threshold: 0.2, threshold_pct: 20, closeness: 0.8, direction: 'up', status: 'edge' }, '10d': { value: 0.35, value_pct: 35, threshold: 1, threshold_pct: 100, closeness: 0.35, direction: 'up', status: 'watch' }, '30d': { value: 0.8, value_pct: 80, threshold: 2, threshold_pct: 200, closeness: 0.4, direction: 'up', status: 'watch' } }, abnormal_status: 'edge', eligible: true, tags: ['接近前高'], status: 'ok', data_status: 'ok', missing_inputs: [] }]
+    else if (path === '/api/v2/market/limit-ladder') data = {
+      ladder_date: '2026-08-17', pool_trade_date: '2026-08-21', ladder_total: 2, trend_days: 30, data_status: 'ok',
+      levels: [{ level: 5, members: [{ symbol: '300862.SZ', name: '蓝盾光电', price: 29.9, change_percent: 19.99, duration_days: 5 }] }],
+      pools: { up: [{ symbol: '300862.SZ', name: '蓝盾光电', limit_times: 5, open_times: 0, seal_amount: 120000000, industry: '光电' }], broken: [], down: [] },
+      trend: [{ date: '2026-08-17', max_height: 5, total: 40, two_plus: 12 }],
+      sources: ['lianban_ladder_history', 'limit_pool_members'], provider_calls: 0, writes_performed: false, paper_mutated: false,
+    }
+    else if (path === '/api/v2/market/concept-analysis') data = {
+      trade_date: '2026-08-21', sector_count: 2, rotation_days: 20, data_status: 'ok',
+      sectors: [{ sector_name: '生物疫苗', change_percent: 8.06, leader_stock: '甲', leader_change: 10, up_count: 50, down_count: 3, rank: 1 }],
+      rotation_dates: ['2026-08-20', '2026-08-21'],
+      rotation: [{ sector_name: '生物疫苗', changes: { '2026-08-20': 5, '2026-08-21': 8.06 } }],
+      hot: [{ rank: 1, name: '乳业', change_percent: 5.85, inflow: 21.78, outflow: 15.32, net_inflow: 6.46 }],
+      sources: ['daily_concept_sectors'], provider_calls: 0, writes_performed: false, paper_mutated: false,
+    }
+    else if (path === '/api/v2/market/industry-analysis') data = {
+      trade_date: '2026-08-26', industry_count: 1, data_status: 'ok', realtime_source: 'realtime_quotes',
+      industries: [{ code: '银行', name: '银行', count: 2, change_1d: 0.5, change_5d: 11.11, change_20d: 9.34, gainers_1d: 1, losers_1d: 1, top_member: { symbol: '600001.SH', name: '甲银行', change_percent: 2 } }],
+      sources: ['instrument_definitions', 'realtime_quotes', 'stock_history'], provider_calls: 0, writes_performed: false, paper_mutated: false,
+    }
+    else if (path === '/api/v2/market/key-levels') data = {
+      symbol: '600519.SH', exchange: 'SSE', close: 1488, rows_used: 124, data_status: 'ok', as_of_trade_date: '2026-08-26',
+      summary: '接近整数关口 1500', turnover_source: 'unavailable',
+      groups: { sr: [{ type: 'round', label: '整数 1500', value: 1500, side: 'resistance' }] },
+      provider_calls: 0, writes_performed: false, paper_mutated: false,
+    }
     else if (path === '/api/v2/strategies') data = { items: [], total: 0, page: 1, per_page: 60, pages: 1, status_counts: { all: 0 }, asset_counts: { all: 0 }, type_counts: { all: 0 }, timeframe_counts: { all: 0 }, capital_counts: { all: 0 } }
     else if (path === '/api/v2/backtest/configuration') data = { items: [] }
     else if (path === '/api/v2/backtest/results' || path === '/api/v2/backtest/jobs') data = []

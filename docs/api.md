@@ -77,7 +77,7 @@ Content-Type: application/json
 
 | 接口域 | 代表路径 | 说明 |
 | --- | --- | --- |
-| 行情研究 | `/api/v2/market/dashboard`、`/api/v2/market/overview`、`/api/v2/market/ticker`、`/api/v2/market/symbols`、`/api/v2/market/klines`、`/api/v2/market/movers` | A 股首页驾驶舱、标的搜索、日线/分时/盘口、市场阶段、行业 RPS 与异动边缘 |
+| 行情研究 | `/api/v2/market/dashboard`、`/api/v2/market/overview`、`/api/v2/market/ticker`、`/api/v2/market/symbols`、`/api/v2/market/klines`、`/api/v2/market/movers`、`/api/v2/market/limit-ladder`、`/api/v2/market/concept-analysis`、`/api/v2/market/industry-analysis` | A 股首页驾驶舱、标的搜索、日线/分时/盘口、市场阶段、行业 RPS、异动边缘与首页分析 tab |
 | 策略 | `/api/v2/strategies`、`/api/v2/strategies/{id}` | 策略目录、详情、创建、编辑、归档 |
 | 回测 | `/api/v2/backtest/configuration`、`/api/v2/backtest/run_job`、`/api/v2/backtest/job/{id}`、`/api/v2/backtest/jobs` | 异步任务、运行证据、配置与任务控制 |
 | Paper 模拟 | `/api/v2/live/instances`、`/api/v2/live/candidates`、`/api/v2/live/dashboard`、`/api/v2/live/events`、`/api/v2/live/accounts` | Paper 实例生命周期、账户、订单、成交、持仓、权益曲线和盯盘证据 |

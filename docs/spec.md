@@ -66,6 +66,11 @@ BitPro 遗留的 `/pools`、`/factors`、`/paper` 分别跳转到 `/arbitrage`�
 股票代替指数、用客户端合成走势或把缺失值改成 0。Dashboard GET 只读 PostgreSQL，并用短时单航班缓存避免
 重复读取；`provider_calls=0`、`writes_performed=false`、`paper_mutated=false` 是固定安全边界。
 
+首页另提供 `?tab=` 分析板块：连板梯队、概念分析、行业分析、市场环境、异动监控、个股分析。
+三个只读端点 `/api/v2/market/limit-ladder`、`/concept-analysis`、`/industry-analysis`
+分别聚合旧管道连板/涨跌停池、概念每日快照+资金流、以及与热力图同口径的行业等权涨跌；
+RPS/六阶段/异动物化缺失时页面显示诚实空态与原因，GET 不补算、不写库。
+
 完整路由：
 
 ```text

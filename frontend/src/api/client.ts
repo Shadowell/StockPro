@@ -1389,6 +1389,129 @@ export interface SectorHeatmapPayload {
   paperMutated?: boolean;
 }
 
+export interface LadderMember {
+  symbol: string;
+  name: string;
+  price?: number | null;
+  changePercent?: number | null;
+  durationDays?: number | null;
+  reason?: string | null;
+}
+
+export interface LadderLevel {
+  level: number;
+  members: LadderMember[];
+}
+
+export interface LimitPoolMember {
+  symbol: string;
+  name: string;
+  limitTimes?: number | null;
+  openTimes?: number | null;
+  sealAmount?: number | null;
+  industry?: string | null;
+  board?: string | null;
+  isSt?: boolean | null;
+}
+
+export interface LadderTrendPoint {
+  date: string;
+  maxHeight: number;
+  total: number;
+  twoPlus: number;
+}
+
+export interface LimitLadderPayload {
+  ladderDate?: string | null;
+  poolTradeDate?: string | null;
+  levels: LadderLevel[];
+  ladderTotal: number;
+  pools: { up: LimitPoolMember[]; broken: LimitPoolMember[]; down: LimitPoolMember[] };
+  trend: LadderTrendPoint[];
+  trendDays?: number;
+  sources?: string[];
+  dataStatus: string;
+  unavailableReason?: string | null;
+  missingInputs?: string[];
+  providerCalls?: number;
+  writesPerformed?: boolean;
+  paperMutated?: boolean;
+}
+
+export interface ConceptSectorRow {
+  sectorCode?: string | null;
+  sectorName: string;
+  changePercent: number | null;
+  leaderStock?: string | null;
+  leaderChange?: number | null;
+  upCount?: number | null;
+  downCount?: number | null;
+  rank?: number | null;
+}
+
+export interface ConceptRotationRow {
+  sectorName: string;
+  changes: Record<string, number | null>;
+}
+
+export interface HotConceptRow {
+  rank?: number | null;
+  name: string;
+  changePercent?: number | null;
+  inflow?: number | null;
+  outflow?: number | null;
+  netInflow?: number | null;
+}
+
+export interface ConceptAnalysisPayload {
+  tradeDate?: string | null;
+  sectors: ConceptSectorRow[];
+  sectorCount?: number;
+  rotationDates: string[];
+  rotation: ConceptRotationRow[];
+  rotationDays?: number;
+  hot: HotConceptRow[];
+  hotUpdatedAt?: string | null;
+  sources?: string[];
+  dataStatus: string;
+  unavailableReason?: string | null;
+  missingInputs?: string[];
+  providerCalls?: number;
+  writesPerformed?: boolean;
+  paperMutated?: boolean;
+}
+
+export interface IndustryAnalysisTopMember {
+  symbol: string;
+  name: string;
+  changePercent: number;
+}
+
+export interface IndustryAnalysisRow {
+  code: string;
+  name: string;
+  count: number;
+  change1d?: number | null;
+  change5d?: number | null;
+  change20d?: number | null;
+  gainers1d?: number | null;
+  losers1d?: number | null;
+  topMember?: IndustryAnalysisTopMember | null;
+}
+
+export interface IndustryAnalysisPayload {
+  tradeDate?: string | null;
+  industries: IndustryAnalysisRow[];
+  industryCount?: number;
+  realtimeSource?: string | null;
+  sources?: string[];
+  dataStatus: string;
+  unavailableReason?: string | null;
+  providerCalls?: number;
+  writesPerformed?: boolean;
+  paperMutated?: boolean;
+}
+
 export interface MarketEvent {
   eventId: string;
   source: 'strategy' | 'signal' | 'price' | 'abnormal' | 'sector' | string;
@@ -2144,6 +2267,15 @@ export const marketApi = {
 
   getKeyLevels: (exchange: string, symbol: string, limit = 500): Promise<KeyLevelsPayload> =>
     getReq('/market/key-levels', { params: { exchange, symbol, limit } }),
+
+  getLimitLadder: (trendDays = 30): Promise<LimitLadderPayload> =>
+    getReq('/market/limit-ladder', { params: { trendDays } }),
+
+  getConceptAnalysis: (rotationDays = 20, hotLimit = 20): Promise<ConceptAnalysisPayload> =>
+    getReq('/market/concept-analysis', { params: { rotationDays, hotLimit } }),
+
+  getIndustryAnalysis: (): Promise<IndustryAnalysisPayload> =>
+    getReq('/market/industry-analysis'),
 };
 
 export interface MarketInstrument {

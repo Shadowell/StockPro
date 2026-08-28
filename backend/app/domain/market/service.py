@@ -135,6 +135,18 @@ class MarketDomainService:
             normalized = "1d"
         return await asyncio.to_thread(self.repo.get_sector_heatmap, normalized)
 
+    async def get_limit_ladder(self, trend_days: int = 30) -> Dict[str, Any]:
+        """连板梯队（只读）：最新梯队 + 涨停/炸板/跌停池 + 历史趋势。"""
+        return await asyncio.to_thread(self.repo.get_limit_ladder, trend_days)
+
+    async def get_concept_analysis(self, rotation_days: int = 20, hot_limit: int = 20) -> Dict[str, Any]:
+        """概念分析（只读）：最新榜单 + 轮动矩阵 + 热门概念资金流。"""
+        return await asyncio.to_thread(self.repo.get_concept_analysis, rotation_days, hot_limit)
+
+    async def get_industry_analysis(self) -> Dict[str, Any]:
+        """行业分析（只读）：1d/5d/20d 等权涨跌 + 领涨成员。"""
+        return await asyncio.to_thread(self.repo.get_industry_analysis)
+
     async def get_key_levels(self, exchange_name: str, symbol: str, limit: int = 500) -> Dict[str, Any]:
         """个股关键价位（只读）：基于 1d 日线复用 get_klines_payload 链路实时计算。"""
         bounded_limit = max(20, min(int(limit), 2000))
