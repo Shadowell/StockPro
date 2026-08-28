@@ -38,7 +38,7 @@ function factValue(fact?: FundamentalFact): string {
 
 function EvidenceMetric({ label, value, note }: { label: string; value: string; note: string }) {
   return (
-    <div className="min-w-0 rounded-lg border border-crypto-border/70 bg-slate-950/35 px-3 py-3">
+    <div data-metric-card className="min-w-0 rounded-xl border border-crypto-border/70 bg-slate-950/35 px-3 py-3">
       <div className="truncate text-[11px] text-gray-500">{label}</div>
       <div className="mt-2 truncate font-mono text-lg font-semibold tabular-nums text-gray-100">{value}</div>
       <div className="mt-1 truncate text-[10px] text-gray-600" title={note}>{note}</div>
@@ -150,13 +150,13 @@ export default function OnchainResearch() {
           <select value={reportPeriod} onChange={(event) => setReportPeriod(event.target.value)} className="h-9 rounded-lg border border-crypto-border bg-crypto-card px-3 text-xs text-gray-200"><option value="">最新已知</option>{periods.map((period) => <option key={period} value={period}>{period}</option>)}</select>
         </div>
         <div className="mt-2 grid gap-3 xl:grid-cols-2">
-          <section className={PANEL}><div className="border-b border-crypto-border px-4 py-3 text-sm font-semibold text-gray-100">盈利与质量</div><div className="grid grid-cols-2 gap-px bg-crypto-border/50">{profitability.map(([label, code]) => <div key={code} className="bg-crypto-card p-4"><div className="text-xs text-gray-500">{label}</div><div className="mt-2 font-mono text-xl text-gray-100">{factValue(selectedFacts[code])}</div><div className="mt-1 text-[10px] text-gray-600">{selectedFacts[code]?.reportPeriod || '—'} · 公告 {selectedFacts[code]?.annDate || '—'}</div></div>)}</div></section>
-          <section className={PANEL}><div className="border-b border-crypto-border px-4 py-3 text-sm font-semibold text-gray-100">成长与资本结构</div><div className="grid grid-cols-2 gap-px bg-crypto-border/50">{structure.map(([label, code]) => <div key={code} className="bg-crypto-card p-4"><div className="text-xs text-gray-500">{label}</div><div className="mt-2 font-mono text-xl text-gray-100">{factValue(selectedFacts[code])}</div><div className="mt-1 text-[10px] text-gray-600">{selectedFacts[code]?.reportPeriod || '—'} · 可用 {selectedFacts[code]?.availableAt || '—'}</div></div>)}</div></section>
+          <section className={PANEL}><div className="border-b border-crypto-border px-4 py-3 text-sm font-semibold text-gray-100">盈利与质量</div><div className="grid grid-cols-2 gap-2 p-3">{profitability.map(([label, code]) => <div key={code} data-metric-card className="rounded-xl border border-crypto-border/70 bg-crypto-card p-4"><div className="text-xs text-gray-500">{label}</div><div className="mt-2 font-mono text-xl text-gray-100">{factValue(selectedFacts[code])}</div><div className="mt-1 text-[10px] text-gray-600">{selectedFacts[code]?.reportPeriod || '—'} · 公告 {selectedFacts[code]?.annDate || '—'}</div></div>)}</div></section>
+          <section className={PANEL}><div className="border-b border-crypto-border px-4 py-3 text-sm font-semibold text-gray-100">成长与资本结构</div><div className="grid grid-cols-2 gap-2 p-3">{structure.map(([label, code]) => <div key={code} data-metric-card className="rounded-xl border border-crypto-border/70 bg-crypto-card p-4"><div className="text-xs text-gray-500">{label}</div><div className="mt-2 font-mono text-xl text-gray-100">{factValue(selectedFacts[code])}</div><div className="mt-1 text-[10px] text-gray-600">{selectedFacts[code]?.reportPeriod || '—'} · 可用 {selectedFacts[code]?.availableAt || '—'}</div></div>)}</div></section>
         </div>
 
         <section className={`mt-4 ${PANEL}`}>
           <div className="flex items-center gap-2 border-b border-crypto-border px-4 py-3"><Users className="h-4 w-4 text-blue-300" /><h2 className="text-sm font-semibold text-gray-100">股东与分红</h2></div>
-          <div className="grid grid-cols-2 gap-px bg-crypto-border/50"><div className="bg-crypto-card p-4"><div className="text-xs text-gray-500">股东户数</div><div className="mt-2 font-mono text-xl text-gray-100">{factValue(selectedFacts['shareholder.holder_count'])}</div></div><div className="bg-crypto-card p-4"><div className="text-xs text-gray-500">每股现金分红</div><div className="mt-2 font-mono text-xl text-gray-100">{factValue(selectedFacts['dividend.cash_per_share'])}</div></div></div>
+          <div className="grid grid-cols-2 gap-2 p-3"><div data-metric-card className="rounded-xl border border-crypto-border/70 bg-crypto-card p-4"><div className="text-xs text-gray-500">股东户数</div><div className="mt-2 font-mono text-xl text-gray-100">{factValue(selectedFacts['shareholder.holder_count'])}</div></div><div data-metric-card className="rounded-xl border border-crypto-border/70 bg-crypto-card p-4"><div className="text-xs text-gray-500">每股现金分红</div><div className="mt-2 font-mono text-xl text-gray-100">{factValue(selectedFacts['dividend.cash_per_share'])}</div></div></div>
         </section>
 
         <section className={`mt-4 ${PANEL}`}>

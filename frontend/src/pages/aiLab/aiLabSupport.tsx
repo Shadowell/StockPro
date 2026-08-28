@@ -1307,7 +1307,7 @@ export function metricToneCardClass(tone: MetricTone): string {
 
 export function MetricCard({ label, value, tone = 'neutral' }: { label: string; value: any; tone?: MetricTone }) {
   return (
-    <div className={`bg-crypto-card border rounded-lg p-3 ${metricToneCardClass(tone)}`}>
+    <div data-metric-card className={`bg-crypto-card border rounded-xl p-3 ${metricToneCardClass(tone)}`}>
       <div className="text-[10px] text-gray-500">{label}</div>
       <div className={`text-sm font-bold mt-0.5 ${metricToneTextClass(tone)}`}>
         {value ?? '--'}

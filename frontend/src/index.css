@@ -28,6 +28,16 @@ body {
   min-height: 100vh;
 }
 
+/* All compact financial metrics use one visible radius, including legacy tiles. */
+[data-metric-card] {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+[data-metric-square] {
+  border-radius: 8px;
+}
+
 /* 自定义滚动条 */
 ::-webkit-scrollbar {
   width: 8px;

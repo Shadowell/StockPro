@@ -209,6 +209,7 @@ function KpiCard({
   }[tone];
   return (
     <section
+      data-metric-card
       className={clsx('rounded-xl border p-4 shadow-inner shadow-black/10', toneStyles.border, toneStyles.bg)}
     >
       <div className="mb-3 text-xs font-semibold text-gray-400">{label}</div>

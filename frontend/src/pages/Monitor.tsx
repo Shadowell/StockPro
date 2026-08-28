@@ -2482,7 +2482,7 @@ function SentimentCard({ label, value, icon, color, sub }: {
   };
   const c = colorMap[color];
   return (
-    <div className={clsx('rounded-xl border p-4 shadow-inner', c.bg, c.border, c.glow)}>
+    <div data-metric-card className={clsx('rounded-xl border p-4 shadow-inner', c.bg, c.border, c.glow)}>
       <div className="mb-2 flex min-w-0 items-center gap-1.5">
         <span className={clsx('shrink-0', c.text)}>{icon}</span>
         <span className="min-w-0 truncate text-[11px] font-semibold text-gray-300/90">{label}</span>
