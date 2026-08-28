@@ -9,6 +9,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2] / "backend"
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.domain.paper.service import PaperDomainService  # noqa: E402
+from app.domain.paper.repository import PaperRepository  # noqa: E402
 from app.api.v2.endpoints import monitor as monitor_endpoint  # noqa: E402
 
 
@@ -160,6 +161,31 @@ def test_watch_workspace_reads_real_paper_accounts_positions_orders_and_market()
     assert watchlist[0]["order_count"] == 1
     assert market["klines"][0]["close"] == 1500
     assert markers[0]["label"] == "B"
+
+
+def test_account_positions_preserves_stock_name_for_a_share_cards():
+    class PositionRepository(PaperRepository):
+        def __init__(self):
+            pass
+
+        def _account_instance(self, account_id):
+            return {"id": 11}
+
+        def positions(self, instance_id):
+            return [{
+                "symbol": "BJ_920000",
+                "name": "安徽凤凰",
+                "quantity": 7300,
+                "available_quantity": 7300,
+                "avg_cost": 13.59,
+                "last_price": 13.59,
+                "market_value": 99207,
+                "updated_at": "2026-08-27T15:00:00+08:00",
+            }]
+
+    position = PositionRepository().account_positions("paper:11")[0]
+    assert position["name"] == "安徽凤凰"
+    assert position["symbol"] == "920000.BJ"
 
 
 def test_watch_market_falls_back_to_paper_position_mark_when_sealed_bars_are_empty():
