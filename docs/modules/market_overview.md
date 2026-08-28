@@ -10,7 +10,7 @@
 - 情绪/涨停：涨停、跌停、炸板、封板率、连板梯队和昨日涨停表现。
 - 事件：新闻、公告和催化信息。
 - 日历：交易日与重要市场事件。
-- 个股研究：搜索、日线、分时、盘口、基本面与 AI 面板。
+- 个股研究：搜索、日线、分时、盘口、基本面、异动边缘与 AI 面板。
 
 ## 数据原则
 
@@ -19,7 +19,11 @@
 - 无权限、过期、部分缺失和真正的数值 0 分开表达。
 - 热度来源按实际 Provider 命名，东财热榜不能标成同花顺热榜。
 - 分类、资金流和连板口径在同一面板内保持一致。
+- 首页和行情的异动边缘只读 `symbol_abnormal_metrics` 与 `market_evidence_snapshots`，
+  不在 GET 中重算或写库。
 
-主要接口位于 `/api/market/*`、`/api/stocks/*` 和 `/api/charts/*`，完整契约见运行时 OpenAPI。
+主要接口位于 `/api/v2/market/*`，包括 overview、phase、sector-rps、symbols、klines、
+orderbook、trades 和 movers；旧 `/api/market/*`、`/api/stocks/*`、`/api/charts/*`
+不作为当前业务合同。完整契约见运行时 OpenAPI。
 
 详见 [用户指南](../user_guide.md) 和 [数据架构](../DATA_ARCHITECTURE.md)。

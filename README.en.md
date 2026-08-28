@@ -17,22 +17,23 @@ StockPro is designed to preserve evidence: every research result identifies its 
 - Asynchronous backtests bound to sealed data, factor, pool, protocol, and cost evidence, with A-share rules built in (trading calendar, T+1, 100-share lots, limit up/down, suspensions, fees).
 - Isolated paper instances with signals, risk decisions, orders, trades, positions, cash, equity, heartbeats, and cycle evidence.
 - Watch / Monitor / Daily Review workspaces for operations.
-- PostgreSQL data centre: sources (TuShare primary, AKShare explicit fallback), freshness, coverage, quality, permissions, jobs, schedules.
+- PostgreSQL data centre: A-share master data with Chinese names, sources (TuShare primary, AKShare explicit fallback), freshness, coverage, quality, permissions, jobs, schedules.
+- Daily sync covers the full A-share instrument universe, the latest open trading-day daily bars, and `daily_basic`; the 180-calendar-day history sync also materializes CSI 300 benchmark history, industry peer evidence, market evidence snapshots, and abnormal-move metrics.
 - Optional Qwen/DashScope AI research tasks, plus a local authenticated `stockpro-mcp-v1` Agent interface.
 
 ## Workspaces
 
-The sidebar exposes 13 top-level workspaces. Strategy → Backtest → Paper is the only execution trunk. Live trading, on-chain, arbitrage, and ARC are not registered as routes.
+The sidebar exposes 13 top-level workspaces. Strategy → Backtest → Paper is the only execution trunk. Legacy `/pools`, `/factors`, and `/paper` URLs redirect to the current workspaces and are not acceptance routes.
 
 | Workspace | Route | Purpose |
 | --- | --- | --- |
 | Home | `/` | Market overview |
 | Market | `/market` | Structure, sentiment, events, calendar, and stock research |
-| Pools | `/pools` | Rules, generation runs, snapshots, and backtest handoff |
-| Factors | `/factors` | Catalogue, compute, diagnostics, correlation, and values |
+| Pools / Spread | `/arbitrage` | Rules, generation runs, snapshots, and backtest handoff |
+| Factors | `/factorlab` | Catalogue, compute, diagnostics, correlation, and values |
 | Strategy | `/strategy` | Catalogue, source code, parameters, versions, validation |
 | Backtest | `/backtest` | Jobs, results, orders, trades, metrics, and evidence |
-| Paper | `/paper` | Simulated execution, portfolio, and risk |
+| Paper | `/live` | Simulated execution, portfolio, and risk |
 | Watch | `/watch` | Human observation of signals and execution evidence |
 | Signals | `/signals` | Signal payloads, paper lineage, delivery audit |
 | Monitor | `/monitor` | Strategy, data, risk, and notification health |
@@ -67,7 +68,9 @@ Open:
 - Backend health: `http://localhost:4445/api/health`
 - OpenAPI: `http://localhost:4445/docs`
 
-Admin credentials come from `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `backend/.env`. Keep `.env`, keys, databases, logs, and broker credentials out of Git.
+Admin authentication comes from `BITPRO_ADMIN_USERNAME`, `BITPRO_ADMIN_PASSWORD_HASH`, and `BITPRO_AUTH_TOKEN_SECRET` in `backend/.env`. Keep `.env`, keys, databases, logs, and broker credentials out of Git.
+
+Runtime API boundary: health and primary Web auth live under `/api/health`, `/api/health/storage`, and `/api/auth/*`; current business domains live under `/api/v2/*`. Use `/api/openapi.json` for exact fields.
 
 `restart.sh` never applies migrations, syncs data, or deploys a server. Use `./stop.sh` to stop local services. See [docs/deployment.md](docs/deployment.md) for the full manual.
 

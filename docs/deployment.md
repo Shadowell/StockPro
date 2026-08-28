@@ -182,7 +182,7 @@ print(json.dumps({"username": "admin", "password": os.environ["STOCKPRO_ADMIN_PA
 PY
 unset STOCKPRO_ADMIN_PASSWORD
 curl -fsS -b /tmp/stockpro-cookie \
-  'http://127.0.0.1:4445/api/paper/instances?scope=business'
+  'http://127.0.0.1:4445/api/v2/live/instances?scope=business'
 ./scripts/check.sh
 ```
 

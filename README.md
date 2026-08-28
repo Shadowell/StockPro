@@ -117,8 +117,9 @@ export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 
 ### 数据与 AI
 
-- PostgreSQL 统一管理证券主数据、交易日历、行情、估值、停复牌、涨跌停、因子、回测和模拟盘证据。
+- PostgreSQL 统一管理证券主数据、中文简称、交易日历、行情、估值、停复牌、涨跌停、因子、回测和模拟盘证据。
 - TuShare 为主要研究数据源；AKShare 仅作明确标注的补充或整类回退，禁止静默混源。
+- 每日同步覆盖全量 A 股证券主数据、最近开放交易日日线与 `daily_basic`；近半年历史同步同时物化沪深300基准、行业对照、market evidence snapshot 和异动 metrics。
 - AI 研发用于个股与研究对象分析；未配置通义千问密钥时只提供明确的不可用状态，不伪造模型结果。
 - 本地 `stockpro-mcp-v1` Agent 接口：哈希 Token、读写作用域、幂等键和审计记录。
 
@@ -165,6 +166,9 @@ export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 | AI | 通义千问 / DashScope，可选 | 由 `QWEN_API_KEY` 启用 |
 | Agent | 本地 stdio MCP，协议 `stockpro-mcp-v1` | 不提供公网传输 |
 
+运行 API 边界：健康检查与 Web 鉴权主入口为 `/api/health`、`/api/health/storage` 和
+`/api/auth/*`；当前业务域为 `/api/v2/*`，完整字段以 `/api/openapi.json` 为准。
+
 前端采用紧凑的金融操作台风格：固定一级菜单、页面内二级标签、统一状态语义、中文优先，支持切换“红涨绿跌 / 绿涨红跌”。
 
 ## 配置原则
@@ -188,9 +192,9 @@ export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 
 ## 仓库布局：产品树与设计分支
 
-- **产品树**：git worktree `StockPro-bitpro-a-share`，检出 `main`。日常开发、PR、验证和 GitHub Actions 部署都以它为准。
-- **设计归档**：主目录 `StockPro` 挂在 `codex/bitpro-a-share-rebuild-design` 设计分支上，已落后 `main` 且不含当前 A 股 Paper 运行时。只作历史设计参考，**不要**在其中做日常开发、修 bug 或开 PR。
-- 开始工作前先确认所在树：`git worktree list` 和 `git branch --show-current`。若不在产品树或 `main` 派生的新分支上，先切换再动手。
+- **产品树**：当前主线开发、验证和 GitHub Actions 部署以 `/Users/jie.feng/Dev/Github/Private/StockPro` 的 `main` 及其新建 `codex/*` 分支为准。
+- **历史 worktree / 设计分支**：`StockPro-bitpro-a-share`、`codex/bitpro-a-share-rebuild-design` 等仅作历史迁移或设计参考；继续使用前必须先核对是否已合入当前 `main`。
+- 开始工作前先确认所在树：`git worktree list`、`git branch --show-current` 和 `git status --short`。若不在当前产品树或 `main` 派生的新分支上，先切换再动手。
 
 ## 安全与使用边界
 
@@ -211,8 +215,8 @@ export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 | [技术架构](docs/technical_architecture.md) | 系统组件与运行边界 |
 | [数据架构](docs/DATA_ARCHITECTURE.md) | Provider、快照、质量、来源与调度 |
 | [本地运行手册](docs/deployment.md) | 安装、隔离库、启动、日志、排障与生产部署 |
-| [策略开发](strategies/README.md) | 策略脚本约定、预置策略与版本规则 |
-| [脚本使用](SCRIPTS_USAGE.md) | restart / stop / check / setup / demo 入口 |
+| [策略中心页面合同](docs/pages/策略中心.md) | 策略脚本约定、预置策略、版本规则与验证边界 |
+| [本地运行手册](docs/deployment.md) | restart / stop / check / setup 入口与部署边界 |
 | [开发进度](docs/progress.md) | 实现与验证历史 |
 | [Sprint 合同](docs/contracts/) | 迭代范围与验收记录；入口见 [contracts/active.md](docs/contracts/active.md) |
 | [历史归档](docs/archive/) | Electron/优化总结等早期材料 |

@@ -1,11 +1,11 @@
 # BitPro-first A股整仓重建设计合同
 
-- 状态：2026-08-26 再次重置；用户否决页面映射式复刻，当前以 BitPro 原代码整仓直接移植
+- 状态：2026-08-28 主线增量交付中；BitPro-first 仍是页面与交互复刻基线，当前运行合同以 `main` 和 `backend/app/main.py` 为准
 - 批准日期：2026-08-22
 - StockPro 基线：`99adaaae1b1a7b87b2ce22e7475aa3f26d5a5440`
 - BitPro 固定来源：`2e4b90c3f83672cb9c3fc2e31b772f6c52efacb1`（2026-08-26 当前 `main`；相对上一基线仅新增策略分析文档，应用树一致）
-- 目标分支：`codex/bitpro-direct-port`
-- 目标 worktree：`/Users/jie.feng/Dev/Github/Private/StockPro-bitpro-a-share`
+- 历史目标分支：`codex/bitpro-direct-port`
+- 当前产品树：`/Users/jie.feng/Dev/Github/Private/StockPro`
 - 上一轮生产应用合并 SHA：`4c7fe5194cae7abf6c07a8be005bbfb573b032d8`（仅作历史回滚证据）
 - 上一轮生产部署 SHA：`381ec5429114a52af71aae7948834a3f6538f366`（不代表当前复刻完成）
 - 上一轮成功部署：GitHub Actions run `32647137727`
@@ -32,8 +32,8 @@ StockPro 当前启用 A股、ETF 和指数；为中国期货、美国股票和�
 2. 采用安全的 B2 路线：BitPro 底座导入后，在启动服务前先隔离数字资产执行能力。
 3. PostgreSQL 保持唯一运行事实源；不把 StockPro 数据迁入 BitPro SQLite。
 4. 现有 Paper 权益、累计盈亏、订单、成交、持仓、曲线、事件和运行起点不得归零。
-5. 公共和新开发 API 只使用唯一的当前 `/api/*` 合同。
-6. 不提供带版本号的 API 路径、旧入口、兼容 Router 或长期双合同。
+5. 公共和新开发 API 只使用当前运行合同；健康与 Web 鉴权主入口为 `/api/*`，业务域为 `/api/v2/*`。
+6. 不恢复旧 StockPro 业务路径、旧入口或长期双合同；是否迁移掉 `/api/v2` 需要独立合同。
 7. 历史记录中的旧合同版本字段只作为只读审计元数据保留，不形成旧 API。
 8. BitPro 继续定位数字资产；StockPro 承载传统金融，并预留期货领域。
 9. 普通代码切片按仓库 GitHub Delivery Rule 自动交付；涉及生产数据迁移、Paper 重置或真实交易能力时必须停在安全门禁。
@@ -99,8 +99,8 @@ Wave 0 已完成并进入逐域恢复：后端启动入口已注册 BitPro 原�
 A 股适配合同，但仍不启动数字资产交易所、SQLite、真实下单、调度器或 WebSocket。
 策略域已恢复管理员显式写入：新增策略先通过 `stockpro.v1` AST 安全验证，编辑生成
 `strategy_versions` 不可变新版本，删除操作改为归档并保留验证记录；普通页面读取仍不隐式写入。
-静态门禁对私有交易所、SQLite、带版本号 API、实盘路由和加密后台任务五类可达面
-全部计数为 0。BitPro 遗留模块保留为不可达适配来源，不能从当前入口导入或注册。
+静态门禁对私有交易所、SQLite、旧业务 API、实盘路由和加密后台任务五类可达面
+全部计数为 0。`/api/v2/*` 是当前业务合同，不属于旧业务 API；BitPro 遗留模块保留为不可达适配来源，不能从当前入口导入或注册。
 
 在任何前端、后端或 worker 启动前完成：
 
@@ -140,19 +140,19 @@ A 股适配合同，但仍不启动数字资产交易所、SQLite、真实下单
 | 行情 | `/market` | 股票/ETF/指数搜索、K线、盘口、指标和详情 |
 | 策略 | `/strategy` | 当前策略合同、因子、股票池、不可变版本和 AI 研发 |
 | 回测 | `/backtest` | A股撮合、参数矩阵、Walk-forward 和 Paper 晋级门控 |
-| 模拟盘 | `/paper` | BitPro InstanceDashboard 结构与现有 PostgreSQL Paper 账本 |
+| 模拟盘 | `/live` | BitPro InstanceDashboard 结构与现有 PostgreSQL Paper 账本；`/paper` 仅兼容重定向 |
 | 盯盘 | `/watch` | 股票、策略、价格、指标、异动规则与 K线联动 |
 | 信号中心 | `/signals` | 信号审计、确认、告警与通知投递 |
 | 监控 | `/monitor` | 组合 KPI、策略健康、任务、告警与通知 |
 | 复盘 | `/review` | A股交易日级市场、策略、Paper 和风险复盘 |
 | 数据 | `/data` | TuShare/AKShare、快照、质量、同步和扩展交换 |
-| 因子库 | `/factorlab` | 注册定义、不可变版本、物化值、封存快照和研究 Trial ledger |
+| 因子库 | `/factorlab` | 注册定义、不可变版本、物化值、封存快照和研究 Trial ledger；`/factors` 仅兼容重定向 |
 | AI研发 | `/ai-lab` | 策略研发、优化和门控后的候选保存 |
-| 套利中心 | `/strategy`（旧 `/arbitrage` 跳转） | A 股策略家族与价差研究，不保留跨所/资金费率语义 |
-| 基本面 | `/onchain` | sealed 估值、公告时点财务、股东与分红证据 |
+| 套利中心 | `/arbitrage` | A 股股票池、策略家族与价差研究，不保留跨所/资金费率语义 |
+| 基本面 | `/onchain` | sealed 估值、公告时点财务、股东、机构、分红与资金流证据 |
 | 订单流 | `/market`（旧 `/orderflow` 跳转） | A 股盘口、成交额、交易日与来源证据 |
 | ARC Console | `/ai-lab`（旧 `/arc` 跳转） | A 股 AI 研究任务、证据与失败状态 |
-| 交易/Paper | `/paper`（旧 `/trading`、`/live` 跳转） | A 股模拟盘现金账本；不注册真实下单 |
+| 交易/Paper | `/live`（旧 `/trading`、`/paper` 跳转） | A 股模拟盘现金账本；不注册真实下单 |
 | 数字资产实盘 | 不注册 | 无真实交易入口 |
 
 FactorLab 统计必须实时来自 PostgreSQL，不维护“默认 26/100 个”等第二口径。研究任务只接受
@@ -192,12 +192,13 @@ Dashboard 返回各模块交易日/快照一致性警告和固定的 `provider_c
 
 ## 6. 统一当前 API 合同
 
-### 6.1 唯一入口
+### 6.1 当前入口
 
-- 全系统只提供 `/api/*`。
-- BitPro 导入代码中的带版本号路径全部迁移到 `/api/*`。
-- 不保留旧路径别名、兼容跳转、兼容 Router 或第二套 Service。
-- 前端、Agent、MCP、测试和文档必须在同一切片迁移到当前合同。
+- 健康检查与 Web 鉴权主入口为 `/api/health`、`/api/health/storage` 和 `/api/auth/*`。
+- 鉴权兼容入口同时注册 `/api/v2/auth/*`，用于 BitPro-first 前端迁移期兼容。
+- 当前业务域为 `/api/v2/*`：market、strategies、backtest、live、monitor、sync、factorlab、settings、review、orderflow、arbitrage、agent、research-workbench 等。
+- 不恢复旧业务路径 `/api/paper/*`、`/api/backtest/*`、`/api/data/*`、`/api/pools/*` 或 `/api/factors*`。
+- 前端、Agent、MCP、测试和文档必须对齐 `backend/app/main.py` 与运行中 OpenAPI。
 - 同一业务能力只有一个 endpoint、一个 Application Service 和一个 PostgreSQL 事实源。
 
 ### 6.2 历史元数据
@@ -213,7 +214,7 @@ Dashboard 返回各模块交易日/快照一致性警告和固定的 `provider_c
 ```text
 BitPro 页面与组件
     ↓
-/api/* 当前唯一合同
+/api/* 健康/鉴权 + /api/v2/* 当前业务合同
     ↓
 A股 Application Service
     ↓
@@ -331,7 +332,7 @@ equity/cash、mark/notional、trade timestamp/fee/IDs 在三个页面保持可�
 
 1. 安全基线、备份、隔离数据库、分支和 worktree。
 2. BitPro 固定应用底座导入提交。
-3. 数字资产执行封锁与唯一 `/api/*` 骨架。
+3. 数字资产执行封锁与当前 API 骨架。
 4. PostgreSQL repository、认证与公共读模型。
 5. 登录和 MainLayout。
 6. 首页与行情。
@@ -349,8 +350,9 @@ equity/cash、mark/notional、trade timestamp/fee/IDs 在三个页面保持可�
 策略隔离 worker、sealed 输入解析、结果原子写入与 BitPro 回测 UI 单任务入口已经接通。
 策略读合同将版本、验证、回测和 Paper 按 `strategy_version_id` 关联；详情不得从名称或模板猜测逻辑，
 样例策略明确展示未实现退出/调仓等缺口，并使用关联 Paper 实例 ID 打开实例控制台。
-当前写合同为 `/api/v2/backtest/run_job`、`/job/{id}`、`/jobs`、`/job/{id}/cancel|resume`
-和 `/configuration`；历史结果在全部子证据写完后才切换为 success+sealed，不提供物理删除。
+当前写合同为 `/api/v2/backtest/run_job`、`/api/v2/backtest/job/{id}`、
+`/api/v2/backtest/jobs`、`/api/v2/backtest/job/{id}/cancel|resume`
+和 `/api/v2/backtest/configuration`；历史结果在全部子证据写完后才切换为 success+sealed，不提供物理删除。
 回测读合同分开返回 `fill_count`、`closed_trade_count` 和 `order_count`；列表与详情使用同一事实口径，
 单日或零闭合样本 fail-closed 为 `metric_status=insufficient_sample`，不得输出正向研究判决。
 管理员批量回测、运行中 Paper 去重、sealed 配置绑定、原子批量持久化，以及访客单任务
@@ -444,7 +446,7 @@ BitPro 版式直接继承不等于保留数字资产品牌：活动 HTML 标题�
 
 1. BitPro 完整产品外壳成为 StockPro 底座。
 2. 所有启用页面使用真实 A股数据和 PostgreSQL。
-3. 全系统只有当前 `/api/*`。
+3. 全系统只有当前 API 合同：`/api/*` 健康/鉴权主入口与 `/api/v2/*` 业务域。
 4. 不存在 SQLite 业务事实和长期双写。
 5. 现有 Paper 历史完全连续。
 6. 数字资产实盘、私有 API、链上和币圈后台任务不可达。

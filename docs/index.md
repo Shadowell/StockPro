@@ -13,7 +13,7 @@
 | 前后端开发 | [技术架构](technical_architecture.md) | 组件关系、请求链路、安全与扩展边界 |
 | 数据研究 | [数据架构](DATA_ARCHITECTURE.md) | Provider、PG、快照、质量和调度 |
 | API/Agent 接入 | [API 指南](api.md) | 鉴权、接口域、写操作规范和 OpenAPI |
-| 策略作者 | [策略开发说明](../strategies/README.md) | 策略 API、版本、验证和运行限制 |
+| 策略作者 | [策略中心页面合同](pages/策略中心.md) | 策略 API、版本、验证和运行限制 |
 
 ## 页面合同
 
@@ -31,14 +31,14 @@
 - [开发进度](progress.md)：按时间记录已完成实现、实际验证和已知缺口；不是安装手册。
 - [Sprint 合同](contracts/)：具体迭代的范围、边界和验收证据。当前合同的指向文件是 [contracts/active.md](contracts/active.md)；文件名包含 `active-` 不代表仍在开发，先看正文 `Status`。
 - [A 股研究路线](ashare-research-roadmap.md)：重建前的研究平台专业化路线，已被 BitPro-first 重建接续。
-- [API 指南](api.md)：人工维护的稳定入口；完整字段以运行中的 OpenAPI 为准。
+- [API 指南](api.md)：人工维护的稳定入口；健康/鉴权主入口为 `/api/*`，当前业务域为 `/api/v2/*`，完整字段以运行中的 OpenAPI 为准。
 
 ## 设计、架构与运行
 
 - [技术架构](technical_architecture.md)
 - [数据架构](DATA_ARCHITECTURE.md)
 - [本地运行手册](deployment.md)
-- [脚本使用说明](../SCRIPTS_USAGE.md)
+- [本地运行手册](deployment.md) 中的启动、停止、验证和部署入口
 
 ## 历史材料
 
@@ -49,4 +49,4 @@
 - [历史计划](superpowers/plans/)：已执行或被替代的实施计划。
 - 根目录的 Electron、优化总结与 AKShare 接口笔记已移入 [archive/](archive/)。
 
-最后更新：2026-08-24。
+最后更新：2026-08-28。

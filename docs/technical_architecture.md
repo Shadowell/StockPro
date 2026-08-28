@@ -1,6 +1,6 @@
 # StockPro 技术架构
 
-> 更新日期：2026-08-24
+> 更新日期：2026-08-28
 > 目标环境：本地 B/S
 > 核心约束：PostgreSQL only、读取不触发写操作、仅 Paper 模拟交易
 
@@ -94,18 +94,33 @@ backend/app/
 
 ### API 域
 
-所有接口使用单一 `/api` 前缀。当前注册的域（对照 `backend/app/api/api.py`）：
+当前接口由 `backend/app/main.py` 统一装配。开发代理仍从浏览器 `/api` 进入后端，
+但运行路径分为健康/鉴权主入口和业务域：
 
 ```text
-health capabilities auth
-market pools factors strategies
-backtest paper
-signals watch monitor
-review data ai
+/api/health
+/api/health/storage
+/api/auth/*
+/api/v2/auth/*        # 鉴权兼容入口
+/api/v2/market/*
+/api/v2/strategies*
+/api/v2/backtest/*
+/api/v2/live/*
+/api/v2/monitor/*
+/api/v2/sync/*
+/api/v2/factorlab/*
+/api/v2/settings/*
+/api/v2/review/*
+/api/v2/orderflow/*
+/api/v2/arbitrage/*
+/api/v2/agent/*
+/api/v2/research-workbench/*
 ```
 
 已移除的 `workflow / stocks / charts / data-hub / data-dev / database / acceptance`
-域不再存在。完整接口由 FastAPI OpenAPI 生成，域级说明见 [API 指南](api.md)。
+域不再存在；旧 `/api/paper/*`、`/api/backtest/*`、`/api/data/*`、`/api/pools/*`
+和 `/api/factors*` 不作为当前业务合同。完整接口由 FastAPI OpenAPI 生成，域级说明见
+[API 指南](api.md)。
 
 ## 4. 鉴权与权限
 
