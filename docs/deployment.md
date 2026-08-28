@@ -1,6 +1,7 @@
 # StockPro 运行与部署手册
 
-本地开发使用 `restart.sh`。配置好的生产环境由 GitHub Actions 从 `main` 构建和部署；真实交易能力不随 Web 部署启用。
+本地开发使用 `start.sh` / `restart.sh`，运行时固定连接本地隔离库。配置好的生产环境由 GitHub Actions
+从 `main` 构建和部署；两条链路相互独立，真实交易能力不随 Web 部署启用。
 
 生产 Web 正式入口为 `https://stockpro.notenap.com`，
 `www.stockpro.notenap.com` 与 HTTP 请求会永久跳转到该地址。服务器仍保留
@@ -15,7 +16,7 @@
 | 健康检查 | `http://localhost:4445/api/health` | 后端进程状态 |
 | 存储检查 | `http://localhost:4445/api/health/storage` | PostgreSQL 状态 |
 | OpenAPI | `http://localhost:4445/docs` | 运行时接口文档 |
-| PostgreSQL | `127.0.0.1:55432` | 本地隔离库（Docker Compose）；服务器库隧道也复用该端口 |
+| PostgreSQL | 本机 socket 或 `127.0.0.1:55432` | 固定数据库名 `stockpro_bitpro_rebase_dev` |
 
 ## 2. 环境准备
 
@@ -38,8 +39,10 @@ cp backend/.env.example backend/.env
 - 生成管理员强密码，仅保存其 Argon2 哈希到 `BITPRO_ADMIN_PASSWORD_HASH`，并配置独立的
   `BITPRO_AUTH_TOKEN_SECRET`；生产 HTTPS 同时设置 `BITPRO_AUTH_ENABLED=true` 与
   `BITPRO_AUTH_COOKIE_SECURE=true`，禁止把明文密码写入 `.env`；
-- 将 `DATABASE_URL` 指向隔离库 `stockpro_bitpro_rebase_dev`（见下方 [隔离库](#7-隔离库)）；
-- 需要连服务器研究库时再配置 `DATABASE_SSH_HOST`，不要把 `stockpro_dev` / 生产库交给 `./scripts/check.sh`；
+- 本地服务可不配置 `DATABASE_URL`，`start.sh` 会发现本机 socket 或 Docker 隔离库；需要覆盖时只使用
+  `STOCKPRO_LOCAL_DATABASE_URL`，且数据库名必须为 `stockpro_bitpro_rebase_dev`；
+- `backend/.env` 中遗留的服务器 `DATABASE_URL` 不会被本地启动脚本采用；不要把 `stockpro_dev` /
+  生产库交给本地服务或 `./scripts/check.sh`；
 - 按需填写 `TUSHARE_TOKEN` 和 `QWEN_API_KEY`；
 - 生产全量 A 股每日同步需设置 `A_SHARE_DAILY_SYNC_ENABLED=true`；默认北京时间 18:10，
   可用 `A_SHARE_DAILY_SYNC_HOUR`、`A_SHARE_DAILY_SYNC_MINUTE` 和
@@ -61,30 +64,41 @@ npm --prefix frontend install
 ## 4. 启动、停止和重启
 
 ```bash
+./start.sh --check
+./start.sh
+./status.sh
 ./restart.sh
 ./stop.sh
 ```
 
-`restart.sh` 会：
+`start.sh` 会：
 
-1. 停止占用 4444/4445 的旧本地进程；
-2. 尝试建立数据库 SSH 隧道（未配置 `DATABASE_SSH_HOST` 时该步可忽略）；
-3. 确保 Python/Node 依赖已安装；
-4. 启动 FastAPI 和 Vite；
-5. 轮询后端健康接口和前端首页。
+1. 检查 Python/Node 依赖是否已安装，但不在每次启动时重复安装；
+2. 只选择可达的 `stockpro_bitpro_rebase_dev`，拒绝 `stockpro_dev` 和其他数据库；
+3. 启动 FastAPI 和 Vite，并把明确的本地 `DATABASE_URL` 传给后端进程；
+4. 轮询后端、前端与存储健康接口，并核对实际数据库名称；
+5. 保留上一轮日志为 `logs/*.previous`。
+
+`restart.sh` 只组合 `stop.sh` 与 `start.sh`。`stop.sh` 只结束 PID、tmux 会话或 4444/4445 上
+可识别的 StockPro 进程，不再使用宽泛 `pkill`，也不会停止数据库或删除备份。
 
 如果安装了 `tmux`，前后端分别运行在 `stockpro-backend` 和 `stockpro-frontend` 会话中；否则使用后台进程。
 
-它不会：
+这些本地脚本不会：
 
 - 自动运行数据库迁移或 bootstrap；
 - 自动同步全市场数据；
+- 打开数据库 SSH 隧道；
+- 每次重启重复运行 pip/npm 安装；
 - 部署代码、rsync 或 scp 文件到远程服务器；
 - 自动部署 GitHub 上的新提交。
 
 ## 5. 日志与状态
 
 ```bash
+./status.sh
+./status.sh --json
+
 tail -f logs/backend.log
 tail -f logs/frontend.log
 
@@ -95,6 +109,9 @@ curl -fsS http://127.0.0.1:4445/api/health
 curl -fsS http://127.0.0.1:4445/api/health/storage
 curl -I http://127.0.0.1:4444/
 ```
+
+`status.sh` 即使在服务停止时也会读取本地隔离库，显示日线记录数、标的数、日期范围和最新备份；
+不会调用 Provider 或写数据库。
 
 如果使用 `tmux`：
 
@@ -170,6 +187,24 @@ curl -fsS -b /tmp/stockpro-cookie \
 ```
 
 空隔离库在迁移后即可通过健康检查；Paper / 回测表可以为空。不要从生产库复制。
+
+### 7.1 本地数据备份
+
+对当前隔离库创建 PostgreSQL custom-format 备份：
+
+```bash
+./scripts/backup_local_data.sh
+```
+
+默认写入 `data/local-backups/`，目录权限为 `700` 且已被 Git 忽略。每次备份包含：
+
+- `*.dump`：可供 `pg_restore` 使用的压缩备份；
+- `*.dump.sha256`：完整性校验；
+- `*.json`：数据库名、日线数量、标的数与日期范围；
+- `latest.dump`：指向最近一次已验证备份的符号链接。
+
+脚本只有在 `pg_restore --list` 成功后才发布最终文件；失败只清理本次 `.partial` 文件，不改变数据库
+或既有备份。可用 `STOCKPRO_LOCAL_BACKUP_DIR` 把备份放到另一块本地磁盘。
 
 ## 8. 数据库变更
 

@@ -1,112 +1,72 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# 停止服务脚本 - 优雅地关闭前后端服务
-# 使用方法: ./stop.sh 或 sh stop.sh
+set -euo pipefail
 
-cd "$(dirname "$0")"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LOG_DIR="$ROOT_DIR/logs"
 BACKEND_SESSION="stockpro-backend"
 FRONTEND_SESSION="stockpro-frontend"
 
-echo "================================"
-echo "🛑 停止应用服务..."
-echo "================================"
-
-# 颜色定义
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+mkdir -p "$LOG_DIR"
 
 stop_tmux_session() {
-    local session_name="$1"
-    if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$session_name" >/dev/null 2>&1; then
-        echo "  停止 tmux 会话: $session_name"
-        tmux kill-session -t "$session_name" >/dev/null 2>&1 || true
-    fi
+  local session_name="$1"
+  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$session_name" >/dev/null 2>&1; then
+    tmux kill-session -t "$session_name"
+    echo "[stop] tmux 会话已停止: $session_name"
+  fi
 }
 
-# 1. 从PID文件停止服务
-echo -e "\n${YELLOW}📦 尝试从PID文件停止服务...${NC}"
+stop_pid_file() {
+  local pid_file="$1"
+  local label="$2"
+  if [ ! -f "$pid_file" ]; then
+    return 0
+  fi
+  local process_id
+  process_id="$(tr -cd '0-9' < "$pid_file")"
+  if [ -n "$process_id" ] && kill -0 "$process_id" 2>/dev/null; then
+    kill "$process_id" 2>/dev/null || true
+    echo "[stop] ${label} 已停止: PID ${process_id}"
+  fi
+  rm -f "$pid_file"
+}
+
+stop_matching_listener() {
+  local service_port="$1"
+  local expected_pattern="$2"
+  local listener_pid
+  listener_pid="$(lsof -tiTCP:"$service_port" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+  if [ -z "$listener_pid" ]; then
+    return 0
+  fi
+  local command_line
+  command_line="$(ps -p "$listener_pid" -o command= 2>/dev/null || true)"
+  if [[ "$command_line" != *"$expected_pattern"* ]]; then
+    echo "[stop] 端口 ${service_port} 被非 StockPro 进程占用，未结束 PID ${listener_pid}: ${command_line}" >&2
+    return 1
+  fi
+  kill "$listener_pid" 2>/dev/null || true
+  echo "[stop] 端口 ${service_port} 的 StockPro 进程已停止: PID ${listener_pid}"
+}
+
 stop_tmux_session "$BACKEND_SESSION"
 stop_tmux_session "$FRONTEND_SESSION"
-rm -f logs/backend.session logs/frontend.session
+rm -f "$LOG_DIR/backend.session" "$LOG_DIR/frontend.session"
 
-if [ -f "logs/backend.pid" ]; then
-    BACKEND_PID=$(cat logs/backend.pid)
-    if ps -p $BACKEND_PID > /dev/null 2>&1; then
-        echo "  停止后端服务 (PID: $BACKEND_PID)..."
-        kill $BACKEND_PID 2>/dev/null || true
-        echo -e "  ${GREEN}✓ 后端服务已停止${NC}"
-    else
-        echo "  后端进程不存在 (PID: $BACKEND_PID)"
-    fi
-    rm -f logs/backend.pid
-fi
+stop_pid_file "$LOG_DIR/backend.pid" "后端"
+stop_pid_file "$LOG_DIR/frontend.pid" "前端"
 
-if [ -f "logs/frontend.pid" ]; then
-    FRONTEND_PID=$(cat logs/frontend.pid)
-    if ps -p $FRONTEND_PID > /dev/null 2>&1; then
-        echo "  停止前端服务 (PID: $FRONTEND_PID)..."
-        kill $FRONTEND_PID 2>/dev/null || true
-        echo -e "  ${GREEN}✓ 前端服务已停止${NC}"
-    else
-        echo "  前端进程不存在 (PID: $FRONTEND_PID)"
-    fi
-    rm -f logs/frontend.pid
-fi
+stop_matching_listener 4445 "uvicorn app.main:app"
+stop_matching_listener 4444 "vite"
 
-# 2. 按端口停止服务
-echo -e "\n${YELLOW}🔍 检查端口占用...${NC}"
+for wait_attempt in $(seq 1 20); do
+  if ! lsof -tiTCP:4444 -sTCP:LISTEN >/dev/null 2>&1 && ! lsof -tiTCP:4445 -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "[stop] 本地服务已停止；数据库与备份未改动。"
+    exit 0
+  fi
+  sleep 0.25
+done
 
-# 停止后端服务 (端口 4445)
-if lsof -t -i :4445 > /dev/null 2>&1; then
-    echo "  发现端口 4445 正在使用，正在关闭..."
-    lsof -t -i :4445 | xargs kill -9 2>/dev/null || true
-    echo -e "  ${GREEN}✓ 端口 4445 已释放${NC}"
-else
-    echo "  端口 4445 未被占用"
-fi
-
-# 停止前端服务 (端口 4444)
-if lsof -t -i :4444 > /dev/null 2>&1; then
-    echo "  发现端口 4444 正在使用，正在关闭..."
-    lsof -t -i :4444 | xargs kill -9 2>/dev/null || true
-    echo -e "  ${GREEN}✓ 端口 4444 已释放${NC}"
-else
-    echo "  端口 4444 未被占用"
-fi
-
-# 3. 清理进程
-echo -e "\n${YELLOW}🧹 清理相关进程...${NC}"
-pkill -f "uvicorn app.main:app" 2>/dev/null || true
-pkill -f "vite" 2>/dev/null || true
-echo -e "  ${GREEN}✓ 清理完成${NC}"
-
-# 4. 停止数据库 SSH 隧道
-echo -e "\n${YELLOW}🐘 停止 PostgreSQL SSH 隧道...${NC}"
-./scripts/database-tunnel.sh stop 2>/dev/null || true
-
-# 等待清理完成
-sleep 1
-
-# 5. 最终检查
-echo -e "\n${YELLOW}✅ 最终检查...${NC}"
-if lsof -t -i :4445 > /dev/null 2>&1; then
-    echo -e "  ${RED}⚠️  警告: 端口 4445 仍被占用${NC}"
-else
-    echo -e "  ${GREEN}✓ 端口 4445 已释放${NC}"
-fi
-
-if lsof -t -i :4444 > /dev/null 2>&1; then
-    echo -e "  ${RED}⚠️  警告: 端口 4444 仍被占用${NC}"
-else
-    echo -e "  ${GREEN}✓ 端口 4444 已释放${NC}"
-fi
-
-echo -e "\n================================"
-echo -e "${GREEN}✨ 所有服务已停止！${NC}"
-echo "================================"
-echo ""
-echo "🔄 重新启动服务:"
-echo "  ./restart.sh"
-echo ""
+echo "[stop] 服务未在超时内退出，请检查端口占用。" >&2
+exit 1

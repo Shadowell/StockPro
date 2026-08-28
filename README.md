@@ -34,13 +34,14 @@ cp backend/.env.example backend/.env
 # 需要真实数据或 AI 时，再填写 TUSHARE_TOKEN / QWEN_API_KEY。
 
 ./scripts/setup_isolation_db.sh                                  # 一键创建隔离库 stockpro_bitpro_rebase_dev
-export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 ./scripts/setup_isolation_db.sh --migrate                        # 应用 PostgreSQL 迁移
 
 python3 -m venv backend/venv
 backend/venv/bin/python -m pip install -r backend/requirements.txt
 npm --prefix frontend install
-./restart.sh                                                     # 启动前后端并做健康检查
+./start.sh --check                                               # 核对依赖与本地隔离库
+./start.sh                                                       # 启动前后端并做健康检查
+./scripts/backup_local_data.sh                                   # 保存一份可校验的本地数据备份
 ```
 
 启动后打开：
@@ -56,12 +57,17 @@ npm --prefix frontend install
 ### 日常运行
 
 ```bash
-./restart.sh             # 清理旧进程，启动后端和前端，并做健康检查
-./stop.sh                # 停止本地前后端
+./start.sh               # 只连接本地隔离库并启动前后端
+./status.sh              # 查看进程、健康、数据库、日线数量和最新备份
+./restart.sh             # 停止后重新启动，不安装依赖、不打开 SSH 隧道
+./stop.sh                # 停止本地前后端，保留数据库和备份
+./scripts/backup_local_data.sh
 tail -f logs/backend.log logs/frontend.log
 ```
 
-`restart.sh` 不执行数据库迁移/bootstrap，也不部署远程服务器。迁移或恢复 Paper 时显式执行：
+`start.sh` / `restart.sh` 只接受数据库名 `stockpro_bitpro_rebase_dev`，优先发现本机 PostgreSQL
+socket，其次使用 Docker 的 `127.0.0.1:55432`；它们不会读取 `.env` 中的服务器数据库地址、建立
+SSH 隧道、安装依赖、执行迁移/bootstrap 或部署远程服务器。迁移或恢复 Paper 时显式执行：
 
 ```bash
 (cd backend && venv/bin/python bootstrap_runtime.py)              # 迁移 + 目录 + 预置策略
@@ -154,7 +160,7 @@ export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 | --- | --- | --- |
 | 前端 | React 18、TypeScript、Vite、Tailwind CSS、ECharts | `http://localhost:4444` |
 | 后端 | FastAPI、Pydantic、SQLAlchemy、APScheduler、Backtrader | `http://localhost:4445` |
-| 数据库 | PostgreSQL | 本地隔离库 `127.0.0.1:55432`（Docker）；服务器研究库经 SSH 隧道按需接入 |
+| 数据库 | PostgreSQL | 本地隔离库 `stockpro_bitpro_rebase_dev`（本机 socket 或 Docker `127.0.0.1:55432`） |
 | 数据源 | TuShare 优先，AKShare 显式补充 | 由数据中心管理 |
 | AI | 通义千问 / DashScope，可选 | 由 `QWEN_API_KEY` 启用 |
 | Agent | 本地 stdio MCP，协议 `stockpro-mcp-v1` | 不提供公网传输 |
@@ -167,7 +173,8 @@ export DATABASE_URL="$(./scripts/setup_isolation_db.sh --print-url)"
 
 | 配置 | 作用 | 建议 |
 | --- | --- | --- |
-| `DATABASE_URL` | PostgreSQL 连接 | 黄金路径指向本地隔离库 `stockpro_bitpro_rebase_dev` |
+| `STOCKPRO_LOCAL_DATABASE_URL` | 本地服务 PostgreSQL 连接 | 可选；只能指向 `stockpro_bitpro_rebase_dev` |
+| `DATABASE_URL` | 显式脚本/后端命令的 PostgreSQL 连接 | 不要指向 `stockpro_dev` 或生产库运行本地服务 |
 | `DATABASE_SSH_HOST` | 数据库服务器 SSH 主机别名 | 仅连服务器研究库时需要，勿交给 `check.sh` |
 | `TUSHARE_TOKEN` | TuShare 数据权限 | 按实际积分和接口权限配置 |
 | `QWEN_API_KEY` | 通义千问分析 | 不使用 AI 时留空 |

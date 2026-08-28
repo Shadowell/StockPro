@@ -288,12 +288,14 @@ HTTP 扩展导入仅允许 `EXTENSION_HTTP_ALLOWED_HOSTS` 中精确配置的 HTT
 
 - 前端：React + Vite，`http://localhost:4444`。
 - 后端：FastAPI，`http://localhost:4445`。
-- 数据库：服务器 PostgreSQL 仍是研究/生产事实库。`./scripts/check.sh` 黄金路径使用隔离库
-  `stockpro_bitpro_rebase_dev`，可用 `./scripts/setup_isolation_db.sh` 在本机 Docker
-  （`127.0.0.1:55432`）或已有 Postgres 上创建；不要把 `stockpro_dev` / 生产库交给 check.sh。
+- 数据库：本地服务与 `./scripts/check.sh` 黄金路径固定使用隔离库 `stockpro_bitpro_rebase_dev`，
+  可用 `./scripts/setup_isolation_db.sh` 在本机 Docker（`127.0.0.1:55432`）或已有 Postgres 上创建；
+  `start.sh` / `restart.sh` 不读取服务器数据库配置、不打开 SSH 隧道，并在健康检查后核对实际数据库名。
+  `stockpro_dev` / 生产库不得作为本地运行目标。
 - 调度：APScheduler，计划与执行状态持久化到 PostgreSQL。
 - Electron：可选壳层，不是核心产品架构或主要验收入口。
-- 本地 bootstrap、迁移、数据同步和 Paper 恢复均显式执行。
+- 本地 bootstrap、迁移、数据同步、Paper 恢复和数据备份均显式执行；停止或重启服务不得删除
+  数据库、Paper 历史或 `data/local-backups/` 中的已验证备份。
 - 生产 Web 版本只接受 GitHub Actions 从 `main` 部署，并在迁移、服务重启和健康检查全部成功后记录部署 SHA。
 - 公开 MCP、真实券商接入和实盘订单不在当前产品范围；临时生产数据变更仍需单独明确授权。
 - OKX/Binance 实盘、合约 Paper、funding/arb 策略与 OKX 运维脚本已移出默认产品树（`archive/bitpro-crypto/`），A 股 Paper 不得导入。

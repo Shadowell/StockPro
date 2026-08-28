@@ -246,6 +246,10 @@ BitPro 页面使用其成熟 ViewModel；适配层从现有 PostgreSQL 对象生
 - 从当前 PostgreSQL 创建一致性备份。
 - 恢复到独立数据库 `stockpro_bitpro_rebase_dev`。
 - 重建 worktree 只连接隔离库。
+- 本地 `start.sh` / `restart.sh` 只发现和连接该隔离库，不读取服务器数据库地址或启动 SSH 隧道；
+  启动后必须核对存储健康中的数据库名。
+- 本地备份使用 custom-format `pg_dump`，经 `pg_restore --list` 和 SHA-256 校验后才更新
+  `data/local-backups/latest.dump`；停止与重启服务不得修改数据库或备份。
 - 所有迁移先在副本执行并生成前后对账。
 - 生产切换前再用最新生产快照完成一次完整演练。
 

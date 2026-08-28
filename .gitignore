@@ -56,6 +56,7 @@ Thumbs.db
 
 # Logs
 logs/
+data/local-backups/
 *.log
 
 # Database

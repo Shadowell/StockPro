@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import importlib.util
 from pathlib import Path
 
 
@@ -10,12 +11,41 @@ SETUP = ROOT / "scripts" / "setup_isolation_db.sh"
 CHECK = ROOT / "scripts" / "check.sh"
 COMPOSE = ROOT / "docker-compose.yml"
 SQL = ROOT / "scripts" / "sql" / "create_isolation_db.sql"
+PROVISION = ROOT / "scripts" / "provision_isolation_db.py"
 
 
 def test_setup_script_prints_isolation_url() -> None:
     result = subprocess.run([str(SETUP), "--print-url"], check=True, capture_output=True, text=True)
     assert result.stdout.strip().endswith("/stockpro_bitpro_rebase_dev")
     assert result.stdout.strip().startswith("postgresql://")
+
+
+def test_setup_script_preserves_local_socket_database_url() -> None:
+    env = {
+        **os.environ,
+        "DATABASE_URL": "postgresql:///stockpro_dev",
+    }
+
+    result = subprocess.run(
+        [str(SETUP), "--print-url"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "postgresql:///stockpro_bitpro_rebase_dev"
+
+
+def test_python_provisioner_preserves_local_socket_database_url() -> None:
+    spec = importlib.util.spec_from_file_location("stockpro_provision_isolation_db", PROVISION)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.isolation_url("postgresql:///postgres") == "postgresql:///stockpro_bitpro_rebase_dev"
 
 
 def test_compose_and_sql_target_isolation_db() -> None:
