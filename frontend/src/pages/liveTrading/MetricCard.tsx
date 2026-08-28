@@ -22,7 +22,7 @@ export function MetricCard({
     down: 'text-down',
   };
   return (
-    <div className="bg-crypto-card border border-crypto-border rounded-xl p-3">
+    <div data-metric-card className="bg-crypto-card border border-crypto-border rounded-xl p-3">
       <div className="flex items-center gap-1.5 mb-1">
         <span className={colorMap[color]}>{icon}</span>
         <span className="text-[10px] text-gray-500">{label}</span>

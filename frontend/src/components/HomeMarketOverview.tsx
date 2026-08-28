@@ -150,13 +150,14 @@ function IndexStrip({ overview, onSelectSymbol }: { overview: MarketOverview; on
   const { indices } = overview;
   return (
     <ModuleShell title="指数行情" icon={<TrendingUp className="h-4 w-4 text-blue-300" />} status={indices.status}>
-      <div className="grid grid-cols-1 gap-px bg-crypto-border/50 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 xl:grid-cols-4">
         {indices.items.length ? indices.items.map((item) => (
           <button
             key={item.symbol}
             type="button"
             onClick={() => onSelectSymbol(item.symbol)}
-            className="group min-w-0 bg-crypto-card px-4 py-3 text-left transition-colors hover:bg-slate-800/75"
+            data-metric-card
+            className="group min-w-0 rounded-xl border border-crypto-border/70 bg-crypto-card px-4 py-3 text-left transition-colors hover:bg-slate-800/75"
           >
             <div className="flex items-center justify-between gap-2">
               <span className="truncate text-xs font-semibold text-gray-200">{item.name}</span>
@@ -299,7 +300,7 @@ function ActivitySummary({ overview }: { overview: MarketOverview }) {
   const { activity } = overview;
   return (
     <ModuleShell title="成交与换手" icon={<Activity className="h-4 w-4 text-amber-300" />} status={activity.status}>
-      <div className="grid grid-cols-2 gap-px bg-crypto-border/50 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 xl:grid-cols-6">
         {[
           ['全市场成交额', formatAmount(activity.totalAmountCny)],
           ['个股平均成交额', formatAmount(activity.averageAmountCny)],
@@ -308,7 +309,7 @@ function ActivitySummary({ overview }: { overview: MarketOverview }) {
           ['高换手', activity.highTurnoverCount == null ? '—' : `${activity.highTurnoverCount} 家`],
           ['放量股票', activity.volumeExpansionCount == null ? '—' : `${activity.volumeExpansionCount} 家`],
         ].map(([label, value]) => (
-          <div key={label} className="min-w-0 bg-crypto-card px-3 py-3">
+          <div key={label} data-metric-card className="min-w-0 rounded-xl border border-crypto-border/70 bg-crypto-card px-3 py-3">
             <div className="truncate text-[11px] text-gray-500">{label}</div>
             <div className="mt-2 truncate font-mono text-sm font-semibold tabular-nums text-gray-100">{value}</div>
           </div>

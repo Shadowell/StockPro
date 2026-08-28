@@ -148,7 +148,7 @@ function KpiCard({
   }[tone];
 
   return (
-    <section className={clsx('rounded-xl border p-4 shadow-inner shadow-black/10', toneStyles.border, toneStyles.bg)}>
+    <section data-metric-card className={clsx('rounded-xl border p-4 shadow-inner shadow-black/10', toneStyles.border, toneStyles.bg)}>
       <div className="mb-3 text-xs font-semibold text-gray-400">{label}</div>
       <div className={clsx('text-[clamp(1.25rem,1.55vw,1.75rem)] font-bold leading-tight tabular-nums', toneStyles.text)}>{value}</div>
       <div className="mt-2 text-[11px] leading-snug text-gray-500">{sub}</div>

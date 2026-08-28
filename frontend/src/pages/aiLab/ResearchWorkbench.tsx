@@ -170,7 +170,7 @@ function metricValueText(value: unknown): string {
 function Metric({ label, value, tone = 'text-gray-100' }: { label: string; value: unknown; tone?: string }) {
   const display = metricValueText(value);
   return (
-    <div className="min-w-0 rounded-lg border border-crypto-border bg-slate-800/65 px-3 py-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.22)] ring-1 ring-white/[0.025]">
+    <div data-metric-card className="min-w-0 rounded-xl border border-crypto-border bg-slate-800/65 px-3 py-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.22)] ring-1 ring-white/[0.025]">
       <div className="truncate text-[11px] text-gray-500">{label}</div>
       <div className={clsx('mt-1 truncate text-lg font-semibold tabular-nums', tone)} title={display}>{display}</div>
     </div>

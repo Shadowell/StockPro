@@ -4171,3 +4171,8 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 
 - Paper 账户持仓 API 从 `positions.name` 返回证券名称；A 股持仓卡以名称为主标题、统一代码为副标题，
   历史记录缺少名称时仍回退显示代码。生产目标持仓应显示“安徽凤凰 / 920000.BJ”。
+
+## 2026-08-28 全站指标卡圆角统一
+
+- 共享 KPI/Metric 组件统一为 12px 圆角；首页指数与成交指标、FactorLab 任务指标、基本面报告期指标
+  从 `gap-px` 直角矩阵改为独立圆角卡片。浏览器回归检查所有 `data-metric-card` 四角至少 8px。
