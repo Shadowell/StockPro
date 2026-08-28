@@ -17,6 +17,8 @@ BACKEND = ROOT / "backend"
 
 def isolation_url(admin_url: str) -> str:
     parsed = urlparse(admin_url)
+    if not parsed.netloc:
+        return f"{parsed.scheme}:///{ISOLATION_DB}"
     return urlunparse(parsed._replace(path=f"/{ISOLATION_DB}"))
 
 

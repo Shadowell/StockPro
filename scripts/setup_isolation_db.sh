@@ -40,7 +40,10 @@ from urllib.parse import urlparse, urlunparse
 source = sys.argv[1]
 database = sys.argv[2]
 parsed = urlparse(source)
-print(urlunparse(parsed._replace(path=f"/{database}")))
+if parsed.netloc:
+    print(urlunparse(parsed._replace(path=f"/{database}")))
+else:
+    print(f"{parsed.scheme}:///{database}")
 PY
 }
 
@@ -51,6 +54,9 @@ from urllib.parse import urlparse, urlunparse
 
 parsed = urlparse(sys.argv[1])
 netloc = parsed.netloc
+if not netloc:
+    print(f"{parsed.scheme}://{parsed.path}")
+    raise SystemExit(0)
 if "@" in netloc:
     userinfo, host = netloc.rsplit("@", 1)
     user = userinfo.split(":", 1)[0]
