@@ -681,7 +681,7 @@ export default function Market() {
               <div className="market-detail-controls flex min-w-0 flex-wrap items-center gap-3">
                 {/* 市场类型 */}
                 <div
-                  className="market-type-toggle flex overflow-hidden rounded-lg border border-crypto-border bg-crypto-card"
+                  className="market-type-toggle flex w-full overflow-hidden rounded-lg border border-crypto-border bg-crypto-card sm:w-[200px]"
                   data-active-market={marketType}
                 >
                   {([
@@ -706,7 +706,7 @@ export default function Market() {
                         setRecentTrades([]);
                       }}
                       className={clsx(
-                        'h-9 px-3 text-xs font-semibold transition-colors',
+                        'h-9 min-w-0 flex-1 px-3 text-xs font-semibold transition-colors',
                         marketType === option.value
                           ? 'bg-blue-600 text-white shadow-sm shadow-blue-900/30'
                           : 'text-gray-500 hover:bg-gray-800/60 hover:text-gray-300'
@@ -724,6 +724,7 @@ export default function Market() {
                   allSymbols={allSymbols}
                   instruments={allInstruments}
                   marketType={marketType}
+                  className="w-full sm:w-[200px] [&>button]:w-full [&>button]:min-w-0"
                 />
               </div>
               <div className="flex min-w-[13rem] flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">

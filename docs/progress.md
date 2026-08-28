@@ -4176,3 +4176,8 @@ Sprint 合同：`docs/contracts/active-bitpro-flow-parity.md`
 
 - 共享 KPI/Metric 组件统一为 12px 圆角；首页指数与成交指标、FactorLab 任务指标、基本面报告期指标
   从 `gap-px` 直角矩阵改为独立圆角卡片。浏览器回归检查所有 `data-metric-card` 四角至少 8px。
+
+## 2026-08-28 行情顶部控件等宽
+
+- 行情详情的股票/ETF/指数分段控件与证券选择器统一为桌面 200px、窄屏父容器全宽；三段选项等分，
+  浏览器回归在 1440px 与 390px 验证两者宽度差不超过 1px。
