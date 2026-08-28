@@ -29,7 +29,7 @@ async function installPaperConsistencyFixtures(page: Parameters<typeof installFi
       total_trades: 1,
       config: { is_paper_trading: true, asset_class: 'stock', strategy_type: 'momentum', timeframe: '1d', initial_capital: 1000000 },
     }
-    const position = { symbol: SYMBOL, currency: 'CNY', asset_type: 'stock', side: 'long', amount: 7300, base_amount: 7300, free: 7300, notional: 99207, entry_price: 13.59, mark_price: 13.59, mark_price_source: 'paper_position_last_price', mark_price_at: '2026-08-27T14:55:00+08:00', unrealized_pnl: 0, paper_instance_id: INSTANCE_ID }
+    const position = { symbol: SYMBOL, name: '安徽凤凰', currency: 'CNY', asset_type: 'stock', side: 'long', amount: 7300, base_amount: 7300, free: 7300, notional: 99207, entry_price: 13.59, mark_price: 13.59, mark_price_source: 'paper_position_last_price', mark_price_at: '2026-08-27T14:55:00+08:00', unrealized_pnl: 0, paper_instance_id: INSTANCE_ID }
     let data: unknown
 
     if (path === '/api/v2/live/strategies') data = { strategies: [strategy] }
@@ -83,6 +83,9 @@ test('Paper live watch and monitor reconcile one account snapshot', async ({ pag
   await expect(page.getByText('¥900,763.24', { exact: true })).toBeVisible()
 
   await page.goto('/watch')
+  const positionsPanel = page.getByTestId('ashare-positions-panel')
+  await expect(positionsPanel.getByText('安徽凤凰', { exact: true })).toBeVisible()
+  await expect(positionsPanel.getByText(SYMBOL, { exact: true })).toBeVisible()
   await expect(page.getByText('Paper 持仓最新价回退', { exact: false })).toBeVisible()
   await expect(page.getByText(/13\.59/).first()).toBeVisible()
 

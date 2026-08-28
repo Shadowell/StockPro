@@ -328,6 +328,7 @@ class PaperRepository:
             output.append(
                 {
                     "symbol": explicit_instrument_key(row.get("symbol")) or row.get("symbol"),
+                    "name": str(row.get("name") or "").strip() or None,
                     "currency": "CNY",
                     "asset_type": "stock",
                     "side": "long",

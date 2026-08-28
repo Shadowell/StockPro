@@ -489,7 +489,7 @@ export function LiveContractPositionsPanel({
   };
 
   return (
-    <div className={liveContractPositionsPanelShell}>
+    <div className={liveContractPositionsPanelShell} data-testid={isAshare ? 'ashare-positions-panel' : 'contract-positions-panel'}>
       <div className={liveAccountPanelHeader}>
         <CircleDollarSign className="h-4 w-4 text-amber-300" />
         <span className="text-sm font-semibold text-gray-100">{title}</span>
@@ -504,6 +504,7 @@ export function LiveContractPositionsPanel({
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             {visibleRows.map((position, index) => {
               const symbol = position.symbol || '--';
+              const positionName = String(position.name || '').trim();
               const base = contractBaseSymbol(symbol);
               const sideBadge = contractSideBadge(position);
               const leverage = finiteNumber(position.leverage);
@@ -550,7 +551,14 @@ export function LiveContractPositionsPanel({
                         <span className={clsx('flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold', assetBadgeClass(base))}>
                           {base.slice(0, 1)}
                         </span>
-                        <span className="truncate text-sm font-semibold text-gray-100">{isAshare ? symbol : contractDisplaySymbol(symbol)}</span>
+                        {isAshare ? (
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold text-gray-100">{positionName || symbol}</span>
+                            {positionName && <span className="mt-0.5 block truncate text-[11px] tabular-nums text-gray-500">{symbol}</span>}
+                          </span>
+                        ) : (
+                          <span className="truncate text-sm font-semibold text-gray-100">{contractDisplaySymbol(symbol)}</span>
+                        )}
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1">
                         <span className={clsx('rounded-md px-1.5 py-0.5 text-[11px] font-semibold', sideBadge.className)}>

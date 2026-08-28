@@ -708,6 +708,7 @@ export interface LiveExecutionOrder {
 
 export interface LiveExecutionPosition {
   symbol?: string;
+  name?: string | null;
   currency?: string;
   assetType?: string;
   side?: string;
