@@ -5,7 +5,7 @@ test('strategy center keeps BitPro catalogue and A-share lineage',async({page})=
 test('sample strategy detail exposes one-version audit evidence and Paper link', async ({ page }) => {
   await installFinalFixtures(page)
   const strategy = {
-    id: 'c10c9805-5b0c-534d-860f-c860f0659eaa', name: 'StockPro minimal research chain 2026-08-26',
+    id: 'c10c9805-5b0c-534d-860f-c860f0659eaa', name: '[A股][日线][动量] 最小研究链',
     description: '用于验证 A 股数据、回测、成交与 Paper 关联的最小审计样例，不构成投资建议，也不是正式候选策略。',
     script_content: "def generate_signals(rows):\n    return sorted(rows, key=lambda row: row['daily_return'], reverse=True)\n",
     config: { asset_class: 'stock', timeframe: '1d', version: 1, validation_status: 'valid', symbols: ['920000.BJ', '920001.BJ', '920002.BJ'] },

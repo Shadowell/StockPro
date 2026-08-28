@@ -65,9 +65,9 @@ npm --prefix frontend install
 tail -f logs/backend.log logs/frontend.log
 ```
 
-`start.sh` / `restart.sh` 只接受数据库名 `stockpro_bitpro_rebase_dev`，优先发现本机 PostgreSQL
-socket，其次使用 Docker 的 `127.0.0.1:55432`；它们不会读取 `.env` 中的服务器数据库地址、建立
-SSH 隧道、安装依赖、执行迁移/bootstrap 或部署远程服务器。迁移或恢复 Paper 时显式执行：
+`start.sh` / `restart.sh` 只接受本机隔离库 `stockpro_bitpro_rebase_dev`：优先 Docker
+`127.0.0.1:55432`，其次同名 Unix socket。它们拒绝远程 host、不继承环境里的 `DATABASE_URL`、
+不建立 SSH 隧道、不安装依赖、不部署远程服务器。迁移或恢复 Paper 时显式执行：
 
 ```bash
 (cd backend && venv/bin/python bootstrap_runtime.py)              # 迁移 + 目录 + 预置策略

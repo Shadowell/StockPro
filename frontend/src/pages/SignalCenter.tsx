@@ -23,10 +23,13 @@ import {
 import clsx from 'clsx';
 import { SELECTED_SEGMENT_BORDER_CLASS, SELECTED_SEGMENT_CLASS } from '../utils/selectionStyles';
 import {
+  marketApi,
   signalCenterApi,
+  type LimitLadderPayload,
   type SignalChannel,
   type SignalStrategySetting,
   type StrategySignal,
+  type SymbolAbnormality,
 } from '../api/client';
 import CryptoSelect from '../components/CryptoSelect';
 import { getTradeSideDisplay } from '../utils/tradeSide';
@@ -134,7 +137,7 @@ function emptyChannelForm(): ChannelFormState {
 function defaultChannelTestForm(): ChannelTestFormState {
   return {
     action: 'ENTER_LONG',
-    instrument: 'DOGE-USDT-SWAP',
+    instrument: '600519.SH',
     investmentType: 'margin',
     amount: '0.1',
   };
@@ -158,7 +161,7 @@ function formatAmount(signal: StrategySignal): string {
   if (signal.suggestedInvestmentType === 'percentage_balance') {
     return `${amount.toFixed(1)}% 可用余额`;
   }
-  return `$${amount.toFixed(2)} 保证金`;
+  return `¥${amount.toFixed(2)}`;
 }
 
 function formatSignalTime(value?: string | null): string {
@@ -177,7 +180,7 @@ function formatSignedUsd(value?: number | null): string {
   const num = finiteNumber(value);
   if (num == null) return '--';
   const sign = num > 0 ? '+' : num < 0 ? '-' : '';
-  return `${sign}$${Math.abs(num).toFixed(2)}`;
+  return `${sign}¥${Math.abs(num).toFixed(2)}`;
 }
 
 function formatSignedPct(value?: number | null): string {
@@ -414,6 +417,8 @@ export default function SignalCenter() {
   const [strategyReturnSort, setStrategyReturnSort] = useState<StrategyReturnSort>('default');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [marketMovers, setMarketMovers] = useState<SymbolAbnormality[]>([]);
+  const [limitLadder, setLimitLadder] = useState<LimitLadderPayload | null>(null);
   const [form, setForm] = useState<ChannelFormState>(() => emptyChannelForm());
   const [editForm, setEditForm] = useState<ChannelFormState>(() => emptyChannelForm());
   const [testForm, setTestForm] = useState<ChannelTestFormState>(() => defaultChannelTestForm());
@@ -557,17 +562,21 @@ export default function SignalCenter() {
   }, [activeStatus, selectedStrategyId]);
 
   const loadData = useCallback(async () => {
+    const marketPromise = Promise.all([
+      marketApi.getMovers(undefined, 8).catch(() => [] as SymbolAbnormality[]),
+      marketApi.getLimitLadder(10).catch(() => null),
+    ]).then(([movers, ladder]) => {
+      const rows = Array.isArray(movers) ? movers : [];
+      setMarketMovers(rows);
+      setLimitLadder(ladder);
+    });
     await loadMetadata();
-    await loadSignals();
+    await Promise.all([loadSignals(), marketPromise]);
   }, [loadMetadata, loadSignals]);
 
   useEffect(() => {
-    void loadMetadata();
-  }, [loadMetadata]);
-
-  useEffect(() => {
-    void loadSignals();
-  }, [loadSignals]);
+    void loadData();
+  }, [loadData]);
 
   useEffect(() => {
     if (!selectedStrategyId) {
@@ -662,7 +671,7 @@ export default function SignalCenter() {
     void runSignalAction(
       signal.id,
       () => signalCenterApi.approveSignal(signal.id, selectedChannelIds),
-      '已提交发送到 OKX 信号通道'
+      '已提交发送到 A 股信号通道'
     );
   };
 
@@ -688,7 +697,7 @@ export default function SignalCenter() {
     try {
       await signalCenterApi.createChannel(buildCreateChannelPayload(form));
       setForm(emptyChannelForm());
-      setNotice('通道配置已保存，请在右侧 OKX 信号通道卡片启用');
+      setNotice('通道配置已保存，请在右侧信号通道卡片启用');
       await loadData();
     } catch (err) {
       setError(errorMessage(err));
@@ -956,7 +965,7 @@ export default function SignalCenter() {
             !send
               ? '测试通过：payload 已生成，未真实发送。'
               : status === 'sent'
-                ? `真实测试已发送：${instrument} ${actionLabel[testForm.action]}，保证金 ${amount} USDT。请到 OKX Signal Bot 或 OKX 账户确认成交结果。`
+                ? `真实测试已发送：${instrument} ${actionLabel[testForm.action]}，名义金额 ${amount} 元。请到信号通道或模拟账户确认结果。`
                 : `真实测试发送失败：${responseStatus}${responseSuffix}。`,
         },
       }));
@@ -1010,6 +1019,43 @@ export default function SignalCenter() {
         </button>
       </div>
 
+      <div className="mb-5 grid gap-4 xl:grid-cols-2">
+        <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+          <div className="border-b border-crypto-border px-4 py-3">
+            <h2 className="text-sm font-semibold text-white">今日市场信号</h2>
+            <p className="mt-1 text-[11px] text-gray-500">来自 A 股排行与异动，不是外部 webhook</p>
+          </div>
+          <div className="divide-y divide-crypto-border/40">
+            {marketMovers.length ? marketMovers.slice(0, 6).map((row) => (
+              <div key={row.symbol} className="grid grid-cols-[minmax(0,1fr)_88px_72px] items-center gap-2 px-4 py-2.5 text-xs">
+                <span className="truncate text-gray-200">{row.name || row.symbol} <span className="text-gray-500">{row.symbol}</span></span>
+                <span className="truncate text-gray-500">{(row.tags || []).join(' · ') || '观察'}</span>
+                <span className={clsx('text-right tabular-nums', (row.return3d || 0) >= 0 ? 'text-up' : 'text-down')}>
+                  {row.return3d == null ? '—' : `${row.return3d >= 0 ? '+' : ''}${row.return3d.toFixed(2)}%`}
+                </span>
+              </div>
+            )) : <div className="px-4 py-8 text-center text-xs text-gray-500">暂无排行信号，请先同步行情</div>}
+          </div>
+        </section>
+        <section className="overflow-hidden rounded-xl border border-crypto-border bg-crypto-card">
+          <div className="border-b border-crypto-border px-4 py-3">
+            <h2 className="text-sm font-semibold text-white">涨停 / 连板信号</h2>
+            <p className="mt-1 text-[11px] text-gray-500">池日 {limitLadder?.poolTradeDate || '—'} · 梯队日 {limitLadder?.ladderDate || '—'}</p>
+          </div>
+          <div className="divide-y divide-crypto-border/40">
+            {(limitLadder?.levels || []).slice(0, 4).map((level) => (
+              <div key={level.level} className="px-4 py-2.5 text-xs">
+                <div className="text-gray-400">{level.level} 板 · {level.members?.length || 0} 只</div>
+                <div className="mt-1 truncate text-gray-200">
+                  {(level.members || []).slice(0, 4).map((member) => member.name || member.symbol).join(' · ') || '—'}
+                </div>
+              </div>
+            ))}
+            {!(limitLadder?.levels || []).length && <div className="px-4 py-8 text-center text-xs text-gray-500">暂无连板事实</div>}
+          </div>
+        </section>
+      </div>
+
       {(notice || error) && (
         <div
           className={clsx(
@@ -1046,11 +1092,11 @@ export default function SignalCenter() {
               description="从外部 Signal Bot 页面复制触发地址，StockPro 确认后会向这里推送信号。"
               value={form.webhookUrl}
               onChange={(webhookUrl) => setForm((prev) => ({ ...prev, webhookUrl }))}
-              placeholder="粘贴 OKX webhook 触发地址"
+              placeholder="粘贴信号回调地址"
             />
             <ChannelTextInput
               label="信号令牌"
-              description="从 OKX 自定义 JSON 的 signalToken 字段复制，只用于组装发给 OKX 的信号。"
+              description="从信号通道配置复制令牌，只用于组装发给下游通道的信号。"
               value={form.signalToken}
               onChange={(signalToken) => setForm((prev) => ({ ...prev, signalToken }))}
               placeholder="signalToken"
@@ -1058,7 +1104,7 @@ export default function SignalCenter() {
             />
             <ChannelTextInput
               label="最大保证金"
-              description="限制单次入场信号建议使用的保证金，默认 10 USDT。"
+              description="限制单次入场信号建议使用的名义金额，默认 10 万元。"
               value={form.maxMarginUsdt}
               onChange={(maxMarginUsdt) => setForm((prev) => ({ ...prev, maxMarginUsdt }))}
               placeholder="10"
@@ -1066,7 +1112,7 @@ export default function SignalCenter() {
             />
             <ChannelTextInput
               label="有效秒数"
-              description="OKX 接收信号允许的最大延迟秒数，默认 30 秒。"
+              description="下游通道接收信号允许的最大延迟秒数，默认 30 秒。"
               value={form.maxLagSec}
               onChange={(maxLagSec) => setForm((prev) => ({ ...prev, maxLagSec }))}
               placeholder="30"
@@ -1143,7 +1189,7 @@ export default function SignalCenter() {
                           />
                           <ChannelTextInput
                             label="Webhook 地址"
-                            description="当前地址明文展示；修改时请从 OKX App Signal Bot 页面复制新地址。"
+                            description="当前地址明文展示；修改时请从信号通道配置页复制新地址。"
                             value={editForm.webhookUrl}
                             onChange={(webhookUrl) => setEditForm((prev) => ({ ...prev, webhookUrl }))}
                             placeholder="当前 webhook 地址"
@@ -1151,7 +1197,7 @@ export default function SignalCenter() {
                           />
                           <ChannelTextInput
                             label="信号令牌"
-                            description="当前令牌以隐藏状态展示；如需替换，请复制 OKX 自定义 JSON 的 signalToken。"
+                            description="当前令牌以隐藏状态展示；如需替换，请复制通道配置中的信号令牌。"
                             value={editForm.signalToken}
                             onChange={(signalToken) => setEditForm((prev) => ({ ...prev, signalToken }))}
                             placeholder={maskedSignalTokenPlaceholder}
@@ -1161,7 +1207,7 @@ export default function SignalCenter() {
                         <div className="grid max-w-[208px] gap-2 lg:grid-cols-[100px_100px] lg:items-end">
                           <ChannelTextInput
                             label="最大保证金"
-                            description="限制单次入场信号建议使用的保证金，默认 10 USDT。"
+                            description="限制单次入场信号建议使用的名义金额，默认 10 万元。"
                             value={editForm.maxMarginUsdt}
                             onChange={(maxMarginUsdt) => setEditForm((prev) => ({ ...prev, maxMarginUsdt }))}
                             placeholder="默认 10"
@@ -1170,7 +1216,7 @@ export default function SignalCenter() {
                           />
                           <ChannelTextInput
                             label="有效秒数"
-                            description="OKX 接收信号允许的最大延迟秒数，默认 30 秒。"
+                            description="下游通道接收信号允许的最大延迟秒数，默认 30 秒。"
                             value={editForm.maxLagSec}
                             onChange={(maxLagSec) => setEditForm((prev) => ({ ...prev, maxLagSec }))}
                             placeholder="默认 30"
@@ -1857,7 +1903,7 @@ export default function SignalCenter() {
                                 Payload
                               </summary>
                               <div className="absolute right-0 top-full z-20 mt-2 w-[520px] max-w-[calc(100vw-4rem)] rounded-xl border border-crypto-border bg-crypto-card p-3 shadow-2xl shadow-black/40">
-                                <div className="mb-2 text-sm font-semibold text-gray-200">OKX payload preview</div>
+                                <div className="mb-2 text-sm font-semibold text-gray-200">信号预览</div>
                                 <pre className="max-h-72 overflow-auto rounded-md bg-black/30 p-3 text-xs leading-relaxed text-blue-100">
                                   {JSON.stringify(signal.okxPayloadPreview, null, 2)}
                                 </pre>
@@ -1889,7 +1935,7 @@ export default function SignalCenter() {
                                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-500/60 bg-blue-600/20 px-2.5 text-xs font-semibold text-blue-200 hover:bg-blue-600/30 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <Send size={14} />
-                                发送到 OKX
+                                发送信号
                               </button>
                             )}
                             {signal.status === 'failed' && (
@@ -1956,11 +2002,11 @@ export default function SignalCenter() {
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
               <div className="mb-1 flex items-center gap-1.5 font-semibold">
                 <AlertCircle size={14} />
-                真实发送会推送到 OKX Signal Bot
+                真实发送会推送到已配置的 A 股信号通道
               </div>
               <p className="text-amber-200/85">
-                默认发送 DOGE-USDT-SWAP 开多，investmentType=margin，amount=0.1 USDT。
-                OKX 侧仍可能因为最小下单额、Bot 配置或账户资金拒绝成交。
+                默认发送 600519.SH 买入，名义金额 0.1 万元。
+                下游通道仍可能因为最小下单额、通道配置或账户资金拒绝成交。
               </p>
             </div>
 
@@ -1974,7 +2020,7 @@ export default function SignalCenter() {
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-gray-400">保证金 USDT</span>
+                <span className="mb-1 block text-xs font-semibold text-gray-400">名义金额 CNY</span>
                 <input
                   type="number"
                   inputMode="decimal"

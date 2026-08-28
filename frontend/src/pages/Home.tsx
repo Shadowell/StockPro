@@ -53,10 +53,12 @@ function formatRatio(value?: number | null, digits = 1): string {
 }
 
 function statusLabel(status?: string | null): string {
-  if (!status) return 'empty';
-  if (status === 'ok') return '可用';
+  if (!status || status === 'empty') return '暂无数据';
+  if (status === 'ok' || status === 'ready') return '可用';
   if (status === 'partial') return '部分可用';
   if (status === 'blocked') return '阻塞';
+  if (status === 'stale') return '数据偏旧';
+  if (status === 'unavailable') return '暂不可用';
   return status;
 }
 
@@ -252,7 +254,7 @@ function MarketIntelligencePanel({
             </div>
           </div>
           <div className="flex items-end gap-3">
-            <div className="text-2xl font-semibold tracking-tight text-white">{phase?.phase || 'unknown'}</div>
+            <div className="text-2xl font-semibold tracking-tight text-white">{phase?.phase && phase.phase !== 'unknown' ? phase.phase : '待计算'}</div>
             <div className="pb-1 text-xs tabular-nums text-gray-500">
               置信度 {phase ? `${Math.round((phase.confidence || 0) * 100)}%` : '—'}
             </div>
@@ -535,10 +537,12 @@ export default function Home() {
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
             <span className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/[0.07] px-3 py-1.5 font-medium text-emerald-300">
               <CircleDot className="h-3.5 w-3.5" />
-              {dashboard?.evidence.dataMode || 'POSTGRESQL MARKET DATA'}
+              {dashboard?.evidence.dataMode && !/postgres|sql/i.test(String(dashboard.evidence.dataMode))
+                ? dashboard.evidence.dataMode
+                : 'A 股行情'}
             </span>
             <span className="rounded-md border border-slate-600/45 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-300">
-              {dashboard?.evidence.tradeDate || 'CN A-SHARE'}
+              {dashboard?.evidence.tradeDate || 'A 股'}
             </span>
             <span className="rounded-md border border-slate-600/45 bg-slate-900/70 px-3 py-1.5 font-medium text-slate-400">
               {statusLabel(dashboard?.dataStatus)}
@@ -546,7 +550,7 @@ export default function Home() {
           </div>
         </div>
         <p className="mt-3 max-w-3xl border-l-2 border-blue-500/40 pl-3 text-xs leading-5 text-gray-500">
-          聚合 PostgreSQL A 股行情的市场广度、成交活跃度和强弱排行；点击榜单标的后进入行情页查看日线详情。
+          聚合 A 股行情的市场广度、成交活跃度和强弱排行；点击榜单标的后进入行情页查看日线详情。
         </p>
         <nav className="mt-4 flex flex-wrap gap-1.5" aria-label="首页分析板块">
           {HOME_TABS.map((tab) => (

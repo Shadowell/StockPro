@@ -73,7 +73,7 @@ export default function MarketEnvironment() {
         <div className="grid gap-3 lg:grid-cols-3">
           <div className="rounded-lg border border-crypto-border/60 p-3">
             <div className="text-[10px] text-gray-500">当前阶段</div>
-            <div className="mt-1 text-lg font-semibold text-gray-100">{phase?.phase || 'unknown'}</div>
+            <div className="mt-1 text-lg font-semibold text-gray-100">{phase?.phase && phase.phase !== 'unknown' ? phase.phase : '待计算'}</div>
             <div className="mt-0.5 text-[10px] text-gray-500">
               置信度 {phase ? `${Math.round((phase.confidence ?? 0) * 100)}%` : '—'}
             </div>

@@ -953,7 +953,7 @@ export default function DataManager() {
       setAshareHistorySyncing(true);
       setSyncing(true);
       setSyncingMode('full');
-      setAshareHistoryFeedback({ type: 'info', message: '正在按交易日拉取全部 A 股近半年 1D 日线，完成后一次写入 PostgreSQL…' });
+      setAshareHistoryFeedback({ type: 'info', message: '正在按交易日拉取全部 A 股近半年 1D 日线，完成后一次写入本地数据仓库…' });
       const result = await dataSyncApi.syncAllAshareHistory({ historyDays: SYNC_HISTORY_DAYS });
       if (result.status === 'locked') {
         setAshareHistoryFeedback({ type: 'error', message: '已有 A 股同步任务运行中，本次未重复提交。' });
@@ -1227,7 +1227,7 @@ export default function DataManager() {
             </button>
             <div className="pointer-events-none absolute right-0 top-11 z-30 w-[560px] max-w-[calc(100vw-3rem)] rounded-xl border border-blue-500/25 bg-[#111827] p-4 text-xs leading-relaxed text-gray-400 shadow-2xl shadow-black/40 opacity-0 translate-y-1 transition-all duration-150 group-hover/data-help:opacity-100 group-hover/data-help:translate-y-0 group-focus-within/data-help:opacity-100 group-focus-within/data-help:translate-y-0">
               <div className="space-y-1.5">
-                <p><strong className="text-gray-200">全量同步</strong> — 按 A 股交易日历拉取全市场日线，完成质量检查后落入 PostgreSQL 分区</p>
+                <p><strong className="text-gray-200">全量同步</strong> — 按 A 股交易日历拉取全市场日线，完成质量检查后落入本地数据仓库</p>
                 <p><strong className="text-gray-200">自定义同步</strong> — 选择日期范围、证券代码和数据集，<strong className="text-gray-200">精确指定</strong>研究输入</p>
                 <p><strong className="text-gray-200">增量更新</strong> — 从上次交易日水位继续拉取，不在页面 GET 时隐式调用 Provider</p>
                 <p><strong className="text-gray-200">展开详情 → 按日期</strong> — 在每个交易对的展开面板中，通过顶部日期选择器指定范围后，点击"按日期"按钮同步</p>
@@ -1934,7 +1934,7 @@ export default function DataManager() {
                   <label className="text-xs text-gray-400">同步标的</label>
                 </div>
                 <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-200">
-                  自动跟踪全部当前有效的 OKX USDT 永续合约；每次调度前自动纳入新合约并剔除下架合约。
+                  自动跟踪全部当前有效的 A 股标的；每次调度前按交易日历纳入新股并剔除退市代码。
                 </div>
               </div>
 
@@ -2068,7 +2068,7 @@ export default function DataManager() {
 
               <div className="flex items-center justify-between">
                 <div className="text-xs text-gray-500">
-                  数据最终必须落入 PostgreSQL 分区并封存快照；页面 GET 不会隐式调用 Provider。
+                  数据最终必须落入本地数据仓库并封存快照；页面打开不会隐式拉取外部数据源。
                 </div>
                 <button disabled
                   className="h-9 px-6 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
@@ -2282,15 +2282,15 @@ export default function DataManager() {
                     if (firstAvailable) selectAddSymbolGroup(firstAvailable);
                   }
                 }}
-                placeholder="搜索 BTC、OPENAI 或 OPENAI-USDT-SWAP"
+                placeholder="搜索 600519、茅台 或 510300"
                 className="h-10 w-full rounded-lg border border-crypto-border bg-gray-900 pl-9 pr-3 text-sm text-white placeholder:text-gray-600 focus:border-blue-500 focus:outline-none"
               />
             </div>
-            <div className="mt-2 text-[11px] text-gray-500">仅添加 OKX USDT 永续合约；现货不进入后续同步。</div>
+            <div className="mt-2 text-[11px] text-gray-500">仅添加 A 股股票 / ETF；不接受币圈交易对。</div>
           </div>
           <div className="rounded-lg border border-crypto-border bg-gray-900/50">
             <div className="flex items-center justify-between border-b border-crypto-border px-3 py-2 text-xs text-gray-500">
-              <span>可添加交易对</span>
+              <span>可添加标的</span>
               <span>{loadingAvailableSymbols ? '加载中...' : `${addSymbolGroups.length}/${buildAddSymbolGroups(availableSymbols).length}`}</span>
             </div>
             <div className="max-h-64 overflow-y-auto p-2">
@@ -2304,7 +2304,7 @@ export default function DataManager() {
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   {addSymbolGroups.slice(0, 120).map((group) => {
-                    const groupSymbols = [group.swapSymbol].filter((symbol): symbol is string => Boolean(symbol));
+                    const groupSymbols = [group.spotSymbol, group.swapSymbol].filter((symbol): symbol is string => Boolean(symbol));
                     const selected = groupSymbols.some((symbol) => addSymbolSelections.includes(symbol));
                     const allAdded = groupSymbols.every((symbol) => configuredSymbolSet.has(symbol));
                     return (
@@ -2325,8 +2325,8 @@ export default function DataManager() {
                           className="w-full px-3 py-2 text-left disabled:cursor-not-allowed"
                         >
                           <span className="flex items-center gap-2 font-semibold">
-                            <SymbolIcon symbol={group.swapSymbol || `${group.base}/USDT:USDT`} base={group.base} size="xs" shape="rounded" />
-                            <span className="truncate">{group.base}/USDT</span>
+                            <SymbolIcon symbol={group.swapSymbol || group.spotSymbol || group.base} base={group.base} size="xs" shape="rounded" />
+                            <span className="truncate">{group.spotSymbol || group.swapSymbol || group.base}</span>
                           </span>
                           <span className="mt-0.5 block truncate text-[10px] text-gray-500">
                             {allAdded ? '已在列表中' : '点击默认选择可添加市场'}
@@ -2334,7 +2334,7 @@ export default function DataManager() {
                         </button>
                         <div className="grid grid-cols-1 gap-1.5 px-2 pb-2">
                           {([
-                            { symbol: group.swapSymbol, label: 'USDT 永续' },
+                            { symbol: group.swapSymbol || group.spotSymbol, label: 'A股 / ETF' },
                           ] as const).map((item) => {
                             const symbol = item.symbol;
                             const unavailable = !symbol;
@@ -2457,8 +2457,8 @@ export default function DataManager() {
                   <span className="flex min-w-0 items-center gap-2">
                     <SymbolIcon symbol={symbol} base={coin} size="sm" shape="rounded" />
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-white">{formatOkxInstrumentId(symbol)}</span>
-                      <span className="block truncate text-xs text-gray-500">{coin} · {isUsdtSwapSymbol(symbol) ? 'USDT 永续' : '现货'}</span>
+                      <span className="block truncate text-sm font-semibold text-white">{symbol}</span>
+                      <span className="block truncate text-xs text-gray-500">{coin} · {isUsdtSwapSymbol(symbol) ? '期货预留' : 'A股'}</span>
                     </span>
                   </span>
                   <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-red-500/25 bg-red-500/10 text-red-300">

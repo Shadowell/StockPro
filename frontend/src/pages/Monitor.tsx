@@ -614,41 +614,41 @@ const ALERT_TEMPLATES: AlertTemplate[] = [
   {
     id: 'price-breakout',
     label: '价格突破',
-    desc: '交易对价格高于自定义价位',
+    desc: '股票价格高于自定义价位',
     type: 'price_above',
     name: '价格突破自定义阈值',
-    symbol: 'BTC/USDT',
-    defaultThreshold: 100000,
+    symbol: '600519.SH',
+    defaultThreshold: 1800,
     className: 'border-blue-500/30 bg-blue-500/10 text-blue-300 hover:border-blue-400/70',
   },
   {
     id: 'price-breakdown',
     label: '价格跌破',
-    desc: '交易对价格低于自定义价位',
+    desc: '股票价格低于自定义价位',
     type: 'price_below',
     name: '价格跌破自定义阈值',
-    symbol: 'BTC/USDT',
-    defaultThreshold: 90000,
+    symbol: '600519.SH',
+    defaultThreshold: 1400,
     className: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:border-cyan-400/70',
   },
   {
     id: 'funding-above-custom',
-    label: '资金费率偏高',
-    desc: '永续资金费率高于自定义阈值',
-    type: 'funding_above',
-    name: '资金费率高于自定义阈值',
-    symbol: 'BTC/USDT:USDT',
-    defaultThreshold: 0.0005,
+    label: '涨幅偏高',
+    desc: '个股当日涨幅高于自定义阈值',
+    type: 'price_change',
+    name: '涨幅高于自定义阈值',
+    symbol: '000001.SZ',
+    defaultThreshold: 5,
     className: 'border-purple-500/30 bg-purple-500/10 text-purple-300 hover:border-purple-400/70',
   },
   {
     id: 'funding-below-custom',
-    label: '资金费率偏低',
-    desc: '永续资金费率低于自定义阈值',
-    type: 'funding_below',
-    name: '资金费率低于自定义阈值',
-    symbol: 'BTC/USDT:USDT',
-    defaultThreshold: -0.0005,
+    label: '跌幅偏大',
+    desc: '个股当日跌幅低于自定义阈值',
+    type: 'price_change',
+    name: '跌幅低于自定义阈值',
+    symbol: '000001.SZ',
+    defaultThreshold: -5,
     className: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:border-indigo-400/70',
   },
 ];
@@ -676,7 +676,7 @@ function MarketEventHistory({
           'rounded-md border px-2 py-1 text-[10px]',
           status === 'ok' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' : 'border-slate-600/45 bg-slate-900/70 text-slate-400',
         )}>
-          {status === 'ok' ? '可用' : status || 'empty'}
+          {status === 'ok' ? '可用' : status && status !== 'empty' ? status : '暂无数据'}
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -1017,7 +1017,7 @@ export default function Monitor() {
       if (hasOi) {
         sub = `全市场 OI ${Number(oi).toLocaleString()} 张`;
         if (oiBtc != null && oiBtc > 0) {
-          sub += ` (≈${oiBtc.toFixed(2)} BTC)`;
+          sub += ` · 换算持仓 ${oiBtc.toFixed(2)}`;
         }
       } else {
         sub = '按各策略标记价估算持仓金额';
@@ -1025,14 +1025,8 @@ export default function Monitor() {
       return { positionCardValue: main, positionCardSub: sub };
     }
     if (hasOi) {
-      const main =
-        oiBtc != null && oiBtc > 0
-          ? `≈ ${oiBtc.toFixed(3)} BTC`
-          : `${Number(oi).toLocaleString()} 张`;
-      const sub =
-        oiBtc != null && oiBtc > 0
-          ? `${Number(oi).toLocaleString()} 张合约`
-          : '全市场未平仓（OKX BTC-SWAP）';
+      const main = `${Number(oi).toLocaleString()} 手`;
+      const sub = 'A 股模拟盘持仓手数';
       return { positionCardValue: main, positionCardSub: sub };
     }
     return { positionCardValue: '--', positionCardSub: '暂无策略持仓' };
@@ -1101,7 +1095,7 @@ export default function Monitor() {
   const liveProfitPushSendDisabled = liveProfitPushSending || !liveProfitPush?.notifyReady;
 
   const [alertForm, setAlertForm] = useState({
-    name: '', type: 'price_above', exchange: 'okx', symbol: 'BTC/USDT',
+    name: '', type: 'price_above', exchange: 'CN', symbol: '600519.SH',
     threshold: 100000, strategyId: 0, cooldownMinutes: 60,
   });
   const selectedAlertStrategyId = finiteNumber(alertForm.strategyId || runningStrategies[0]?.strategyId, 0);
@@ -1398,8 +1392,8 @@ export default function Monitor() {
       setAlertForm({
         name: '',
         type: 'price_above',
-        exchange: 'okx',
-        symbol: 'BTC/USDT',
+        exchange: 'CN',
+        symbol: '600519.SH',
         threshold: 100000,
         strategyId: 0,
         cooldownMinutes: 60,
@@ -1583,7 +1577,7 @@ export default function Monitor() {
               value={String(liveMonitorSummary.positionCount)}
               icon={<BarChart3 className="w-4 h-4" />}
               color={liveMonitorSummary.positionCount > 0 ? 'blue' : 'gray'}
-              sub="非零 USDT 永续仓位"
+              sub="非零 A 股持仓"
             />
             <SentimentCard
               label="持仓名义"

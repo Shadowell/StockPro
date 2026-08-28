@@ -285,7 +285,7 @@ export default function AILab() {
     setOrbitStatus('');
     try {
       const res = unwrapApiData<OrbitPostRecord>(await api.post('/agent/orbit-auto-post/publish', { candidate }));
-      setOrbitStatus(res.status === 'submitted' || res.status === 'published' ? '已提交 OKX 星球发布' : `发布状态：${res.status || 'unknown'}${res.error ? `，${res.error}` : ''}`);
+      setOrbitStatus(res.status === 'submitted' || res.status === 'published' ? '已提交研究纪要' : `发布状态：${res.status && res.status !== 'unknown' ? res.status : '待处理'}${res.error ? `，${res.error}` : ''}`);
       await refreshOrbitAutoPost();
     } catch (e: any) {
       setOrbitStatus(e?.response?.data?.detail || e.message || '候选发布失败');
@@ -1046,7 +1046,7 @@ export default function AILab() {
       const candidate = closedLoop.candidate_strategy;
       const count = Number(source.snapshots_count || 0);
       if (count <= 0) {
-        setAutoAgentStatus('自动研发已完成，但服务器未采集到真实公开行情快照；系统不会编造机会，请检查 OKX 公开行情连接。');
+        setAutoAgentStatus('自动研发已完成，但服务器未采集到真实 A 股行情快照；系统不会编造机会，请先在数据页完成同步。');
       } else if (candidate?.name) {
         setAutoAgentStatus(`闭环完成：已采集 ${count} 个真实行情快照，完成 ${closedLoop.summary?.completed_count || 0} 组回测，产出候选策略「${candidate.name}」。仍然只允许 paper/simulation，实盘需人工审批。`);
       } else if (hermes.called) {
@@ -1090,7 +1090,7 @@ export default function AILab() {
     setAutoAgentStatus('正在创建可恢复的自动研发任务；服务重启后会自动续跑');
     try {
       const res = await api.post('/agent/strategy-assistant/research-runs', {
-        objective: '自动判断 OKX 高流动性合约市场的多空双向研发机会，调用服务器 Hermes/Codex 继续策略研究，但只允许 research/backtest/paper-simulation，不允许实盘下单。',
+        objective: '自动判断 A 股高流动性标的的做多研发机会，调用服务器继续策略研究，但只允许 research/backtest/paper-simulation，不允许实盘下单。',
         snapshots: [],
         auto_collect_market: true,
         use_hermes_agent: true,
@@ -1510,7 +1510,7 @@ export default function AILab() {
                   AI自主交易控制台
                 </h2>
                 <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[11px] font-semibold text-yellow-300">仅模拟盘</span>
-                <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[11px] font-semibold text-blue-300">OKX USDT 永续</span>
+                <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[11px] font-semibold text-blue-300">A 股模拟盘</span>
               </div>
               <p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-500">
                 AI 只在人工风控信封内做模拟盘决策；首页负责启动、风控和实例操作，逐笔决策与成交明细进入监控页查看。
@@ -1551,7 +1551,7 @@ export default function AILab() {
             <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1">
               标的 {autonomousConfig.restrictSymbols ? autonomousConfiguredSymbols.length : '不限制'}
             </span>
-            <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1">杠杆 ≤ {autonomousConfig.maxLeverageCap}x</span>
+            <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1">仓位上限 ≤ {autonomousConfig.maxSinglePositionPct}%</span>
             <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1">单笔 ≤ {autonomousConfig.maxSinglePositionPct}%</span>
             <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1">总敞口 ≤ {autonomousConfig.maxTotalExposurePct}%</span>
             <span className="rounded-md border border-crypto-border bg-crypto-bg px-2 py-1">间隔 ≥ {autonomousConfig.minDecisionIntervalSec}s</span>
@@ -1702,7 +1702,7 @@ export default function AILab() {
                     </>
                   ) : (
                     <span className="rounded-md border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-[10px] text-yellow-300">
-                      不限制：使用系统默认 Top30 USDT 永续候选池
+                      不限制：使用系统默认高流动性 A 股候选池
                     </span>
                   )}
                 </div>
@@ -1711,7 +1711,7 @@ export default function AILab() {
 
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {([
-                  ['maxLeverageCap', '最大杠杆', '≤ x', 1, 20, 0.5],
+                  ['maxLeverageCap', '单票上限', '≤ x', 1, 20, 0.5],
                   ['maxSinglePositionPct', '单笔仓位', '≤ %', 1, 100, 1],
                   ['maxTotalExposurePct', '总风险敞口', '≤ %', 1, 500, 1],
                   ['maxPositions', '最多持仓', '≤ 个', 1, 20, 1],
@@ -1719,7 +1719,7 @@ export default function AILab() {
                   ['maxDecisionIntervalSec', '最长等待', '≤ 秒', 30, 3600, 10],
                   ['probeSizePct', '试单仓位', '%', 0.1, 100, 0.5],
                   ['maxTradesPerHour', '每小时交易', '≤ 笔', 1, 120, 1],
-                  ['initialCapital', '初始资金', 'USDT', 100, 1000000, 100],
+                  ['initialCapital', '初始资金', 'CNY', 100, 1000000, 100],
                 ] as [AutonomousNumericConfigKey, string, string, number, number, number][]).map(([key, label, suffix, min, max, step]) => (
                   <label key={key} className={autonomousRiskParameterCardClass}>
                     <span className="block text-[11px] text-gray-500">{label}</span>
@@ -1748,7 +1748,7 @@ export default function AILab() {
                 系统硬边界
               </h3>
               <div className="grid gap-2 text-xs leading-relaxed text-gray-400">
-                <div className="rounded-lg border border-yellow-500/15 bg-black/10 px-3 py-2">只创建 OKX USDT 永续合约模拟盘。</div>
+                <div className="rounded-lg border border-yellow-500/15 bg-black/10 px-3 py-2">只创建 A 股模拟盘，遵守 T+1 / 100 股 / 只做多。</div>
                 <div className="rounded-lg border border-yellow-500/15 bg-black/10 px-3 py-2">AI 超过任一上限时只记录风控拦截。</div>
                 <div className="rounded-lg border border-yellow-500/15 bg-black/10 px-3 py-2">完整指标、AI 决策和成交明细统一进入模拟盘监控。</div>
               </div>
@@ -2744,7 +2744,7 @@ export default function AILab() {
         {autonomousEditConfig && autonomousEditTarget && (
           <div className="max-h-[68vh] space-y-4 overflow-y-auto pr-1">
             <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2 text-xs leading-relaxed text-yellow-100/80">
-              模型、杠杆、仓位、决策间隔和交易频率保存后会写入实例配置；运行中实例会在下一次 AI 决策使用新模型和风控上限。初始资金只能在实例停止后修改。
+              模型、仓位、决策间隔和交易频率保存后会写入实例配置；运行中实例会在下一次 AI 决策使用新模型和风控上限。初始资金只能在实例停止后修改。
             </div>
 
             <div>
@@ -2809,7 +2809,7 @@ export default function AILab() {
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {([
-                ['maxLeverageCap', '最大杠杆', '≤ x', 1, 20, 0.5, false],
+                ['maxLeverageCap', '单票上限', '≤ x', 1, 20, 0.5, false],
                 ['maxSinglePositionPct', '单笔仓位', '≤ %', 1, 100, 1, false],
                 ['maxTotalExposurePct', '总风险敞口', '≤ %', 1, 500, 1, false],
                 ['maxPositions', '最多持仓', '≤ 个', 1, 20, 1, false],
@@ -2817,7 +2817,7 @@ export default function AILab() {
                 ['maxDecisionIntervalSec', '最长等待', '≤ 秒', 30, 3600, 10, false],
                 ['probeSizePct', '试单仓位', '%', 0.1, 100, 0.5, false],
                 ['maxTradesPerHour', '每小时交易', '≤ 笔', 1, 120, 1, false],
-                ['initialCapital', '初始资金', 'USDT', 100, 1000000, 100, ['pending', 'running', 'paused'].includes(String(autonomousEditTarget.status || '').toLowerCase())],
+                ['initialCapital', '初始资金', 'CNY', 100, 1000000, 100, ['pending', 'running', 'paused'].includes(String(autonomousEditTarget.status || '').toLowerCase())],
               ] as [AutonomousNumericConfigKey, string, string, number, number, number, boolean][]).map(([key, label, suffix, min, max, step, disabled]) => (
                 <label key={key} className={`rounded-lg border border-crypto-border bg-crypto-bg p-3 ${disabled ? 'opacity-60' : ''}`}>
                   <span className="block text-[11px] text-gray-500">{label}</span>

@@ -26,6 +26,14 @@ export interface HomeMarketOverviewProps {
 
 type RankingKey = 'topGainers' | 'topLosers' | 'turnoverLeaders' | 'activeLeaders';
 
+function sanitizeProvider(value?: string | null): string {
+  const text = String(value || '').trim();
+  if (!text) return 'A 股行情';
+  if (/postgres|sql/i.test(text) && /realtime/i.test(text)) return '本地实时行情';
+  if (/postgres|sql|tushare/i.test(text)) return 'TuShare 日线快照';
+  return text;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   ready: '已就绪',
   partial: '部分可用',
@@ -105,7 +113,7 @@ function EvidenceStrip({ evidence }: { evidence: MarketOverviewEvidence }) {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-crypto-border/70 bg-slate-950/35 px-4 py-2 text-[11px] text-gray-500">
       <span>交易日 <strong className="font-mono font-medium text-gray-300">{evidence.tradeDate || '—'}</strong></span>
       <span>模式 <strong className="font-medium text-gray-300">{evidence.dataMode || '盘后快照'}</strong></span>
-      <span>来源 <strong className="font-medium text-gray-300">{evidence.provider || '—'}</strong></span>
+      <span>来源 <strong className="font-medium text-gray-300">{sanitizeProvider(evidence.provider)}</strong></span>
       <span>快照 <strong className="font-mono font-medium text-gray-300">{evidence.sourceSnapshotId ?? '—'}</strong></span>
       <span>最近成功 <strong className="font-mono font-medium text-gray-300">{formatTimestamp(evidence.lastSuccessAt)}</strong></span>
       <span>数据年龄 <strong className="font-mono font-medium text-gray-300">{formatAge(evidence.dataAgeSeconds)}</strong></span>
@@ -324,6 +332,29 @@ function ActivitySummary({ overview }: { overview: MarketOverview }) {
   );
 }
 
+function ValuationSummary({ overview }: { overview: MarketOverview }) {
+  const valuation = overview.valuation;
+  if (!valuation) return null;
+  return (
+    <ModuleShell title="全市场估值" icon={<BarChart3 className="h-4 w-4 text-cyan-300" />} status={valuation.status}>
+      <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4">
+        {[
+          ['中位 PE', valuation.medianPeTtm == null ? '—' : formatNumber(valuation.medianPeTtm)],
+          ['中位 PB', valuation.medianPb == null ? '—' : formatNumber(valuation.medianPb)],
+          ['合计市值', formatAmount(valuation.totalMarketCapCny)],
+          ['估值覆盖', valuation.coveredSymbols == null ? '—' : `${valuation.coveredSymbols} / ${valuation.eligibleSymbols ?? '—'} 家`],
+        ].map(([label, value]) => (
+          <div key={label} data-metric-card className="min-w-0 rounded-xl border border-crypto-border/70 bg-crypto-card px-3 py-3">
+            <div className="truncate text-[11px] text-gray-500">{label}</div>
+            <div className="mt-2 truncate font-mono text-sm font-semibold tabular-nums text-gray-100">{value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="px-4 py-2 text-[10px] text-gray-600">{valuation.source || '实时估值'} · 空值不按 0 填充</div>
+    </ModuleShell>
+  );
+}
+
 function rankingMetric(key: RankingKey, item: MarketOverviewRankingItem): string {
   if (key === 'turnoverLeaders') return formatAmount(item.amountCny);
   if (key === 'activeLeaders') return item.turnoverRatePct == null ? '—' : `${formatNumber(item.turnoverRatePct)}%`;
@@ -447,6 +478,7 @@ export default function HomeMarketOverview({
         <TrendStrength overview={data} />
         <ActivitySummary overview={data} />
       </div>
+      <ValuationSummary overview={data} />
       <Rankings overview={data} onSelectSymbol={onSelectSymbol} />
     </section>
   );

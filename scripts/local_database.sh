@@ -13,10 +13,15 @@ usage() {
 Usage: ./scripts/local_database.sh [--print-url|--check]
 
 Select a reachable local PostgreSQL database named stockpro_bitpro_rebase_dev.
-The script never reads backend/.env and never opens an SSH tunnel.
+The script never opens an SSH tunnel, never inherits DATABASE_URL, and rejects
+any host other than a Unix socket, 127.0.0.1, localhost, or ::1.
+
+It prefers the Docker isolation port 127.0.0.1:55432, then a same-name local
+socket. backend/.env credentials are reused only when that file already points
+at a local host.
 
 Optional override:
-  STOCKPRO_LOCAL_DATABASE_URL=postgresql:///stockpro_bitpro_rebase_dev
+  STOCKPRO_LOCAL_DATABASE_URL=postgresql://stockpro:stockpro@127.0.0.1:55432/stockpro_bitpro_rebase_dev
 EOF
 }
 
@@ -60,8 +65,48 @@ print(urlunparse(parsed._replace(netloc=netloc)))
 PY
 }
 
+is_local_url() {
+  python3 - "$1" <<'PY'
+import sys
+from urllib.parse import urlparse
+
+parsed = urlparse(sys.argv[1])
+host = (parsed.hostname or "").lower()
+if not host:
+    raise SystemExit(0)
+raise SystemExit(0 if host in {"127.0.0.1", "localhost", "::1"} else 1)
+PY
+}
+
+local_env_isolation_url() {
+  local env_file="$ROOT_DIR/backend/.env"
+  if [ ! -f "$env_file" ]; then
+    return 1
+  fi
+  local loaded
+  loaded="$(grep -E '^DATABASE_URL=' "$env_file" | tail -n 1 | sed -E 's/^DATABASE_URL=//; s/^"//; s/"$//; s/^'\''//; s/'\''$//')" || true
+  if [ -z "$loaded" ] || ! is_local_url "$loaded"; then
+    return 1
+  fi
+  python3 - "$loaded" "$ISOLATION_DB" <<'PY'
+import sys
+from urllib.parse import urlparse, urlunparse
+
+parsed = urlparse(sys.argv[1])
+database = sys.argv[2]
+if parsed.netloc:
+    print(urlunparse(parsed._replace(path=f"/{database}")))
+else:
+    print(f"{parsed.scheme}:///{database}")
+PY
+}
+
 validate_candidate() {
   local candidate="$1"
+  if ! is_local_url "$candidate"; then
+    echo "[local-db] 拒绝远程数据库；本地服务只连接本机 ${ISOLATION_DB}。" >&2
+    return 1
+  fi
   local configured_name
   configured_name="$(database_name_from_url "$candidate")"
   if [ "$configured_name" != "$ISOLATION_DB" ]; then
@@ -80,7 +125,7 @@ validate_candidate() {
   return 0
 }
 
-explicit_url="${STOCKPRO_LOCAL_DATABASE_URL:-${DATABASE_URL:-}}"
+explicit_url="${STOCKPRO_LOCAL_DATABASE_URL:-}"
 if [ -n "$explicit_url" ]; then
   if ! validate_candidate "$explicit_url"; then
     echo "[local-db] 显式本地数据库不可用，请修正 STOCKPRO_LOCAL_DATABASE_URL。" >&2
@@ -89,7 +134,13 @@ if [ -n "$explicit_url" ]; then
   selected_url="$explicit_url"
 else
   selected_url=""
-  for candidate_url in "$SOCKET_URL" "$DOCKER_URL"; do
+  derived_url="$(local_env_isolation_url || true)"
+  candidate_urls=("$DOCKER_URL")
+  if [ -n "$derived_url" ]; then
+    candidate_urls+=("$derived_url")
+  fi
+  candidate_urls+=("$SOCKET_URL")
+  for candidate_url in "${candidate_urls[@]}"; do
     if validate_candidate "$candidate_url"; then
       selected_url="$candidate_url"
       break
@@ -97,13 +148,13 @@ else
   done
   if [ -z "$selected_url" ]; then
     cat >&2 <<EOF
-[local-db] 未找到可达的 ${ISOLATION_DB}。
+[local-db] 未找到可达的本机 ${ISOLATION_DB}。
 
 先初始化本地隔离库：
   ./scripts/setup_isolation_db.sh
 
-或显式指定：
-  STOCKPRO_LOCAL_DATABASE_URL='postgresql:///${ISOLATION_DB}' ./start.sh
+或显式指定本机地址：
+  STOCKPRO_LOCAL_DATABASE_URL='postgresql://stockpro:stockpro@127.0.0.1:55432/${ISOLATION_DB}' ./start.sh
 EOF
     exit 1
   fi

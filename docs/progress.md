@@ -1,5 +1,73 @@
 # Progress Log
 
+## 资金流接入北向 + 信号中心并行加载（2026-08-28）
+
+- 信号中心不再等 80 条策略元数据后才拉连板/异动。
+- `GET /orderflow/capital-flow` 读 TuShare `moneyflow_hsgt` + `moneyflow`，过滤 NaN，
+  万元转人民币；资金流页展示北向/沪深股通与个股主力净额。
+- 本轮未推 `main`、未部署服务器。
+
+## 新建回测跑通 + 估值铺到首页/基本面（2026-08-28）
+
+- 隔离库策略 228 + snapshot 10 + pool 5 提交 `run_job`，62 个交易日撮合后
+  `success`，结果 id 1623374419，区间 2024-10-01～2025-01-02，收益 -4.01%。
+- 基本面估值不再只查不存在的 `daily_basic` 符号精确匹配；改为读最新
+  `daily_valuation`（兼容 `600519.SH` / `SH_600519`），没有封存则回退
+  `all_stocks_realtime` 的 PE/PB/市值。
+- 首页市场基础层增加全市场中位 PE/PB 与合计市值；信号中心金额改为人民币。
+- 本轮未推 `main`、未部署服务器。
+
+## 策略命名规范（2026-08-28）
+
+- 产品名统一为 `[市场][周期][风格] 策略简称`。写入路径校验并自动去掉 `Paper` /
+  `100万` / `模拟盘` / 日期；Sprint、验收和英文测试链映射或拒绝。
+- Paper 创建不再追加 `/ Paper`。本地隔离库已把模拟台 23 个实例名改成规范名。
+- 本轮未推 `main`、未部署服务器。
+
+## 本地启动只连本机库和本机后端（2026-08-28）
+
+- `scripts/local_database.sh` 不再继承环境 `DATABASE_URL`（避免把服务器地址当成本地库），
+  并拒绝非本机 host；发现顺序改为优先 Docker `127.0.0.1:55432`，其次同名 Unix socket。
+- `backend/.env` 仅在其 host 已是本机时用于补凭证。`start.sh` 启动后打印实际本地 URL；
+  前端代理固定 `http://127.0.0.1:4445`。
+- 本机同时存在空 Paper 的 socket 库和有 23 个实例的 Docker 隔离库时，本地服务改连后者。
+
+## A 股工作台策略种子 + 盯盘兜底 + 去币圈文案（2026-08-28）
+
+- 本机 socket 库 `strategy_versions` / `paper_instances` 为空，策略/模拟/盯盘/复盘整页空。
+  本轮写入 6 条通过 `stockpro.v1` 校验的 A 股日线策略，让 `/strategy` 与 `/live`
+  （`live:strategy:*`）有可点条目。
+- Paper 账户为空时，盯盘账户回退为「A股市场盯盘」，名单取 `all_stocks_realtime` 涨幅前列，
+  K 线直接读 `stock_history`，不再要求晋级 Paper 才能看图。
+- 复盘在无回测样本时展示当日阶段与异动；信号/监控/数据/AI 研发去掉仍可见的 OKX/USDT 默认值。
+- 本轮未推 `main`、未部署服务器。
+
+## A 股工作台去币圈残留 + 空页即时补数（2026-08-28）
+
+- 用户要求：修 bug、去掉 USDT/OKX/PostgreSQL 外泄、禁止 unknown/空页，尽量把已有
+  Tushare/本地行情铺到页面上。
+- 首页/行情/监控/策略/数据/因子/AI 研发可见文案去掉 USDT、OKX、PostgreSQL、unknown；
+  来源改为「TuShare 日线快照 / 本地行情」。
+- 物化表 `market_phase_results` / `sector_rps_results` 为空时，GET 从大盘宽度、行业等权、
+  实时涨跌停即时推导阶段/RPS/异动/情绪，不再返回 `unknown`。
+- 本机 socket 库没有连板/概念快照时：涨跌停池用 `all_stocks_realtime` 按主板 9.8%、
+  创业/科创 19.8%、北交所 29.8%、ST 4.8% 阈值即时统计；概念 tab 用行业等权涨跌代替主题强度。
+- 信号中心增加今日市场/涨停信号；价差页在 ETF 折溢价未接通时展示行业/概念相对强弱。
+- 验证：`rebuild/tests/test_live_derived_research.py` 3 项通过；4444/4445 干净重启后
+  `/market/phase` 为「主升」、行业 RPS 110 条、涨停池 92 只、概念 110 条；浏览器首页/
+  行情/连板 tab 无 USDT/PostgreSQL/unknown。本轮未推 `main`、未部署服务器。
+
+## 模拟台过期实例无限加载（2026-08-28）
+
+- 根因：`/live` 把 localStorage / `?strategyId=` 恢复成 `live:strategy:<id>` 详情后，用
+  `strategies.length === 0` 判断「目录还在加载」。隔离库或空夹具返回空列表后该判断永远为真，
+  而 `GET /live/dashboard?instance_id=` 对缺失实例只给 `strategy_id: null`，匹配失败，页面卡在
+  「正在加载实例控制台」。
+- 修复：目录首次拉取（成功或失败）后置 `instancesReady`；实例确认不存在时退回控制台并清掉
+  过期查询参数，不再把空列表当成加载中。
+- 验证：新增源码合同与 Mock E2E（过期 prefs / 缺失 `strategyId` 都回到空控制台）；既有 Paper
+  同源对账 E2E 仍绿。本地 4444/4445 干净重启后用真实空实例列表验收。
+
 ## 首页分析板块 tab（2026-08-28）
 
 - 在 `codex/key-levels-sector-heatmap`（`ef041d1a`）上续作 sprint

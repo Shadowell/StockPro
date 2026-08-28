@@ -1635,6 +1635,15 @@ export interface MarketOverviewTrend extends MarketOverviewModule {
   newHighLowRatio?: number | null;
 }
 
+export interface MarketOverviewValuation extends MarketOverviewModule {
+  coveredSymbols?: number | null;
+  eligibleSymbols?: number | null;
+  medianPeTtm?: number | null;
+  medianPb?: number | null;
+  totalMarketCapCny?: number | null;
+  source?: string | null;
+}
+
 export interface MarketOverviewActivity extends MarketOverviewModule {
   totalAmountCny?: number | null;
   averageAmountCny?: number | null;
@@ -1701,6 +1710,7 @@ export interface MarketOverview extends MarketOverviewEvidence {
   distribution: MarketOverviewDistribution;
   trend: MarketOverviewTrend;
   activity: MarketOverviewActivity;
+  valuation?: MarketOverviewValuation;
   amount: {
     status: MarketOverviewStatus | string;
     totalCny?: number | null;
@@ -3711,6 +3721,36 @@ export interface OrderflowStreamStatus {
   instIds: string[];
 }
 
+export interface CapitalFlowRow {
+  tradeDate: string;
+  northMoneyCny?: number | null;
+  southMoneyCny?: number | null;
+  hgtCny?: number | null;
+  sgtCny?: number | null;
+  source?: string | null;
+}
+
+export interface StockMoneyflowRow {
+  symbol: string;
+  tradeDate: string;
+  netAmountCny?: number | null;
+  mainInCny?: number | null;
+  mainOutCny?: number | null;
+  source?: string | null;
+}
+
+export interface CapitalFlowPayload {
+  status: string;
+  symbol: string;
+  northbound: CapitalFlowRow[];
+  stockFlow: StockMoneyflowRow[];
+  latest?: CapitalFlowRow | null;
+  missingInputs: string[];
+  providerSource?: string | null;
+  providerCalls: number;
+  writesPerformed: boolean;
+}
+
 export const orderflowApi = {
   getLargeTrades: (params: {
     instId: string;
@@ -3744,6 +3784,9 @@ export const orderflowApi = {
 
   getSymbols: (params: { hours?: number }): Promise<{ items: OrderflowSymbolStat[]; count: number }> =>
     getReq('/orderflow/symbols', { params }),
+
+  getCapitalFlow: (symbol = '600519.SH', days = 20): Promise<CapitalFlowPayload> =>
+    getReq('/orderflow/capital-flow', { params: { symbol, days } }),
 
   getStreamStatus: (): Promise<OrderflowStreamStatus> =>
     getReq('/orderflow/stream-status'),

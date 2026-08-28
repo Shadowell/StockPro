@@ -869,6 +869,120 @@ class MarketRepository:
             "paper_mutated": False,
         }
 
+    def get_realtime_limit_snapshot(self) -> Dict:
+        """Build a 1-board limit pool from the latest realtime quotes when sealed ladder tables are empty."""
+        rows: List[Tuple] = []
+        trade_date: Optional[str] = None
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                if not self._table_exists(cursor, "all_stocks_realtime"):
+                    return {
+                        "ladder_date": None,
+                        "pool_trade_date": None,
+                        "levels": [],
+                        "ladder_total": 0,
+                        "pools": {"up": [], "broken": [], "down": []},
+                        "trend": [],
+                        "trend_days": 0,
+                        "sources": [],
+                        "data_status": "empty",
+                        "unavailable_reason": "没有可用的实时行情，无法即时统计涨跌停",
+                        "missing_inputs": ["all_stocks_realtime"],
+                        "provider_calls": 0,
+                        "writes_performed": False,
+                        "paper_mutated": False,
+                    }
+                cursor.execute(
+                    """
+                    SELECT r.code, COALESCE(NULLIF(d.name,''), r.name), r.price, r.change_percent,
+                           r.amount, d.industry, d.board
+                    FROM all_stocks_realtime r
+                    LEFT JOIN instrument_definitions d
+                      ON d.market='CN'
+                     AND d.symbol=(split_part(r.code,'_',2)||'.'||split_part(r.code,'_',1))
+                    WHERE r.change_percent IS NOT NULL
+                    """
+                )
+                rows = cursor.fetchall()
+        up: List[Dict] = []
+        down: List[Dict] = []
+        for raw_code, name, price, change, amount, industry, board in rows:
+            symbol = self._canonical_symbol(raw_code)
+            change_pct = float(change)
+            name_text = str(name or symbol)
+            code = symbol.split(".", 1)[0]
+            if "ST" in name_text.upper():
+                threshold = 4.8
+            elif code.startswith(("300", "301", "688", "689")):
+                threshold = 19.8
+            elif code.startswith(("4", "8")):
+                threshold = 29.8
+            else:
+                threshold = 9.8
+            member = {
+                "symbol": symbol,
+                "name": name_text,
+                "price": round(float(price), 2) if price is not None else None,
+                "change_percent": round(change_pct, 2),
+                "limit_times": 1,
+                "open_times": 0,
+                "seal_amount": round(float(amount), 2) if amount is not None else None,
+                "industry": industry,
+                "board": board,
+                "is_st": "ST" in name_text.upper(),
+                "duration_days": 1,
+                "reason": "当日涨停（实时）" if change_pct >= threshold else "当日跌停（实时）",
+            }
+            if change_pct >= threshold:
+                up.append(member)
+            elif change_pct <= -threshold:
+                down.append(member)
+        up.sort(key=lambda item: item["change_percent"] or 0, reverse=True)
+        down.sort(key=lambda item: item["change_percent"] or 0)
+        if not up and not down:
+            return {
+                "ladder_date": trade_date,
+                "pool_trade_date": trade_date,
+                "levels": [],
+                "ladder_total": 0,
+                "pools": {"up": [], "broken": [], "down": []},
+                "trend": [],
+                "trend_days": 0,
+                "sources": ["all_stocks_realtime"],
+                "data_status": "empty",
+                "unavailable_reason": "实时行情中没有达到涨跌停阈值的标的",
+                "missing_inputs": [],
+                "provider_calls": 0,
+                "writes_performed": False,
+                "paper_mutated": False,
+            }
+        return {
+            "ladder_date": trade_date,
+            "pool_trade_date": trade_date,
+            "levels": [{"level": 1, "members": [
+                {
+                    "symbol": item["symbol"],
+                    "name": item["name"],
+                    "price": item["price"],
+                    "change_percent": item["change_percent"],
+                    "duration_days": 1,
+                    "reason": item["reason"],
+                }
+                for item in up
+            ]}] if up else [],
+            "ladder_total": len(up),
+            "pools": {"up": up, "broken": [], "down": down},
+            "trend": [],
+            "trend_days": 0,
+            "sources": ["all_stocks_realtime"],
+            "data_status": "ok",
+            "unavailable_reason": None,
+            "missing_inputs": ["连板高度未物化，仅展示当日涨跌停"],
+            "provider_calls": 0,
+            "writes_performed": False,
+            "paper_mutated": False,
+        }
+
     def get_concept_analysis(self, rotation_days: int = 20, hot_limit: int = 20) -> Dict:
         """概念分析只读聚合：最新榜单 + 近窗口轮动矩阵 + 热门概念资金流。"""
         bounded_rotation = max(5, min(int(rotation_days), 60))
@@ -1454,6 +1568,31 @@ class MarketRepository:
             for row in cursor.fetchall()
         ]
 
+    def _overview_valuation_map(self, cursor) -> Dict[str, Dict[str, Any]]:
+        if not self._table_exists(cursor, "all_stocks_realtime"):
+            return {}
+        cursor.execute(
+            """
+            SELECT code, pe_dynamic, pb, total_market_cap, float_market_cap
+            FROM all_stocks_realtime
+            WHERE code ~ '^(SH|SZ|BJ)_[0-9]{6}$'
+            """
+        )
+        mapping: Dict[str, Dict[str, Any]] = {}
+        for row in cursor.fetchall():
+            symbol = self._canonical_symbol(row[0])
+            if not symbol:
+                continue
+            mapping[symbol] = {
+                "pe_dynamic": row[1],
+                "pe_ttm": row[1],
+                "pb": row[2],
+                "total_market_cap": row[3],
+                "total_market_cap_cny": row[3],
+                "float_market_cap": row[4],
+            }
+        return mapping
+
     def _overview_daily_rows(self, cursor) -> list[Dict[str, Any]]:
         query = """
             SELECT r.code,COALESCE(NULLIF(d.name,''),r.name),COALESCE(d.exchange,'CN'),
@@ -1592,6 +1731,11 @@ class MarketRepository:
                         requested_date = self._iso(cursor.fetchone()[0])
                     realtime_rows = self._overview_realtime_rows(cursor, requested_date)
                     ticker_rows = realtime_rows or self._overview_daily_rows(cursor)
+                    valuation_map = self._overview_valuation_map(cursor)
+                    for row in ticker_rows:
+                        extra = valuation_map.get(self._canonical_symbol(row.get("symbol") or row.get("code") or ""))
+                        if extra:
+                            row.update({key: value for key, value in extra.items() if row.get(key) is None})
                     latest_updated = max(
                         (row.get("source_updated_at") or row.get("updated_at") or "" for row in ticker_rows),
                         default=None,
@@ -1613,7 +1757,7 @@ class MarketRepository:
             evidence = {
                 "trade_date": requested_date,
                 "data_mode": "盘中实时" if realtime_rows else "盘后快照",
-                "provider": "PostgreSQL · realtime_quotes" if realtime_rows else "TuShare → PostgreSQL",
+                "provider": "本地实时行情" if realtime_rows else "TuShare 日线快照",
                 "source_snapshot_id": snapshot["id"] if snapshot else None,
                 "available_at": snapshot["available_at"] if snapshot else latest_updated,
                 "knowledge_cutoff_at": snapshot["knowledge_cutoff_at"] if snapshot else requested_date,
@@ -1663,7 +1807,7 @@ class MarketRepository:
                 "status": "empty",
                 "confidence": 0.0,
                 "reasons": [],
-                "missing_inputs": ["market phase has not been computed for this trade_date"],
+                "missing_inputs": ["市场阶段尚未完成当日物化，已改用大盘即时统计"],
                 "definition_version": MARKET_PHASE_DEFINITION_VERSION,
             }
         return {
@@ -1710,7 +1854,7 @@ class MarketRepository:
             return {
                 "trade_date": trade_date,
                 "status": "empty",
-                "missing_inputs": ["market sentiment has not been computed for this trade_date"],
+                "missing_inputs": ["涨跌停情绪尚未完成当日物化，已改用涨跌停池即时统计"],
                 "definition_version": "ashare-market-sentiment.v1",
             }
         return {

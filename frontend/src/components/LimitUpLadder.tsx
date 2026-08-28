@@ -55,7 +55,7 @@ export default function LimitUpLadder({ onSelectSymbol }: LimitUpLadderProps) {
       loading={loading}
       error={error}
       onRetry={load}
-      hasContent={Boolean(payload && (levels.length || trend.length))}
+      hasContent={Boolean(payload && (levels.length || trend.length || (pools.up || []).length || (pools.down || []).length))}
       emptyReason={payload?.unavailableReason || '暂无已同步的连板梯队事实'}
       footer={`来源 ${(payload?.sources || []).join(' + ') || '—'} · 梯队与池为异步管道快照，日期可能滞后 · 只读 · writes_performed=false`}
     >

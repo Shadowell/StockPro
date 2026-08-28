@@ -22,6 +22,7 @@ import SymbolIcon from '../../components/SymbolIcon';
 import { formatTimeframeLabel } from '../../utils/timeframe';
 import { SELECTED_SEGMENT_CLASS, SELECTED_SEGMENT_COUNT_CLASS } from '../../utils/selectionStyles';
 import { formatStrategySymbolScope } from './constants';
+import { formatStrategyDisplayName } from '../../utils/strategyNaming';
 import type {
   AssetClassFilter,
   Balance,
@@ -588,7 +589,7 @@ export default function InstanceDashboard({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-white truncate">
-                          {strategy.name}
+                          {formatStrategyDisplayName(strategy.name)}
                         </div>
                         <div className="text-[11px] text-gray-500 mt-0.5 truncate">
                           #{strategy.id} · {formatStrategySymbolScope(strategy)}
@@ -894,14 +895,14 @@ export default function InstanceDashboard({
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div
-                    title={inst.name}
-                    aria-label={`策略名称：${inst.name}`}
+                    title={formatStrategyDisplayName(inst.name)}
+                    aria-label={`策略名称：${formatStrategyDisplayName(inst.name)}`}
                     className={clsx(
                       'min-w-0 truncate text-sm font-semibold',
                       strategyNameColorClass(inst.assetClass),
                     )}
                   >
-                    {inst.name}
+                    {formatStrategyDisplayName(inst.name)}
                   </div>
                   {inst.isAiAutonomous && (
                     <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-full border border-yellow-500/30 bg-yellow-500/15 px-2 py-0.5 text-[10px] font-bold text-yellow-300">

@@ -10,6 +10,7 @@ import psycopg2.extras
 
 from app.core.config import settings
 from app.domain.backtest.input_repository import PostgresBacktestInputGateway
+from app.domain.strategy.naming import display_strategy_name, require_strategy_name
 from app.services.ashare_execution import explicit_instrument_key
 
 
@@ -163,7 +164,13 @@ class PaperRepository:
                 initial_cash = float(payload.get("initial_cash") or run.get("initial_cash") or 1_000_000)
                 if not 0 < initial_cash <= 1_000_000_000:
                     raise ValueError("初始资金必须在 0 到 10 亿元之间")
-                name = str(payload.get("name") or f"{run['strategy_name']} / Paper").strip()
+                raw_name = str(payload.get("name") or run.get("strategy_name") or "").strip()
+                try:
+                    name = require_strategy_name(raw_name or run.get("strategy_name") or "")
+                except ValueError:
+                    name = display_strategy_name(raw_name, fallback=display_strategy_name(str(run.get("strategy_name") or "")))
+                    if not name:
+                        raise ValueError("策略名称须为「[市场][周期][风格] 策略简称」") from None
                 portfolio_name = f"{name} [{uuid.uuid4().hex[:8]}]"
                 cursor.execute(
                     "INSERT INTO portfolios(name,mode,base_currency,initial_cash,cash_balance,status) VALUES (%s,'paper','CNY',%s,%s,'paused') RETURNING id",
@@ -295,8 +302,139 @@ class PaperRepository:
             raise ValueError("没有可用 A 股 Paper 账户")
         return rows[0]
 
+    @staticmethod
+    def _canonical_symbol(raw: str) -> str:
+        value = str(raw or "").strip().upper()
+        if "." in value:
+            return value
+        if "_" in value:
+            exchange, digits = value.split("_", 1)
+            return f"{digits}.{exchange}"
+        return explicit_instrument_key(value) or value
+
+    @classmethod
+    def _storage_symbol(cls, raw: str) -> str:
+        canonical = cls._canonical_symbol(raw)
+        if "." not in canonical:
+            return canonical
+        digits, exchange = canonical.rsplit(".", 1)
+        return f"{exchange}_{digits}"
+
+    def _market_watchlist(self, limit: int) -> list[dict]:
+        size = max(1, min(int(limit), 20))
+        rows: list[dict] = []
+        with self._connect() as connection:
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT r.code, COALESCE(NULLIF(d.name, ''), r.name) AS name, r.price, r.change_percent
+                    FROM all_stocks_realtime r
+                    LEFT JOIN instrument_definitions d
+                      ON d.market='CN'
+                     AND d.symbol=(split_part(r.code,'_',2)||'.'||split_part(r.code,'_',1))
+                    WHERE r.change_percent IS NOT NULL
+                    ORDER BY r.change_percent DESC
+                    LIMIT %s
+                    """,
+                    (size,),
+                )
+                rows = [dict(item) for item in cursor.fetchall()]
+        output = []
+        for row in rows:
+            symbol = self._canonical_symbol(str(row.get("code") or ""))
+            if not symbol:
+                continue
+            output.append(
+                {
+                    "symbol": symbol,
+                    "source_strategy_id": 0,
+                    "source_strategy_name": str(row.get("name") or "当日异动"),
+                    "last_side": None,
+                    "last_action": None,
+                    "last_price": float(row.get("price") or 0) or None,
+                    "last_quantity": None,
+                    "last_notional_usdt": None,
+                    "last_execution_at": None,
+                    "order_count": 0,
+                }
+            )
+        return output
+
+    def _history_watch_market(self, account_id: str, symbol: str, timeframe: str, limit: int) -> dict:
+        if str(timeframe).lower() != "1d":
+            raise ValueError("A 股盯盘当前仅支持 1d")
+        normalized = self._canonical_symbol(symbol)
+        if not normalized:
+            raise ValueError("无效 A 股标的")
+        storage = self._storage_symbol(normalized)
+        size = max(1, min(int(limit), 800))
+        rows: list[dict] = []
+        with self._connect() as connection:
+            with connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                cursor.execute(
+                    """
+                    SELECT date, open, high, low, close, volume, turnover
+                    FROM stock_history
+                    WHERE symbol=%s
+                    ORDER BY date DESC
+                    LIMIT %s
+                    """,
+                    (storage, size),
+                )
+                rows = list(reversed([dict(item) for item in cursor.fetchall()]))
+        klines = [
+            {
+                "timestamp": self._timestamp_ms(row.get("date")),
+                "open": float(row.get("open") or 0),
+                "high": float(row.get("high") or 0),
+                "low": float(row.get("low") or 0),
+                "close": float(row.get("close") or 0),
+                "volume": float(row.get("volume") or 0),
+                "quote_volume": float(row.get("turnover") or 0),
+            }
+            for row in rows
+        ]
+        last = klines[-1] if klines else {"close": 0, "open": 0, "high": 0, "low": 0, "volume": 0}
+        first_close = klines[0]["close"] if klines else 0
+        return {
+            "account_id": account_id,
+            "exchange": "CN",
+            "symbol": normalized,
+            "timeframe": "1d",
+            "ticker": {
+                "symbol": normalized,
+                "last": last["close"],
+                "open": last["open"],
+                "high": last["high"],
+                "low": last["low"],
+                "volume": last["volume"],
+                "change_percent": ((last["close"] / first_close) - 1) * 100 if first_close else 0,
+                "source": "stock_history",
+                "data_status": "ok" if klines else "empty",
+            },
+            "klines": klines,
+            "orderbook": {"bids": [], "asks": []},
+            "recent_trades": [],
+            "positions": [],
+        }
+
     def accounts(self) -> list[dict]:
         rows = [item for item in self.list_instances() if item.get("status") in {"running", "paused"}]
+        if not rows:
+            return [
+                {
+                    "account_id": "market",
+                    "name": "A股市场盯盘",
+                    "exchange": "CN",
+                    "exchange_alias": "A股",
+                    "is_default": True,
+                    "configured": True,
+                    "enabled": True,
+                    "testnet": True,
+                    "display_only": True,
+                    "can_trade": False,
+                }
+            ]
         return [
             {
                 "account_id": f"paper:{item['id']}",
@@ -376,7 +514,12 @@ class PaperRepository:
         ]
 
     def watchlist(self, account_id: str, limit: int) -> list[dict]:
-        instance = self._account_instance(account_id)
+        try:
+            instance = self._account_instance(account_id)
+        except ValueError as exc:
+            if str(exc) == "没有可用 A 股 Paper 账户":
+                return self._market_watchlist(limit)
+            raise
         positions = self.account_positions(account_id)
         orders = self.account_orders(account_id, 500)
         symbols = []
@@ -403,12 +546,17 @@ class PaperRepository:
                     "order_count": len(related_orders),
                 }
             )
-        return output
+        return output or self._market_watchlist(limit)
 
     def watch_market(self, account_id: str, symbol: str, timeframe: str, limit: int) -> dict:
         if str(timeframe).lower() != "1d":
             raise ValueError("A 股盯盘当前仅支持 1d")
-        instance = self._account_instance(account_id)
+        try:
+            instance = self._account_instance(account_id)
+        except ValueError as exc:
+            if str(exc) == "没有可用 A 股 Paper 账户":
+                return self._history_watch_market(account_id, symbol, timeframe, limit)
+            raise
         normalized = explicit_instrument_key(symbol)
         if not normalized:
             raise ValueError("无效 A 股标的")
@@ -424,6 +572,8 @@ class PaperRepository:
             }
             for row in rows
         ]
+        if not klines:
+            return self._history_watch_market(account_id, symbol, timeframe, limit)
         last = klines[-1] if klines else {"close": 0, "open": 0, "high": 0, "low": 0, "volume": 0}
         first_close = klines[0]["close"] if klines else 0
         return {

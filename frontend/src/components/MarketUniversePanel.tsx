@@ -544,7 +544,7 @@ function HomeRankingBoard({
             <div>
               <div className="text-sm font-semibold text-gray-100">{activeTab.label}明细</div>
               <div className="mt-0.5 text-[11px] text-gray-500">
-                {isFundingTab ? 'A股证据' : 'PostgreSQL 行情'} · {activeTab.desc}
+                {isFundingTab ? 'A股证据' : '本地行情'} · {activeTab.desc}
               </div>
             </div>
           </div>
@@ -1213,8 +1213,8 @@ export default function MarketUniversePanel({
         key: 'macro',
         label: '交易日证据',
         score: macroScore,
-        status: apiStatus === 'connected' ? 'PostgreSQL 已连接' : '数据连接异常',
-        detail: 'A 股交易日历已由 PostgreSQL 维护',
+        status: apiStatus === 'connected' ? '行情库已连接' : '数据连接异常',
+        detail: 'A 股交易日历已由本地行情库维护',
         meta: '事件临近时提醒，不直接纳入短线信号',
         tone: 'rose',
         icon: <ShieldAlert className="h-4 w-4" />,
@@ -1407,7 +1407,7 @@ export default function MarketUniversePanel({
           <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
             <MarketRankingPanel
               title="涨幅榜"
-              subtitle="PostgreSQL ticker · 当日涨幅"
+              subtitle="本地行情 · 当日涨幅"
               icon={<TrendingUp className="h-4 w-4 text-emerald-300" />}
               items={marketOverview.gainerRanking.slice(0, 5)}
               onSelect={onSelectSymbol}
@@ -1419,7 +1419,7 @@ export default function MarketUniversePanel({
             />
             <MarketRankingPanel
               title="热门榜"
-              subtitle="PostgreSQL ticker · 当日成交额"
+              subtitle="本地行情 · 当日成交额"
               icon={<Flame className="h-4 w-4 text-amber-300" />}
               items={marketOverview.hotRanking.slice(0, 5)}
               onSelect={onSelectSymbol}

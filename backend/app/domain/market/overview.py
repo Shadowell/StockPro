@@ -104,6 +104,9 @@ def _normalize_fact(row: Mapping[str, Any]) -> dict[str, Any] | None:
     amount = _number(_first(row, "amount_cny", "amount", "quote_volume", "quoteVolume"))
     turnover = _number(_first(row, "turnover_rate_pct", "turnover_rate", "turnover"))
     volume_ratio = _number(_first(row, "volume_ratio", "volumeRatio"))
+    pe = _number(_first(row, "pe_ttm", "pe_dynamic", "pe"))
+    pb = _number(_first(row, "pb"))
+    market_cap = _number(_first(row, "total_market_cap_cny", "total_market_cap"))
     suspended = bool(_first(row, "suspended", "is_suspended")) or str(_first(row, "status") or "").strip() in {"停牌", "suspended", "SUSPENDED"}
 
     invalid_reason: str | None = None
@@ -131,6 +134,9 @@ def _normalize_fact(row: Mapping[str, Any]) -> dict[str, Any] | None:
         "amount_cny": amount,
         "turnover_rate_pct": turnover,
         "volume_ratio": volume_ratio,
+        "pe_ttm": pe,
+        "pb": pb,
+        "total_market_cap_cny": market_cap,
         "trade_date": _iso(_first(row, "trade_date", "date")),
         "source": _first(row, "source") or "PostgreSQL",
         "source_updated_at": _iso(_first(row, "source_updated_at", "updated_at", "collected_at")),
@@ -477,6 +483,29 @@ def build_market_overview(
         "volume_expansion_count": sum(1 for value in ratio_values if value >= VOLUME_RATIO_THRESHOLD) if ratio_values else None,
         "volume_ratio_threshold": VOLUME_RATIO_THRESHOLD,
     }
+    pe_values = [float(fact["pe_ttm"]) for fact in eligible if fact.get("pe_ttm") is not None and float(fact["pe_ttm"]) > 0]
+    pb_values = [float(fact["pb"]) for fact in eligible if fact.get("pb") is not None and float(fact["pb"]) > 0]
+    cap_values = [
+        float(fact["total_market_cap_cny"])
+        for fact in eligible
+        if fact.get("total_market_cap_cny") is not None and float(fact["total_market_cap_cny"]) > 0
+    ]
+    valuation_missing: list[str] = []
+    if not pe_values:
+        valuation_missing.append("动态市盈率缺失")
+    if not pb_values:
+        valuation_missing.append("市净率缺失")
+    valuation_status = "ready" if pe_values or pb_values else "empty"
+    valuation = {
+        **_module_meta(base_evidence, valuation_status, valuation_missing),
+        "definition_version": MARKET_OVERVIEW_DEFINITION_VERSION,
+        "covered_symbols": max(len(pe_values), len(pb_values)),
+        "eligible_symbols": len(eligible),
+        "median_pe_ttm": median(pe_values) if pe_values else None,
+        "median_pb": median(pb_values) if pb_values else None,
+        "total_market_cap_cny": sum(cap_values) if cap_values else None,
+        "source": "all_stocks_realtime.pe_dynamic / pb",
+    }
     amount = {
         **_module_meta(base_evidence, activity_status, ["成交额缺失"] if not amount_values else []),
         "total_cny": activity["total_amount_cny"],
@@ -540,6 +569,7 @@ def build_market_overview(
         "distribution": distribution,
         "trend": trend,
         "activity": activity,
+        "valuation": valuation,
         "amount": amount,
         "rankings": rankings,
         "top_gainers": rankings["top_gainers"],

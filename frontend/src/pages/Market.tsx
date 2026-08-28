@@ -112,20 +112,20 @@ function klineDataSourceLabel(meta?: MarketKlinesMeta | null, timeframe?: string
   if (meta?.providerSource?.startsWith('akshare.')) {
     return meta.cacheHit ? 'AKShare 分时 · 缓存' : 'AKShare 分时';
   }
-  if (timeframe === '1d') return 'PostgreSQL 日线';
-  return 'PostgreSQL 分时缓存';
+  if (timeframe === '1d') return '本地日线';
+  return '本地分时缓存';
 }
 
 function klineStatusLabel(meta?: MarketKlinesMeta | null, hasRows = false): string {
   const status = meta?.dataStatus;
   if (!status) return hasRows ? 'ok' : '暂无数据';
   const labels: Record<string, string> = {
-    ok: 'ok',
-    stale: 'stale',
-    empty: 'empty',
-    unavailable: 'unavailable',
-    unsupported: 'unsupported',
-    provider_error: 'provider error',
+    ok: '可用',
+    stale: '数据偏旧',
+    empty: '暂无数据',
+    unavailable: '暂不可用',
+    unsupported: '周期不支持',
+    provider_error: '数据源异常',
   };
   return labels[status] || status;
 }
@@ -643,12 +643,12 @@ export default function Market() {
               <span className="text-sm font-semibold text-gray-100">市场阶段</span>
             </div>
             <span className={clsx('rounded-lg border px-2 py-1 text-[11px]', marketPhase?.status === 'ok' ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/25 bg-amber-500/10 text-amber-300')}>
-              {marketPhase?.status || 'empty'}
+              {marketPhase?.status === 'ok' ? '可用' : marketPhase?.status === 'partial' ? '部分可用' : '暂无数据'}
             </span>
           </div>
           <div className="px-4 py-3">
             <div className="flex items-end gap-3">
-              <div className="text-xl font-semibold text-white">{marketPhase?.phase || 'unknown'}</div>
+              <div className="text-xl font-semibold text-white">{marketPhase?.phase && marketPhase.phase !== 'unknown' ? marketPhase.phase : '待计算'}</div>
               <div className="pb-0.5 text-xs tabular-nums text-gray-500">
                 置信度 {marketPhase ? `${Math.round(marketPhase.confidence * 100)}%` : '—'}
               </div>

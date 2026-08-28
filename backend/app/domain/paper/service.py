@@ -5,6 +5,7 @@ import asyncio
 from datetime import date, datetime, timezone
 
 from app.domain.paper.repository import PaperRepository
+from app.domain.strategy.naming import display_strategy_name
 from app.services.ashare_execution import explicit_instrument_key
 
 
@@ -62,8 +63,10 @@ class PaperDomainService:
                 "side": "long",
             }
         return {
-            "id": int(row.get("id")), "name": str(row.get("name") or "A股模拟实例"),
-            "description": str(row.get("strategy_name") or "PostgreSQL Paper"), "status": str(row.get("status") or "stopped"),
+            "id": int(row.get("id")),
+            "name": display_strategy_name(str(row.get("name") or row.get("strategy_name") or ""), fallback="A股模拟实例"),
+            "description": display_strategy_name(str(row.get("strategy_name") or ""), fallback="A股模拟盘"),
+            "status": str(row.get("status") or "stopped"),
             "exchange": "CN", "symbols": symbols, "created_at": row.get("created_at"),
             "total_pnl": current - initial, "return_pct": ((current - initial) / initial * 100) if initial else 0,
             "max_drawdown": cls._number(row.get("max_drawdown")) * 100, "total_trades": int(cls._number(row.get("trade_count"))),
@@ -118,7 +121,8 @@ class PaperDomainService:
         try:
             return await asyncio.to_thread(self.repository.watchlist, account_id, limit)
         except ValueError as exc:
-            if str(exc) == "没有可用 A 股 Paper 账户": return []
+            if str(exc) == "没有可用 A 股 Paper 账户":
+                return await asyncio.to_thread(self.repository._market_watchlist, limit)
             raise
 
     async def watch_market(self, account_id: str, symbol: str, timeframe: str, limit: int) -> dict:
@@ -175,7 +179,8 @@ class PaperDomainService:
         normalized_positions = list(position_by_symbol.values())
         symbols = list(row.get("symbols") or [])
         market_value = sum(self._number(position.get("notional")) for position in normalized_positions)
-        return {"system": {"state": row.get("status"), "uptime": "-", "exchange": "CN", "symbol": symbols[0] if symbols else "", "symbols": symbols, "timeframe": "1d", "strategy": row.get("strategy_name") or row.get("name"), "strategy_id": int(row.get("id")), "dry_run": True, "mode": "paper"}, "equity": {"initial": initial, "current": current, "peak": max([initial, *[self._number(p.get("equity")) for p in curve]]), "change": change, "change_pct": change_pct}, "performance": {"total_pnl": change, "total_pnl_pct": change_pct, "win_rate": 0, "profit_factor": 0, "gross_profit": 0, "gross_loss": 0, "total_trades": len(trades), "max_drawdown": max_drawdown, "sharpe_ratio": 0}, "risk": {"circuit_breaker": False, "current_drawdown": max_drawdown, "daily_loss": 0}, "positions": normalized_positions, "account": {"total_equity": current, "cash": self._number(row.get("cash_balance")), "market_value": market_value, "unrealized_pnl": sum(self._number(p["unrealized_pnl"]) for p in normalized_positions), "position_count": len(normalized_positions)}, "recent_events": events, "feishu": {"enabled": False}}
+        strategy_label = display_strategy_name(str(row.get("name") or row.get("strategy_name") or ""))
+        return {"system": {"state": row.get("status"), "uptime": "-", "exchange": "CN", "symbol": symbols[0] if symbols else "", "symbols": symbols, "timeframe": "1d", "strategy": strategy_label, "strategy_id": int(row.get("id")), "dry_run": True, "mode": "paper"}, "equity": {"initial": initial, "current": current, "peak": max([initial, *[self._number(p.get("equity")) for p in curve]]), "change": change, "change_pct": change_pct}, "performance": {"total_pnl": change, "total_pnl_pct": change_pct, "win_rate": 0, "profit_factor": 0, "gross_profit": 0, "gross_loss": 0, "total_trades": len(trades), "max_drawdown": max_drawdown, "sharpe_ratio": 0}, "risk": {"circuit_breaker": False, "current_drawdown": max_drawdown, "daily_loss": 0}, "positions": normalized_positions, "account": {"total_equity": current, "cash": self._number(row.get("cash_balance")), "market_value": market_value, "unrealized_pnl": sum(self._number(p["unrealized_pnl"]) for p in normalized_positions), "position_count": len(normalized_positions)}, "recent_events": events, "feishu": {"enabled": False}}
 
     @staticmethod
     def _empty_dashboard() -> dict:

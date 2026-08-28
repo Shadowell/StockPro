@@ -157,6 +157,7 @@ PY
 trap - EXIT
 echo "[start] 本地服务启动完成"
 echo "[start] database=$LOCAL_DATABASE_NAME"
+echo "[start] database_url=$("$ROOT_DIR/scripts/local_database.sh" --check | awk -F= '/^url=/{print $2}')"
 echo "[start] frontend=$FRONTEND_URL"
 echo "[start] backend=$BACKEND_URL"
 echo "[start] status=./status.sh"

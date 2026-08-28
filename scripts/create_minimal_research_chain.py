@@ -202,7 +202,7 @@ def create_minimal_research_chain(conn: Any, rows: list[MarketRow]) -> dict[str,
     cutoff = datetime.combine(latest, time(17, 30), tzinfo=timezone.utc)
     chain_key = f"{SCRIPT_VERSION}:{latest.isoformat()}:{','.join(row.symbol for row in rows)}"
     chain_hash = stable_hash({"chain_key": chain_key, "rows": summarize_rows(rows)["symbols"]})
-    sample_name = f"StockPro minimal research chain {latest.isoformat()}"
+    sample_name = "[A股][日线][动量] 最小研究链"
     row_count = len(rows)
     initial_cash = Decimal("1000000")
     primary = rows[0]
