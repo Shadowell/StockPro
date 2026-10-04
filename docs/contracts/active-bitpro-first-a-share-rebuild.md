@@ -482,3 +482,10 @@ canary 和 final completion audit SHA-256 分别为
 - [Wave 4：盯盘、信号、监控、复盘](../superpowers/plans/2026-08-22-bitpro-rebuild-04-operations.md)
 - [Wave 5：数据、AI研发、期货预留](../superpowers/plans/2026-08-22-bitpro-rebuild-05-data-ai-futures.md)
 - [Wave 6：最终验收、切换与回滚](../superpowers/plans/2026-08-22-bitpro-rebuild-06-acceptance-cutover.md)
+
+### 统一登录增量合同（2026-10-05）
+
+认证主体继续使用 PostgreSQL 版 `ActiveAuthService`。HyperMonitor 中央身份是无有效本站会话时的管理员备用凭证；
+MCP Token 与本站会话保持优先，访客不升级。中央会话查询只转发唯一 `notenap_session`，不跟随重定向或信任身份头。
+两个 `/auth/me` 别名、浏览器 API 使用一致身份；共享会话写入及退出按本站 HTTPS Origin 校验。
+无数据迁移、无业务状态变更。原生产禁令继续有效；规格和验收边界见 [统一登录](../../specs/001-stockpro-hypermonitor-sso/spec.md)。

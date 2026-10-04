@@ -147,3 +147,8 @@ Pause and ask for confirmation when:
 - the task requires a cross-cutting rewrite
 - the current contract conflicts with the new request
 - success criteria are too vague to verify
+
+## Spec Kit 项目入口
+
+使用 `.specify/` 与 `.agents/skills/speckit-*` 推进 specify → clarify → plan → tasks → analyze → implement → converge，
+特性规格保留在 `specs/`；复用现有合同，不写过程日志。遵守上述认证、Paper 与生产部署限制，用户当前指令优先。

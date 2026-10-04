@@ -348,3 +348,21 @@ SQLite 与数字资产运行时。当前运行路由由 `backend/app/main.py` �
 
 历史版本字段只作为只读审计证据。完整设计、数据连续性、期货预留和切换门禁见
 [BitPro-first A股整仓重建设计合同](contracts/active-bitpro-first-a-share-rebuild.md)。
+
+## 统一登录与本站认证兼容
+
+StockPro 支持 HyperMonitor 的飞书共享会话。登录页保留管理员密码及访客邀请码，并提供统一登录入口。
+已持有有效共享会话、无有效本站会话时，浏览器直接进入工作台；本站访客会话优先，不因共享会话升级。
+
+后端仅把唯一合法的 `notenap_session` 发送到固定 HTTPS 中央会话端点；只接受明确已认证的管理员身份，
+不接受客户端身份 Header、不共享中央密钥、不签发替代长期会话。中央失效拒绝访问，暂不可用明确返回 503。
+MCP 保留原 Token、认证方式及 scopes，不被共享会话覆盖。两个 `/auth/me` 兼容入口与业务入口使用同一身份解析。
+
+SSO 写请求的 Origin 存在时只能是 `https://stockpro.notenap.com`；不能从其他子域触发本站管理员写入。
+退出时撤销本站会话；请求带共享 Cookie 时，同时清除本站同名 Cookie 与 `Domain=.notenap.com` 的共享 Cookie，
+此操作同样检查 Origin。没有共享 Cookie 的本地开发登录与退出保持原有行为。Cookie 清除只退出当前浏览器，
+不代表其他设备或已经签发的本站会话同时被全局撤销。
+
+此集成不改变 Paper/Live、业务账本、数据同步或旧认证开关。启用部署前必须确认 `BITPRO_AUTH_ENABLED=true`、
+中央端点已部署，并按 AGENTS.md 明确解除 StockPro 生产部署限制后完成 HTTPS 浏览器验收。
+详细合同见 [统一登录规格](../specs/001-stockpro-hypermonitor-sso/spec.md) 与 [实施方案](../specs/001-stockpro-hypermonitor-sso/plan.md)。

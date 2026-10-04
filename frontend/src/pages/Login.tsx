@@ -128,6 +128,14 @@ export default function Login() {
               </div>
             </div>
 
+            <a
+              href="https://monitor.notenap.com/login?redirect=https%3A%2F%2Fstockpro.notenap.com%2F"
+              className="mb-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-blue-500/40 bg-blue-500/10 text-sm font-semibold text-blue-200 transition-colors hover:bg-blue-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+            >
+              <LogIn className="h-4 w-4" aria-hidden="true" />
+              飞书统一登录
+            </a>
+
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-xl border border-crypto-border bg-crypto-bg p-1">
               {[
                 { value: 'admin' as const, label: '管理员登录', icon: ShieldCheck },

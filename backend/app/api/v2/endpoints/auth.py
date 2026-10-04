@@ -12,6 +12,7 @@ from app.core.contracts import ok
 from app.core.errors import AppError
 from app.domain.auth.login_limiter import LoginAttemptLimiter, LoginRateLimitError
 from app.domain.auth.service import ActiveAuthConfigError, ActiveAuthError, active_auth_service as auth_service
+from app.domain.auth.sso import SSO_COOKIE_DOMAIN, SSO_COOKIE_NAME, require_same_origin, resolve_browser_session
 
 
 router = APIRouter()
@@ -99,6 +100,8 @@ def _public_session(session: Optional[dict], *, auth_enabled: bool) -> dict:
         "max_backtests_per_day": session.get("max_backtests_per_day"),
         "max_concurrent_backtests": session.get("max_concurrent_backtests"),
         "max_backtest_days": session.get("max_backtest_days"),
+        "user": session.get("user"),
+        "auth_method": session.get("auth_method"),
     }
 
 
@@ -109,9 +112,11 @@ def _require_admin(request: Request) -> None:
 
 
 @router.get("/me")
-async def me(request: Request):
-    token = request.cookies.get(settings.BITPRO_AUTH_COOKIE_NAME)
-    session = auth_service.get_session(token) if settings.BITPRO_AUTH_ENABLED else None
+async def me(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    session = None
+    if settings.BITPRO_AUTH_ENABLED:
+        session = request.state.auth if hasattr(request.state, "auth") else await resolve_browser_session(request, auth_service)
     return ok(_public_session(session, auth_enabled=bool(settings.BITPRO_AUTH_ENABLED)))
 
 
@@ -172,9 +177,16 @@ async def guest_login(payload: GuestLoginRequest, request: Request, response: Re
 
 @router.post("/logout")
 async def logout(request: Request, response: Response):
+    clear_shared_session = SSO_COOKIE_NAME in request.cookies
+    if clear_shared_session:
+        require_same_origin(request)
     token = request.cookies.get(settings.BITPRO_AUTH_COOKIE_NAME)
     auth_service.revoke_session(token)
     response.delete_cookie(settings.BITPRO_AUTH_COOKIE_NAME, path="/")
+    if clear_shared_session:
+        response.delete_cookie(SSO_COOKIE_NAME, domain=SSO_COOKIE_DOMAIN, path="/", secure=True, httponly=True, samesite="lax")
+        response.delete_cookie(SSO_COOKIE_NAME, path="/", secure=True, httponly=True, samesite="lax")
+    response.headers["Cache-Control"] = "no-store"
     return ok({"logged_out": True})
 
 

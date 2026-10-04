@@ -10,6 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.domain.auth.service import ActiveAuthService, active_auth_service as default_auth_service
 from app.domain.auth.mcp_tokens import postgres_mcp_token_verifier
+from app.domain.auth.sso import SsoAuthError, resolve_browser_session
 
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
@@ -59,11 +60,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         method = request.method.upper()
         public_auth_paths = {
-            "/api/auth/me",
             "/api/auth/admin/login",
             "/api/auth/guest/login",
             "/api/auth/logout",
-            "/api/v2/auth/me",
             "/api/v2/auth/admin/login",
             "/api/v2/auth/guest/login",
             "/api/v2/auth/logout",
@@ -79,11 +78,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.auth = mcp_auth
             return await call_next(request)
 
-        token = request.cookies.get(settings.BITPRO_AUTH_COOKIE_NAME)
-        session = self.auth_service.get_session(token)
+        try:
+            session = await resolve_browser_session(request, self.auth_service)
+        except SsoAuthError as exc:
+            return _error(exc.status_code, exc.code, exc.message)
+        request.state.auth = session
+        if path in {"/api/auth/me", "/api/v2/auth/me"}:
+            return await call_next(request)
         if not session:
             return _error(401, "UNAUTHORIZED", "请先登录")
-        request.state.auth = session
         if session.get("role") == "admin":
             return await call_next(request)
         if session.get("role") == "guest" and guest_can_access(path, method):
