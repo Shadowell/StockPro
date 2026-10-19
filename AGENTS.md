@@ -20,6 +20,7 @@ Before substantial work, read:
 3. Update `docs/progress.md` after each meaningful implementation step.
 4. Do not call work done without running the relevant checks, or clearly documenting what was not checked.
 5. If requirements, architecture, or API contracts change, update `docs/spec.md` and the active contract in the same change.
+6. 每次改动完成并通过相关检查后，只要有代码修改，默认都必须在功能分支提交并推送到 GitHub，随后合并到 `main` 并推送 `main`，以触发部署流水线，保证线上服务和 `main` 分支时刻保持最新；只有用户明确要求「仅本地提交」「不要合并」或「不要推送」时，才跳过合并或推送。严禁在提交信息中滥用 `[skip ci]`，以免阻断线上服务的自动部署更新。
 
 ## Standard Loop
 
