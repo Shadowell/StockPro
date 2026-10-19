@@ -11,13 +11,22 @@ on:
         required: false
         default: false
         type: boolean
+      engine:
+        description: 发布执行位置
+        type: choice
+        options: [server, github]
+        default: server
 
 concurrency:
   group: stockpro-production-deploy-v2
   cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
 
+env:
+  DEPLOY_ENGINE: ${{ (github.event_name == 'workflow_dispatch' && inputs.engine) || vars.DEPLOY_ENGINE || 'server' }}
+
 jobs:
   build-and-deploy:
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.engine) || vars.DEPLOY_ENGINE || 'server') == 'server'
     runs-on: [self-hosted, bitpro-production]
     steps:
       - name: Require main branch
@@ -263,3 +272,37 @@ jobs:
             sudo mkdir -p /opt/stockpro/deploy
             printf '%s\n' "${CURRENT_SHA}" | sudo tee /opt/stockpro/deploy/last_deployed_sha >/dev/null
           fi
+
+  deploy-github:
+    name: GitHub 托管触发发布
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.engine) || vars.DEPLOY_ENGINE || 'server') == 'github'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Configure hosted deploy SSH
+        env:
+          SSH_KEY: ${{ secrets.STOCKPRO_HOSTED_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STOCKPRO_HOSTED_KNOWN_HOSTS }}
+          HOST: ${{ secrets.STOCKPRO_HOSTED_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS" && test -n "$HOST"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/stockpro_hosted
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/stockpro_known_hosts
+          chmod 600 ~/.ssh/stockpro_hosted ~/.ssh/stockpro_known_hosts
+      - name: Trigger trusted deploy
+        env:
+          HOST: ${{ secrets.STOCKPRO_HOSTED_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/stockpro_hosted \
+            -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/stockpro_known_hosts \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=60 \
+            "root@${HOST}" "$GITHUB_SHA"
+      - name: Verify public health
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 10 https://stockpro.notenap.com/api/health >/dev/null
+
